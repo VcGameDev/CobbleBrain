@@ -19,3 +19,16 @@ gradle-app.setting
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Fabric (dev run directory)
+run/
+
+# Optional: OS and editor noise
+*.DS_Store
+.vscode/
