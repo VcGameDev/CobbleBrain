@@ -1,7 +1,7 @@
 package vito.cobblebrain.config
 
 class CobblebrainConfig {
-    val apiKey: String = "COLE_SUA_CHAVE_AQUI"
+    val apiKey: String = "YOUR_API_KEY"
     val maxDialogueSaves: Int = 3
     val selectedLanguage: String = "English"
     val dialogueAffectFriendship: Boolean = true
