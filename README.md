@@ -31,5 +31,3 @@ Q: How do I run the mod? A: You’ll only need to create a Google AI Studio acco
 Q: Can I say anything to my Pokémon? A: Technically yes, but remember that it’s YOUR Google key being used. Please keep interactions reasonable.
 
 Q: Does the mod share my API key? A: No. The key is stored locally and only used to communicate with Google’s servers for the AI to function. It is never sent anywhere else.
-
-TESTE ADICIONANDO INFORMAÇÃO NO README.md - EDSON BARBOSA JUNIOR
