@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "cobblebrain",
+  "version": "1.6-fabric-0.5.0",
+  "name": "CobbleBrain",
+  "description": "a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons",
+  "authors": [
+    "VcGameDev aka vito/vic"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "vito.cobblebrain.CobbleBrainModClient"
+      }
+    ],
+    "main": [
+      {
+        "adapter": "kotlin",
+        "value": "vito.cobblebrain.CobblebrainMod"
+      }
+    ]
+  },
+  "depends": {
+    "java": ">=21",
+    "minecraft": "1.21.1",
+    "fabric": "*",
+    "cobblemon": ">=1.6.0 <1.7.0"
+  }
+}
