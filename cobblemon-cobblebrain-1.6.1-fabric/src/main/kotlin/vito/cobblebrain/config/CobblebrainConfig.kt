@@ -7,7 +7,7 @@ class CobblebrainConfig {
     val dialogueAffectFriendship: Boolean = true
     val aiModel: String = "gemini-2.0-flash"
     val instruct: String = """
-    ### Regras de Diálogo
+    ### Dialogue Rules
 - **1 a 6 falas** por diálogo.  
 - Só **Pokémon ativos e não desmaiados** podem falar.  
 - Se houver apenas **um ativo**, ele fala direto com o jogador.  
