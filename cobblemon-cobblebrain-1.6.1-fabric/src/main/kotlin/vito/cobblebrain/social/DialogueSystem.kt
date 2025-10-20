@@ -496,7 +496,9 @@ object DialogueSystem {
                     appendLine("${p.species.name} - Jogador(${playerName}): $count interações")
                 }
             }
-            appendLine("Sempre mande sua resposta na língua ${config.selectedLanguage}")
+            appendLine("Variaveis importantes:")
+            appendLine("CHOSEN_LANGUAGE: ${config.selectedLanguage}")
+            appendLine("AFFECT_FRIDENSHIP: ${config.dialogueAffectFriendship}")
         }.trim()
     }
 
@@ -541,7 +543,7 @@ object DialogueSystem {
 
         val ativos = server.playerList.players.flatMap { PokemonQuery.findActivePokemon(it) }
 
-        val regex = Regex("""[: ]\s*([\w\s.'♀♂-]+)\s*:\s*([\d.,]+)\s*\+\s*([\d.,]+)""")
+        val regex = Regex(config.dialogueFriendshipRegex)
         val match = regex.find(content)
 
         if (config.dialogueAffectFriendship)
