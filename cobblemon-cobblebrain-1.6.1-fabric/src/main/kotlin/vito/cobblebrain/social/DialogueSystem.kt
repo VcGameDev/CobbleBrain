@@ -101,7 +101,7 @@ object DialogueSystem {
                 val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
 
                 if (ativos.size < 2) {
-                    println("Batalha iniciada, mas ainda sem Pokémon ativos detectados.")
+                    println("Battle started, but no active Pokémon detected yet.")
                     return@execute
                 }
 
@@ -123,9 +123,9 @@ object DialogueSystem {
 
                 val pokemonsTime = PokemonQuery.findActivePokemon(player)
                 val playerName = player.name.string
-                val prompt = buildPrompt(player, pokemonsTime, "IMPORTANT: \"$playerName entrou em batalha com [$meusNomes] contra [$inimigosNomes]\"")
+                val prompt = buildPrompt(player, pokemonsTime, "IMPORTANT: \"$playerName has entered battle with[$meusNomes] against [$inimigosNomes]\"")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-                println("$playerName entrou em batalha com [$meusNomes] contra [$inimigosNomes]")
+                println("$playerName has entered battle with [$meusNomes] against [$inimigosNomes]")
             }
         }
 
@@ -139,14 +139,14 @@ object DialogueSystem {
                 scheduledMessages.clear()
                 val species = pokemon.species.name
                 val level = pokemon.level
-                val ownerName = pokemon.getOwnerPlayer()?.name ?: "Desconhecido"
+                val ownerName = pokemon.getOwnerPlayer()?.name ?: "unknown"
 
                 // pega o ServerPlayer diretamente
                 val player = pokemon.getOwnerPlayer() ?: return@subscribe
                 val ativos = PokemonQuery.findActivePokemon(player)
 
-                println("[$ownerName] enviou $species (Lv.$level) para a batalha!")
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: No meio da batalha, [$ownerName] enviou $species (Lv.$level) para lutar!")
+                println("During the battle, [$ownerName] sent $species (Lv.$level) to fight!")
+                val prompt = buildPrompt(player, ativos, "IMPORTANT: During the battle, [$ownerName] sent $species (Lv.$level) to fight!")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
             }
         }
@@ -156,7 +156,7 @@ object DialogueSystem {
             val uuids = actor.getPlayerUUIDs()
 
             if (uuids.isEmpty()) {
-                println("${actor.getName().string} fugiu da batalha (não é jogador humano).")
+                println("${actor.getName().string} fled from battle (not human player).")
                 return@subscribe
             }
 
