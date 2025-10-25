@@ -4,7 +4,7 @@ class CobblebrainConfig {
     // API key used for authentication with the AI system.
     val apiKey: String = "YOUR_API_KEY"
     // The name of the AI model being used.
-    val aiModel: String = "gemini-2.0-flash"
+    val aiModel: String = "gemini-2.5-flash-lite"
 
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
     val spontaneousDialogueChance: Double = 0.15
