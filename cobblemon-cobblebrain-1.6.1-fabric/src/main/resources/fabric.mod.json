@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "cobblebrain",
-  "version": "1.6-fabric-0.5.0",
+  "version": "1.6-fabric-0.5.1",
   "name": "CobbleBrain",
   "description": "a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons",
   "authors": [
