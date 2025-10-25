@@ -31,18 +31,18 @@ object PokemonQuery {
 object PokemonTalkCommand {
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
-            Commands.literal("msgpk") // comando: /msgpk <mensagem>
-                .then(Commands.argument("mensagem", StringArgumentType.greedyString())
+            Commands.literal("msgpk") // comando: /msgpk <message>
+                .then(Commands.argument("message", StringArgumentType.greedyString())
                     .executes { ctx ->
                         val player: ServerPlayer = ctx.source.playerOrException
-                        val conteudo = StringArgumentType.getString(ctx, "mensagem")
+                        val conteudo = StringArgumentType.getString(ctx, "message")
 
                         // Chama sua função já existente
                         onPlayerChat(player, conteudo)
 
                         //remanda a mensagem no chat
                         player.sendSystemMessage(
-                            Component.literal("${player.name.string} disse: $conteudo")
+                            Component.literal("${player.name.string}: $conteudo")
                         )
 
                         1
