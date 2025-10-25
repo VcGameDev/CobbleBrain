@@ -8,6 +8,7 @@ import com.mojang.brigadier.CommandDispatcher
 import net.minecraft.commands.Commands
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.mojang.brigadier.arguments.StringArgumentType
+import net.minecraft.network.chat.Component
 import vito.cobblebrain.social.DialogueSystem.onPlayerChat
 
 object PokemonQuery {
@@ -38,6 +39,11 @@ object PokemonTalkCommand {
 
                         // Chama sua função já existente
                         onPlayerChat(player, conteudo)
+
+                        //remanda a mensagem no chat
+                        player.sendSystemMessage(
+                            Component.literal("${player.name.string} disse: $conteudo")
+                        )
 
                         1
                     }
