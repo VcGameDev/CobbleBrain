@@ -48,10 +48,10 @@ They can talk to you, interact with teammates, and even react to the world aroun
 
 ## Installation
 
-1. Download and install **Minecraft Forge** (compatible version).  
-2. Install **Cobblemon**.  
+1. Download and install **Minecraft** (compatible version).  
+2. Install **Cobblemon and Fabric API (compatible version)**.  
 3. Download the latest release of **CobbleBrain** from the [Releases](#) page.  
-4. Place the `.jar` file into your `mods` folder.  
+4. Place the `.jar` file into your `mods` folder, along with cobblemon and Fabric API.  
 
 ---
 
