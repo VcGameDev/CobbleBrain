@@ -140,6 +140,4 @@ See the [LICENSE](LICENSE) file for details.
 
 ## Contact
 
-If you have questions, suggestions, or problems:  
-- Leave a comment in the project.  
-- Reach out via the YouTube channel (linked in the project). 
+If you want to contact me, you can send a message to my email registered in the bio of my github profile.
