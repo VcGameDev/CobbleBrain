@@ -126,9 +126,8 @@ A: Yes, but beta versions may cause unknown issues or incompatibilities.
 ## Contributing
 
 Contributions are welcome!  
-- Open an [issue](#) for bugs or feature requests.  
-- Submit a pull request with improvements.  
-- Follow the project’s coding style and guidelines.  
+- Open an [issue](#) for bugs or feature requests.
+- Before submitting code changes, read through [CONTRIBUTING](CONTRIBUTING) 
 
 ---
 
