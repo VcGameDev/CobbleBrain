@@ -7,7 +7,6 @@ import vito.cobblebrain.config.ConfigBuilder
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.social.DebugPartyCommand
 import vito.cobblebrain.social.DialogueSystem.register
-import net.fabricmc.loader.api.FabricLoader
 import java.io.File
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.sensors.registerTickHandler
