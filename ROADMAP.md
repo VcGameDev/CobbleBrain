@@ -61,7 +61,6 @@
 ## 0.8.0 (Future)
 - [ ] Integration with riding/mount Pokémon mod 
 - [ ] apply buffs/debuffs depending on player input (per battle round)  
-- [ ] Integration with riding/mount Pokémon mod  
 
 ---
 
@@ -89,4 +88,10 @@
 - [X] Pokémon sometimes freeze (possibly caused by LookAt or jump behavior)  
 - [X] AI processing message (red) sometimes gets stuck (investigate missing reset)  
 - [X] Verify if Pokémon talking to themselves send messages in chat → changed to `sendSystemMessage`  
-- [X] Pokémon thought they lost when they actually won battles  
+- [X] Pokémon thought they lost when they actually won battles
+
+## 0.6.0
+
+- [ ] Sometimes, the AI pastes a  "/" usually on its own, sometimes after a word or two.
+- [ ] AI seems to struggle with switching pokemon.
+- [ ] Sometimes, after exiting the game and rejoining after having changed the AI model, a name of a pokemon without nickname can be displayed as null
