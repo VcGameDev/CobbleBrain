@@ -19,9 +19,14 @@ class CobblebrainConfig {
 // Only applies if listenToChat is also true.
     val onlyNearbyChat: Boolean = false
 
+    val telepaticDamage: Boolean = false
 
-    // Maximum number of dialogues that can be saved and sent to the AI (limit set to 3).
-    val maxDialogueSaves: Int = 3
+
+    // Maximum number of dialogues that can be saved and sent to the AI (limit set to 1).
+    val maxDialogueSaves: Int = 1
+
+    val maxShortMemory: Int = 20
+    val maxLongMemory: Int = 20
     // The language selected for the AI to respond (in this case, English).
     val selectedLanguage: String = "English"
 

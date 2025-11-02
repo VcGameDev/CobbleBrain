@@ -24,9 +24,14 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundSource
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.entity.Mob
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.currentServer
+import vito.cobblebrain.sensors.CommandState
+import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
+import vito.cobblebrain.sensors.MemoryStore.savePokemonMemory
 import vito.cobblebrain.sensors.collectWorldContext
+import vito.cobblebrain.sensors.parseCommand
 
 import java.io.File
 import java.lang.Math.toDegrees
@@ -470,6 +475,7 @@ object DialogueSystem {
 
     private fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
         val context = collectWorldContext(player)
+        println(context)
 
         return buildString {
             appendLine(moreText)
@@ -513,7 +519,24 @@ object DialogueSystem {
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
                 appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
                 println("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $$allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
+
+                val memories = currentServer?.let { srv ->
+                    loadPokemonMemories(
+                        srv,
+                        p.uuid.toString(),
+                        config.maxShortMemory
+                    )
+                } ?: emptyList()
+
+                if (memories.isNotEmpty()) {
+                    appendLine("\nMemories:\n")
+                    memories.forEach { m ->
+                        appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
+                        println("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
+                    }
+                }
             }
+
             // ADIÇÃO: histórico de interações
             appendLine()
             appendLine("[Interaction history]")
@@ -558,7 +581,19 @@ object DialogueSystem {
     if AFFECT_FRIENDSHIP in the user prompt is true, include:
     Friendship Pokemon A: 50 + 1 
     Friendship Pokemon B: 50 + -2
-    ...
+    - Then output the memory lines in the format:
+      example with short memory: @Pokemon A: <short memory sentence>
+      example with long memory: @@Pokemon A: <long memory sentence>
+    - Each Pokémon evaluates events from its own perspective.
+    - The same event may be recorded differently by different Pokémon: for one it may be a short-term memory (@), while for another it may be a long-term memory (@@), depending on the personal impact.
+    - Use a single '@' for short-term memories. Short-term memories represent fleeting perceptions, temporary conditions, or minor occurrences that are relevant in the moment but do not significantly alter identity or history.
+    - Use a double '@@' for long-term memories. Long-term memories represent impactful events, defining traits, or meaningful experiences that leave a lasting mark on the Pokémon’s personality, relationships, or sense of self — things that significantly alter identity or history.
+    
+    - Finally, at the very end, output one action validation line for each Pokémon, always using exactly one of:
+        #PokemonName: attack
+        #PokemonName: protect
+        #PokemonName: idle
+    - Every Pokémon must provide exactly one action. If irrelevant, use 'idle'.
     
     - ALWAYS FOLLOW THE OUTPUTFORMAT WHEN SENDING YOUR RESPONSE, NO HYPHENS
     - USE THE POKEMON NICKNAME OR THE SPECIES IF THE NICKNAME DOES NOT EXIST, NEVER COMBINE THE TWO IN THE MESSAGE...
@@ -576,9 +611,44 @@ object DialogueSystem {
         val content = file.readText().trim()
         if (content.isEmpty() || content == lastResponseContent) return
 
+        // Linhas para chat (falas + friendship), excluindo memórias
+        // 1. Separa falas (chat) e memórias (não vão pro chat)
         val falas = content.split("|")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+            .filterNot { it.startsWith("@") }
+
+        val memoryLines = content.split("|")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .filter { it.startsWith("@") }
+
+        println(">>> Fala pega: $memoryLines")
+
+        // 2. Salva as memórias no JSON
+        memoryLines.forEach { line ->
+            println(">>> Fala pega: $line")
+            savePokemonMemory(server, line, config.maxShortMemory)
+        }
+
+        //detects if there is any action (#) in the dialogue
+        val commandLines = falas.filter { it.startsWith("#") }
+        commandLines.forEach { line ->
+            val cmd = parseCommand(line)
+            if (cmd != null && lastSpeakerPlayer != null) {
+                val level = lastSpeakerPlayer!!.level() as ServerLevel
+                val pokemon = level.getEntitiesOfClass(Mob::class.java, lastSpeakerPlayer!!.boundingBox.inflate(64.0)) {
+                    it.displayName?.string.equals(cmd.pokemonName, ignoreCase = true)
+                }.firstOrNull()
+
+                if (pokemon != null) {
+                    CommandState.activeCommands[pokemon.uuid] = cmd.action
+                    println(">>> Registrado comando ${cmd.action} para ${cmd.pokemonName} (${pokemon.uuid})")
+                }
+            }
+        }
+
+
 
         // se já existe um diálogo iniciado pelo jogador, completa ele
         if (dialogueHistory.isNotEmpty()) {

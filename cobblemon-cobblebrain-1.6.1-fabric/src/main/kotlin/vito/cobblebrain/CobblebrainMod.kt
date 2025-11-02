@@ -10,6 +10,7 @@ import vito.cobblebrain.social.DialogueSystem.register
 import net.fabricmc.loader.api.FabricLoader
 import java.io.File
 import net.minecraft.server.MinecraftServer
+import vito.cobblebrain.sensors.registerTickHandler
 import vito.cobblebrain.social.PokemonTalkCommand
 
 
@@ -41,6 +42,7 @@ object CobblebrainMod : ModInitializer {
         config = ConfigBuilder.load(CobblebrainConfig::class.java, MOD_ID)
         println("o mod cobblebrain carregou")
         register()
+        registerTickHandler()
 
         // Aqui registramos o comando
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
