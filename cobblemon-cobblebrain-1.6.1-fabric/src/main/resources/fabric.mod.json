@@ -9,6 +9,9 @@
   ],
   "license": "MIT",
   "environment": "*",
+  "mixins": [
+    "cobblebrain.mixins.json"
+  ],
   "entrypoints": {
     "client": [
       {

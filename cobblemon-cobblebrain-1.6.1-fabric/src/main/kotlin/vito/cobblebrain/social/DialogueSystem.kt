@@ -519,7 +519,7 @@ object DialogueSystem {
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
                 appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
                 println("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $$allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
-
+                println(p.types.toString())
                 val memories = currentServer?.let { srv ->
                     loadPokemonMemories(
                         srv,
@@ -643,11 +643,9 @@ object DialogueSystem {
 
                 if (pokemon != null) {
                     CommandState.activeCommands[pokemon.uuid] = cmd.action
-                    println(">>> Registrado comando ${cmd.action} para ${cmd.pokemonName} (${pokemon.uuid})")
                 }
             }
         }
-
 
 
         // se já existe um diálogo iniciado pelo jogador, completa ele
