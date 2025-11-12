@@ -519,7 +519,7 @@ object DialogueSystem {
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
                 appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
                 println("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $$allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
-                println(p.types.toString())
+                println(p.types.map { it.name })
                 val memories = currentServer?.let { srv ->
                     loadPokemonMemories(
                         srv,
