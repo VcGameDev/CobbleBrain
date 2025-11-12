@@ -3,6 +3,7 @@ package vito.cobblebrain.sensors
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -90,6 +91,7 @@ fun registerTickHandler() {
             val eatCooldown = mutableMapOf<UUID, Int>()
             val pokemon = level.getEntity(pokemonId) as? Mob ?: return@forEach
             val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon ?: return@forEach
+            val debuffCooldowns = mutableMapOf<UUID, Int>()
 
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
@@ -195,13 +197,6 @@ fun registerTickHandler() {
                     }
                 }
 
-                "heal" -> {
-                    val ownerUUID = pokemon.ownerUUID ?: return@forEach
-                    val owner = level.server.playerList.getPlayer(ownerUUID) ?: return@forEach
-                    owner.heal(4.0f)
-                    CommandState.activeCommands[pokemonId] = "idle"
-                }
-
                 "eat" -> {
                     val edibleItems = setOf(
                         Items.APPLE,
@@ -289,7 +284,23 @@ fun registerTickHandler() {
                         }
                     }
 
+                    val cd = debuffCooldowns.getOrDefault(pokemonId, 0)
+
+                    if (cd > 0) {
+                        // mensagem de cooldown
+                        level.server.playerList.broadcastSystemMessage(
+                            Component.literal("${pokemon.displayName?.string} is on cooldown"), false
+                        )
+                        debuffCooldowns[pokemonId] = maxOf(0, cd - 1)
+                        CommandState.activeCommands[pokemonId] = "idle"
+                        return@forEach
+                    }
+
                     if (finalTarget == null || !finalTarget.isAlive) {
+                        // mensagem de alvo não encontrado
+                        level.server.playerList.broadcastSystemMessage(
+                            Component.literal("${pokemon.displayName?.string} found no one..."), false
+                        )
                         exitAttackMode(pokemon)
                         CommandState.activeTargets.remove(pokemonId)
                         CommandState.activeCommands[pokemonId] = "idle"
@@ -303,13 +314,9 @@ fun registerTickHandler() {
                     val inRange = pokemon.distanceToSqr(finalTarget) <= (reach * reach) &&
                             pokemon.hasLineOfSight(finalTarget)
 
-                    val cd = attackCooldowns.getOrDefault(pokemonId, 0)
-                    if (inRange && cd <= 0) {
-                        // dano físico
-                        finalTarget.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage)
-
-                        // debuff baseado no tipo primário
+                    if (inRange) {
                         val primaryType = cobblemonPokemon.types.firstOrNull()?.name?.lowercase() ?: "normal"
+
                         val effect = when (primaryType) {
                             "grass" -> MobEffects.POISON
                             "poison" -> MobEffects.POISON
@@ -335,9 +342,12 @@ fun registerTickHandler() {
                         finalTarget.addEffect(MobEffectInstance(effect, 600, 1)) // 30 segundos
                         pokemon.swing(InteractionHand.MAIN_HAND)
 
-                        attackCooldowns[pokemonId] = 20 // 1 segundo de cooldown
-                    } else {
-                        attackCooldowns[pokemonId] = maxOf(0, cd - 1)
+                        // aplica cooldown de 1 minuto
+                        debuffCooldowns[pokemonId] = 1200
+
+                        // volta para idle
+                        exitAttackMode(pokemon)
+                        CommandState.activeCommands[pokemonId] = "idle"
                     }
                 }
 
@@ -373,9 +383,6 @@ fun registerTickHandler() {
                     owner.addEffect(MobEffectInstance(effect, 600, 1)) // 30 segundos
                     CommandState.activeCommands[pokemonId] = "idle"
                 }
-
-
-
 
                 "idle" -> {
                     exitAttackMode(pokemon)

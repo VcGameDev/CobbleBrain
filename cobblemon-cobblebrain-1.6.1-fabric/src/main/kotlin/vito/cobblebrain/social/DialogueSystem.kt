@@ -591,6 +591,10 @@ object DialogueSystem {
     
     - Finally, at the very end, output one action validation line for each Pokémon, always using exactly one of:
         #PokemonName: attack
+        #PokemonName: eat
+        #PokemonName: buff
+        #PokemonName: debuff
+        #PokemonName: stop
         #PokemonName: protect
         #PokemonName: idle
     - Every Pokémon must provide exactly one action. If irrelevant, use 'idle'.
