@@ -12,10 +12,6 @@ import java.time.Duration
 import kotlin.system.exitProcess
 
 class AIHandler(dirPath: String) {
-    val gson = Gson()
-    val configFile = File("config/cobblebrain.json")
-    val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
-
     companion object {
         private val gson = Gson()
         private val configFile = File("config/cobblebrain.json")
@@ -47,7 +43,7 @@ class AIHandler(dirPath: String) {
                 val changed = event.context() as Path
                 if (changed.endsWith(comandoPath.fileName)) {
                     val userInput = Files.readString(comandoPath).trim()
-                    if (userInput.isNotEmpty() && userInput != lastInput) {
+                    if (userInput.isNotEmpty() && userInput != lastInput && config.pokemonTalk) {
                         enviarMensagem(userInput)
                         lastInput = userInput
                     }
@@ -62,8 +58,10 @@ class AIHandler(dirPath: String) {
             println("Encerrando IA...")
             exitProcess(0)
         } else {
-            respostaNormal(input)
-            println("Resposta processada")
+            if (config.pokemonTalk){
+                respostaNormal(input)
+                println("Resposta processada")
+            }
         }
     }
 

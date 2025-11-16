@@ -127,10 +127,9 @@ object DialogueSystem {
                 }
 
                 val pokemonsTime = PokemonQuery.findActivePokemon(player)
-                val playerName = player.name.string
-                val prompt = buildPrompt(player, pokemonsTime, "IMPORTANT: \"$playerName has entered battle with[$meusNomes] against [$inimigosNomes]\"")
+                val prompt = buildPrompt(player, pokemonsTime, "IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-                println("$playerName has entered battle with [$meusNomes] against [$inimigosNomes]")
+                println("IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
             }
         }
 
@@ -138,23 +137,37 @@ object DialogueSystem {
             val pokemon = event.pokemon
             val ownerId = pokemon.getOwnerUUID() ?: return@subscribe
 
-            // verifica se o dono está em alguma batalha ativa
             val battle = BattleRegistry.getBattleByParticipatingPlayerId(ownerId)
             if (battle != null) {
                 scheduledMessages.clear()
+
+                val nickname = pokemon.nickname
                 val species = pokemon.species.name
                 val level = pokemon.level
-                val ownerName = pokemon.getOwnerPlayer()?.name ?: "unknown"
+                val ownerPlayer = pokemon.getOwnerPlayer() ?: return@subscribe
 
-                // pega o ServerPlayer diretamente
-                val player = pokemon.getOwnerPlayer() ?: return@subscribe
-                val ativos = PokemonQuery.findActivePokemon(player)
+                // regra: se nickname != null → usa species, senão usa nickname
+                val displayName = if (nickname != null) species else nickname ?: species
 
-                println("During the battle, [$ownerName] sent $species (Lv.$level) to fight!")
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: During the battle, [$ownerName] sent $species (Lv.$level) to fight!")
+                // se o dono do Pokémon for o próprio jogador local → "eu"
+                val playerNameForPrompt = if (ownerPlayer == currentServer?.playerList?.getPlayer(ownerId)) {
+                    "I"
+                } else {
+                    ownerPlayer.name.string
+                }
+
+                val ativos = PokemonQuery.findActivePokemon(ownerPlayer)
+
+                println("During the battle, $playerNameForPrompt sent $displayName (Lv.$level) to fight!")
+                val prompt = buildPrompt(
+                    ownerPlayer,
+                    ativos,
+                    "IMPORTANT: During the battle, $playerNameForPrompt sent $displayName (Lv.$level) to fight!"
+                )
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
             }
         }
+
 
         CobblemonEvents.BATTLE_FLED.subscribe { event: BattleFledEvent ->
             val actor = event.player // PlayerBattleActor que fugiu
@@ -214,9 +227,9 @@ object DialogueSystem {
                         scheduledMessages.clear()
                         lastPrompt[entity.uuid] = now
                         val cause = source.msgId
-                        println("IMPORTANT: The player took $amount of damage from $cause. Final health: $newHealth")
+                        println("IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
                         val ativos = PokemonQuery.findActivePokemon(entity)
-                        val prompt = buildPrompt(entity, ativos, "IMPORTANT: The player took $amount of damage from $cause. Final health: $newHealth")
+                        val prompt = buildPrompt(entity, ativos, "IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
                         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                     }
                 }
@@ -234,10 +247,10 @@ object DialogueSystem {
                                 lastPrompt[owner.uuid] = now
                                 val cause = source.msgId
                                 val pokemonName = entity.pokemon.species.name
-                                println("Pokémon $pokemonName owned by player ${owner.scoreboardName} took $amount of damage from $cause. Final health: $newHealth")
+                                println("My Pokémon $pokemonName owned by player ${owner.scoreboardName} took $amount of damage from $cause.")
                                 server.playerList.getPlayer(ownerUuid)?.let { owner ->
                                     val ativos = PokemonQuery.findActivePokemon(owner)
-                                    val prompt = buildPrompt(owner, ativos, "Pokémon $pokemonName owned by player ${owner.scoreboardName} took $amount of damage from $cause. Final health: $newHealth")
+                                    val prompt = buildPrompt(owner, ativos, "My Pokémon $pokemonName took $amount of damage from $cause.")
                                     File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                                 }
                             }

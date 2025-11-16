@@ -200,6 +200,7 @@ fun registerTickHandler() {
                 "eat" -> {
                     val edibleItems = setOf(
                         Items.APPLE,
+                        Items.SWEET_BERRIES,
                         Items.BREAD,
                         Items.CARROT,
                         Items.GOLDEN_CARROT,

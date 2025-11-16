@@ -2,40 +2,65 @@ package vito.cobblebrain.config
 
 import com.google.gson.GsonBuilder
 import java.io.File
-import java.io.FileReader
-import java.io.PrintWriter
 
-class ConfigBuilder<T> private constructor(private val clazz: Class<T>, private val path: String) {
+class ConfigBuilder<T> private constructor(
+    private val clazz: Class<T>,
+    private val path: String
+) {
     companion object {
         fun <T> load(clazz: Class<T>, path: String): T {
-            return ConfigBuilder(clazz, path)._load()
+            val gson = GsonBuilder()
+                .disableHtmlEscaping()
+                .setPrettyPrinting()
+                .create()
+
+            val file = File("config/$path.json").apply { parentFile.mkdirs() }
+
+            val config = if (file.exists()) {
+                try {
+                    gson.fromJson(file.readText(), clazz)
+                } catch (e: Exception) {
+                    println("Erro ao ler config, usando padrão")
+                    clazz.getDeclaredConstructor().newInstance()
+                }
+            } else {
+                val defaults = clazz.getDeclaredConstructor().newInstance()
+                file.writeText(gson.toJson(defaults))
+                defaults
+            }
+
+            return config
         }
     }
 
-    fun _load(): T {
-        val gson = GsonBuilder()
-            .disableHtmlEscaping()
-            .setPrettyPrinting()
-            .create()
+    private val gson = GsonBuilder()
+        .disableHtmlEscaping()
+        .setPrettyPrinting()
+        .create()
 
-        var config = gson.fromJson("{}" /*default value*/, clazz)
-        val configFile = File("config/$path.json")
-        configFile.parentFile.mkdirs()
+    private val configFile = File("config/$path.json").apply { parentFile.mkdirs() }
 
-        if (configFile.exists()) {
+    // inicializado dentro do load(), sem lateinit
+    var config: T? = null
+        private set
+
+    private fun _load(): T {
+        return if (configFile.exists()) {
             try {
-                val fileReader = FileReader(configFile)
-                config = gson.fromJson(fileReader, clazz)
-                fileReader.close()
+                gson.fromJson(configFile.readText(), clazz)
             } catch (e: Exception) {
-                println("Error reading config file")
+                println("Error reading config file, using defaults")
+                clazz.getDeclaredConstructor().newInstance()
             }
+        } else {
+            val defaultConfig = clazz.getDeclaredConstructor().newInstance()
+            update(defaultConfig)
+            defaultConfig
         }
+    }
 
-        val pw = PrintWriter(configFile)
-        gson.toJson(config, pw)
-        pw.close()
-
-        return config
+    fun update(config: T) {
+        configFile.writeText(gson.toJson(config))
+        this.config = config
     }
 }

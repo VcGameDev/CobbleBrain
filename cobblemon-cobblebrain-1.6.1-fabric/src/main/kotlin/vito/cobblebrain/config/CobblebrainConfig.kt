@@ -4,17 +4,20 @@ class CobblebrainConfig {
     // API key used for authentication with the AI system.
     val apiKey: String = "YOUR_API_KEY"
     // The name of the AI model being used.
-    val aiModel: String = "gemini-2.5-flash-lite"
+    var aiModel: String = "gemini-2.5-flash-lite"
+
+    // Determines if Pokémon can talk or hear (basically an on/off switch of the mod)
+    var pokemonTalk: Boolean = true
 
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
-    val spontaneousDialogueChance: Double = 0.15
+    var spontaneousDialogueChance: Double = 0.15
     // Whether the player sees AI-related warning messages in chat.
 // Example: "Hold on, your Pokémon are still processing what you said..."
     val visibleAiWarnings: Boolean = true
 
     // Enables or disables listening to regular player chat.
 // If false, the AI ignores all non-command messages (like normal chat).
-    val listenToChat: Boolean = false
+    var listenToChat: Boolean = false
     // EXPERIMENTAL: If true, the AI only listens to chat messages from players who are nearby.
 // Only applies if listenToChat is also true.
     val onlyNearbyChat: Boolean = false
@@ -31,7 +34,7 @@ class CobblebrainConfig {
     val selectedLanguage: String = "English"
 
     // Defines whether the dialogue changes the Pokémon's friendship with the players.
-    val dialogueAffectFriendship: Boolean = true
+    var dialogueAffectFriendship: Boolean = true
 
     //Instructions for the AI to generate dialogue
     //It is NOT recommended to change the output format, it may break the mod

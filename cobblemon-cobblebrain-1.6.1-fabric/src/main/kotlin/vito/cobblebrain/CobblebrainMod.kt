@@ -10,6 +10,7 @@ import vito.cobblebrain.social.DialogueSystem.register
 import java.io.File
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.sensors.registerTickHandler
+import vito.cobblebrain.social.ConfigCommands
 import vito.cobblebrain.social.PokemonTalkCommand
 
 
@@ -47,6 +48,7 @@ object CobblebrainMod : ModInitializer {
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             DebugPartyCommand.register(dispatcher)
             PokemonTalkCommand.register(dispatcher)
+            ConfigCommands.register(dispatcher)
         }
 
         ServerLifecycleEvents.END_DATA_PACK_RELOAD.register { _, _, _ ->

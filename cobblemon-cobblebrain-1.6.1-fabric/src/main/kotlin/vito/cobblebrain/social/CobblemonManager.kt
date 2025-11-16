@@ -7,8 +7,12 @@ import net.minecraft.commands.CommandSourceStack
 import com.mojang.brigadier.CommandDispatcher
 import net.minecraft.commands.Commands
 import com.cobblemon.mod.common.pokemon.Pokemon
+import com.mojang.brigadier.arguments.BoolArgumentType
+import com.mojang.brigadier.arguments.DoubleArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.network.chat.Component
+import vito.cobblebrain.config.CobblebrainConfig
+import vito.cobblebrain.config.ConfigBuilder
 import vito.cobblebrain.social.DialogueSystem.onPlayerChat
 
 object PokemonQuery {
@@ -65,7 +69,171 @@ object DebugPartyCommand {
                 }
         )
     }
+}
 
+object ConfigCommands {
+    // Inicialização
+    val config = ConfigBuilder.load(CobblebrainConfig::class.java, "cobblebrain")
+    // Agora você já tem o objeto carregado
+    fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
+        dispatcher.register(
+            Commands.literal("setPokemonTalk")
+                .then(
+                    Commands.argument("value", BoolArgumentType.bool())
+                        .executes { ctx ->
+                            val value = BoolArgumentType.getBool(ctx, "value")
+                            config.dialogueAffectFriendship = value
+                            ctx.source.sendSuccess(
+                                { Component.literal("pokemonTalk set to $value") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+
+        dispatcher.register(
+            Commands.literal("setDialogueAffectFriendship")
+                .then(
+                    Commands.argument("value", BoolArgumentType.bool())
+                        .executes { ctx ->
+                            val value = BoolArgumentType.getBool(ctx, "value")
+                            config.dialogueAffectFriendship = value
+                            ctx.source.sendSuccess(
+                                { Component.literal("dialogueAffectFriendship set to $value") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+
+
+        dispatcher.register(
+            Commands.literal("setSpontaneousDialogueChance")
+                .then(
+                    Commands.argument("value", DoubleArgumentType.doubleArg(0.0, 1.0))
+                        .executes { ctx ->
+                            val value = DoubleArgumentType.getDouble(ctx, "value")
+                            config.spontaneousDialogueChance = value
+                            ctx.source.sendSuccess(
+                                { Component.literal("spontaneousDialogueChance set to $value") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+
+
+        dispatcher.register(
+            Commands.literal("setListenToChat")
+                .then(
+                    Commands.argument("value", BoolArgumentType.bool())
+                        .executes { ctx ->
+                            val value = BoolArgumentType.getBool(ctx, "value")
+                            config.listenToChat = value
+                            ctx.source.sendSuccess(
+                                { Component.literal("listenToChat set to $value") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+
+
+        dispatcher.register(
+            Commands.literal("setAiModel")
+                .then(
+                    Commands.argument("value", StringArgumentType.string())
+                        .executes { ctx ->
+                            val value = StringArgumentType.getString(ctx, "value")
+                            config.aiModel = value
+                            ctx.source.sendSuccess(
+                                { Component.literal("aiModel set to $value") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+
+        dispatcher.register(
+            Commands.literal("addToInstruct")
+                .then(
+                    Commands.argument("value", StringArgumentType.string())
+                        .executes { ctx ->
+                            val value = StringArgumentType.getString(ctx, "value")
+
+                            // se já existe algo em instruct, concatena com espaço
+                            config.instruct = if (config.instruct.isNullOrBlank()) {
+                                value
+                            } else {
+                                config.instruct + "\n" + value
+                            }
+
+                            ctx.source.sendSuccess(
+                                { Component.literal("Added to instruct: \"$value\". Current instruct: ${config.instruct}") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+
+        dispatcher.register(
+            Commands.literal("getInstruct")
+                .executes { ctx ->
+                    val current = config.instruct
+                    ctx.source.sendSuccess(
+                        { Component.literal("Current instruct:\n$current") },
+                        false
+                    )
+                    1
+                }
+        )
+
+
+        dispatcher.register(
+            Commands.literal("removeFromInstruct")
+                .then(
+                    Commands.argument("value", StringArgumentType.string())
+                        .executes { ctx ->
+                            val value = StringArgumentType.getString(ctx, "value")
+                            val current = config.instruct
+
+                            // remove todas as ocorrências exatas da substring
+                            val updated = current.replace(value, "").trim()
+
+                            config.instruct = updated
+
+                            ctx.source.sendSuccess(
+                                { Component.literal("Removed \"$value\" from instruct.") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+
+
+        dispatcher.register(
+            Commands.literal("setInstruct")
+                .then(
+                    Commands.argument("value", StringArgumentType.string())
+                        .executes { ctx ->
+                            val value = StringArgumentType.getString(ctx, "value")
+                            config.instruct = value
+                            ctx.source.sendSuccess(
+                                { Component.literal("instruct set to $value") },
+                                true
+                            )
+                            1
+                        }
+                )
+        )
+    }
 }
 
 // codigo de debug
@@ -87,8 +255,7 @@ private fun debugParty(player: ServerPlayer) {
             println(
                 "[DEBUG] Slot $i: $species | HP=$hp/$maxHp | vivo=$isAlive | ativoNoMundo=$isSummoned"
             )
-        }
-        else
+        } else
             println(
                 "[DEBUG] Nenhum Pokemon encontrado..."
             )
