@@ -606,8 +606,8 @@ object DialogueSystem {
         #PokemonName: attack
         #PokemonName: eat
         #PokemonName: buff
-        #PokemonName: debuff
-        #PokemonName: stop
+        #PokemonName: debuff enemy
+        #PokemonName: sit
         #PokemonName: protect
         #PokemonName: idle
     - Every Pokémon must provide exactly one action. If irrelevant, use 'idle'.

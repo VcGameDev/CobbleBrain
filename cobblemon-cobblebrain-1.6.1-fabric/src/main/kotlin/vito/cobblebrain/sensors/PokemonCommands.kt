@@ -78,6 +78,11 @@ private val attackCooldowns: MutableMap<UUID, Int> = mutableMapOf()
 // contador de idle/protect
 private val chaseCooldown: MutableMap<UUID, Int> = mutableMapOf()
 
+// controla tempo entre mordidas
+val biteCooldown = mutableMapOf<UUID, Int>()
+// controla tempo sem comida
+val eatIdleTimer = mutableMapOf<UUID, Int>()
+
 fun registerTickHandler() {
     var tickCounter = 0
 
@@ -88,15 +93,14 @@ fun registerTickHandler() {
         val level = server.overworld() as ServerLevel
 
         CommandState.activeCommands.forEach { (pokemonId, action) ->
-            val eatCooldown = mutableMapOf<UUID, Int>()
             val pokemon = level.getEntity(pokemonId) as? Mob ?: return@forEach
             val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon ?: return@forEach
             val debuffCooldowns = mutableMapOf<UUID, Int>()
 
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
-            val scaledDamage = 2.0f + (atk * 0.3f)
-            val speed = 1 + (spd * 0.05)
+            val scaledDamage = 2.0f + (atk * 0.03f)
+            val speed = 1 + (spd * 0.02)
 
             when (action) {
                 "attack" -> {
@@ -129,7 +133,7 @@ fun registerTickHandler() {
                     if (inRange && cd <= 0) {
                         finalTarget.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage)
                         pokemon.swing(InteractionHand.MAIN_HAND)
-                        attackCooldowns[pokemonId] = 20
+                        attackCooldowns[pokemonId] = 10
                     } else {
                         attackCooldowns[pokemonId] = maxOf(0, cd - 1)
                     }
@@ -191,7 +195,7 @@ fun registerTickHandler() {
                     if (inRange && cd <= 0) {
                         finalTarget.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage)
                         pokemon.swing(InteractionHand.MAIN_HAND)
-                        attackCooldowns[pokemonId] = 20
+                        attackCooldowns[pokemonId] = 10
                     } else {
                         attackCooldowns[pokemonId] = maxOf(0, cd - 1)
                     }
@@ -230,7 +234,6 @@ fun registerTickHandler() {
                         BuiltInRegistries.ITEM.get(ResourceLocation.fromNamespaceAndPath("cobblemon", "chesto_berry")),
                         BuiltInRegistries.ITEM.get(ResourceLocation.fromNamespaceAndPath("cobblemon", "leppa_berry")),
                         BuiltInRegistries.ITEM.get(ResourceLocation.fromNamespaceAndPath("cobblemon", "persim_berry"))
-                        // aqui você pode adicionar berries do Cobblemon
                     )
 
                     val box = pokemon.boundingBox.inflate(8.0)
@@ -240,40 +243,55 @@ fun registerTickHandler() {
                         .filter { it.item.item in edibleItems }
                         .minByOrNull { it.distanceTo(pokemon) }
 
+                    val bite = biteCooldown.getOrDefault(pokemonId, 0)
+                    val idle = eatIdleTimer.getOrDefault(pokemonId, 0)
+
                     if (foodItem != null && foodItem.isAlive) {
                         pokemon.navigation.moveTo(foodItem, 1.0)
 
-                        if (pokemon.distanceTo(foodItem) < 2.0f) {
-                            // toca som de comer
-                            level.playSound(null, pokemon.blockPosition(), foodItem.item.item.eatingSound, SoundSource.NEUTRAL, 1.0f, 1.0f)
+                        if (pokemon.distanceTo(foodItem) < 2.0f && bite <= 0) {
+                            // som se existir
+                            foodItem.item.item.eatingSound?.let { sound ->
+                                level.playSound(null, pokemon.blockPosition(), sound, SoundSource.NEUTRAL, 1.0f, 1.0f)
+                            }
 
-                            // consome 1 item do stack
+                            // consome 1 item
                             foodItem.item.shrink(1)
                             if (foodItem.item.isEmpty) {
                                 foodItem.discard()
                             }
 
-                            // reinicia timer
-                            eatCooldown[pokemon.uuid] = 0
+                            // define cooldown de 10 ticks (0.5 segundos)
+                            biteCooldown[pokemonId] = 10
                         }
+
+                        // reset idle timer
+                        eatIdleTimer[pokemonId] = 0
                     } else {
-                        val ticks = eatCooldown.getOrDefault(pokemon.uuid, 0)
-                        if (ticks > 180) { // 9 segundos sem comida
+                        if (idle > 180) {
                             CommandState.activeCommands[pokemonId] = "idle"
-                            eatCooldown[pokemon.uuid] = 0
+                            eatIdleTimer[pokemonId] = 0
                         } else {
-                            eatCooldown[pokemon.uuid] = ticks + 1
+                            eatIdleTimer[pokemonId] = idle + 1
                         }
+                    }
+
+                    // decrementa cooldown de mordida
+                    val currentBite = biteCooldown.getOrDefault(pokemonId, 0)
+                    if (currentBite > 0) {
+                        biteCooldown[pokemonId] = currentBite - 1
                     }
                 }
 
+                    "sit" -> {
+                        // força estado idle/sit
+                        exitAttackMode(pokemon)
+                        pokemon.isOrderedToSit = true
+                        CommandState.activeTargets.remove(pokemonId)
 
-                "stop" -> {
-                    pokemon.target = null
-                    pokemon.navigation.stop()
                 }
 
-                "debuff" -> {
+                "debuff enemy" -> {
                     enterAttackMode(pokemon)
 
                     val target = CommandState.activeTargets[pokemonId]?.let { level.getEntity(it) as? LivingEntity }

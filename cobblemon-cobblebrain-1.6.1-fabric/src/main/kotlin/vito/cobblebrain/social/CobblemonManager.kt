@@ -7,13 +7,14 @@ import net.minecraft.commands.CommandSourceStack
 import com.mojang.brigadier.CommandDispatcher
 import net.minecraft.commands.Commands
 import com.cobblemon.mod.common.pokemon.Pokemon
+import com.google.gson.Gson
 import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.DoubleArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.config.CobblebrainConfig
-import vito.cobblebrain.config.ConfigBuilder
 import vito.cobblebrain.social.DialogueSystem.onPlayerChat
+import java.io.File
 
 object PokemonQuery {
 
@@ -72,8 +73,9 @@ object DebugPartyCommand {
 }
 
 object ConfigCommands {
-    // Inicialização
-    val config = ConfigBuilder.load(CobblebrainConfig::class.java, "cobblebrain")
+    private val gson = Gson()
+    private val configFile = File("config/cobblebrain.json")
+    private val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
     // Agora você já tem o objeto carregado
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
