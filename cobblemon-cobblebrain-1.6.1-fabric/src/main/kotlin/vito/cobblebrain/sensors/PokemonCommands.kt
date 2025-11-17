@@ -441,6 +441,13 @@ private fun findClosestMonster(level: ServerLevel, player: ServerPlayer): Living
 private fun isEnemy(source: LivingEntity, target: LivingEntity): Boolean {
     if (target == source) return false
 
+    // nunca atacar o dono
+    if (source is PokemonEntity && target is ServerPlayer) {
+        if (source.ownerUUID == target.uuid) {
+            return false
+        }
+    }
+
     // Pokémon
     if (target is PokemonEntity) {
         val sourceOwner = (source as? PokemonEntity)?.ownerUUID
