@@ -441,11 +441,13 @@ private fun findClosestMonster(level: ServerLevel, player: ServerPlayer): Living
 private fun isEnemy(source: LivingEntity, target: LivingEntity): Boolean {
     if (target == source) return false
 
-    // nunca atacar o dono
+    // nunca atacar o próprio dono
     if (source is PokemonEntity && target is ServerPlayer) {
         if (source.ownerUUID == target.uuid) {
             return false
         }
+        // atacar outros players só se PvP estiver habilitado
+        return config.allowPokemonPVP
     }
 
     // Pokémon
