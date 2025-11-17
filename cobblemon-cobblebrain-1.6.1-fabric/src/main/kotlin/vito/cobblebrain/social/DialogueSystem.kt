@@ -100,36 +100,41 @@ object DialogueSystem {
         CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedPostEvent ->
             val battle = event.battle
             val server = battle.players.firstOrNull()?.server ?: return@subscribe
+            if (config.dialogueOnBattle) {
+                server.execute {
+                    scheduledMessages.clear()
+                    val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
 
-            server.execute {
-                scheduledMessages.clear()
-                val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
+                    if (ativos.size < 2) {
+                        println("Battle started, but no active Pokémon detected yet.")
+                        return@execute
+                    }
 
-                if (ativos.size < 2) {
-                    println("Battle started, but no active Pokémon detected yet.")
-                    return@execute
+                    // separa Pokémon com dono (jogador) e sem dono (selvagem)
+                    val meus = ativos.filter { it.originalPokemon.getOwnerUUID() != null }
+                    val inimigos = ativos.filter { it.originalPokemon.getOwnerUUID() == null }
+
+                    val player = meus.firstOrNull()?.originalPokemon?.let {
+                        val ownerId = it.getOwnerUUID() ?: return@execute
+                        server.playerList.getPlayer(ownerId)
+                    } ?: return@execute
+
+                    val meusNomes = meus.joinToString(", ") {
+                        "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
+                    }
+                    val inimigosNomes = inimigos.joinToString(", ") {
+                        "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
+                    }
+
+                    val pokemonsTime = PokemonQuery.findActivePokemon(player)
+                    val prompt = buildPrompt(
+                        player,
+                        pokemonsTime,
+                        "IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]"
+                    )
+                    File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                    println("IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
                 }
-
-                // separa Pokémon com dono (jogador) e sem dono (selvagem)
-                val meus = ativos.filter { it.originalPokemon.getOwnerUUID() != null }
-                val inimigos = ativos.filter { it.originalPokemon.getOwnerUUID() == null }
-
-                val player = meus.firstOrNull()?.originalPokemon?.let {
-                    val ownerId = it.getOwnerUUID() ?: return@execute
-                    server.playerList.getPlayer(ownerId)
-                } ?: return@execute
-
-                val meusNomes = meus.joinToString(", ") {
-                    "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
-                }
-                val inimigosNomes = inimigos.joinToString(", ") {
-                    "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
-                }
-
-                val pokemonsTime = PokemonQuery.findActivePokemon(player)
-                val prompt = buildPrompt(player, pokemonsTime, "IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
-                File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-                println("IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
             }
         }
 
@@ -138,7 +143,7 @@ object DialogueSystem {
             val ownerId = pokemon.getOwnerUUID() ?: return@subscribe
 
             val battle = BattleRegistry.getBattleByParticipatingPlayerId(ownerId)
-            if (battle != null) {
+            if (battle != null && config.dialogueOnBattle) {
                 scheduledMessages.clear()
 
                 val nickname = pokemon.nickname
@@ -172,48 +177,50 @@ object DialogueSystem {
         CobblemonEvents.BATTLE_FLED.subscribe { event: BattleFledEvent ->
             val actor = event.player // PlayerBattleActor que fugiu
             val uuids = actor.getPlayerUUIDs()
+            if (config.dialogueOnBattle) {
+                if (uuids.isEmpty()) {
+                    println("${actor.getName().string} fled from battle (not human player).")
+                    return@subscribe
+                }
 
-            if (uuids.isEmpty()) {
-                println("${actor.getName().string} fled from battle (not human player).")
-                return@subscribe
-            }
+                val server = currentServer ?: return@subscribe
 
-            val server = currentServer ?: return@subscribe
-
-            uuids.forEach { uuid ->
-                val player = server.playerList.getPlayer(uuid)
-                if (player != null) {
-                    val ativos = PokemonQuery.findActivePokemon(player)
-                    val prompt = buildPrompt(
-                        player,
-                        ativos,
-                        "IMPORTANT: we run away from the battle"
-                    )
-                    File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-                    println("${player.name.string} we run away from the battle")
+                uuids.forEach { uuid ->
+                    val player = server.playerList.getPlayer(uuid)
+                    if (player != null) {
+                        val ativos = PokemonQuery.findActivePokemon(player)
+                        val prompt = buildPrompt(
+                            player,
+                            ativos,
+                            "IMPORTANT: we run away from the battle"
+                        )
+                        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                        println("${player.name.string} we run away from the battle")
+                    }
                 }
             }
         }
 
         CobblemonEvents.BATTLE_VICTORY.subscribe { event: BattleVictoryEvent ->
             val battle = event.battle
+            if (config.dialogueOnBattle) {
+                for (player in battle.players) {
+                    // encontra o ator pelo UUID do jogador
+                    val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
 
-            for (player in battle.players) {
-                // encontra o ator pelo UUID do jogador
-                val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
+                    if (event.winners.contains(myActor)) {
+                        scheduledMessages.clear()
+                        println("We won the battle")
+                        val ativos = PokemonQuery.findActivePokemon(player)
+                        val prompt = buildPrompt(player, ativos, "IMPORTANT: We won the battle")
+                        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                    } else {
+                        scheduledMessages.clear()
+                        val ativos = PokemonQuery.findActivePokemon(player)
+                        val prompt = buildPrompt(player, ativos, "IMPORTANT: We lost the battle")
+                        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
 
-                if (event.winners.contains(myActor)) {
-                    scheduledMessages.clear()
-                    println("We won the battle")
-                    val ativos = PokemonQuery.findActivePokemon(player)
-                    val prompt = buildPrompt(player, ativos, "IMPORTANT: We won the battle")
-                    File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-                } else {
-                    scheduledMessages.clear()
-                    val ativos = PokemonQuery.findActivePokemon(player)
-                    val prompt = buildPrompt(player, ativos, "IMPORTANT: We lost the battle")
-                    File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-
+                    }
                 }
             }
         }
@@ -223,7 +230,7 @@ object DialogueSystem {
                 is ServerPlayer -> {
                     val now = System.currentTimeMillis()
                     val last = lastPrompt[entity.uuid] ?: 0L
-                    if (now - last >= 8500) {
+                    if (now - last >= 9000 && config.dialogueOnDamage) {
                         scheduledMessages.clear()
                         lastPrompt[entity.uuid] = now
                         val cause = source.msgId
@@ -235,7 +242,7 @@ object DialogueSystem {
                 }
                 is PokemonEntity -> {
                     val ownerUuid = entity.pokemon.getOwnerUUID()
-                    if (ownerUuid != null) {
+                    if (ownerUuid != null && config.dialogueOnDamage) {
                         val server = entity.server ?: return@register
                         val owner: ServerPlayer? = server.playerList.getPlayer(ownerUuid)
 
@@ -246,8 +253,13 @@ object DialogueSystem {
                                 scheduledMessages.clear()
                                 lastPrompt[owner.uuid] = now
                                 val cause = source.msgId
-                                val pokemonName = entity.pokemon.species.name
-                                println("My Pokémon $pokemonName owned by player ${owner.scoreboardName} took $amount of damage from $cause.")
+                                val pokemonNickname = entity.pokemon.nickname?.string
+                                val pokemonSpecies = entity.pokemon.species.name
+
+                                // se nickname for null ou vazio, usa species
+                                val pokemonName = if (pokemonNickname.isNullOrBlank()) pokemonSpecies else pokemonNickname
+
+                                println("My Pokémon $pokemonName took $amount of damage from $cause.")
                                 server.playerList.getPlayer(ownerUuid)?.let { owner ->
                                     val ativos = PokemonQuery.findActivePokemon(owner)
                                     val prompt = buildPrompt(owner, ativos, "My Pokémon $pokemonName took $amount of damage from $cause.")

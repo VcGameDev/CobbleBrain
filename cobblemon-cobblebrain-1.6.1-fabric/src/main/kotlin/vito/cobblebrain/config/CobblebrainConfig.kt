@@ -9,6 +9,12 @@ class CobblebrainConfig {
     // Determines if Pokémon can talk or hear (basically an on/off switch of the mod)
     var pokemonTalk: Boolean = true
 
+    // Determines if Pokémon talk when someone is hurt
+    val dialogueOnDamage: Boolean = true
+
+    // Determines whether Pokémon speak when something related to battle happens.
+    val dialogueOnBattle: Boolean = true
+
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
     var spontaneousDialogueChance: Double = 0.15
     // Whether the player sees AI-related warning messages in chat.
@@ -22,14 +28,11 @@ class CobblebrainConfig {
 // Only applies if listenToChat is also true.
     val onlyNearbyChat: Boolean = false
 
-    val telepaticDamage: Boolean = false
-
-
     // Maximum number of dialogues that can be saved and sent to the AI (limit set to 1).
     val maxDialogueSaves: Int = 1
 
-    val maxShortMemory: Int = 20
-    val maxLongMemory: Int = 20
+    val maxShortMemory: Int = 15
+    val maxLongMemory: Int = 15
     // The language selected for the AI to respond (in this case, English).
     val selectedLanguage: String = "English"
 
