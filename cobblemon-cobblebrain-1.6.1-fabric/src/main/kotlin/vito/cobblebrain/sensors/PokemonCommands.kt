@@ -457,12 +457,9 @@ private fun isEnemy(source: LivingEntity, target: LivingEntity): Boolean {
 
     // Mobs domados (lobos, gatos, cavalos etc.)
     if (target is TamableAnimal && target.isTame) {
-        val sourceOwner = (source as? PokemonEntity)?.ownerUUID
-        val targetOwner = target.ownerUUID
-        if (sourceOwner != null && targetOwner != null && sourceOwner == targetOwner) {
-            return false
-        }
+        return false
     }
+
 
     // Mobs não agressivos com tag → nunca inimigos
     if (target.hasCustomName() && target is Mob && target.type.category != MobCategory.MONSTER) {
