@@ -115,7 +115,7 @@ fun registerTickHandler() {
                         }
                     }
 
-                    if (finalTarget == null || !finalTarget.isAlive) {
+                    if (finalTarget == null || !finalTarget.isAlive || !isEnemy(pokemon, finalTarget)) {
                         exitAttackMode(pokemon)
                         CommandState.activeTargets.remove(pokemonId)
                         CommandState.activeCommands[pokemonId] = "idle"
@@ -148,12 +148,10 @@ fun registerTickHandler() {
                     val attacker = owner.lastHurtByMob
                     val victim = owner.lastHurtMob
 
-                    // mobs que estão perseguindo o player
                     val pursuer = level.getEntitiesOfClass(Mob::class.java, owner.boundingBox.inflate(16.0)) { mob ->
                         mob.isAlive && mob.target == owner && mob !is PokemonEntity
                     }.minByOrNull { it.distanceTo(owner) }
 
-                    // prioridade de alvo
                     val hostile = when {
                         attacker != null && attacker.isAlive -> attacker
                         victim != null && victim.isAlive -> victim
@@ -161,13 +159,11 @@ fun registerTickHandler() {
                         else -> findClosestMonster(level, owner)
                     }
 
-
-                    val finalTarget = if (hostile != null && hostile.isAlive) {
+                    val finalTarget = if (hostile != null && hostile.isAlive && isEnemy(pokemon, hostile)) {
                         hostile.also { CommandState.activeTargets[pokemonId] = it.uuid }
                     } else null
 
                     if (finalTarget == null) {
-                        // sem alvo → cola no player
                         pokemon.navigation.moveTo(owner, speed)
                         pokemon.target = null
 
@@ -183,7 +179,6 @@ fun registerTickHandler() {
                         return@forEach
                     }
 
-                    // herdando comportamento do attack
                     pokemon.target = finalTarget
                     pokemon.navigation.moveTo(finalTarget, speed)
 
@@ -419,17 +414,42 @@ private fun findClosestNonPlayerLiving(level: ServerLevel, source: LivingEntity)
         source.x - range, source.y - range, source.z - range,
         source.x + range, source.y + range, source.z + range
     )
+
     val list = level.getEntitiesOfClass(LivingEntity::class.java, box) { e ->
-        e !is ServerPlayer && e.isAlive && e != source
+        isEnemy(source, e)
     }
+
     return list.minByOrNull { it.distanceTo(source) }
 }
+
 
 private fun findClosestMonster(level: ServerLevel, player: ServerPlayer): LivingEntity? {
     val range = 16.0
     val box = player.boundingBox.inflate(range)
+
     return level.getEntitiesOfClass(Mob::class.java, box) { mob ->
-        mob.isAlive && mob.type.category == MobCategory.MONSTER && mob !is PokemonEntity
+        mob.isAlive &&
+                mob.type.category == MobCategory.MONSTER &&
+                mob !is PokemonEntity &&
+                isEnemy(player, mob) // garante que não pega aliado
     }.minByOrNull { it.distanceTo(player) }
 }
+
+
+private fun isEnemy(source: LivingEntity, target: LivingEntity): Boolean {
+    // nunca atacar a si mesmo
+    if (target == source) return false
+
+    // jogadores nunca são inimigos (se quiser mudar, ajuste aqui)
+    if (target is ServerPlayer) return false
+
+    // se for Pokémon, só é inimigo se tiver dono diferente
+    if (target is PokemonEntity && source is PokemonEntity) {
+        return target.ownerUUID != source.ownerUUID
+    }
+
+    // qualquer outro mob vivo é considerado inimigo
+    return target.isAlive
+}
+
 
