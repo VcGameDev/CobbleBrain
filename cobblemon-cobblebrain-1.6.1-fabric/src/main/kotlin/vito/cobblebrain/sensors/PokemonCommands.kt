@@ -14,10 +14,12 @@ import net.minecraft.world.effect.MobEffects
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MobCategory
+import net.minecraft.world.entity.TamableAnimal
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.item.Items
 import net.minecraft.world.phys.AABB
+import vito.cobblebrain.CobblebrainMod.config
 import vito.cobblebrain.mixin.MobAccessor
 import java.util.UUID
 
@@ -310,7 +312,7 @@ fun registerTickHandler() {
                         return@forEach
                     }
 
-                    if (finalTarget == null || !finalTarget.isAlive) {
+                    if (finalTarget == null || !finalTarget.isAlive || !isEnemy(pokemon, finalTarget)) {
                         // mensagem de alvo não encontrado
                         level.server.playerList.broadcastSystemMessage(
                             Component.literal("${pokemon.displayName?.string} found no one..."), false
@@ -437,19 +439,29 @@ private fun findClosestMonster(level: ServerLevel, player: ServerPlayer): Living
 
 
 private fun isEnemy(source: LivingEntity, target: LivingEntity): Boolean {
-    // nunca atacar a si mesmo
     if (target == source) return false
 
-    // jogadores nunca são inimigos (se quiser mudar, ajuste aqui)
-    if (target is ServerPlayer) return false
-
-    // se for Pokémon, só é inimigo se tiver dono diferente
-    if (target is PokemonEntity && source is PokemonEntity) {
-        return target.ownerUUID != source.ownerUUID
+    // Pokémon
+    if (target is PokemonEntity) {
+        val sourceOwner = (source as? PokemonEntity)?.ownerUUID
+        val targetOwner = target.ownerUUID
+        return config.allowPokemonPVP && sourceOwner != targetOwner
     }
 
-    // qualquer outro mob vivo é considerado inimigo
-    return target.isAlive
+    // Mobs domados (lobos, gatos, cavalos etc.)
+    if (target is TamableAnimal && target.isTame) {
+        val sourceOwner = (source as? PokemonEntity)?.ownerUUID
+        val targetOwner = target.ownerUUID
+        if (sourceOwner != null && targetOwner != null && sourceOwner == targetOwner) {
+            return false
+        }
+    }
+
+    // Mobs não agressivos com tag → nunca inimigos
+    if (target.hasCustomName() && target is Mob && target.type.category != MobCategory.MONSTER) {
+        return false
+    }
+
+    // Qualquer outro mob só é inimigo se PvE estiver habilitado
+    return config.allowPokemonPVE
 }
-
-

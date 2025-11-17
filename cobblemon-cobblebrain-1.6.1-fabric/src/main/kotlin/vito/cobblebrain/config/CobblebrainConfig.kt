@@ -9,6 +9,12 @@ class CobblebrainConfig {
     // Determines if Pokémon can talk or hear (basically an on/off switch of the mod)
     var pokemonTalk: Boolean = true
 
+    // Determines whether your Pokémon can attack other players' Pokémon.
+    var allowPokemonPVP: Boolean = false
+
+    // Determines whether your Pokémon can attack mobs (except Pokémon, tamed mobs, and non-aggressive mobs with a tag).
+    var allowPokemonPVE: Boolean = true
+
     // Determines if Pokémon talk when someone is hurt
     val dialogueOnDamage: Boolean = true
 
