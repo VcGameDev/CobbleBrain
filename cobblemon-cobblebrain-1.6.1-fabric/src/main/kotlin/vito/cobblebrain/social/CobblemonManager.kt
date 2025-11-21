@@ -84,7 +84,7 @@ object ConfigCommands {
                     Commands.argument("value", BoolArgumentType.bool())
                         .executes { ctx ->
                             val value = BoolArgumentType.getBool(ctx, "value")
-                            config.dialogueAffectFriendship = value
+                            //config.dialogueAffectFriendship = value
                             ctx.source.sendSuccess(
                                 { Component.literal("pokemonTalk set to $value") },
                                 true
@@ -100,7 +100,7 @@ object ConfigCommands {
                     Commands.argument("value", BoolArgumentType.bool())
                         .executes { ctx ->
                             val value = BoolArgumentType.getBool(ctx, "value")
-                            config.dialogueAffectFriendship = value
+                            //config.dialogueAffectFriendship = value
                             ctx.source.sendSuccess(
                                 { Component.literal("dialogueAffectFriendship set to $value") },
                                 true

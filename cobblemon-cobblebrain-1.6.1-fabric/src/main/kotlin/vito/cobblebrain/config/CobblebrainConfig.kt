@@ -43,7 +43,8 @@ class CobblebrainConfig {
     val selectedLanguage: String = "English"
 
     // Defines whether the dialogue changes the Pokémon's friendship with the players.
-    var dialogueAffectFriendship: Boolean = true
+    var decreaseFriendship: Boolean = true
+    var increaseFriendship: Boolean = true
 
     //Instructions for the AI to generate dialogue
     //It is NOT recommended to change the output format, it may break the mod

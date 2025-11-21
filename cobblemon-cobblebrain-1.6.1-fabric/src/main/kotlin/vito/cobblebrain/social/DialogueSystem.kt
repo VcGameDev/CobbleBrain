@@ -18,13 +18,17 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.minecraft.ChatFormatting
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.chat.Component
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundSource
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.entity.decoration.ArmorStand
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
@@ -59,6 +63,9 @@ object DialogueSystem {
     private val currentViewers = mutableListOf<Pokemon>()
     // guarda o último momento em que cada jogador disparou a lógica
     private val lastPrompt: MutableMap<UUID, Long> = ConcurrentHashMap()
+
+    // guarda o pitch atual de cada Pokémon ativo
+    private val pokemonPitchMap = mutableMapOf<UUID, Float>()
 
     fun register() {
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
@@ -230,7 +237,7 @@ object DialogueSystem {
                 is ServerPlayer -> {
                     val now = System.currentTimeMillis()
                     val last = lastPrompt[entity.uuid] ?: 0L
-                    if (now - last >= 9000 && config.dialogueOnDamage) {
+                    if (now - last >= 18000 && config.dialogueOnDamage) {
                         scheduledMessages.clear()
                         lastPrompt[entity.uuid] = now
                         val cause = source.msgId
@@ -249,7 +256,7 @@ object DialogueSystem {
                         if (owner != null) {
                             val now = System.currentTimeMillis()
                             val last = lastPrompt[owner.uuid] ?: 0L
-                            if (now - last >= 8500) {
+                            if (now - last >= 18000) {
                                 scheduledMessages.clear()
                                 lastPrompt[owner.uuid] = now
                                 val cause = source.msgId
@@ -280,6 +287,7 @@ object DialogueSystem {
 
         ServerTickEvents.END_SERVER_TICK.register { server ->
             flushScheduledMessages(server)
+            tickBubbles(currentServer!!)
 
             // mantém o olhar fixo enquanto durar o foco
             maintainLookAt(server)
@@ -385,19 +393,27 @@ object DialogueSystem {
 
                 println("speaker resolvido = ${speaker?.nickname ?: speaker?.species?.resourceIdentifier?.path ?: "null"}")
 
-                speaker?.let {
-                    expressPokemon(it)
+                speaker?.let { pokemon ->
+                    val entity = pokemon.entity
+                    val pitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
+                    expressPokemon(pokemon, pitch)
+
+                    // bolha de diálogo temporária
+                    if (entity != null) {
+                        val bubbleText = msg.text.substringAfter(":").trim()
+                        spawnSpeechBubble(server, pokemon, bubbleText, 120) // 120 ticks ≈ 6 segundos
+                    }
 
                     // define foco social e espectadores
-                    currentSpeaker = it
+                    currentSpeaker = pokemon
                     speakerUntilTick = server.tickCount.toLong() + 100 // ~5s
                     currentViewers.clear()
 
                     // espectadores: pokémon ativos do mesmo player, exceto o falante
-                    ativos.filter { other -> other != it }.forEach { other ->
+                    ativos.filter { other -> other != pokemon }.forEach { other ->
                         currentViewers.add(other)
                         val otherEntity = other.entity
-                        val speakerEntity = it.entity
+                        val speakerEntity = pokemon.entity
                         if (otherEntity != null && speakerEntity != null) {
                             otherEntity.lookControl.setLookAt(
                                 speakerEntity.x,
@@ -413,6 +429,69 @@ object DialogueSystem {
             scheduledMessages.removeAll(ready)
         }
     }
+
+    // mapa para controlar quando limpar cada bolha
+    private val bubbleUntilTick = mutableMapOf<UUID, Long>()
+    private val bubbleStands = mutableMapOf<UUID, UUID>()
+
+
+    fun spawnSpeechBubble(server: MinecraftServer, pokemon: Pokemon, text: String, durationTicks: Int = 60) {
+        val entity = pokemon.entity ?: return
+        val level = entity.level()
+
+        val stand = ArmorStand(EntityType.ARMOR_STAND, level)
+        stand.isInvisible = true
+        stand.isNoGravity = true
+        stand.customName = Component.literal(text)
+        stand.isCustomNameVisible = true
+
+        // força marker via NBT
+        stand.addTag("Marker")
+
+        fun getBubbleY(entity: Entity): Double {
+            return entity.y + entity.bbHeight + 0.2 // topo da hitbox + offset
+        }
+
+        // posiciona acima da cabeça do pokémon
+        stand.moveTo(entity.x, getBubbleY(entity), entity.z)
+
+        level.addFreshEntity(stand)
+
+        // registra tempo de expiração
+        bubbleUntilTick[stand.uuid] = server.tickCount.toLong() + durationTicks
+        // vincula stand ao pokémon
+        bubbleStands[entity.uuid] = stand.uuid
+    }
+
+
+    fun tickBubbles(server: MinecraftServer) {
+        val current = server.tickCount.toLong()
+        val expired = bubbleUntilTick.filterValues { it <= current }.keys
+
+        expired.forEach { standUuid ->
+            server.allLevels.forEach { level ->
+                val stand = level.getEntity(standUuid)
+                if (stand is ArmorStand) {
+                    stand.discard()
+                }
+            }
+            bubbleUntilTick.remove(standUuid)
+            bubbleStands.entries.removeIf { it.value == standUuid }
+        }
+
+        // atualizar posição dos stands ativos para seguir o pokémon
+        bubbleStands.forEach { (pokemonUuid, standUuid) ->
+            server.allLevels.forEach { level ->
+                val poke = level.getEntity(pokemonUuid)
+                val stand = level.getEntity(standUuid)
+                if (poke != null && stand is ArmorStand) {
+                    stand.moveTo(poke.x, poke.eyeY + 0.5, poke.z)
+                }
+            }
+        }
+    }
+
+
 
     // reaplica o olhar todos os ticks enquanto durar o foco
     private fun maintainLookAt(server: MinecraftServer) {
@@ -447,13 +526,13 @@ object DialogueSystem {
             val chance = config.spontaneousDialogueChance
 
             if (Random.nextDouble() <= chance) {
-                val prompt = buildPrompt(player, ativos, "") // <-- ajustar aqui
+                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokémons are thinking of something different to say... (use the world variables or refer to something that just happened)")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
             }
         }
     }
 
-    fun playPokemonCry(pokemon: Pokemon) {
+    fun playPokemonCry(pokemon: Pokemon, pitch: Float = 1.0f) {
         val entity = pokemon.entity ?: return
         val level = entity.level() as? ServerLevel ?: return
         val pos = entity.blockPosition()
@@ -470,22 +549,24 @@ object DialogueSystem {
             cry,
             SoundSource.NEUTRAL,
             1.0f,
-            1.0f
+            pitch
         )
     }
 
-    fun expressPokemon(pokemon: Pokemon) {
+
+    fun expressPokemon(pokemon: Pokemon, pitch: Float = 1.0f) {
         val entity = pokemon.entity ?: return
         println(pokemon)
 
-        // sempre toca o cry
-        playPokemonCry(pokemon)
+        // sempre toca o cry com pitch variável
+        playPokemonCry(pokemon, pitch)
 
         // fallback de "expressividade"
-        entity.jumpFromGround()                       // dá um pulinho
-        entity.animateHurt(1.0f)                  // piscada de dano (efeito visual)
-        entity.swing(InteractionHand.MAIN_HAND)       // se tiver braço, faz swing
+        entity.jumpFromGround()
+        entity.animateHurt(1.0f)
+        entity.swing(InteractionHand.MAIN_HAND)
     }
+
     private val MAX_DIALOGUES = config.maxDialogueSaves
 
     // Histórico de diálogos (cada item = lista de falas)
@@ -600,10 +681,16 @@ object DialogueSystem {
                 }
             }
             appendLine("Important variables:")
-            appendLine("AFFECT_FRIDENSHIP: ${config.dialogueAffectFriendship}")
+            appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
+            appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
             appendLine("""##OUTPUT FORMAT##
-    PokemonA: ...|PokemonB: ...|PokemonD: ...| 
-    if AFFECT_FRIENDSHIP in the user prompt is true, include:
+    - Use pipes (|) then the name of the pokemon to separate the lines of dialogue for each Pokémon.
+    Example: 
+    PokemonA: ...|PokemonB: ...|PokemonD: ...|PokemonA: ...
+    - If only AFFECT_FRIENDSHIP_PLUS = true, you must increase the friendship with the minimum value being 0... 
+    - If only AFFECT_FRIENDSHIP_MINUS = true, you must decrease the friendship with the minimum value being 0... 
+    - If both are True, you must decide whether to increase or decrease the friendship, depending on the positive or negative impact the Pokémon had on the speech/action (max 5, min -5)
+    Example:
     Friendship Pokemon A: 50 + 1 
     Friendship Pokemon B: 50 + -2
     - Then output the memory lines in the format:
@@ -622,7 +709,8 @@ object DialogueSystem {
         #PokemonName: sit
         #PokemonName: protect
         #PokemonName: idle
-    - Every Pokémon must provide exactly one action. If irrelevant, use 'idle'.
+    - Every Pokémon must provide exactly one action, If irrelevant, use 'idle'. Unless there is context for the following, avoid repeating the same action multiple times.. 
+    - Pokémon with a Friendship level closer to 225 are more likely to follow the player's commands if requested, while those closer to 0 are less likely to be followed and are more prone to following riskier commands on their own (such as attack and protect), but be careful not to overdo it...
     
     - ALWAYS FOLLOW THE OUTPUTFORMAT WHEN SENDING YOUR RESPONSE, NO HYPHENS
     - USE THE POKEMON NICKNAME OR THE SPECIES IF THE NICKNAME DOES NOT EXIST, NEVER COMBINE THE TWO IN THE MESSAGE...
@@ -705,37 +793,71 @@ object DialogueSystem {
 
         val ativos = server.playerList.players.flatMap { PokemonQuery.findActivePokemon(it) }
 
-        val regex = Regex("""Friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*\+\s*([\d.,]+)""")
+        val regex = Regex("""Friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*\+\s*(-?\d+)""")
+
         val match = regex.find(content)
 
-        if (config.dialogueAffectFriendship)
-            if (match != null) {
-                val nomePokemon = match.groupValues[1]   // "Charmander"
-                val atual = match.groupValues[2].toDouble()
-                val incremento = match.groupValues[3].toDouble()
+        if (match != null) {
+            val nomePokemon = match.groupValues[1]
+            val atual = match.groupValues[2].toDouble()
+            val incremento = match.groupValues[3].toDouble()
 
-                println("Pokémon: $nomePokemon")
-                println("New friendship: ${atual + incremento}")
+            println("Pokémon: $nomePokemon")
+            println("New friendship: ${atual + incremento}")
 
-                // procura entre os ativos
-                val alvo = ativos.firstOrNull { ativo ->
-                    val nomeNormalizado = nomePokemon.trim()
-                    val nickname = ativo.nickname?.string
-
-                    nickname?.equals(nomeNormalizado, ignoreCase = true) ?: ativo.species.name.equals(nomeNormalizado, ignoreCase = true)
-                }
-
-                if (alvo != null) {
-                    alvo.incrementFriendship(incremento.toInt())
-                    println("Friendship of ${alvo.species.name} updated to ${alvo.friendship}")
-                } else {
-                    println("I couldn't find $nomePokemon among the active ones.")
-                }
-            } else {
-                println("I couldn't find the friendship pattern in the response.")
+            val alvo = ativos.firstOrNull { ativo ->
+                val nomeNormalizado = nomePokemon.trim()
+                val nickname = ativo.nickname?.string
+                nickname?.equals(nomeNormalizado, ignoreCase = true)
+                    ?: ativo.species.name.equals(nomeNormalizado, ignoreCase = true)
             }
 
-        falas.map { it.substringBefore(":").trim() }.distinct().forEach { nome ->
+            if (alvo != null) {
+                val incrementoDouble = incremento
+                val incrementoInt = incrementoDouble.toInt()
+
+                // só mexe se houver entidade associada
+                alvo.entity?.let { entity ->
+                    val level = entity.level() as? ServerLevel
+
+                    if (incrementoDouble > 0 && config.increaseFriendship) {
+                        alvo.incrementFriendship(incrementoInt)
+                        level?.sendParticles(
+                            ParticleTypes.HEART,
+                            entity.x, entity.y + entity.bbHeight / 2.0, entity.z,
+                            6,
+                            0.25, 0.35, 0.25,
+                            0.0
+                        )
+                        println("Friendship of ${alvo.species.name} increased to ${alvo.friendship}")
+
+                        // calcula pitch proporcional e atualiza no map
+                        val pitch = (1.0f + incrementoInt * 0.05f).coerceAtMost(1.5f)
+                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = pitch }
+                    }
+
+                    if (incrementoDouble < 0 && config.decreaseFriendship) {
+                        alvo.decrementFriendship(incrementoInt)
+                        level?.sendParticles(
+                            ParticleTypes.ANGRY_VILLAGER,
+                            entity.x, entity.y + entity.bbHeight / 2.0, entity.z,
+                            6,
+                            0.25, 0.35, 0.25,
+                            0.0
+                        )
+                        println("Friendship of ${alvo.species.name} decreased to ${alvo.friendship}")
+                        val pitch = (1.0f + incrementoInt * 0.05f).coerceAtLeast(0.5f)
+                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = pitch }
+                    }
+                }
+            } else {
+                println("I couldn't find $nomePokemon among the active ones.")
+            }
+        } else {
+            println("I couldn't find the friendship pattern in the response.")
+        }
+
+            falas.map { it.substringBefore(":").trim() }.distinct().forEach { nome ->
             val poke = findPokemonByName(nome, ativos)
             if (poke != null) {
                 participantes.add(Participante(poke.species.name, poke.uuid.toString()))
