@@ -395,8 +395,8 @@ object DialogueSystem {
 
                 speaker?.let { pokemon ->
                     val entity = pokemon.entity
-                    val pitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
-                    expressPokemon(pokemon, pitch)
+                    val basePitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
+                    expressPokemon(pokemon, basePitch)
 
                     // bolha de diálogo temporária
                     if (entity != null) {
@@ -434,6 +434,10 @@ object DialogueSystem {
     private val bubbleUntilTick = mutableMapOf<UUID, Long>()
     private val bubbleStands = mutableMapOf<UUID, UUID>()
 
+    fun getBubbleY(entity: Entity): Double {
+        // topo da hitbox + pequeno offset
+        return entity.y + entity.bbHeight + 0.2
+    }
 
     fun spawnSpeechBubble(server: MinecraftServer, pokemon: Pokemon, text: String, durationTicks: Int = 60) {
         val entity = pokemon.entity ?: return
@@ -448,10 +452,6 @@ object DialogueSystem {
         // força marker via NBT
         stand.addTag("Marker")
 
-        fun getBubbleY(entity: Entity): Double {
-            return entity.y + entity.bbHeight + 0.2 // topo da hitbox + offset
-        }
-
         // posiciona acima da cabeça do pokémon
         stand.moveTo(entity.x, getBubbleY(entity), entity.z)
 
@@ -463,11 +463,11 @@ object DialogueSystem {
         bubbleStands[entity.uuid] = stand.uuid
     }
 
-
     fun tickBubbles(server: MinecraftServer) {
         val current = server.tickCount.toLong()
         val expired = bubbleUntilTick.filterValues { it <= current }.keys
 
+        // remove stands expirados
         expired.forEach { standUuid ->
             server.allLevels.forEach { level ->
                 val stand = level.getEntity(standUuid)
@@ -485,11 +485,12 @@ object DialogueSystem {
                 val poke = level.getEntity(pokemonUuid)
                 val stand = level.getEntity(standUuid)
                 if (poke != null && stand is ArmorStand) {
-                    stand.moveTo(poke.x, poke.eyeY + 0.5, poke.z)
+                    stand.moveTo(poke.x, getBubbleY(poke), poke.z)
                 }
             }
         }
     }
+
 
 
 
@@ -554,18 +555,36 @@ object DialogueSystem {
     }
 
 
-    fun expressPokemon(pokemon: Pokemon, pitch: Float = 1.0f) {
+    fun expressPokemon(pokemon: Pokemon, basePitch: Float = 1.0f) {
         val entity = pokemon.entity ?: return
+        val level = entity.level() as? ServerLevel ?: return
+
         println(pokemon)
 
-        // sempre toca o cry com pitch variável
-        playPokemonCry(pokemon, pitch)
+        // aplica variação pequena em torno do pitch base
+        val variedPitch = (basePitch + (Random.nextFloat() * 0.05f - 0.10f))
+            .coerceIn(0.5f, 1.5f)
 
-        // fallback de "expressividade"
+        // toca o cry com pitch variado
+        playPokemonCry(pokemon, variedPitch)
+
+        // animações de expressividade
         entity.jumpFromGround()
         entity.animateHurt(1.0f)
         entity.swing(InteractionHand.MAIN_HAND)
+
+        // partículas de acordo com o pitch base (não variado)
+        val particleType = if (basePitch >= 1.0f) ParticleTypes.HEART else ParticleTypes.ANGRY_VILLAGER
+        level.sendParticles(
+            particleType,
+            entity.x, entity.y + entity.bbHeight / 2.0, entity.z,
+            6,
+            0.25, 0.35, 0.25,
+            0.0
+        )
     }
+
+
 
     private val MAX_DIALOGUES = config.maxDialogueSaves
 
@@ -795,9 +814,8 @@ object DialogueSystem {
 
         val regex = Regex("""Friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*\+\s*(-?\d+)""")
 
-        val match = regex.find(content)
-
-        if (match != null) {
+        val matches = regex.findAll(content)
+        for (match in matches) {
             val nomePokemon = match.groupValues[1]
             val atual = match.groupValues[2].toDouble()
             val incremento = match.groupValues[3].toDouble()
@@ -817,44 +835,28 @@ object DialogueSystem {
                 val incrementoInt = incrementoDouble.toInt()
 
                 // só mexe se houver entidade associada
-                alvo.entity?.let { entity ->
-                    val level = entity.level() as? ServerLevel
-
+                alvo.entity?.let {
                     if (incrementoDouble > 0 && config.increaseFriendship) {
                         alvo.incrementFriendship(incrementoInt)
-                        level?.sendParticles(
-                            ParticleTypes.HEART,
-                            entity.x, entity.y + entity.bbHeight / 2.0, entity.z,
-                            6,
-                            0.25, 0.35, 0.25,
-                            0.0
-                        )
                         println("Friendship of ${alvo.species.name} increased to ${alvo.friendship}")
 
-                        // calcula pitch proporcional e atualiza no map
-                        val pitch = (1.0f + incrementoInt * 0.05f).coerceAtMost(1.5f)
-                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = pitch }
+                        val basePitch = (1.0f + incrementoInt * 0.04f).coerceAtMost(1.5f)
+                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = basePitch }
+
                     }
 
                     if (incrementoDouble < 0 && config.decreaseFriendship) {
                         alvo.decrementFriendship(incrementoInt)
-                        level?.sendParticles(
-                            ParticleTypes.ANGRY_VILLAGER,
-                            entity.x, entity.y + entity.bbHeight / 2.0, entity.z,
-                            6,
-                            0.25, 0.35, 0.25,
-                            0.0
-                        )
                         println("Friendship of ${alvo.species.name} decreased to ${alvo.friendship}")
-                        val pitch = (1.0f + incrementoInt * 0.05f).coerceAtLeast(0.5f)
-                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = pitch }
+
+                        val basePitch = (1.0f + incrementoInt * 0.04f).coerceAtLeast(0.5f)
+                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = basePitch }
+
                     }
                 }
             } else {
                 println("I couldn't find $nomePokemon among the active ones.")
             }
-        } else {
-            println("I couldn't find the friendship pattern in the response.")
         }
 
             falas.map { it.substringBefore(":").trim() }.distinct().forEach { nome ->
