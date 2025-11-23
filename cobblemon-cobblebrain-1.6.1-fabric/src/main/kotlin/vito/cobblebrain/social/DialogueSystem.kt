@@ -14,7 +14,6 @@ import kotlin.random.Random
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.google.gson.Gson
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.minecraft.ChatFormatting
@@ -24,7 +23,6 @@ import net.minecraft.sounds.SoundEvent
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundSource
 import net.minecraft.resources.ResourceLocation
-import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
@@ -279,12 +277,6 @@ object DialogueSystem {
             }
         }
 
-        ServerLifecycleEvents.SERVER_STARTED.register { server ->
-            val prevDialogues = DialogueStore.getDialogues(server)
-            dialogueHistory.clear()
-            dialogueHistory.addAll(prevDialogues)
-        }
-
         ServerTickEvents.END_SERVER_TICK.register { server ->
             flushScheduledMessages(server)
             tickBubbles(currentServer!!)
@@ -360,8 +352,6 @@ object DialogueSystem {
         val ativos = PokemonQuery.findActivePokemon(player)
         val prompt = buildPrompt(player, ativos, "") + "\n\n[the player (owner of the pokemon team) said]: $text"
         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-
-        addDialogue(listOf("${player.name.string}: $text"))
 
         // Marca que esse jogador foi o último a falar
         lastSpeakerPlayer = player
@@ -570,8 +560,6 @@ object DialogueSystem {
 
         // animações de expressividade
         entity.jumpFromGround()
-        entity.animateHurt(1.0f)
-        entity.swing(InteractionHand.MAIN_HAND)
 
         // partículas de acordo com o pitch base (não variado)
         val particleType = if (basePitch >= 1.0f) ParticleTypes.HEART else ParticleTypes.ANGRY_VILLAGER
@@ -582,20 +570,6 @@ object DialogueSystem {
             0.25, 0.35, 0.25,
             0.0
         )
-    }
-
-
-
-    private val MAX_DIALOGUES = config.maxDialogueSaves
-
-    // Histórico de diálogos (cada item = lista de falas)
-    private val dialogueHistory = ArrayDeque<List<String>>()
-
-    private fun addDialogue(dialogue: List<String>) {
-        if (dialogueHistory.size >= MAX_DIALOGUES) {
-            dialogueHistory.removeFirst() // descarta o mais antigo
-        }
-        dialogueHistory.addLast(dialogue)
     }
 
     private fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
@@ -630,14 +604,6 @@ object DialogueSystem {
             appendLine("Player's off hand: ${context.offHand}")
             appendLine()
 
-            // no momento o historico de dialogo esta muito pesado pra processar mais q 2 dialogos no prompt...
-            appendLine("[Recent dialogue history]")
-            dialogueHistory.forEachIndexed { i, dialogo ->
-                appendLine("Dialogue ${i+1}:")
-                dialogo.forEach { fala -> appendLine(fala) }
-                appendLine()
-            }
-
             appendLine("[Active pokemons]")
 
             pokemons.forEach { p ->
@@ -662,43 +628,6 @@ object DialogueSystem {
                 }
             }
 
-            // ADIÇÃO: histórico de interações
-            appendLine()
-            appendLine("[Interaction history]")
-
-            val playerName = player.gameProfile.name
-            val playerId = player.uuid.toString()
-
-            // Interações entre pokémons do time
-            for (i in pokemons.indices) {
-                for (j in i + 1 until pokemons.size) {
-                    val p1 = pokemons[i]
-                    val p2 = pokemons[j]
-
-                    val count = InteractionStore.getInteractionCount(
-                        player.server,
-                        p1.species.name, p1.uuid.toString(),
-                        p2.species.name, p2.uuid.toString()
-                    )
-
-                    if (count > 0) {
-                        appendLine("${p1.nickname?.string} (${p1.species.name}) - ${p2.nickname?.string} (${p2.species.name}): $count interactions")
-                    }
-                }
-            }
-
-            // Interações entre cada pokémon e o jogador
-            pokemons.forEach { p ->
-                val count = InteractionStore.getInteractionCount(
-                    player.server,
-                    p.species.name, p.uuid.toString(),
-                    playerName, playerId
-                )
-
-                if (count > 0) {
-                    appendLine("${p.nickname?.string} (${p.species.name}) - Player(${playerName}): $count interactions")
-                }
-            }
             appendLine("Important variables:")
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
             appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
@@ -783,19 +712,6 @@ object DialogueSystem {
             }
         }
 
-
-        // se já existe um diálogo iniciado pelo jogador, completa ele
-        if (dialogueHistory.isNotEmpty()) {
-            val ultimo = dialogueHistory.removeLast().toMutableList()
-            ultimo.addAll(falas)
-            addDialogue(ultimo)
-            DialogueStore.addDialogue(server, ultimo)
-        } else {
-            // fallback: se não tinha diálogo iniciado, cria um novo só com as falas da IA
-            addDialogue(falas)
-            DialogueStore.addDialogue(server, falas)
-        }
-
         fun findPokemonByName(name: String, pokemons: List<Pokemon>): Pokemon? {
             return pokemons.firstOrNull { it.species.name.equals(name, ignoreCase = true) }
         }
@@ -869,18 +785,6 @@ object DialogueSystem {
                     ?.let { p ->
                         participantes.add(Participante(p.gameProfile.name, p.uuid.toString()))
                     }
-            }
-        }
-
-        // salva interações no JSON (nome + UUID)
-        for (i in participantes.indices) {
-            for (j in i + 1 until participantes.size) {
-                val qtd = InteractionStore.addInteraction(
-                    server,
-                    participantes[i].nome, participantes[i].id,
-                    participantes[j].nome, participantes[j].id
-                )
-                println("DEBUG: ${participantes[i].nome} - ${participantes[j].nome} já interagiram $qtd vezes")
             }
         }
 
