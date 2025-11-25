@@ -65,6 +65,11 @@ object DialogueSystem {
     // guarda o pitch atual de cada Pokémon ativo
     private val pokemonPitchMap = mutableMapOf<UUID, Float>()
 
+    private val bubbleProgress = mutableMapOf<UUID, Int>()          // standUuid -> chars revelados
+    private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> texto completo
+    private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars por tick (opcional)
+
+
     fun register() {
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
             val player = handler.player
@@ -391,7 +396,7 @@ object DialogueSystem {
                     // bolha de diálogo temporária
                     if (entity != null) {
                         val bubbleText = msg.text.substringAfter(":").trim()
-                        spawnSpeechBubble(server, pokemon, bubbleText, 120) // 120 ticks ≈ 6 segundos
+                        spawnSpeechBubble(server, pokemon, bubbleText, 100) // 100 ticks ≈ 5 segundos
                     }
 
                     // define foco social e espectadores
@@ -426,32 +431,33 @@ object DialogueSystem {
 
     fun getBubbleY(entity: Entity): Double {
         // topo da hitbox + pequeno offset
-        return entity.y + entity.bbHeight + 0.2
+        return entity.eyeY - 1
     }
 
-    fun spawnSpeechBubble(server: MinecraftServer, pokemon: Pokemon, text: String, durationTicks: Int = 60) {
+    fun spawnSpeechBubble(server: MinecraftServer, pokemon: Pokemon, text: String, durationTicks: Int = 60, charsPerTick: Int = 1) {
         val entity = pokemon.entity ?: return
         val level = entity.level()
 
         val stand = ArmorStand(EntityType.ARMOR_STAND, level)
         stand.isInvisible = true
         stand.isNoGravity = true
-        stand.customName = Component.literal(text)
         stand.isCustomNameVisible = true
-
-        // força marker via NBT
         stand.addTag("Marker")
-
-        // posiciona acima da cabeça do pokémon
         stand.moveTo(entity.x, getBubbleY(entity), entity.z)
+
+        // começa vazio (ou com um cursor, se quiser)
+        stand.customName = Component.literal("")
 
         level.addFreshEntity(stand)
 
-        // registra tempo de expiração
         bubbleUntilTick[stand.uuid] = server.tickCount.toLong() + durationTicks
-        // vincula stand ao pokémon
         bubbleStands[entity.uuid] = stand.uuid
+
+        bubbleText[stand.uuid] = text
+        bubbleProgress[stand.uuid] = 0
+        bubbleSpeed[stand.uuid] = charsPerTick
     }
+
 
     fun tickBubbles(server: MinecraftServer) {
         val current = server.tickCount.toLong()
@@ -470,16 +476,57 @@ object DialogueSystem {
         }
 
         // atualizar posição dos stands ativos para seguir o pokémon
+        val toRemove = mutableListOf<UUID>()
+
         bubbleStands.forEach { (pokemonUuid, standUuid) ->
+            var pokeFound = false
             server.allLevels.forEach { level ->
                 val poke = level.getEntity(pokemonUuid)
                 val stand = level.getEntity(standUuid)
+
                 if (poke != null && stand is ArmorStand) {
+                    pokeFound = true
                     stand.moveTo(poke.x, getBubbleY(poke), poke.z)
                 }
             }
+
+            // avançar texto tipo "typewriter"
+            bubbleProgress.keys.forEach { standUuid ->
+                val text = bubbleText[standUuid] ?: return@forEach
+                val speed = bubbleSpeed[standUuid] ?: 1
+                val current = bubbleProgress[standUuid] ?: 0
+
+                val newProgress = (current + speed).coerceAtMost(text.length)
+                bubbleProgress[standUuid] = newProgress
+
+                // atualizar nome visível
+                server.allLevels.forEach { level ->
+                    val stand = level.getEntity(standUuid)
+                    if (stand is ArmorStand) {
+                        val shown = text.take(newProgress)
+                        stand.customName = Component.literal(shown)
+                    }
+                }
+            }
+
+
+            // se o pokémon não existe mais, remove o stand
+            if (!pokeFound) {
+                server.allLevels.forEach { level ->
+                    val stand = level.getEntity(standUuid)
+                    if (stand is ArmorStand) {
+                        stand.discard()
+                    }
+                }
+                toRemove.add(pokemonUuid)
+                bubbleUntilTick.remove(standUuid)
+            }
         }
+
+        // limpa vínculos órfãos
+        toRemove.forEach { bubbleStands.remove(it) }
     }
+
 
 
 
@@ -517,6 +564,7 @@ object DialogueSystem {
             val chance = config.spontaneousDialogueChance
 
             if (Random.nextDouble() <= chance) {
+                scheduledMessages.clear()
                 val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokémons are thinking of something different to say... (use the world variables or refer to something that just happened)")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
             }
@@ -657,6 +705,9 @@ object DialogueSystem {
         #PokemonName: sit
         #PokemonName: protect
         #PokemonName: idle
+        (if pokemon has primary fire type) #PokemonName: cook 
+        (if pokemon has primary grass type) #PokemonName: grow
+        (if pokemon has primary fire type) #PokemonName: phantom
     - Every Pokémon must provide exactly one action, If irrelevant, use 'idle'. Unless there is context for the following, avoid repeating the same action multiple times.. 
     - Pokémon with a Friendship level closer to 225 are more likely to follow the player's commands if requested, while those closer to 0 are less likely to be followed and are more prone to following riskier commands on their own (such as attack and protect), but be careful not to overdo it...
     
