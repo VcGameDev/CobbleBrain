@@ -1,5 +1,6 @@
 package vito.cobblebrain.social
 
+import AIHandler
 import com.cobblemon.mod.common.api.events.CobblemonEvents
 import com.cobblemon.mod.common.api.events.battles.BattleFledEvent
 import com.cobblemon.mod.common.api.events.battles.BattleStartedPostEvent
@@ -565,7 +566,7 @@ object DialogueSystem {
 
             if (Random.nextDouble() <= chance) {
                 scheduledMessages.clear()
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokémons are thinking of something different to say... (use the world variables or refer to something that just happened)")
+                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokémons are thinking of something different to say... (use the world variables or refer to something else...)")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
             }
         }
@@ -635,7 +636,7 @@ object DialogueSystem {
             // Location and terrain
             appendLine("Light: ${context.lightLevel}")
             appendLine("Block under the player's feet: ${context.blockUnder}")
-            appendLine("Terrain: ${context.terrainHint}")
+            // appendLine("Terrain: ${context.terrainHint}")
             appendLine("Nearby special blocks: ${context.specialBlocks}")
 
             // Entities
@@ -645,11 +646,11 @@ object DialogueSystem {
 
             // Player status
             appendLine("Player health: ${context.health}/${context.maxHealth}")
-            appendLine("Player armor: ${context.armor}")
+            // appendLine("Player armor: ${context.armor}")
 
             // Items in use
             appendLine("Player's main hand: ${context.mainHand}")
-            appendLine("Player's off hand: ${context.offHand}")
+            // appendLine("Player's off hand: ${context.offHand}")
             appendLine()
 
             appendLine("[Active pokemons]")
@@ -696,6 +697,7 @@ object DialogueSystem {
     - The same event may be recorded differently by different Pokémon: for one it may be a short-term memory (@), while for another it may be a long-term memory (@@), depending on the personal impact.
     - Use a single '@' for short-term memories. Short-term memories represent fleeting perceptions, temporary conditions, or minor occurrences that are relevant in the moment but do not significantly alter identity or history.
     - Use a double '@@' for long-term memories. Long-term memories represent impactful events, defining traits, or meaningful experiences that leave a lasting mark on the Pokémon’s personality, relationships, or sense of self — things that significantly alter identity or history.
+    - Pokémon never speak their memories aloud; they are stored after dialogue.
     
     - Finally, at the very end, output one action validation line for each Pokémon, always using exactly one of:
         #PokemonName: attack
@@ -706,10 +708,15 @@ object DialogueSystem {
         #PokemonName: protect
         #PokemonName: idle
         (if pokemon has primary fire type) #PokemonName: cook 
+        (if pokemon has primary steel type) #PokemonName: repair
         (if pokemon has primary grass type) #PokemonName: grow
-        (if pokemon has primary fire type) #PokemonName: phantom
-    - Every Pokémon must provide exactly one action, If irrelevant, use 'idle'. Unless there is context for the following, avoid repeating the same action multiple times.. 
+        (if pokemon has primary ghost type) #PokemonName: shift
+    - Every Pokémon must provide exactly one action, If irrelevant, use 'idle'. avoid repeating the same action multiple times...
     - Pokémon with a Friendship level closer to 225 are more likely to follow the player's commands if requested, while those closer to 0 are less likely to be followed and are more prone to following riskier commands on their own (such as attack and protect), but be careful not to overdo it...
+    - Pokémon must continue their own emotional thread when asked about it.  
+    If the player asks a question, respond from the Pokémon’s perspective, not as if the player is confused.  
+    Dialogue must feel like an ongoing conversation, not isolated lines, use the memories to understand the context.
+
     
     - ALWAYS FOLLOW THE OUTPUTFORMAT WHEN SENDING YOUR RESPONSE, NO HYPHENS
     - USE THE POKEMON NICKNAME OR THE SPECIES IF THE NICKNAME DOES NOT EXIST, NEVER COMBINE THE TWO IN THE MESSAGE...

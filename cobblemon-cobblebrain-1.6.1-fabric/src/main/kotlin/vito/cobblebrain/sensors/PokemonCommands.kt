@@ -94,6 +94,7 @@ val biteCooldown = mutableMapOf<UUID, Int>()
 val eatIdleTimer = mutableMapOf<UUID, Int>()
 val cookCooldown = mutableMapOf<UUID, Int>()
 val growCooldowns = mutableMapOf<UUID, Int>()
+val repairCooldowns: MutableMap<UUID, Long> = mutableMapOf()
 
 fun registerTickHandler() {
     var tickCounter = 0
@@ -121,20 +122,26 @@ fun registerTickHandler() {
 
                     when (primaryType.lowercase()) {
                         "grass" -> {
-                            val server = level as? ServerLevel ?: return@forEach
-                            val range = 6.0
+                            val server = level
+                            val range = 5
+
+                            // lista de blocos ao redor
                             val blocksAround = BlockPos.betweenClosed(
-                                pokemon.blockX - range.toInt(), pokemon.blockY - 1, pokemon.blockZ - range.toInt(),
-                                pokemon.blockX + range.toInt(), pokemon.blockY + 1, pokemon.blockZ + range.toInt()
+                                pokemon.blockX - range, pokemon.blockY - 1, pokemon.blockZ - range,
+                                pokemon.blockX + range, pokemon.blockY + 1, pokemon.blockZ + range
                             )
 
-                            // encontra o bloco alvo mais próximo que seja crop ou sapling
+                            // encontra o alvo mais próximo que ainda pode crescer
                             val targetPos = blocksAround
                                 .map { it.immutable() }
                                 .filter { pos ->
                                     val state = server.getBlockState(pos)
                                     val block = state.block
-                                    block is CropBlock || block is SaplingBlock
+                                    when (block) {
+                                        is CropBlock -> !block.isMaxAge(state) // só crops não maduras
+                                        is SaplingBlock -> true                // toda sapling é válida
+                                        else -> false
+                                    }
                                 }
                                 .minByOrNull { pos -> pos.distManhattan(pokemon.blockPosition()) }
 
@@ -142,21 +149,22 @@ fun registerTickHandler() {
 
                             if (targetPos != null && cooldown <= 0) {
                                 val state = server.getBlockState(targetPos)
-                                when (val block = state.block) {
+                                val block = state.block
+
+                                when (block) {
                                     is SaplingBlock -> {
                                         block.advanceTree(server, targetPos, state, server.random)
                                     }
                                     is CropBlock -> {
-                                        if (!block.isMaxAge(state)) {
-                                            block.performBonemeal(server, server.random, targetPos, state)
-                                        }
+                                        block.performBonemeal(server, server.random, targetPos, state)
                                     }
                                 }
 
-                                growCooldowns[pokemonId] = 40
+                                // aplica cooldown de 60 ticks (~3s)
+                                growCooldowns[pokemonId] = 60
 
-                                // partículas verdes de poção
-                                val option = DustParticleOptions(Vector3f(0.5f, 1.0f, 0.5f), 1.0f) // verde claro
+                                // partículas verdes claras
+                                val option = DustParticleOptions(Vector3f(0.5f, 1.0f, 0.5f), 1.0f)
                                 repeat(20) {
                                     val px = pokemon.x + (server.random.nextDouble() - 0.5) * 0.8
                                     val py = pokemon.y + server.random.nextDouble() * pokemon.bbHeight
@@ -240,9 +248,17 @@ fun registerTickHandler() {
                                             pokemon.swing(InteractionHand.MAIN_HAND)
                                             server.playSound(null, target.blockPosition(), SoundEvents.FURNACE_FIRE_CRACKLE, SoundSource.BLOCKS, 1.0f, 1.0f)
 
-                                            // chance de carvão extra
-                                            if (server.random.nextFloat() < 0.05f) {
-                                                server.addFreshEntity(ItemEntity(server, target.x, target.y, target.z, ItemStack(Items.COAL, 1)))
+                                            // chance de transformar UM item em carvão
+                                            if (server.random.nextFloat() < 0.05f && !target.item.isEmpty) {
+                                                val stack = target.item
+                                                stack.shrink(1)
+                                                val coal = ItemStack(Items.COAL, 1)
+
+                                                if (stack.isEmpty) {
+                                                    target.item = coal
+                                                } else {
+                                                    server.addFreshEntity(ItemEntity(server, target.x, target.y, target.z, coal))
+                                                }
                                             }
                                         }
                                     }
@@ -533,7 +549,52 @@ fun registerTickHandler() {
                     chaseCooldown[pokemonId] = 0
                 }
 
-                "phantom" -> {
+                "repair" -> {
+                    val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
+                    val pokemonId = pokemon.uuid
+
+                    when (primaryType.lowercase()) {
+                        "steel" -> {
+                            val server = level as? ServerLevel ?: return@forEach
+                            val now = server.gameTime
+                            val lastRepair = repairCooldowns.getOrDefault(pokemonId, 0L)
+
+                            val ownerId = pokemon.ownerUUID
+                            val owner: ServerPlayer? = server.server.playerList.getPlayer(ownerId!!)
+
+                            // cooldown de 5 minutos
+                            if (now - lastRepair < 6000) {
+                                // manda mensagem uma vez e volta pro idle
+                                if (CommandState.activeCommands[pokemonId] == "repair") {
+                                    owner?.sendSystemMessage(Component.literal("${pokemon.displayName?.string} is recharging the ability..."))
+                                    CommandState.activeCommands[pokemonId] = "idle"
+                                }
+                                return@forEach
+                            }
+
+                            val range = 3.0
+                            val items = server.getEntitiesOfClass(ItemEntity::class.java, pokemon.boundingBox.inflate(range))
+                            val target = items.firstOrNull { it.item.isDamageableItem }
+
+                            if (target != null) {
+                                val stack = target.item
+                                stack.damageValue = (stack.damageValue - 60).coerceAtLeast(0)
+                                repairCooldowns[pokemonId] = now
+
+                                pokemon.swing(InteractionHand.MAIN_HAND)
+                                server.playSound(null, target.blockPosition(), SoundEvents.ANVIL_USE, SoundSource.BLOCKS, 1.0f, 1.0f)
+
+                                owner?.sendSystemMessage(Component.literal("${pokemon.displayName?.string} repaired your dropped weapon a bit!"))
+
+                                // depois de reparar, volta pro idle
+                                CommandState.activeCommands[pokemonId] = "idle"
+                            }
+                        }
+                    }
+                }
+
+
+                "shift" -> {
                     val ownerUUID = pokemon.ownerUUID ?: return@forEach
                     val owner = level.server.playerList.getPlayer(ownerUUID) ?: return@forEach
                     val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"

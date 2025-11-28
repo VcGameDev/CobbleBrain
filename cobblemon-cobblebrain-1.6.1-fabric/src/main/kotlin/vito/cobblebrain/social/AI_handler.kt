@@ -1,7 +1,4 @@
-package vito.cobblebrain.social
-
 import com.google.gson.Gson
-import vito.cobblebrain.config.CobblebrainConfig
 import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
@@ -11,18 +8,31 @@ import java.nio.file.*
 import java.time.Duration
 import kotlin.system.exitProcess
 
+data class CobblebrainConfig(
+    val aiModel: String,
+    val apiKey: String,
+    val instruct: String,
+    val pokemonTalk: Boolean
+)
+
+data class Mensagem(val role: String, val text: String)
+
 class AIHandler(dirPath: String) {
     companion object {
         private val gson = Gson()
         private val configFile = File("config/cobblebrain.json")
-        private val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
+        private val config: CobblebrainConfig =
+            gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
         private val MODEL = config.aiModel
-
         private val INSTRUCTS = config.instruct.trimIndent()
     }
+
     private val apiKey = config.apiKey
     private val comandoPath: Path = Paths.get(dirPath, "comando_ia.txt")
     private val respostaPath: Path = Paths.get(dirPath, "resposta_ia.txt")
+
+    // histórico limitado a 4 mensagens (2 user + 2 model)
+    private val historico = mutableListOf<Mensagem>()
 
     init {
         if (!Files.exists(comandoPath)) Files.writeString(comandoPath, "")
@@ -58,11 +68,29 @@ class AIHandler(dirPath: String) {
             println("Encerrando IA...")
             exitProcess(0)
         } else {
-            if (config.pokemonTalk){
+            if (config.pokemonTalk) {
                 respostaNormal(input)
                 println("Resposta processada")
             }
         }
+    }
+
+    private fun respostaNormal(mensagem: String) {
+        val responseText = callGemini(mensagem)
+
+
+        var textoFormatado = responseText
+            .replace("\\n", "\n")   // converte texto escapado para quebra real
+            .replace("\n", "|")     // transforma quebra real em separador
+            .replace("\\", "")
+
+        println("Resposta IA: $textoFormatado")
+
+        Files.writeString(respostaPath, textoFormatado)
+        Files.writeString(comandoPath, "")
+
+        historico.add(Mensagem("model", responseText))
+        limitarHistorico()
     }
 
     fun analisarTexto(texto: String) {
@@ -74,31 +102,20 @@ class AIHandler(dirPath: String) {
         }
     }
 
-    private fun respostaNormal(mensagem: String) {
-        val responseText = callGemini(mensagem)
-        val textoFormatado = responseText.replace("\\n", "|")
-
-        println("Resposta IA: $textoFormatado")
-
-        Files.writeString(respostaPath, textoFormatado)
-        Files.writeString(comandoPath, "")
-
-        analisarTexto(textoFormatado)
-    }
-
     private fun callGemini(mensagem: String): String {
-        val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$apiKey"
+        val endpoint =
+            "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$apiKey"
         val jsonBody = buildJson(mensagem)
 
         val client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(20))
-                .build()
+            .connectTimeout(Duration.ofSeconds(20))
+            .build()
 
         val request = HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build()
+            .uri(URI.create(endpoint))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+            .build()
 
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
 
@@ -121,16 +138,35 @@ class AIHandler(dirPath: String) {
     }
 
     private fun buildJson(mensagem: String): String {
+        // adiciona a mensagem do usuário ao histórico
+        historico.add(Mensagem("user", mensagem))
+        limitarHistorico()
+
+        val contentsJson = historico.joinToString(",") { msg ->
+            """{ "role": "${msg.role}", "parts": [ { "text": "${escape(msg.text)}" } ] }"""
+        }
+
         return """
             {
-              "contents": [ { "parts": [ { "text": "${escape(mensagem)}" } ] } ],
+              "contents": [ $contentsJson ],
               "system_instruction": { "parts": [ { "text": "${escape(INSTRUCTS)}" } ] }
             }
         """.trimIndent()
     }
 
     private fun escape(text: String): String {
-        return text.replace("\"", "\\\"").replace("\n", "\\n")
+        return text
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+        // não mexe em \n
+    }
+
+
+    private fun limitarHistorico() {
+        // mantém no máximo 6 mensagens (3 user + 3 model)
+        while (historico.size > 6) {
+            historico.removeAt(0)
+        }
     }
 }
 
@@ -143,4 +179,3 @@ fun main() {
         e.printStackTrace()
     }
 }
-
