@@ -3,6 +3,7 @@ package vito.cobblebrain.sensors
 import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.particles.DustParticleOptions
@@ -96,6 +97,8 @@ val cookCooldown = mutableMapOf<UUID, Int>()
 val growCooldowns = mutableMapOf<UUID, Int>()
 val repairCooldowns: MutableMap<UUID, Long> = mutableMapOf()
 
+private val announcedStates: MutableMap<UUID, String> = mutableMapOf()
+
 fun registerTickHandler() {
     var tickCounter = 0
 
@@ -108,12 +111,14 @@ fun registerTickHandler() {
         CommandState.activeCommands.forEach { (pokemonId, action) ->
             val pokemon = level.getEntity(pokemonId) as? Mob ?: return@forEach
             val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon ?: return@forEach
+            val ownerUUID = cobblemonPokemon.getOwnerUUID() ?: return@forEach
+            val owner = level.server.playerList.getPlayer(ownerUUID) ?: return@forEach
             val debuffCooldowns = mutableMapOf<UUID, Int>()
 
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
             val scaledDamage = 2.0f + (atk * 0.03f)
-            val speed = 1 + (spd * 0.02)
+            val speed = 1.2 + (spd * 0.02)
 
             when (action) {
                 "grow" -> {
@@ -122,6 +127,14 @@ fun registerTickHandler() {
 
                     when (primaryType.lowercase()) {
                         "grass" -> {
+                            if (announcedStates[pokemonId] != "grow") {
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} is helping plants GROW.",
+                                    ChatFormatting.YELLOW
+                                )
+                                announcedStates[pokemonId] = "grow"
+                            }
                             val server = level
                             val range = 5
 
@@ -160,8 +173,8 @@ fun registerTickHandler() {
                                     }
                                 }
 
-                                // aplica cooldown de 60 ticks (~3s)
-                                growCooldowns[pokemonId] = 60
+                                // aplica cooldown de 40 ticks (~2s)
+                                growCooldowns[pokemonId] = 40
 
                                 // partículas verdes claras
                                 val option = DustParticleOptions(Vector3f(0.5f, 1.0f, 0.5f), 1.0f)
@@ -192,6 +205,14 @@ fun registerTickHandler() {
 
                     when (primaryType.lowercase()) {
                         "fire" -> {
+                            if (announcedStates[pokemonId] != "fire") {
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} is ready to COOK or SMELT ores.",
+                                    ChatFormatting.YELLOW
+                                )
+                                announcedStates[pokemonId] = "fire"
+                            }
                             val server = level as? ServerLevel ?: return@forEach
                             val range = 3.0
                             val items = server.getEntitiesOfClass(ItemEntity::class.java, pokemon.boundingBox.inflate(range))
@@ -275,6 +296,14 @@ fun registerTickHandler() {
                 "attack" -> {
                     // se o pokémon está em batalha, ignora o comando
                     val ownerUUID = pokemon.ownerUUID
+                    if (announcedStates[pokemonId] != "attack") {
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} is trying to ATTACK a target...",
+                            ChatFormatting.RED
+                        )
+                        announcedStates[pokemonId] = "attack"
+                    }
                     BattleRegistry.getBattleByParticipatingPlayerId(ownerUUID ?: return@forEach)?.let {
                         // se cair aqui, significa que o dono do pokémon está em batalha
                         CommandState.activeCommands[pokemonId] = "idle"
@@ -294,6 +323,9 @@ fun registerTickHandler() {
 
                     if (finalTarget == null || !finalTarget.isAlive || !isEnemy(pokemon, finalTarget)) {
                         exitAttackMode(pokemon)
+                        sendMessage(owner, "${pokemon.displayName?.string} stopped ATTACKING...",
+                            ChatFormatting.RED
+                        )
                         CommandState.activeTargets.remove(pokemonId)
                         CommandState.activeCommands[pokemonId] = "idle"
                         return@forEach
@@ -318,6 +350,14 @@ fun registerTickHandler() {
 
                 "protect" -> {
                     enterAttackMode(pokemon)
+                    if (announcedStates[pokemonId] != "protect") {
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} is PROTECTING you against mobs.",
+                            ChatFormatting.BLUE
+                        )
+                        announcedStates[pokemonId] = "protect"
+                    }
 
                     val ownerUUID = pokemon.ownerUUID ?: return@forEach
                     val owner = level.server.playerList.getPlayer(ownerUUID) ?: return@forEach
@@ -347,6 +387,9 @@ fun registerTickHandler() {
                         val idleTicks = chaseCooldown.getOrDefault(pokemonId, 0)
                         if (idleTicks > 100) {
                             exitAttackMode(pokemon)
+                            sendMessage(owner, "${pokemon.displayName?.string} stopped PROTECTING...",
+                                ChatFormatting.RED
+                            )
                             CommandState.activeTargets.remove(pokemonId)
                             CommandState.activeCommands[pokemonId] = "idle"
                             chaseCooldown[pokemonId] = 0
@@ -377,6 +420,7 @@ fun registerTickHandler() {
                     val box = pokemon.boundingBox.inflate(8.0)
                     val items = level.getEntitiesOfClass(ItemEntity::class.java, box)
 
+
                     // pega o item com FOOD mais próximo
                     val foodItem = items
                         .filter { it.item.item.components().get(DataComponents.FOOD) != null }
@@ -384,6 +428,15 @@ fun registerTickHandler() {
 
                     val bite = biteCooldown.getOrDefault(pokemonId, 0)
                     val idle = eatIdleTimer.getOrDefault(pokemonId, 0)
+
+                    if (announcedStates[pokemonId] != "eat") {
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} wants to EAT...",
+                            ChatFormatting.YELLOW
+                        )
+                        announcedStates[pokemonId] = "eat"
+                    }
 
                     if (foodItem != null && foodItem.isAlive) {
                         pokemon.navigation.moveTo(foodItem, 1.0)
@@ -428,10 +481,26 @@ fun registerTickHandler() {
                     exitAttackMode(pokemon)
                     pokemon.isOrderedToSit = true
                     CommandState.activeTargets.remove(pokemonId)
+                    if (announcedStates[pokemonId] != "sit") {
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} SAT down.",
+                            ChatFormatting.YELLOW
+                        )
+                        announcedStates[pokemonId] = "sit"
+                    }
 
                 }
 
                 "debuff enemy" -> {
+                    if (announcedStates[pokemonId] != "debuff") {
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} is attempting to use DEBUFF on a target.",
+                            ChatFormatting.RED
+                        )
+                        announcedStates[pokemonId] = "debuff"
+                    }
                     enterAttackMode(pokemon)
 
                     val target = CommandState.activeTargets[pokemonId]?.let { level.getEntity(it) as? LivingEntity }
@@ -446,9 +515,8 @@ fun registerTickHandler() {
                     val cd = debuffCooldowns.getOrDefault(pokemonId, 0)
 
                     if (cd > 0) {
-                        // mensagem de cooldown
-                        level.server.playerList.broadcastSystemMessage(
-                            Component.literal("${pokemon.displayName?.string} is on cooldown"), false
+                        sendMessage(owner, "${pokemon.displayName?.string} is recharging DEBUFF.",
+                            ChatFormatting.RED
                         )
                         debuffCooldowns[pokemonId] = maxOf(0, cd - 1)
                         CommandState.activeCommands[pokemonId] = "idle"
@@ -456,11 +524,10 @@ fun registerTickHandler() {
                     }
 
                     if (finalTarget == null || !finalTarget.isAlive || !isEnemy(pokemon, finalTarget)) {
-                        // mensagem de alvo não encontrado
-                        level.server.playerList.broadcastSystemMessage(
-                            Component.literal("${pokemon.displayName?.string} found no one..."), false
-                        )
                         exitAttackMode(pokemon)
+                        sendMessage(owner, "${pokemon.displayName?.string} found no target.",
+                            ChatFormatting.RED
+                        )
                         CommandState.activeTargets.remove(pokemonId)
                         CommandState.activeCommands[pokemonId] = "idle"
                         return@forEach
@@ -501,6 +568,10 @@ fun registerTickHandler() {
                         finalTarget.addEffect(MobEffectInstance(effect, 600, 1)) // 30 segundos
                         pokemon.swing(InteractionHand.MAIN_HAND)
 
+                        sendMessage(owner, "${pokemon.displayName?.string} gave $effect to the mob",
+                            ChatFormatting.GREEN
+                        )
+
                         // aplica cooldown de 1 minuto
                         debuffCooldowns[pokemonId] = 1200
 
@@ -512,9 +583,6 @@ fun registerTickHandler() {
 
 
                 "buff" -> {
-                    val ownerUUID = pokemon.ownerUUID ?: return@forEach
-                    val owner = level.server.playerList.getPlayer(ownerUUID) ?: return@forEach
-
                     val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
 
                     val effect = when (primaryType.lowercase()) {
@@ -539,13 +607,19 @@ fun registerTickHandler() {
                         else -> MobEffects.REGENERATION
                     }
 
+                    val effectName = effect.registeredName
+
                     owner.addEffect(MobEffectInstance(effect, 600, 1)) // 30 segundos
+                    sendMessage(owner, "${pokemon.displayName?.string} gave you $effectName",
+                        ChatFormatting.GREEN
+                    )
                     CommandState.activeCommands[pokemonId] = "idle"
                 }
 
                 "idle" -> {
                     exitAttackMode(pokemon)
                     CommandState.activeTargets.remove(pokemonId)
+                    announcedStates.remove(pokemonId)
                     chaseCooldown[pokemonId] = 0
                 }
 
@@ -561,14 +635,23 @@ fun registerTickHandler() {
 
                             val ownerId = pokemon.ownerUUID
                             val owner: ServerPlayer? = server.server.playerList.getPlayer(ownerId!!)
+                            if (announcedStates[pokemonId] != "repair") {
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} is attempting to REPAIR tools.",
+                                    ChatFormatting.YELLOW
+                                )
+                                announcedStates[pokemonId] = "repair"
+                            }
 
                             // cooldown de 5 minutos
                             if (now - lastRepair < 6000) {
                                 // manda mensagem uma vez e volta pro idle
                                 if (CommandState.activeCommands[pokemonId] == "repair") {
-                                    owner?.sendSystemMessage(Component.literal("${pokemon.displayName?.string} is recharging the ability..."))
-                                    CommandState.activeCommands[pokemonId] = "idle"
-                                }
+                                    sendMessage(owner, "${pokemon.displayName?.string} is recharging REPAIR...",
+                                        ChatFormatting.GOLD
+                                    )}
+                                CommandState.activeCommands[pokemonId] = "idle"
                                 return@forEach
                             }
 
@@ -584,7 +667,9 @@ fun registerTickHandler() {
                                 pokemon.swing(InteractionHand.MAIN_HAND)
                                 server.playSound(null, target.blockPosition(), SoundEvents.ANVIL_USE, SoundSource.BLOCKS, 1.0f, 1.0f)
 
-                                owner?.sendSystemMessage(Component.literal("${pokemon.displayName?.string} repaired your dropped weapon a bit!"))
+                                sendMessage(owner, "${pokemon.displayName?.string} REPAIRED your dropped weapon a bit!",
+                                    ChatFormatting.GREEN
+                                )
 
                                 // depois de reparar, volta pro idle
                                 CommandState.activeCommands[pokemonId] = "idle"
@@ -626,12 +711,25 @@ fun registerTickHandler() {
                             owner.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 20 * 3, 0))
 
                             pokemon.swing(InteractionHand.MAIN_HAND)
+                            if (announcedStates[pokemonId] != "shift") {
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} used SHIFT",
+                                    ChatFormatting.BLUE
+                                )
+                                announcedStates[pokemonId] = "shift"
+                            }
+
                         }
                     }
                 }
             }
         }
     }
+}
+
+fun sendMessage(player: ServerPlayer?, text: String, color: ChatFormatting) {
+    player?.sendSystemMessage(Component.literal(text).withStyle(color))
 }
 
 private fun findClosestNonPlayerLiving(level: ServerLevel, source: LivingEntity): LivingEntity? {

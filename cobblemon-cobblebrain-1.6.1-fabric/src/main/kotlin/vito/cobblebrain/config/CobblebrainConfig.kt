@@ -6,7 +6,7 @@ class CobblebrainConfig {
     // The name of the AI model being used.
     var aiModel: String = "gemini-2.5-flash-lite"
 
-    var dialogueInChat: Boolean = false
+    var dialogueInChat: Boolean = true
     var chatbubbles: Boolean = true
 
     // Determines if Pokémon can talk or hear (basically an on/off switch of the mod)

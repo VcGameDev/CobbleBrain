@@ -239,18 +239,21 @@ object DialogueSystem {
         ServerLivingEntityEvents.AFTER_DAMAGE.register { entity, source, amount, newHealth, absorbed ->
             when (entity) {
                 is ServerPlayer -> {
+                    val ativos = PokemonQuery.findActivePokemon(entity)
+                    if (ativos.isEmpty()) return@register  // só ativa se tiver pelo menos 1 Pokémon ativo
+
                     val now = System.currentTimeMillis()
                     val last = lastPrompt[entity.uuid] ?: 0L
-                    if (now - last >= 18000 && config.dialogueOnDamage) {
+                    if (now - last >= 22000 && config.dialogueOnDamage) {
                         scheduledMessages.clear()
                         lastPrompt[entity.uuid] = now
                         val cause = source.msgId
                         println("IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
-                        val ativos = PokemonQuery.findActivePokemon(entity)
                         val prompt = buildPrompt(entity, ativos, "IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
                         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                     }
                 }
+
                 is PokemonEntity -> {
                     val ownerUuid = entity.pokemon.getOwnerUUID()
                     if (ownerUuid != null && config.dialogueOnDamage) {
@@ -258,30 +261,29 @@ object DialogueSystem {
                         val owner: ServerPlayer? = server.playerList.getPlayer(ownerUuid)
 
                         if (owner != null) {
+                            val ativos = PokemonQuery.findActivePokemon(owner)
+                            if (ativos.isEmpty()) return@register  // só ativa se tiver pelo menos 1 Pokémon ativo
+
                             val now = System.currentTimeMillis()
                             val last = lastPrompt[owner.uuid] ?: 0L
-                            if (now - last >= 18000) {
+                            if (now - last >= 22000) {
                                 scheduledMessages.clear()
                                 lastPrompt[owner.uuid] = now
                                 val cause = source.msgId
                                 val pokemonNickname = entity.pokemon.nickname?.string
                                 val pokemonSpecies = entity.pokemon.species.name
-
-                                // se nickname for null ou vazio, usa species
                                 val pokemonName = if (pokemonNickname.isNullOrBlank()) pokemonSpecies else pokemonNickname
 
                                 println("My Pokémon $pokemonName took $amount of damage from $cause.")
-                                server.playerList.getPlayer(ownerUuid)?.let { owner ->
-                                    val ativos = PokemonQuery.findActivePokemon(owner)
-                                    val prompt = buildPrompt(owner, ativos, "My Pokémon $pokemonName took $amount of damage from $cause.")
-                                    File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-                                }
+                                val prompt = buildPrompt(owner, ativos, "My Pokémon $pokemonName took $amount of damage from $cause.")
+                                File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                             }
                         }
                     }
                 }
             }
         }
+
 
         ServerTickEvents.END_SERVER_TICK.register { server ->
             flushScheduledMessages(server)
@@ -369,10 +371,16 @@ object DialogueSystem {
         val ready = scheduledMessages.filter { it.sendAtTick <= currentTick }
         if (ready.isNotEmpty()) {
             ready.forEach { msg ->
+                if (msg.text.startsWith("#") || msg.text.startsWith("Friendship:")) {
+                    return@forEach
+                }
                 println("=== DEBUG FLUSH ===")
                 println("msg.text='${msg.text}'")
                 println("msg.speaker='${msg.speaker}'")
-                msg.player.sendSystemMessage(Component.literal(msg.text))
+
+                if (config.dialogueInChat) {
+                    msg.player.sendSystemMessage(Component.literal(msg.text))
+                }
 
                 // tenta resolver o falante pelo apelido OU pela espécie
                 val ativos = PokemonQuery.findActivePokemon(msg.player)
@@ -395,7 +403,7 @@ object DialogueSystem {
                     expressPokemon(pokemon, basePitch)
 
                     // bolha de diálogo temporária
-                    if (entity != null) {
+                    if (entity != null && config.chatbubbles) {
                         val bubbleText = msg.text.substringAfter(":").trim()
                         spawnSpeechBubble(server, pokemon, bubbleText, 100) // 100 ticks ≈ 5 segundos
                     }
@@ -650,7 +658,7 @@ object DialogueSystem {
 
             // Items in use
             appendLine("Player's main hand: ${context.mainHand}")
-            // appendLine("Player's off hand: ${context.offHand}")
+            // appendLine("Player's offhand: ${context.offHand}")
             appendLine()
 
             appendLine("[Active pokemons]")
