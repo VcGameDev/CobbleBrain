@@ -5,15 +5,18 @@ import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Holder
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.particles.DustParticleOptions
 import net.minecraft.core.particles.ParticleTypes
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.effect.MobEffect
 import net.minecraft.world.effect.MobEffectInstance
 import net.minecraft.world.effect.MobEffects
 import net.minecraft.world.entity.LivingEntity
@@ -475,7 +478,6 @@ fun registerTickHandler() {
                     }
                 }
 
-
                 "sit" -> {
                     // força estado idle/sit
                     exitAttackMode(pokemon)
@@ -543,7 +545,7 @@ fun registerTickHandler() {
                     if (inRange) {
                         val primaryType = cobblemonPokemon.types.firstOrNull()?.name?.lowercase() ?: "normal"
 
-                        val effect = when (primaryType) {
+                        val effectHolder: Holder<MobEffect> = when (primaryType) {
                             "grass" -> MobEffects.POISON
                             "poison" -> MobEffects.POISON
                             "fire" -> MobEffects.WITHER
@@ -565,11 +567,15 @@ fun registerTickHandler() {
                             else -> MobEffects.WEAKNESS
                         }
 
-                        finalTarget.addEffect(MobEffectInstance(effect, 600, 1)) // 30 segundos
+                        val effectName = BuiltInRegistries.MOB_EFFECT.getKey(effectHolder.value())?.path?.uppercase()
+
+                        finalTarget.addEffect(MobEffectInstance(effectHolder, 600, 1)) // 30 segundos
                         pokemon.swing(InteractionHand.MAIN_HAND)
 
-                        sendMessage(owner, "${pokemon.displayName?.string} gave $effect to the mob",
-                            ChatFormatting.GREEN
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} gave $effectName to the mob.",
+                            ChatFormatting.RED
                         )
 
                         // aplica cooldown de 1 minuto
@@ -585,7 +591,7 @@ fun registerTickHandler() {
                 "buff" -> {
                     val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
 
-                    val effect = when (primaryType.lowercase()) {
+                    val effectHolder: Holder<MobEffect> = when (primaryType.lowercase()) {
                         "grass" -> MobEffects.REGENERATION
                         "fire" -> MobEffects.FIRE_RESISTANCE
                         "water" -> MobEffects.WATER_BREATHING
@@ -607,12 +613,10 @@ fun registerTickHandler() {
                         else -> MobEffects.REGENERATION
                     }
 
-                    val effectName = effect.registeredName
+                    val effectName = BuiltInRegistries.MOB_EFFECT.getKey(effectHolder.value())?.path?.uppercase()
 
-                    owner.addEffect(MobEffectInstance(effect, 600, 1)) // 30 segundos
-                    sendMessage(owner, "${pokemon.displayName?.string} gave you $effectName",
-                        ChatFormatting.GREEN
-                    )
+                    owner.addEffect(MobEffectInstance(effectHolder, 600, 1)) // 30 segundos
+                    sendMessage(owner, "${pokemon.displayName?.string} gave you $effectName", ChatFormatting.GREEN)
                     CommandState.activeCommands[pokemonId] = "idle"
                 }
 
