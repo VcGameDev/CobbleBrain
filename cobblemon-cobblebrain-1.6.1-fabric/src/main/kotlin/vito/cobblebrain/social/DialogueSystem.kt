@@ -3,9 +3,9 @@ package vito.cobblebrain.social
 import AIHandler
 import com.cobblemon.mod.common.api.events.CobblemonEvents
 import com.cobblemon.mod.common.api.events.battles.BattleFledEvent
-import com.cobblemon.mod.common.api.events.battles.BattleStartedPostEvent
+import com.cobblemon.mod.common.api.events.battles.BattleStartedEvent
 import com.cobblemon.mod.common.api.events.battles.BattleVictoryEvent
-import com.cobblemon.mod.common.api.events.pokemon.PokemonSentPostEvent
+import com.cobblemon.mod.common.api.events.pokemon.PokemonSentEvent
 import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
@@ -108,7 +108,7 @@ object DialogueSystem {
             }
         }
 
-        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedPostEvent ->
+        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
             val battle = event.battle
             val server = battle.players.firstOrNull()?.server ?: return@subscribe
             if (config.dialogueOnBattle) {
@@ -149,7 +149,7 @@ object DialogueSystem {
             }
         }
 
-        CobblemonEvents.POKEMON_SENT_POST.subscribe { event: PokemonSentPostEvent ->
+        CobblemonEvents.POKEMON_SENT_POST.subscribe { event: PokemonSentEvent ->
             val pokemon = event.pokemon
             val ownerId = pokemon.getOwnerUUID() ?: return@subscribe
 

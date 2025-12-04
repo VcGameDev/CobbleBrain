@@ -1,7 +1,7 @@
 plugins {
     id("java")
-    id("fabric-loom") version("1.9-SNAPSHOT")
-    kotlin("jvm") version ("2.1.0")
+    id("fabric-loom") version("1.11-SNAPSHOT")
+    kotlin("jvm") version ("2.2.20")
 }
 
 group = property("maven_group")!!
@@ -42,8 +42,10 @@ tasks {
     jar {
         from("LICENSE")
     }
+}
 
-    compileKotlin {
-        kotlinOptions.jvmTarget = "21"
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
 }
