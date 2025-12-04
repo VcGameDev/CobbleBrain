@@ -78,15 +78,15 @@ object DialogueSystem {
             // Instrução sobre o comando
             player.sendSystemMessage(
                 Component.literal("Welcome to Cobblebrain! Use the command ").withStyle(ChatFormatting.YELLOW)
-                    .append(Component.literal("/msgpk <mensagem>").withStyle(ChatFormatting.AQUA))
-                    .append(" to talk to the pokemons.")
+                    .append(Component.literal("/mpk <message>").withStyle(ChatFormatting.AQUA))
+                    .append(" to talk to Pokemón.")
             )
 
             // Lembrete sobre config
             player.sendSystemMessage(
                 Component.literal("customize the mod (and its language) as you wish in ").withStyle(ChatFormatting.YELLOW)
                     .append(Component.literal("cobblebrain.json").withStyle(ChatFormatting.AQUA))
-                    .append(" in run/config.")
+                    .append(" in the config folder.")
             )
         }
 
@@ -707,24 +707,20 @@ object DialogueSystem {
     - Use a double '@@' for long-term memories. Long-term memories represent impactful events, defining traits, or meaningful experiences that leave a lasting mark on the Pokémon’s personality, relationships, or sense of self — things that significantly alter identity or history.
     - Pokémon never speak their memories aloud; they are stored after dialogue.
     
-    - Finally, at the very end, output one action validation line for each Pokémon, always using exactly one of:
-        #PokemonName: attack
-        #PokemonName: eat
-        #PokemonName: buff
-        #PokemonName: debuff enemy
-        #PokemonName: sit
-        #PokemonName: protect
-        #PokemonName: idle
-        (if pokemon has primary fire type) #PokemonName: cook 
-        (if pokemon has primary steel type) #PokemonName: repair
-        (if pokemon has primary grass type) #PokemonName: grow
-        (if pokemon has primary ghost type) #PokemonName: shift
-    - Every Pokémon must provide exactly one action, If irrelevant, use 'idle'. avoid repeating the same action multiple times...
-    - Pokémon with a Friendship level closer to 225 are more likely to follow the player's commands if requested, while those closer to 0 are less likely to be followed and are more prone to following riskier commands on their own (such as attack and protect), but be careful not to overdo it...
+    - Finally, at the very end, output one action validation line for each Pokémon that will execute a action, always using exactly one of:
+        #PokemonName: attack (attack any mob closest to the pokemon)
+        #PokemonName: eat (self-explanatory)
+        #PokemonName: buff (give a buff such as speed, regeneration to the player)
+        #PokemonName: debuff enemy (give a debuff to a enemy such as weakness, poison to a agressive mob)
+        #PokemonName: sit (self-explanatory)
+        #PokemonName: protect (protects the player from aggressive mobs)
+        #PokemonName: idle (Use this if an action should be stopped or the Pokémon will return to its normal state)
+        (if pokemon has primary fire type) #PokemonName: cook (cook food and smelt ores)
+        (if pokemon has primary steel type) #PokemonName: repair (repair any item with durability)
+        (if pokemon has primary grass type) #PokemonName: grow (grow saplings and crops)
+        (if pokemon has primary ghost type) #PokemonName: shift (It sends the player to the phantom dimension... grants invisibility, speed, jump, and slow falling to the player, but with weaknesses.)
     - Pokémon must continue their own emotional thread when asked about it.  
-    If the player asks a question, respond from the Pokémon’s perspective, not as if the player is confused.  
-    Dialogue must feel like an ongoing conversation, not isolated lines, use the memories to understand the context.
-
+    If the player asks a question, respond from the Pokémon’s perspective, not as if the player is confused.
     
     - ALWAYS FOLLOW THE OUTPUTFORMAT WHEN SENDING YOUR RESPONSE, NO HYPHENS
     - USE THE POKEMON NICKNAME OR THE SPECIES IF THE NICKNAME DOES NOT EXIST, NEVER COMBINE THE TWO IN THE MESSAGE...

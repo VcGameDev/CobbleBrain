@@ -121,7 +121,7 @@ fun registerTickHandler() {
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
             val scaledDamage = 2.0f + (atk * 0.03f)
-            val speed = 1 + (spd * 0.02)
+            val speed = 1.05 + (spd * 0.01)
 
             when (action) {
                 "grow" -> {
@@ -388,7 +388,7 @@ fun registerTickHandler() {
                         pokemon.target = null
 
                         val idleTicks = chaseCooldown.getOrDefault(pokemonId, 0)
-                        if (idleTicks > 100) {
+                        if (idleTicks > 1500) {
                             exitAttackMode(pokemon)
                             sendMessage(owner, "${pokemon.displayName?.string} stopped PROTECTING...",
                                 ChatFormatting.RED

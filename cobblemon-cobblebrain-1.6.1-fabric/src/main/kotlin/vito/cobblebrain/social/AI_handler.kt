@@ -163,8 +163,8 @@ class AIHandler(dirPath: String) {
 
 
     private fun limitarHistorico() {
-        // mantém no máximo 6 mensagens (3 user + 3 model)
-        while (historico.size > 6) {
+        // mantém no máximo 4 mensagens (2 user + 2 model)
+        while (historico.size > 4) {
             historico.removeAt(0)
         }
     }

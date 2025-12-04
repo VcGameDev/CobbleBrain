@@ -40,13 +40,13 @@ class CobblebrainConfig {
     // Maximum number of dialogues that can be saved and sent to the AI (limit set to 1).
     val maxDialogueSaves: Int = 1
 
-    val maxShortMemory: Int = 15
-    val maxLongMemory: Int = 15
+    val maxShortMemory: Int = 10
+    val maxLongMemory: Int = 10
     // The language selected for the AI to respond (in this case, English).
     val selectedLanguage: String = "English"
 
     // Defines whether the dialogue changes the Pokémon's friendship with the players.
-    var decreaseFriendship: Boolean = true
+    var decreaseFriendship: Boolean = false
     var increaseFriendship: Boolean = true
 
     //Instructions for the AI to generate dialogue
