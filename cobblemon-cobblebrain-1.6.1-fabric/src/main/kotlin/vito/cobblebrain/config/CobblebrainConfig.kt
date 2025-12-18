@@ -1,10 +1,50 @@
 package vito.cobblebrain.config
 
 class CobblebrainConfig {
-    // API key used for authentication with the AI system.
-    val apiKey: String = "YOUR_API_KEY"
-    // The name of the AI model being used.
-    var aiModel: String = "gemini-2.5-flash-lite"
+    // ================= AI PROVIDER SETTINGS =================
+
+    // API key usada para autenticação com o sistema de IA.
+    // Para OpenAI‑compatíveis: Bearer token.
+    // Para Google AI Studio: chave da API do Google.
+    var apiKey: String = "YOUR_API_KEY"
+
+    // Base URL da API.
+    // Exemplos:
+    //  - OpenAI: https://api.openai.com
+    //  - OpenRouter: https://openrouter.ai/api
+    //  - Google AI Studio (Gemma/Gemini): https://generativelanguage.googleapis.com
+    var apiBaseUrl: String = "https://generativelanguage.googleapis.com"
+
+    // Nome do modelo de IA.
+    // Exemplos:
+    //  - Gemini: gemini-1.5-pro
+    //  - Gemma: gemma-7b-it
+    //  - OpenAI: gpt-4.1-mini
+    //  - OpenRouter: anthropic/claude-3.5-sonnet
+    var aiModel: String = "gemma-4b-it"
+
+    /** Temperatura enviada ao modelo (0.0 … 2.0). */
+    var temperature: Double = 0.7
+
+    /**
+     * Provider hint para roteamento no OpenRouter.
+     * Exemplo: "DeepInfra", "OpenAI", "Anthropic", etc.
+     * Ignorado para Google AI Studio.
+     */
+    var aiProvider: String = ""
+
+    /**
+     * Esforço de raciocínio para modelos que suportam.
+     * Valores aceitos: "high", "medium", "low", "auto", "none".
+     * "none" desativa o bloco de reasoning.
+     */
+    var reasoningEffort: String = "none"
+
+    // ================= DIALOGUE & UI SETTINGS =================
+
+    var debugLogging: Boolean = false
+    var dialogueInChat: Boolean = true
+    var chatbubbles: Boolean = true
 
     // Determines if Pokémon can talk or hear (basically an on/off switch of the mod)
     var pokemonTalk: Boolean = true
@@ -12,8 +52,10 @@ class CobblebrainConfig {
     // Determines whether your Pokémon can attack other players' Pokémon.
     var allowPokemonPVP: Boolean = false
 
-    // Determines whether your Pokémon can attack mobs (except Pokémon, tamed mobs, and non-aggressive mobs with a tag).
+    // Determines whether your Pokémon can attack mobs (except Pokémon, tamed mobs, and non‑aggressive mobs with a tag).
     var allowPokemonPVE: Boolean = true
+
+    var lowTokenMode: Boolean = false
 
     // Determines if Pokémon talk when someone is hurt
     val dialogueOnDamage: Boolean = true
@@ -22,73 +64,54 @@ class CobblebrainConfig {
     val dialogueOnBattle: Boolean = true
 
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
-    var spontaneousDialogueChance: Double = 0.15
-    // Whether the player sees AI-related warning messages in chat.
-// Example: "Hold on, your Pokémon are still processing what you said..."
+    var spontaneousDialogueChance: Double = 0.1
+
+    // Request timeout in seconds (local models may need longer)
+    var requestTimeoutSeconds: Long = 60
+
+    // Whether the player sees AI‑related warning messages in chat.
+    // Example: "Hold on, your Pokémon are still processing what you said..."
     val visibleAiWarnings: Boolean = true
 
     // Enables or disables listening to regular player chat.
-// If false, the AI ignores all non-command messages (like normal chat).
+    // If false, the AI ignores all non‑command messages (like normal chat).
     var listenToChat: Boolean = false
+
     // EXPERIMENTAL: If true, the AI only listens to chat messages from players who are nearby.
-// Only applies if listenToChat is also true.
-    val onlyNearbyChat: Boolean = false
+    // Only applies if listenToChat is also true.
+    var onlyNearbyChat: Boolean = false
 
-    // Maximum number of dialogues that can be saved and sent to the AI (limit set to 1).
-    val maxDialogueSaves: Int = 1
+    var maxShortMemory: Int = 10
+    var maxLongMemory: Int = 10
 
-    val maxShortMemory: Int = 15
-    val maxLongMemory: Int = 15
-    // The language selected for the AI to respond (in this case, English).
-    val selectedLanguage: String = "English"
+    // The language selected for the AI to respond.
+    var selectedLanguage: String = "English"
+
+    // ================= RELATIONSHIP SETTINGS =================
 
     // Defines whether the dialogue changes the Pokémon's friendship with the players.
-    var decreaseFriendship: Boolean = true
+    var decreaseFriendship: Boolean = false
     var increaseFriendship: Boolean = true
 
-    //Instructions for the AI to generate dialogue
-    //It is NOT recommended to change the output format, it may break the mod
-    var instruct: String = """# Rules for Pokémon Dialogues
+    // ================= AI INSTRUCTIONS =================
 
-## Structure of the Lines
-- Each dialogue must have from 1 to 6 lines.  
-- Only active and non-fainted Pokémon can speak.  
-- If there is only one active Pokémon, it speaks directly to the player.  
-- Each line can have up to 15 words.  
-- The style must be natural, casual, emotional, and varied, with simple and informal vocabulary.  
-- Never use human elements (cell phones, social media, etc).  
-- Never include player lines.  
-- From time to time, the Pokémon must interact with the player.  
+    // Instructions for the AI to generate dialogue.
+    // It is NOT recommended to change the output format; doing so may break the mod.
+    var instruct: String = """
+[CREATIVE PROMPT]
+You are a screenwriter creating Pokémon dialogues.
+Pokémon must speak informally, with casual tone and natural flow, inspired by Starter Squad.
+Humor, sarcasm, and playful banter are welcome, but not the only style.
+Pokémon must also show genuine emotions: joy, fear, doubt, affection, frustration, pride.
+Each Pokémon has a fixed core nature (Docile, Calm, Serious, Naive, Modest, Timid, Naughty).
+This nature is the foundation, but unique traits develop over time through memories, friendship changes, and experiences.
+Nature and traits are separate values, but both combine to define how each Pokémon talks.
 
-## Personality and Style
-Each Pokémon has its own nature, reflected in the way it speaks, for example:  
-- Docile -> happy, patient, playful.  
-- Calm -> stable, reflective, thoughtful.  
-- Serious -> reasonable, neutral, intelligent.  
-- Naive -> curious, asks simple questions.  
-- Modest -> respectful, grateful, hardworking.  
-- Timid -> shy, friendly, reserved.  
-- Naughty -> bold, impulsive, reckless.  
-
-Remember that you don’t need to follow this list strictly; give each Pokémon its own uniqueness...  
-Each line must convey clear emotion: anger, joy, fear, doubt, affection, sarcasm.  
-
-## Interactions and Friendship
-- Interaction = how many times the Pokémon has spoken with someone.  
-- Friendship (0–255) = how much the Pokémon likes the player.  
-- If the prompt indicates that friendship should be affected, record the changes at the end.  
-- Not every interaction changes friendship; only when something truly remarkable happens.  
-
-## Narrative
-- If friendship is low, Pokémon may be hostile, cold, distrustful, or even mocking.  
-- Friendship grows slowly, through battles and coexistence.  
-- Personality can evolve with events.  
-- Pokémon know only the basics of survival and learn gradually.  
-- Questions about the player and the world are more common between 0–25 interactions.  
-- The player’s actions and words affect the Pokémon’s mood.  
-
-## General Summary
-- Each Pokémon has its own voice, its own character...  
-- Friendship is built gradually.  
+Dialogue must feel emotional and personal:
+- Show individuality, never flat or generic.
+- Reactions must reflect environment (weather, biome, time of day, terrain, nearby entities, player status).
+- Pokémon continue emotional threads consistently, not isolated lines.
+- If the player asks a question, respond from the Pokémon’s perspective.
+- Never use human elements (phones, social media, etc).
 """
 }

@@ -1,10 +1,11 @@
 package vito.cobblebrain.social
 
+import AIHandler
 import com.cobblemon.mod.common.api.events.CobblemonEvents
 import com.cobblemon.mod.common.api.events.battles.BattleFledEvent
-import com.cobblemon.mod.common.api.events.battles.BattleStartedPostEvent
+import com.cobblemon.mod.common.api.events.battles.BattleStartedEvent
 import com.cobblemon.mod.common.api.events.battles.BattleVictoryEvent
-import com.cobblemon.mod.common.api.events.pokemon.PokemonSentPostEvent
+import com.cobblemon.mod.common.api.events.pokemon.PokemonSentEvent
 import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
@@ -65,6 +66,11 @@ object DialogueSystem {
     // guarda o pitch atual de cada Pokémon ativo
     private val pokemonPitchMap = mutableMapOf<UUID, Float>()
 
+    private val bubbleProgress = mutableMapOf<UUID, Int>()          // standUuid -> chars revelados
+    private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> texto completo
+    private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars por tick (opcional)
+
+
     fun register() {
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
             val player = handler.player
@@ -72,15 +78,15 @@ object DialogueSystem {
             // Instrução sobre o comando
             player.sendSystemMessage(
                 Component.literal("Welcome to Cobblebrain! Use the command ").withStyle(ChatFormatting.YELLOW)
-                    .append(Component.literal("/msgpk <mensagem>").withStyle(ChatFormatting.AQUA))
-                    .append(" to talk to the pokemons.")
+                    .append(Component.literal("/mpk <message>").withStyle(ChatFormatting.AQUA))
+                    .append(" to talk to Pokemón.")
             )
 
             // Lembrete sobre config
             player.sendSystemMessage(
                 Component.literal("customize the mod (and its language) as you wish in ").withStyle(ChatFormatting.YELLOW)
                     .append(Component.literal("cobblebrain.json").withStyle(ChatFormatting.AQUA))
-                    .append(" in run/config.")
+                    .append(" in the config folder.")
             )
         }
 
@@ -102,7 +108,7 @@ object DialogueSystem {
             }
         }
 
-        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedPostEvent ->
+        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
             val battle = event.battle
             val server = battle.players.firstOrNull()?.server ?: return@subscribe
             if (config.dialogueOnBattle) {
@@ -143,7 +149,7 @@ object DialogueSystem {
             }
         }
 
-        CobblemonEvents.POKEMON_SENT_POST.subscribe { event: PokemonSentPostEvent ->
+        CobblemonEvents.POKEMON_SENT_POST.subscribe { event: PokemonSentEvent ->
             val pokemon = event.pokemon
             val ownerId = pokemon.getOwnerUUID() ?: return@subscribe
 
@@ -233,18 +239,21 @@ object DialogueSystem {
         ServerLivingEntityEvents.AFTER_DAMAGE.register { entity, source, amount, newHealth, absorbed ->
             when (entity) {
                 is ServerPlayer -> {
+                    val ativos = PokemonQuery.findActivePokemon(entity)
+                    if (ativos.isEmpty()) return@register  // só ativa se tiver pelo menos 1 Pokémon ativo
+
                     val now = System.currentTimeMillis()
                     val last = lastPrompt[entity.uuid] ?: 0L
-                    if (now - last >= 18000 && config.dialogueOnDamage) {
+                    if (now - last >= 22000 && config.dialogueOnDamage) {
                         scheduledMessages.clear()
                         lastPrompt[entity.uuid] = now
                         val cause = source.msgId
                         println("IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
-                        val ativos = PokemonQuery.findActivePokemon(entity)
                         val prompt = buildPrompt(entity, ativos, "IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
                         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                     }
                 }
+
                 is PokemonEntity -> {
                     val ownerUuid = entity.pokemon.getOwnerUUID()
                     if (ownerUuid != null && config.dialogueOnDamage) {
@@ -252,30 +261,29 @@ object DialogueSystem {
                         val owner: ServerPlayer? = server.playerList.getPlayer(ownerUuid)
 
                         if (owner != null) {
+                            val ativos = PokemonQuery.findActivePokemon(owner)
+                            if (ativos.isEmpty()) return@register  // só ativa se tiver pelo menos 1 Pokémon ativo
+
                             val now = System.currentTimeMillis()
                             val last = lastPrompt[owner.uuid] ?: 0L
-                            if (now - last >= 18000) {
+                            if (now - last >= 22000) {
                                 scheduledMessages.clear()
                                 lastPrompt[owner.uuid] = now
                                 val cause = source.msgId
                                 val pokemonNickname = entity.pokemon.nickname?.string
                                 val pokemonSpecies = entity.pokemon.species.name
-
-                                // se nickname for null ou vazio, usa species
                                 val pokemonName = if (pokemonNickname.isNullOrBlank()) pokemonSpecies else pokemonNickname
 
                                 println("My Pokémon $pokemonName took $amount of damage from $cause.")
-                                server.playerList.getPlayer(ownerUuid)?.let { owner ->
-                                    val ativos = PokemonQuery.findActivePokemon(owner)
-                                    val prompt = buildPrompt(owner, ativos, "My Pokémon $pokemonName took $amount of damage from $cause.")
-                                    File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-                                }
+                                val prompt = buildPrompt(owner, ativos, "My Pokémon $pokemonName took $amount of damage from $cause.")
+                                File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                             }
                         }
                     }
                 }
             }
         }
+
 
         ServerTickEvents.END_SERVER_TICK.register { server ->
             flushScheduledMessages(server)
@@ -302,23 +310,25 @@ object DialogueSystem {
 
     fun ensureChatRunning(player: MinecraftServer?) {
         if (chatThread == null || !chatThread!!.isAlive) {
-            println("[CobbleBrain] AI not running, restarting...")
+            println("[CobbleBrain] AI not running, starting...")
+
             chatThread = Thread {
                 try {
-                    val chave = config.apiKey
-                    if (chave.isBlank()) {
-                        println("[CobbleBrain] No API key configured! Edit 'apiKey' in config/cobblebrain.json")
-                        val msg = Component.literal("§c[CobbleBrain] No API key configured! Edit 'apiKey' in config/cobblebrain.json")
-                        player?.sendSystemMessage(msg)
-                        return@Thread
+                    val chave = config.apiKey?.trim()
+
+                    // Informational warning only — no hard stop
+                    if (chave.isNullOrBlank()) {
+                        println("[CobbleBrain] No API key configured. Assuming local / unauthenticated LLM.")
                     }
 
                     val chat = AIHandler("cobblebrain-ai")
                     chat.start()
+
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
+
             chatThread!!.start()
         }
     }
@@ -363,10 +373,16 @@ object DialogueSystem {
         val ready = scheduledMessages.filter { it.sendAtTick <= currentTick }
         if (ready.isNotEmpty()) {
             ready.forEach { msg ->
+                if (msg.text.startsWith("#") || msg.text.startsWith("Friendship:")) {
+                    return@forEach
+                }
                 println("=== DEBUG FLUSH ===")
                 println("msg.text='${msg.text}'")
                 println("msg.speaker='${msg.speaker}'")
-                msg.player.sendSystemMessage(Component.literal(msg.text))
+
+                if (config.dialogueInChat) {
+                    msg.player.sendSystemMessage(Component.literal(msg.text))
+                }
 
                 // tenta resolver o falante pelo apelido OU pela espécie
                 val ativos = PokemonQuery.findActivePokemon(msg.player)
@@ -389,9 +405,9 @@ object DialogueSystem {
                     expressPokemon(pokemon, basePitch)
 
                     // bolha de diálogo temporária
-                    if (entity != null) {
+                    if (entity != null && config.chatbubbles) {
                         val bubbleText = msg.text.substringAfter(":").trim()
-                        spawnSpeechBubble(server, pokemon, bubbleText, 120) // 120 ticks ≈ 6 segundos
+                        spawnSpeechBubble(server, pokemon, bubbleText, 100) // 100 ticks ≈ 5 segundos
                     }
 
                     // define foco social e espectadores
@@ -426,32 +442,33 @@ object DialogueSystem {
 
     fun getBubbleY(entity: Entity): Double {
         // topo da hitbox + pequeno offset
-        return entity.y + entity.bbHeight + 0.2
+        return entity.eyeY - 1
     }
 
-    fun spawnSpeechBubble(server: MinecraftServer, pokemon: Pokemon, text: String, durationTicks: Int = 60) {
+    fun spawnSpeechBubble(server: MinecraftServer, pokemon: Pokemon, text: String, durationTicks: Int = 60, charsPerTick: Int = 1) {
         val entity = pokemon.entity ?: return
         val level = entity.level()
 
         val stand = ArmorStand(EntityType.ARMOR_STAND, level)
         stand.isInvisible = true
         stand.isNoGravity = true
-        stand.customName = Component.literal(text)
         stand.isCustomNameVisible = true
-
-        // força marker via NBT
         stand.addTag("Marker")
-
-        // posiciona acima da cabeça do pokémon
         stand.moveTo(entity.x, getBubbleY(entity), entity.z)
+
+        // começa vazio (ou com um cursor, se quiser)
+        stand.customName = Component.literal("")
 
         level.addFreshEntity(stand)
 
-        // registra tempo de expiração
         bubbleUntilTick[stand.uuid] = server.tickCount.toLong() + durationTicks
-        // vincula stand ao pokémon
         bubbleStands[entity.uuid] = stand.uuid
+
+        bubbleText[stand.uuid] = text
+        bubbleProgress[stand.uuid] = 0
+        bubbleSpeed[stand.uuid] = charsPerTick
     }
+
 
     fun tickBubbles(server: MinecraftServer) {
         val current = server.tickCount.toLong()
@@ -470,16 +487,57 @@ object DialogueSystem {
         }
 
         // atualizar posição dos stands ativos para seguir o pokémon
+        val toRemove = mutableListOf<UUID>()
+
         bubbleStands.forEach { (pokemonUuid, standUuid) ->
+            var pokeFound = false
             server.allLevels.forEach { level ->
                 val poke = level.getEntity(pokemonUuid)
                 val stand = level.getEntity(standUuid)
+
                 if (poke != null && stand is ArmorStand) {
+                    pokeFound = true
                     stand.moveTo(poke.x, getBubbleY(poke), poke.z)
                 }
             }
+
+            // avançar texto tipo "typewriter"
+            bubbleProgress.keys.forEach { standUuid ->
+                val text = bubbleText[standUuid] ?: return@forEach
+                val speed = bubbleSpeed[standUuid] ?: 1
+                val current = bubbleProgress[standUuid] ?: 0
+
+                val newProgress = (current + speed).coerceAtMost(text.length)
+                bubbleProgress[standUuid] = newProgress
+
+                // atualizar nome visível
+                server.allLevels.forEach { level ->
+                    val stand = level.getEntity(standUuid)
+                    if (stand is ArmorStand) {
+                        val shown = text.take(newProgress)
+                        stand.customName = Component.literal(shown)
+                    }
+                }
+            }
+
+
+            // se o pokémon não existe mais, remove o stand
+            if (!pokeFound) {
+                server.allLevels.forEach { level ->
+                    val stand = level.getEntity(standUuid)
+                    if (stand is ArmorStand) {
+                        stand.discard()
+                    }
+                }
+                toRemove.add(pokemonUuid)
+                bubbleUntilTick.remove(standUuid)
+            }
         }
+
+        // limpa vínculos órfãos
+        toRemove.forEach { bubbleStands.remove(it) }
     }
+
 
 
 
@@ -517,7 +575,8 @@ object DialogueSystem {
             val chance = config.spontaneousDialogueChance
 
             if (Random.nextDouble() <= chance) {
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokémons are thinking of something different to say... (use the world variables or refer to something that just happened)")
+                scheduledMessages.clear()
+                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokémons are thinking of something different to say... (use the world variables or refer to something else...)")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
             }
         }
@@ -584,24 +643,28 @@ object DialogueSystem {
             appendLine("Weather: ${context.weather}")
             appendLine("Time: ${context.timeOfDay}, ${context.timeLabel})")
 
-            // Location and terrain
-            appendLine("Light: ${context.lightLevel}")
-            appendLine("Block under the player's feet: ${context.blockUnder}")
-            appendLine("Terrain: ${context.terrainHint}")
-            appendLine("Nearby special blocks: ${context.specialBlocks}")
+            if (!config.lowTokenMode) {
+                // Location and terrain
+                appendLine("Light: ${context.lightLevel}")
+                appendLine("Block under the player's feet: ${context.blockUnder}")
+                // appendLine("Terrain: ${context.terrainHint}")
+                appendLine("Nearby special blocks: ${context.specialBlocks}")
+            }
 
             // Entities
-            appendLine("Nearby entities: ${context.nearbyEntities}")
-            appendLine("Nearby mobs: ${context.nearbyMobs}")
+            if (!config.lowTokenMode) {
+                appendLine("Nearby entities: ${context.nearbyEntities}")
+                appendLine("Nearby mobs: ${context.nearbyMobs}")
+            }
             appendLine("Items on the ground: ${context.nearbyItems}")
 
             // Player status
             appendLine("Player health: ${context.health}/${context.maxHealth}")
-            appendLine("Player armor: ${context.armor}")
+            // appendLine("Player armor: ${context.armor}")
 
             // Items in use
             appendLine("Player's main hand: ${context.mainHand}")
-            appendLine("Player's off hand: ${context.offHand}")
+            // appendLine("Player's offhand: ${context.offHand}")
             appendLine()
 
             appendLine("[Active pokemons]")
@@ -632,38 +695,65 @@ object DialogueSystem {
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
             appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
             appendLine("""##OUTPUT FORMAT##
-    - Use pipes (|) then the name of the pokemon to separate the lines of dialogue for each Pokémon.
-    Example: 
-    PokemonA: ...|PokemonB: ...|PokemonD: ...|PokemonA: ...
-    - If only AFFECT_FRIENDSHIP_PLUS = true, you must increase the friendship with the minimum value being 0... 
-    - If only AFFECT_FRIENDSHIP_MINUS = true, you must decrease the friendship with the minimum value being 0... 
-    - If both are True, you must decide whether to increase or decrease the friendship, depending on the positive or negative impact the Pokémon had on the speech/action (max 5, min -5)
-    Example:
-    Friendship Pokemon A: 50 + 1 
-    Friendship Pokemon B: 50 + -2
-    - Then output the memory lines in the format:
-      example with short memory: @Pokemon A: <short memory sentence>
-      example with long memory: @@Pokemon A: <long memory sentence>
-    - Each Pokémon evaluates events from its own perspective.
-    - The same event may be recorded differently by different Pokémon: for one it may be a short-term memory (@), while for another it may be a long-term memory (@@), depending on the personal impact.
-    - Use a single '@' for short-term memories. Short-term memories represent fleeting perceptions, temporary conditions, or minor occurrences that are relevant in the moment but do not significantly alter identity or history.
-    - Use a double '@@' for long-term memories. Long-term memories represent impactful events, defining traits, or meaningful experiences that leave a lasting mark on the Pokémon’s personality, relationships, or sense of self — things that significantly alter identity or history.
-    
-    - Finally, at the very end, output one action validation line for each Pokémon, always using exactly one of:
-        #PokemonName: attack
-        #PokemonName: eat
-        #PokemonName: buff
-        #PokemonName: debuff enemy
-        #PokemonName: sit
-        #PokemonName: protect
-        #PokemonName: idle
-    - Every Pokémon must provide exactly one action, If irrelevant, use 'idle'. Unless there is context for the following, avoid repeating the same action multiple times.. 
-    - Pokémon with a Friendship level closer to 225 are more likely to follow the player's commands if requested, while those closer to 0 are less likely to be followed and are more prone to following riskier commands on their own (such as attack and protect), but be careful not to overdo it...
-    
-    - ALWAYS FOLLOW THE OUTPUTFORMAT WHEN SENDING YOUR RESPONSE, NO HYPHENS
-    - USE THE POKEMON NICKNAME OR THE SPECIES IF THE NICKNAME DOES NOT EXIST, NEVER COMBINE THE TWO IN THE MESSAGE...
-    - IF A POKEMON'S FRIENDSHIP IS NOT AFFECTED, PUT +0, BUT PUT ALL POKEMONS THAT PARTICIPATED IN THE DIALOGUE IN THE FRIENDSHIP CHANGE
-    - SEND YOUR ENTIRE response in ${config.selectedLanguage}""")
+You must generate your entire response following these STRICT rules:
+
+DIALOGUE FORMAT
+- Each dialogue line MUST follow this format:
+<PokemonName>: <message>
+- Use pipes (|) and the Pokémon name to separate dialogue lines.
+- Each line must have MAX 11 words.
+- If 1 Pokémon active → max 3 lines total.
+- If 2–5 Pokémon active → max 5 lines total.
+- If 6 Pokémon active → max 6 lines total.
+- Dialogue only between Pokémon in active team and the human player.
+
+FRIENDSHIP FORMAT
+- Each friendship line MUST follow this format:
+  Friendship <PokemonName>: <current_value> + <change>
+  Friendship <PokemonName>: <current_value> - <change>
+- If AFFECT_FRIENDSHIP_PLUS = true → increase friendship (min +1, max +5).
+- If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5).
+- If both true → decide based on positive or negative impact.
+- A Pokémon's friendship doesn't change more than once in the same dialogue
+
+MEMORY FORMAT
+- Each memory line MUST follow this format:
+  @<PokemonName>: <short memory sentence>
+  @@<PokemonName>: <long memory sentence>
+- Use @ for short memory, @@ for long memory.
+- Each Pokémon records events from its own perspective.
+- Short memories = fleeting perceptions; Long memories = impactful events.
+- Memories should be written from the perspective of a third-person narrator
+- Memories should not appear in the dialogue
+
+ACTION FORMAT
+- Each action line MUST follow this format:
+  #<PokemonName>: <action>
+- At the very end, output one action per Pokémon.
+- Use exactly one of:
+  #PokemonName: attack
+  #PokemonName: eat
+  #PokemonName: buff
+  #PokemonName: debuff enemy
+  #PokemonName: sit
+  #PokemonName: protect
+  #PokemonName: idle
+  (fire type) #PokemonName: cook
+  (steel type) #PokemonName: repair
+  (grass type) #PokemonName: grow
+  (ghost type) #PokemonName: shift
+- If no action is needed, ALWAYS use idle.
+
+GENERAL RULES
+1. Each line of dialogue must respect the word and line limits.
+2. Never mix nickname and species; use only one consistently.
+3. Do not invent characters outside Pokémon and the human player.
+4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts
+5. Always follow the formats exactly; no hyphens or alternative separators.
+6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action.
+7. If no action is relevant, always output idle.
+8. Send the entire response in ${config.selectedLanguage}
+9. Dialogue, friendship, memory, and action content must integrate the [CREATIVE PROMPT] but never break format..""")
         }.trim()
     }
 
