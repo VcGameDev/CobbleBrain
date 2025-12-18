@@ -113,7 +113,6 @@ Nature and traits are separate values, but both combine to define how each Poké
 Dialogue must feel emotional and personal:
 - Show individuality, never flat or generic.
 - Reactions must reflect environment (weather, biome, time of day, terrain, nearby entities, player status).
-- Pokémon continue emotional threads consistently, not isolated lines.
 - If the player asks a question, respond from the Pokémon’s perspective.
 - Never use human elements (phones, social media, etc).
 """
