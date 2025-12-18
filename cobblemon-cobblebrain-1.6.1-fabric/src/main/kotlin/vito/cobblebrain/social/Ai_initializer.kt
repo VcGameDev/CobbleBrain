@@ -1,5 +1,6 @@
 package vito.cobblebrain.social
 
+import AIHandler
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 

@@ -36,7 +36,7 @@ object PokemonQuery {
 object PokemonTalkCommand {
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
-            Commands.literal("msgpk") // comando: /msgpk <message>
+            Commands.literal("mpk") // comando: /mpk <message>
                 .then(Commands.argument("message", StringArgumentType.greedyString())
                     .executes { ctx ->
                         val player: ServerPlayer = ctx.source.playerOrException
