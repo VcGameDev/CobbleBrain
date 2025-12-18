@@ -21,7 +21,7 @@ class CobblebrainConfig {
     //  - Gemma: gemma-7b-it
     //  - OpenAI: gpt-4.1-mini
     //  - OpenRouter: anthropic/claude-3.5-sonnet
-    var aiModel: String = "gemma-4b-it"
+    var aiModel: String = "gemma-12b-it"
 
     /** Temperatura enviada ao modelo (0.0 … 2.0). */
     var temperature: Double = 0.7
@@ -43,7 +43,9 @@ class CobblebrainConfig {
     // ================= DIALOGUE & UI SETTINGS =================
 
     var debugLogging: Boolean = false
+
     var dialogueInChat: Boolean = true
+
     var chatbubbles: Boolean = true
 
     // Determines if Pokémon can talk or hear (basically an on/off switch of the mod)
@@ -55,7 +57,8 @@ class CobblebrainConfig {
     // Determines whether your Pokémon can attack mobs (except Pokémon, tamed mobs, and non‑aggressive mobs with a tag).
     var allowPokemonPVE: Boolean = true
 
-    var lowTokenMode: Boolean = false
+    // When active, it omits some world information to use fewer tokens
+    var lowTokenMode: Boolean = true
 
     // Determines if Pokémon talk when someone is hurt
     val dialogueOnDamage: Boolean = true
@@ -81,8 +84,8 @@ class CobblebrainConfig {
     // Only applies if listenToChat is also true.
     var onlyNearbyChat: Boolean = false
 
-    var maxShortMemory: Int = 10
-    var maxLongMemory: Int = 10
+    var maxShortMemory: Int = 5
+    var maxLongMemory: Int = 5
 
     // The language selected for the AI to respond.
     var selectedLanguage: String = "English"

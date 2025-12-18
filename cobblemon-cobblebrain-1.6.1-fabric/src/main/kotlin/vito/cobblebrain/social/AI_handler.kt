@@ -93,6 +93,7 @@ class AIHandler(dirPath: String) {
                 for (event in key.pollEvents()) {
                     if ((event.context() as Path).endsWith(comandoPath.fileName)) {
                         Thread.sleep(60)
+                        println("tentativa de processcommandfile")
                         processCommandFile()
                     }
                 }
@@ -111,34 +112,44 @@ class AIHandler(dirPath: String) {
         println(comandoPath.fileName.toString())
         if (fullText.isEmpty()) return
 
-        val playerLine = extractPlayerUtterance(fullText) ?: return
+        val playerLine = extractUtterance(fullText) ?: return
         val hash = sha256(playerLine)
         if (hash == lastPromptHash) return
 
         lastPromptHash = hash
         log("FULL PROMPT:\n${playerLine.lines().joinToString("\n") { "│ $it" }}")
 
+        println("processcommandfile ativo")
         enviarMensagem(fullText)
     }
 
-    private fun extractPlayerUtterance(text: String): String? =
-        text.lines()
-            .map { it.trim() }
-            .lastOrNull { it.startsWith("[the player") && it.contains("said]:") }
+    fun extractUtterance(text: String): String? {
+        return text.lines().firstNotNullOfOrNull { line ->
+            when {
+                line.startsWith("[") -> line.removePrefix("[").trim()
+                line.startsWith("IMPORTANT:") -> line.removePrefix("IMPORTANT:").trim()
+                else -> null
+            }
+        }
+    }
 
     // ------------------------------------------------------------
     private fun enviarMensagem(prompt: String) {
+        println(INSTRUCTS)
         if (prompt == "/end") exitProcess(0)
 
         try {
+            println("tentativa de acionar respostaNormal")
             respostaNormal(prompt)
         } catch (e: Exception) {
             lastPromptHash = null
             Files.writeString(respostaPath, "Erro interno: ${e.message}")
+            println("tentativa falha")
         }
     }
 
     private fun respostaNormal(prompt: String) {
+        println("RespostaNormal ativada")
         val responseText = if (apiBase.contains("generativelanguage.googleapis.com")) {
             callGoogleGemma(prompt)
         } else {
@@ -146,7 +157,7 @@ class AIHandler(dirPath: String) {
         }
 
         if (responseText.isBlank() || responseText.startsWith("Erro")) {
-            Files.writeString(respostaPath, "IA indisponível no momento")
+            Files.writeString(respostaPath, "An unexpected error occurred in the AI")
             lastPromptHash = null
             return
         }
@@ -182,7 +193,7 @@ class AIHandler(dirPath: String) {
 
         return try {
             val client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
+                .version(HttpClient.Version.HTTP_2)
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build()
 
@@ -201,6 +212,18 @@ class AIHandler(dirPath: String) {
         }
     }
 
+    private fun isOpenRouter(apiBase: String) =
+        apiBase.contains("openrouter.ai", ignoreCase = true)
+
+    private fun isLMStudio(apiBase: String) =
+        // ajuste conforme sua URL local do LM Studio (ex.: http://localhost:1234)
+        apiBase.contains("lmstudio", ignoreCase = true) ||
+                apiBase.contains("localhost", ignoreCase = true) // se você usar LM Studio local
+
+    private fun usesMaxTokens(apiBase: String) =
+        isOpenRouter(apiBase) || isLMStudio(apiBase)
+
+
     private fun buildOpenAIJson(prompt: String): String {
         val tempHistory = historico + Mensagem("user", prompt)
 
@@ -210,97 +233,104 @@ class AIHandler(dirPath: String) {
 
         val extras = mutableListOf<String>()
 
+        // sempre válido
         extras.add("\"temperature\": $TEMPERATURE")
-        extras.add("\"stream\": false")       // REQUIRED FOR LM STUDIO
-        extras.add("\"max_tokens\": -1")      // REQUIRED FOR LM STUDIO
+        extras.add("\"stream\": false")
 
-        if (PROVIDER_HINT.isNotEmpty()) {
-            extras.add(
-                """
+        // incluir max_tokens SOMENTE para OpenRouter e LM Studio
+        if (usesMaxTokens(apiBase)) {
+            extras.add("\"max_tokens\": -1") // LM Studio aceita -1; OpenRouter também costuma aceitar
+        }
+
+        // extras específicos de OpenRouter/LM Studio
+        if (isOpenRouter(apiBase) || isLMStudio(apiBase)) {
+            if (PROVIDER_HINT.isNotEmpty()) {
+                extras.add(
+                    """
                 "provider": {
                     "allow_fallbacks": false,
                     "order": ["${escape(PROVIDER_HINT)}"]
                 }
                 """.trimIndent()
-            )
-        }
+                )
+            }
 
-        if (REASONING != "none") {
-            extras.add(
-                """
+            if (REASONING != "none") {
+                extras.add(
+                    """
                 "reasoning": {
                     "effort": "$REASONING"
                 }
                 """.trimIndent()
-            )
+                )
+            }
         }
 
-        val extraJson =
-            if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
+        val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
         return """
-        {
-          "model": "$MODEL",
-          "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS)}" },
-            $messages
-          ]$extraJson
-        }
-        """.trimIndent()
+    {
+      "model": "$MODEL",
+      "messages": [
+        { "role": "system", "content": "${escape(INSTRUCTS)}" },
+        $messages
+      ]$extraJson
+    }
+    """.trimIndent()
     }
 
-    private fun extractOpenAIContent(body: String): String =
-        try {
+
+    private fun extractOpenAIContent(body: String): String {
+        return try {
             val json = gson.fromJson(body, Map::class.java)
-            val choices = json["choices"] as List<*>
-            val msg = choices[0] as Map<*, *>
-            val message = msg["message"] as Map<*, *>
-            message["content"] as String
+            val choices = json["choices"] as? List<*> ?: return "Erro parsing resposta"
+            val first = choices.firstOrNull() as? Map<*, *> ?: return "Erro parsing resposta"
+
+            // Formato OpenAI/OpenRouter
+            val message = first["message"] as? Map<*, *>
+            val content = message?.get("content") as? String
+            if (!content.isNullOrBlank()) return content
+
+            // Alguns provedores retornam "text"
+            val text = first["text"] as? String
+            if (!text.isNullOrBlank()) return text
+
+            "Erro parsing resposta"
         } catch (_: Exception) {
             "Erro parsing resposta"
         }
+    }
+
 
     // ================= GOOGLE GEMMA / GEMINI =================
     private fun callGoogleGemma(prompt: String): String {
-        // Monta URL COM a API key como query param (padrão da Generative Language API)
         val url = "$apiBase/v1beta/models/$MODEL:generateContent?key=${apiKey ?: ""}"
 
-        val jsonBody = """
-    {
-      "contents": [
-        {
-          "role": "user",
-          "parts": [
-            { "text": "${escape(INSTRUCTS + prompt)}" }
-          ]
-        }
-      ],
-      "generationConfig": {
-        "temperature": $TEMPERATURE
-      }
-    }
-    """.trimIndent()
+        val requestBody = mapOf(
+            "contents" to listOf(
+                mapOf(
+                    "role" to "user",
+                    "parts" to listOf(mapOf("text" to escape(INSTRUCTS + prompt)))
+                )
+            ),
+            "generationConfig" to mapOf("temperature" to TEMPERATURE)
+        )
+        val jsonBody = gson.toJson(requestBody)
 
-        log("REQUEST JSON (Google Gemma/Gemini):\n${jsonBody.lines().joinToString("\n") { "│ $it" }}")
-
-        val builder = HttpRequest.newBuilder()
+        val req = HttpRequest.newBuilder()
             .uri(URI.create(url))
             .header("Content-Type", "application/json")
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-
-        // REMOVIDO: Authorization Bearer — Google usa ?key= no endpoint
-        val req = builder.build()
+            .build()
 
         return try {
             val client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
+                .version(HttpClient.Version.HTTP_2)
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build()
 
             val res = client.send(req, HttpResponse.BodyHandlers.ofString())
-
-            log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
 
             if (res.statusCode() != 200) {
                 throw RuntimeException("HTTP ${res.statusCode()} - ${res.body()}")
@@ -308,11 +338,9 @@ class AIHandler(dirPath: String) {
 
             extractGoogleGemmaContent(res.body())
         } catch (e: Exception) {
-            log("ERROR (Google Gemma/Gemini): ${e.message}")
             "Erro API Google: ${e.message}"
         }
     }
-
 
     private fun extractGoogleGemmaContent(body: String): String =
         try {

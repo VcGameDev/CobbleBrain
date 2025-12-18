@@ -360,7 +360,7 @@ object DialogueSystem {
         scheduledMessages.clear()
 
         val ativos = PokemonQuery.findActivePokemon(player)
-        val prompt = buildPrompt(player, ativos, "") + "\n\n[the player (owner of the pokemon team) said]: $text"
+        val prompt = buildPrompt(player, ativos, "\n\n[The player (owner of the pokemon team) said: $text")
         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
 
         // Marca que esse jogador foi o último a falar
@@ -575,9 +575,10 @@ object DialogueSystem {
             val chance = config.spontaneousDialogueChance
 
             if (Random.nextDouble() <= chance) {
-                scheduledMessages.clear()
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokémons are thinking of something different to say... (use the world variables or refer to something else...)")
+                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokemon are thinking of something different to say... (use the world variables or refer to something else...)")
                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                println("tentativa de dialogo espontaneo")
+                return
             }
         }
     }
