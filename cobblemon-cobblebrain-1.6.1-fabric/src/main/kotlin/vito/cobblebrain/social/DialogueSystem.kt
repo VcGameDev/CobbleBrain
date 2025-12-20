@@ -59,6 +59,7 @@ object DialogueSystem {
     private var currentSpeaker: Pokemon? = null
     private var speakerUntilTick: Long = 0L
     private val currentViewers = mutableListOf<Pokemon>()
+
     // guarda o último momento em que cada jogador disparou a lógica
     private val lastPrompt: MutableMap<UUID, Long> = ConcurrentHashMap()
 
@@ -83,7 +84,8 @@ object DialogueSystem {
 
             // Lembrete sobre config
             player.sendSystemMessage(
-                Component.literal("customize the mod (and its language) as you wish in ").withStyle(ChatFormatting.YELLOW)
+                Component.literal("customize the mod (and its language) as you wish in ")
+                    .withStyle(ChatFormatting.YELLOW)
                     .append(Component.literal("cobblebrain.json").withStyle(ChatFormatting.AQUA))
                     .append(" in the config folder. If you need help, open setup_tutorial_cobblebrain.txt")
             )
@@ -248,7 +250,11 @@ object DialogueSystem {
                         lastPrompt[entity.uuid] = now
                         val cause = source.msgId
                         println("IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
-                        val prompt = buildPrompt(entity, ativos, "IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
+                        val prompt = buildPrompt(
+                            entity,
+                            ativos,
+                            "IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth"
+                        )
                         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                     }
                 }
@@ -272,9 +278,12 @@ object DialogueSystem {
                                 val pokemonNickname = entity.pokemon.nickname?.string
                                 val pokemonSpecies = entity.pokemon.species.name
                                 val pokemonName = if (pokemonNickname.isNullOrBlank()) pokemonSpecies else pokemonNickname
-
                                 println("My Pokémon $pokemonName took $amount of damage from $cause.")
-                                val prompt = buildPrompt(owner, ativos, "My Pokémon $pokemonName took $amount of damage from $cause.")
+                                val prompt = buildPrompt(
+                                    owner,
+                                    ativos,
+                                    "My Pokémon $pokemonName took $amount of damage from $cause."
+                                )
                                 File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
                             }
                         }
@@ -331,6 +340,7 @@ object DialogueSystem {
             chatThread!!.start()
         }
     }
+
     private var lastSpeakerPlayer: ServerPlayer? = null
 
     fun onPlayerChat(player: ServerPlayer, text: String) {
@@ -351,7 +361,7 @@ object DialogueSystem {
         if (ready.isNotEmpty()) {
             ready.forEach { msg ->
                 if (msg.text.startsWith("#") ||
-                    (!config.showFriendship && msg.text.startsWith("Friendship"))) {
+                    (!config.showFriendship && msg.text.lowercase().startsWith("friendship"))) {
                     return@forEach
                 }
                 println("=== DEBUG FLUSH ===")
@@ -438,7 +448,13 @@ object DialogueSystem {
         return entity.eyeY - 1
     }
 
-    fun spawnSpeechBubble(server: MinecraftServer, pokemon: Pokemon, text: String, durationTicks: Int = 60, charsPerTick: Int = 1) {
+    fun spawnSpeechBubble(
+        server: MinecraftServer,
+        pokemon: Pokemon,
+        text: String,
+        durationTicks: Int = 60,
+        charsPerTick: Int = 1
+    ) {
         val entity = pokemon.entity ?: return
         val level = entity.level()
 
@@ -530,9 +546,6 @@ object DialogueSystem {
         // limpa vínculos órfãos
         toRemove.forEach { bubbleStands.remove(it) }
     }
-
-
-
 
 
     // reaplica o olhar todos os ticks enquanto durar o foco
@@ -724,12 +737,13 @@ FRIENDSHIP FORMAT
 MEMORY FORMAT
 - Each memory line MUST follow this format:
   @<PokemonName>: <short memory sentence>
-  @@<PokemonName>: <long memory sentence>
-- Use @ for short memory, @@ for long memory.
+  @@<PokemonName>: <core memory sentence>
+- Use @ for short memory, @@ for core memory.
 - Each Pokémon records events from its own perspective.
-- Short memories = fleeting perceptions; Long memories = impactful events.
-- Memories should be written from the perspective of a third-person narrator
+- Short memories = fleeting perceptions; Core memories = impactful events.
+- Memories MUST be written from the perspective of a third-person narrator, describing what happens to the Pokémon 
 - Memories should not appear in the dialogue
+- Memories function as a historical log: Pokémon must use past memories to understand the context of future events
 
 ACTION FORMAT
 - Each action line MUST follow this format:
@@ -758,7 +772,9 @@ GENERAL RULES
 6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action.
 7. If no action is relevant, always output idle.
 8. Send the entire response in ${config.selectedLanguage}
-9. Dialogue, friendship, memory, and action content must integrate the [CREATIVE PROMPT] but never break format..""")
+9. Dialogue, friendship, memory, and action content must integrate the [CREATIVE PROMPT] but never break format.
+10. Dialogue must be generated using past memories as context, recalling previous events to explain or justify reactions."""
+            )
         }.trim()
     }
 
@@ -823,13 +839,20 @@ GENERAL RULES
 
         val ativos = server.playerList.players.flatMap { PokemonQuery.findActivePokemon(it) }
 
-        val regex = Regex("""Friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*\+\s*(-?\d+)""")
+        val regex = Regex(
+            """friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*([+-])\s*(-?\d+)""",
+            RegexOption.IGNORE_CASE
+        )
 
         val matches = regex.findAll(content)
         for (match in matches) {
             val nomePokemon = match.groupValues[1]
             val atual = match.groupValues[2].toDouble()
-            val incremento = match.groupValues[3].toDouble()
+            val sinal = match.groupValues[3] // "+" ou "-"
+            val incrementoValor = match.groupValues[4].toDouble()
+
+            // aplica o sinal corretamente
+            val incremento = if (sinal == "-") -incrementoValor else incrementoValor
 
             println("Pokémon: $nomePokemon")
             println("New friendship: ${atual + incremento}")
@@ -844,7 +867,6 @@ GENERAL RULES
             if (alvo != null) {
                 val incrementoInt = incremento.toInt()
 
-                // só mexe se houver entidade associada
                 alvo.entity?.let {
                     if (incremento > 0 && config.increaseFriendship) {
                         alvo.incrementFriendship(incrementoInt)
@@ -852,7 +874,6 @@ GENERAL RULES
 
                         val basePitch = (1.0f + incrementoInt * 0.04f).coerceAtMost(1.5f)
                         alvo.entity?.uuid?.let { pokemonPitchMap[it] = basePitch }
-
                     }
 
                     if (incremento < 0 && config.decreaseFriendship) {
@@ -861,7 +882,6 @@ GENERAL RULES
 
                         val basePitch = (1.0f + incrementoInt * 0.04f).coerceAtLeast(0.5f)
                         alvo.entity?.uuid?.let { pokemonPitchMap[it] = basePitch }
-
                     }
                 }
             } else {
@@ -869,7 +889,7 @@ GENERAL RULES
             }
         }
 
-            falas.map { it.substringBefore(":").trim() }.distinct().forEach { nome ->
+        falas.map { it.substringBefore(":").trim() }.distinct().forEach { nome ->
             val poke = findPokemonByName(nome, ativos)
             if (poke != null) {
                 participantes.add(Participante(poke.species.name, poke.uuid.toString()))
@@ -886,7 +906,7 @@ GENERAL RULES
         file.writeText("")
 
 
-    val startTick = server.tickCount.toLong()
+        val startTick = server.tickCount.toLong()
         falas.forEachIndexed { i, line ->
             val speakerName = line.substringBefore(":").trim()
             val speaker = findPokemonByName(speakerName, ativos)
@@ -896,14 +916,11 @@ GENERAL RULES
                     ScheduledMessage(
                         player = player,
                         text = line,
-                        sendAtTick = startTick + (i * 100),
+                        sendAtTick = if (i == 0) startTick else startTick + (i * 100),
                         speaker = speaker
                     )
                 )
             }
         }
-
-        lastResponseContent = content
-        file.writeText("")
     }
 }
