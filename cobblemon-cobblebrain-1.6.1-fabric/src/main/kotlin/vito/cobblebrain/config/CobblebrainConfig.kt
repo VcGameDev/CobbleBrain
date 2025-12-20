@@ -58,7 +58,7 @@ class CobblebrainConfig {
     var allowPokemonPVE: Boolean = true
 
     // When active, it omits some world information to use fewer tokens
-    var lowTokenMode: Boolean = true
+    var lowTokenMode: Boolean = false
 
     // Determines if Pokémon talk when someone is hurt
     val dialogueOnDamage: Boolean = true

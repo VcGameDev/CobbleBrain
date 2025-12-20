@@ -1,3 +1,5 @@
+package vito.cobblebrain.social
+
 import com.google.gson.Gson
 import java.io.File
 import java.net.URI
@@ -11,6 +13,9 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.system.exitProcess
 import vito.cobblebrain.config.CobblebrainConfig
+import java.io.IOException
+import java.net.http.HttpTimeoutException
+import kotlin.collections.get
 
 // ------------------------------------------------------------
 // DATA CLASSES
@@ -37,7 +42,7 @@ class AIHandler(dirPath: String) {
         private val TIMEOUT_SECONDS = config.requestTimeoutSeconds
     }
 
-    private val apiKey = config.apiKey?.trim()
+    private val apiKey = config.apiKey.trim()
     private val apiBase =
         config.apiBaseUrl
             .trimEnd('/')
@@ -71,7 +76,6 @@ class AIHandler(dirPath: String) {
     // ---------------- Conversation ----------------
     private val historico = mutableListOf<Mensagem>()
     private var lastPromptHash: String? = null
-    private var lastSpecies: String? = null
 
     init {
         if (!Files.exists(comandoPath)) Files.writeString(comandoPath, "")
@@ -150,20 +154,51 @@ class AIHandler(dirPath: String) {
 
     // Lista de erros HTTP mais comuns
     private val errorMessages = mapOf(
-        400 to "!Error 400! Bad Request: verifique o formato da requisição",
-        401 to "!Error 401! Unauthorized: API key inválida ou ausente",
-        403 to "!Error 403! Forbidden: acesso negado",
-        404 to "!Error 404! Not Found: endpoint não encontrado ou modelo não mais disponivel",
-        429 to "!Error 429! Too Many Requests: limite de uso excedido",
-        500 to "!Error 500! Internal Server Error: problema no servidor da IA",
-        502 to "!Error 502! Bad Gateway: erro de comunicação com o servidor, verifique sua conexão",
-        503 to "!Error 503! Service Unavailable: servidor temporariamente indisponível"
+        400 to """
+        !Error 400! Bad Request: Invalid request format.
+        Possible solution: Check the request body and parameters for correct syntax.
+    """.trimIndent(),
+
+        401 to """
+        !Error 401! Unauthorized: API key missing or invalid.
+        Possible solution: Ensure you are using a valid API key in the request headers.
+    """.trimIndent(),
+
+        403 to """
+        !Error 403! Forbidden: Access denied.
+        Possible solution: Verify your permissions or contact the administrator for access rights.
+    """.trimIndent(),
+
+        404 to """
+        !Error 404! Not Found: Endpoint not found or model unavailable.
+        Possible solution: Double-check the endpoint URL or confirm the model is still supported.
+    """.trimIndent(),
+
+        429 to """
+        !Error 429! Too Many Requests: Usage limit exceeded.
+        Possible solution: Implement rate limiting or wait before sending new requests.
+    """.trimIndent(),
+
+        500 to """
+        !Error 500! Internal Server Error: AI server encountered a problem.
+        Possible solution: Try again later or contact your provider's support if the problem persists.
+    """.trimIndent(),
+
+        502 to """
+        !Error 502! Bad Gateway: Communication error with the server.
+        Possible solution: Check your internet connection or retry the request.
+    """.trimIndent(),
+
+        503 to """
+        !Error 503! Service Unavailable: Server temporarily unavailable.
+        Possible solution: Wait and try again later; monitor server status if available.
+    """.trimIndent()
     )
-    /**
-     * Extrai uma mensagem de erro amigável a partir do status HTTP (opcional) e do corpo.
-     * - Se status != 200, tenta detalhar via JSON ou regex.
-     * - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
-     */
+
+    //Extrai uma mensagem de erro amigável a partir do status HTTP (opcional) e do corpo.
+     //* - Se status != 200, tenta detalhar via JSON ou regex.
+     //* - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
+     //*/
     fun extractErrorMessage(body: String, status: Int? = null): String {
     // 1) Se temos status e é erro, tenta detalhar
         if (status != null && status != 200) {
@@ -222,8 +257,8 @@ class AIHandler(dirPath: String) {
         } catch (e: Exception) {
             println("erro na requisição")
             when (e) {
-                is java.net.http.HttpTimeoutException -> "Erro: Timeout na requisição"
-                is java.io.IOException -> "Erro: Problema de rede (${e.message})"
+                is HttpTimeoutException -> "Erro: Timeout na requisição"
+                is IOException -> "Erro: Problema de rede (${e.message})"
                 else -> "Erro: ${e.message}"
             }
         }
@@ -269,7 +304,7 @@ class AIHandler(dirPath: String) {
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
-        if (!apiKey.isNullOrBlank()) {
+        if (apiKey.isNotBlank()) {
             builder.header("Authorization", "Bearer $apiKey")
         }
 
@@ -388,7 +423,7 @@ class AIHandler(dirPath: String) {
 
     // ================= GOOGLE GEMMA / GEMINI =================
     private fun callGoogleGemma(prompt: String): String {
-        val url = "$apiBase/v1beta/models/$MODEL:generateContent?key=${apiKey ?: ""}"
+        val url = "$apiBase/v1beta/models/$MODEL:generateContent?key=${apiKey}"
 
         val requestBody = mapOf(
             "contents" to listOf(

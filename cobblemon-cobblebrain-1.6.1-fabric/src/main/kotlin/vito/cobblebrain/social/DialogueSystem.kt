@@ -1,6 +1,5 @@
 package vito.cobblebrain.social
 
-import AIHandler
 import com.cobblemon.mod.common.api.events.CobblemonEvents
 import com.cobblemon.mod.common.api.events.battles.BattleFledEvent
 import com.cobblemon.mod.common.api.events.battles.BattleStartedEvent
@@ -351,7 +350,8 @@ object DialogueSystem {
         val ready = scheduledMessages.filter { it.sendAtTick <= currentTick }
         if (ready.isNotEmpty()) {
             ready.forEach { msg ->
-                if (msg.text.startsWith("#") || msg.text.startsWith("Friendship:")) {
+                if (msg.text.startsWith("#") ||
+                    (!config.showFriendship && msg.text.startsWith("Friendship"))) {
                     return@forEach
                 }
                 println("=== DEBUG FLUSH ===")
@@ -361,8 +361,8 @@ object DialogueSystem {
                 if (config.dialogueInChat) {
                     val text = msg.text
 
-                    // Regex para detectar "!error 123!"
-                    val regex = Regex("!error \\d{3}!")
+                    // Regex para detectar "!Error 123!"
+                    val regex = Regex("!Error \\d{3}!")
 
                     val component = if (regex.containsMatchIn(text)) {
                         // Mensagem inteira em vermelho
@@ -842,12 +842,11 @@ GENERAL RULES
             }
 
             if (alvo != null) {
-                val incrementoDouble = incremento
-                val incrementoInt = incrementoDouble.toInt()
+                val incrementoInt = incremento.toInt()
 
                 // só mexe se houver entidade associada
                 alvo.entity?.let {
-                    if (incrementoDouble > 0 && config.increaseFriendship) {
+                    if (incremento > 0 && config.increaseFriendship) {
                         alvo.incrementFriendship(incrementoInt)
                         println("Friendship of ${alvo.species.name} increased to ${alvo.friendship}")
 
@@ -856,7 +855,7 @@ GENERAL RULES
 
                     }
 
-                    if (incrementoDouble < 0 && config.decreaseFriendship) {
+                    if (incremento < 0 && config.decreaseFriendship) {
                         alvo.decrementFriendship(incrementoInt)
                         println("Friendship of ${alvo.species.name} decreased to ${alvo.friendship}")
 
