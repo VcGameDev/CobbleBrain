@@ -148,17 +148,101 @@ class AIHandler(dirPath: String) {
         }
     }
 
-    private fun respostaNormal(prompt: String) {
-        println("RespostaNormal ativada")
-        val responseText = if (apiBase.contains("generativelanguage.googleapis.com")) {
-            callGoogleGemma(prompt)
-        } else {
-            callOpenAISchema(prompt)
+    // Lista de erros HTTP mais comuns
+    private val errorMessages = mapOf(
+        400 to "!Error 400! Bad Request: verifique o formato da requisição",
+        401 to "!Error 401! Unauthorized: API key inválida ou ausente",
+        403 to "!Error 403! Forbidden: acesso negado",
+        404 to "!Error 404! Not Found: endpoint não encontrado ou modelo não mais disponivel",
+        429 to "!Error 429! Too Many Requests: limite de uso excedido",
+        500 to "!Error 500! Internal Server Error: problema no servidor da IA",
+        502 to "!Error 502! Bad Gateway: erro de comunicação com o servidor, verifique sua conexão",
+        503 to "!Error 503! Service Unavailable: servidor temporariamente indisponível"
+    )
+    /**
+     * Extrai uma mensagem de erro amigável a partir do status HTTP (opcional) e do corpo.
+     * - Se status != 200, tenta detalhar via JSON ou regex.
+     * - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
+     */
+    fun extractErrorMessage(body: String, status: Int? = null): String {
+    // 1) Se temos status e é erro, tenta detalhar
+        if (status != null && status != 200) {
+            // Tenta JSON estruturado (OpenAI/Google)
+            try {
+                val json = gson.fromJson(body, Map::class.java)
+                val error = json["error"] as? Map<*, *>
+                if (error != null) {
+                    val code = (error["code"] as? Number)?.toInt() ?: status
+                    val msg = error["message"] as? String ?: "Erro desconhecido"
+                    return "Erro $code: $msg"
+                }
+            } catch (_: Exception) {
+                // Se não for JSON, tenta regex tipo "HTTP 404"
+                val regex = Regex("HTTP (\\d+)")
+                val match = regex.find(body)
+                if (match != null) {
+                    val code = match.groupValues[1].toInt()
+                    return errorMessages[code] ?: "Erro HTTP $code: não mapeado"
+                }
+            }
+            // Fallback: status + corpo
+            return "HTTP $status: $body"
         }
 
+        // 2) Sem status (ou status 200 mas corpo indica erro): tenta extrair do body
+        try {
+            val json = gson.fromJson(body, Map::class.java)
+            val error = json["error"] as? Map<*, *>
+            if (error != null) {
+                val code = (error["code"] as? Number)?.toInt()
+                val msg = error["message"] as? String ?: "Erro desconhecido"
+                return if (code != null) "Erro $code: $msg" else "Erro: $msg"
+            }
+        } catch (_: Exception) {
+            val regex = Regex("HTTP (\\d+)")
+            val match = regex.find(body)
+            if (match != null) {
+                val code = match.groupValues[1].toInt()
+                return errorMessages[code] ?: "Erro HTTP $code: não mapeado"
+            }
+        }
+
+        // 3) Fallback final: devolve o body
+        return body
+    }
+
+    private fun respostaNormal(prompt: String) {
+        println("RespostaNormal ativada")
+        val responseText = try {
+            if (apiBase.contains("generativelanguage.googleapis.com")) {
+                callGoogleGemma(prompt)
+            } else {
+                callOpenAISchema(prompt)
+            }
+        } catch (e: Exception) {
+            println("erro na requisição")
+            when (e) {
+                is java.net.http.HttpTimeoutException -> "Erro: Timeout na requisição"
+                is java.io.IOException -> "Erro: Problema de rede (${e.message})"
+                else -> "Erro: ${e.message}"
+            }
+        }
+
+        // Se vier erro ou vazio
         if (responseText.isBlank() || responseText.startsWith("Erro")) {
-            Files.writeString(respostaPath, "An unexpected error occurred in the AI")
+            val msg = extractErrorMessage(responseText)
+
+            // Loga o erro junto com o hash do prompt
+            val hash = sha256(prompt)
+            Files.writeString(
+                respostaPath,
+                msg
+            )
+
+            // Resetar o hash garante que não trava novas tentativas
             lastPromptHash = null
+
+            log("Erro tratado para prompt $hash: $msg")
             return
         }
 
@@ -369,14 +453,6 @@ class AIHandler(dirPath: String) {
         MessageDigest.getInstance("SHA-256")
             .digest(input.toByteArray())
             .joinToString("") { "%02x".format(it) }
-
-    fun maybeResetHistoryIfSpeciesChanged(currentSpecies: String) {
-        if (lastSpecies != null && lastSpecies != currentSpecies) {
-            historico.clear()
-            lastPromptHash = null
-        }
-        lastSpecies = currentSpecies
-    }
 }
 
 // ------------------------------------------------------------

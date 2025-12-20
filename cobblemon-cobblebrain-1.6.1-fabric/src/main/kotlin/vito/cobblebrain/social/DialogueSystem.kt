@@ -86,7 +86,7 @@ object DialogueSystem {
             player.sendSystemMessage(
                 Component.literal("customize the mod (and its language) as you wish in ").withStyle(ChatFormatting.YELLOW)
                     .append(Component.literal("cobblebrain.json").withStyle(ChatFormatting.AQUA))
-                    .append(" in the config folder.")
+                    .append(" in the config folder. If you need help, open setup_tutorial_cobblebrain.txt")
             )
         }
 
@@ -301,23 +301,23 @@ object DialogueSystem {
             }
 
             if (server.tickCount % 20 == 0) {
-                ensureChatRunning(server)
+                ensureChatRunning()
             }
         }
     }
 
     private var chatThread: Thread? = null
 
-    fun ensureChatRunning(player: MinecraftServer?) {
+    fun ensureChatRunning() {
         if (chatThread == null || !chatThread!!.isAlive) {
             println("[CobbleBrain] AI not running, starting...")
 
             chatThread = Thread {
                 try {
-                    val chave = config.apiKey?.trim()
+                    val chave = config.apiKey.trim()
 
                     // Informational warning only — no hard stop
-                    if (chave.isNullOrBlank()) {
+                    if (chave.isBlank()) {
                         println("[CobbleBrain] No API key configured. Assuming local / unauthenticated LLM.")
                     }
 
@@ -332,31 +332,9 @@ object DialogueSystem {
             chatThread!!.start()
         }
     }
-
-    private const val PROMPT_COOLDOWN = 40L // ~2 segundos (40 ticks)
-
-    val lastPromptTicks = mutableMapOf<UUID, Long>()
-
     private var lastSpeakerPlayer: ServerPlayer? = null
 
     fun onPlayerChat(player: ServerPlayer, text: String) {
-        val now = player.server.tickCount.toLong()
-        val last = lastPromptTicks[player.uuid] ?: 0L
-        val diff = now - last
-
-        if (diff < PROMPT_COOLDOWN) {
-            val wait = ((PROMPT_COOLDOWN - diff) / 20)
-                .coerceAtMost((PROMPT_COOLDOWN / 20).toInt().toLong())
-            if (config.visibleAiWarnings) {
-                player.sendSystemMessage(
-                    Component.literal("Calm down, the Pokémon are processing what you said... $wait s")
-                        .withStyle(ChatFormatting.RED)
-                )
-            }
-            return
-        }
-
-        lastPromptTicks[player.uuid] = now
         scheduledMessages.clear()
 
         val ativos = PokemonQuery.findActivePokemon(player)
@@ -381,7 +359,22 @@ object DialogueSystem {
                 println("msg.speaker='${msg.speaker}'")
 
                 if (config.dialogueInChat) {
-                    msg.player.sendSystemMessage(Component.literal(msg.text))
+                    val text = msg.text
+
+                    // Regex para detectar "!error 123!"
+                    val regex = Regex("!error \\d{3}!")
+
+                    val component = if (regex.containsMatchIn(text)) {
+                        // Mensagem inteira em vermelho
+                        Component.literal(text).withStyle { style ->
+                            style.withColor(ChatFormatting.RED)
+                        }
+                    } else {
+                        // Mensagem normal
+                        Component.literal(text)
+                    }
+
+                    msg.player.sendSystemMessage(component)
                 }
 
                 // tenta resolver o falante pelo apelido OU pela espécie
@@ -568,6 +561,13 @@ object DialogueSystem {
     }
 
     private fun runSocialTick(server: MinecraftServer) {
+        val comandoFile = File("cobblebrain-ai/comando_ia.txt")
+        val isEmpty = !comandoFile.exists() || comandoFile.readText().isBlank()
+
+        if (!isEmpty) {
+            return
+        }
+
         for (player in server.playerList.players) {
             val ativos = PokemonQuery.findActivePokemon(player)
             if (ativos.isEmpty()) continue
@@ -575,8 +575,12 @@ object DialogueSystem {
             val chance = config.spontaneousDialogueChance
 
             if (Random.nextDouble() <= chance) {
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: The Pokemon are thinking of something different to say... (use the world variables or refer to something else...)")
-                File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                val prompt = buildPrompt(
+                    player,
+                    ativos,
+                    "IMPORTANT: The Pokemon are thinking of something different to say... (use the world variables or refer to something else...)"
+                )
+                comandoFile.writeText(prompt)
                 println("tentativa de dialogo espontaneo")
                 return
             }

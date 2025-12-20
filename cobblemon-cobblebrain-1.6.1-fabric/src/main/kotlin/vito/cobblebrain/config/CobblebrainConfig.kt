@@ -21,7 +21,7 @@ class CobblebrainConfig {
     //  - Gemma: gemma-7b-it
     //  - OpenAI: gpt-4.1-mini
     //  - OpenRouter: anthropic/claude-3.5-sonnet
-    var aiModel: String = "gemma-12b-it"
+    var aiModel: String = "gemma-3-12b-it"
 
     /** Temperatura enviada ao modelo (0.0 … 2.0). */
     var temperature: Double = 0.7
@@ -72,10 +72,6 @@ class CobblebrainConfig {
     // Request timeout in seconds (local models may need longer)
     var requestTimeoutSeconds: Long = 60
 
-    // Whether the player sees AI‑related warning messages in chat.
-    // Example: "Hold on, your Pokémon are still processing what you said..."
-    val visibleAiWarnings: Boolean = true
-
     // Enables or disables listening to regular player chat.
     // If false, the AI ignores all non‑command messages (like normal chat).
     var listenToChat: Boolean = false
@@ -95,6 +91,7 @@ class CobblebrainConfig {
     // Defines whether the dialogue changes the Pokémon's friendship with the players.
     var decreaseFriendship: Boolean = false
     var increaseFriendship: Boolean = true
+    var showFriendship: Boolean = true
 
     // ================= AI INSTRUCTIONS =================
 
@@ -103,7 +100,7 @@ class CobblebrainConfig {
     var instruct: String = """
 [CREATIVE PROMPT]
 You are a screenwriter creating Pokémon dialogues.
-Pokémon must speak informally, with casual tone and natural flow, inspired by Starter Squad.
+Pokémon must speak informally, with casual tone and natural flow.
 Humor, sarcasm, and playful banter are welcome, but not the only style.
 Pokémon must also show genuine emotions: joy, fear, doubt, affection, frustration, pride.
 Each Pokémon has a fixed core nature (Docile, Calm, Serious, Naive, Modest, Timid, Naughty).
