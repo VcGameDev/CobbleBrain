@@ -280,6 +280,12 @@ Location: `.minecraft/config/cobblebrain.json`
   Yes, via LM Studio. But be careful: large models may cause crashes or require strong hardware.  
 </details>
 
+<details>
+  <summary>I want to revert my cobblebrain.json to default. What should I do?</summary>
+  Delete or rename your current `cobblebrain.json` file inside `.minecraft/config/`.  
+  When you restart the game, the mod will automatically generate a new config file with the default values.  
+</details>
+
 ---
 
 ## Contributing
