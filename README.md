@@ -1,23 +1,18 @@
 # CobbleBrain – AI Dialogue System for Cobblemon
 
-CobbleBrain is an open-source Minecraft mod that gives Pokémon a "brain," allowing them to think, talk, and interact with their surroundings in dynamic ways.  
-Easy to set up and play!
+CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions more lively and responsive.
 
-![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
-
-
----
-
-## Table of Contents
+## 📖 Table of Contents
 - [About](#about)
 - [Features](#features)
 - [Installation](#installation)
 - [How to Play](#how-to-play)
-- [Configuration](#configuration (`cobblebrain.json`))
-- [Development Status](#development-status)
+- [Configuration](#configuration)
+- [Usage Recommendations](#usage-recommendations)
 - [FAQ](#faq)
 - [Contributing](#contributing)
 - [License](#license)
@@ -26,118 +21,278 @@ Easy to set up and play!
 ---
 
 ## About
-
-CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic personalities and dialogue.  
-They can talk to you, interact with teammates, and even react to the world around them — making your adventures more immersive.
+CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic personalities and dialogue. They can talk to you, react to battles, respond to the environment, and even interact spontaneously during your adventure.
 
 ---
 
 ## Features
-
-- Pokémon can talk to the player and to other team members.  
-- Dialogue is influenced by:
-  - Pokémon’s nature  
-  - Friendship level  
-  - Past interactions  
-  - World conditions (weather, time of day, biome)  
-- Pokémon can assist you on your adventures, warning you about nearby ores or blocks of interest *(configurable soon)*.  
-- Your actions and words affect friendship with your Pokémon.  
-- AI-driven dialogue system with memory of past interactions.  
+- Pokémon can talk to the player and to each other.  
+- Dialogue influenced by friendship, nature, past interactions, and world conditions.  
+- Memory system that stores previous interactions.
+- Pokémon can perform actions such as cooking, repairing, and even growing trees.
+- Configurable PvE/PvP, friendship, and dialogue style.  
+- Supports **cloud AI models** (Google AI Studio, OpenAI, OpenRouter) and **local models** via LM Studio.
 
 ---
 
 ## Installation
+1. Install **Minecraft** with **Fabric Loader**.  
+2. Install **Cobblemon** and **Fabric API**.  
+3. Download the latest version of **CobbleBrain** from the *Releases* tab. You can also download it from CurseForge or Modrinth.  
+4. Place the `.jar` file into the `mods` folder.
 
-1. Download and install **Minecraft** with **Fabric (mod loader)** (compatible version).  
-2. Install **Cobblemon and Fabric API (compatible version)**.  
-3. Download the latest release of **CobbleBrain** from the [Releases](#) page.  
-4. Place the `.jar` file into your `mods` folder, along with cobblemon and Fabric API.  
+---
+
+## Usage Recommendations
+- **Low-end PC / simple laptop** → Cloud AI.  
+- **Powerful laptop with dedicated GPU** → Cloud AI or lightweight local models (4b–7b).  
+- **Moderate–high-end PC** → Cloud AI or robust local models (8b–12b).  
+- For local models, always prefer **quantized versions** (q4, q5, q8) to reduce RAM/GPU usage.
 
 ---
 
 ## How to Play
 
-1. **Create a Google AI Studio account**  
-   - ⚠️ *NOT Google Cloud!*  
-   - Just accept the terms with your Google account.  
+<details>
+  <summary>1. Initial Setup</summary>
 
-2. **Get your free API key**  
-   - Copy or generate one in Google AI Studio.  
-   - Paste it into the `apiKey` field inside `cobblebrain.json` in the `config` folder.  
-   - No billing required.  
+  - After installing the mod, go to `.minecraft/config/cobblebrain.json`.  
+  - Edit the file with your AI preferences (API key, model, language, etc.).  
 
-3. **Talk to your Pokémon**  
-   - Use `/msgpk <message>`  
-   - Or enable `listenToChat` in `cobblebrain.json` to let the AI listen to normal chat.  
+</details>
 
-🔗 [YouTube tutorial available here!](#)
+<details>
+  <summary>2. Choosing AI Mode</summary>
 
-> ⚠️ **Never share your API key with others!**
+  <details>
+    <summary>Cloud Mode (Easiest)</summary>
+
+    Cloud mode uses external AI providers to process dialogue.  
+
+    **Steps:**  
+    1. Create an account with a provider (examples: Google AI Studio, OpenAI, OpenRouter).  
+    2. Generate an API key from the provider’s dashboard.  
+    3. Choose a model (examples: `gemma-3-12b-it`, `gpt-4.1-mini`, `anthropic/claude-3.5-sonnet`).  
+    4. Edit `cobblebrain.json` with:  
+       - `apiKey`: your generated key  
+       - `apiBaseUrl`: provider’s official URL  
+       - `aiModel`: ID of the chosen model  
+
+  </details>
+
+  <details>
+    <summary>Local Mode</summary>
+
+    Local mode runs AI models directly on your computer using LM Studio.
+    WARNING: LOCAL MODELS HAVE NOT YET BEEN TESTED IN THE MOD AND MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO HEAVY. USE AT YOUR OWN RISK!
+
+    **Steps:**  
+    1. Install [LM Studio](https://lmstudio.ai) (available for Windows, Mac, Linux).  
+    2. Open LM Studio and set up a folder for storing models.  
+    3. Download a model (examples: LLaMA, Mistral).  
+       - 4b–5b models → lightweight, fast, good for simple dialogues.  
+       - 7b–8b models → balanced, deeper responses.  
+       - 12b+ models → complex, detailed dialogues, requiring significant RAM and GPU.  
+    4. Prefer quantized versions (q4, q5, q8) to reduce resource usage.  
+    5. Start the LM Studio server; it will show a local API address (e.g., `http://localhost:port`).  
+    6. Edit `cobblebrain.json` with:  
+       - `apiBaseUrl`: local server address  
+       - `aiModel`: ID or name of the installed model
+
+    Tip: It is recommended to watch a tutorial video, since depending on the LM Studio version and OS, the setup steps may change.
+
+  </details>
+
+</details>
+
+<details>
+  <summary>3. Interacting with Pokémon</summary>
+
+  - Use the command `/msgpk <message>` to talk to your Pokémon.  
+  - If `listenToChat = true`, any chat message can be interpreted by the AI.  
+  - Enable `onlyNearbyChat = true` so only nearby players are considered.  
+
+</details>
+
+<details>
+  <summary>4. Performance Adjustments</summary>
+
+  - Use `lowTokenMode` for faster and lighter responses.  
+  - Adjust `maxShortMemory` and `maxLongMemory` to control how much dialogue memory Pokémon retain.  
+
+</details>
 
 ---
 
 ## Configuration (`cobblebrain.json`)
 
-Located in: `run/config/cobblebrain.json`
+Location: `.minecraft/config/cobblebrain.json`
 
-| Field                     | Type     | Description |
-|---------------------------|----------|-------------|
-| `apiKey`                  | String   | Required for the mod to communicate with the AI server |
-| `selectedLanguage`        | String   | Language the AI will use |
-| `instruct`                | String   | Custom AI instructions (recommended to use default as a base) |
-| `maxDialogueSaves`        | Int      | Number of past dialogues saved as "memory" (recommended: 3) |
-| `dialogueAffectFriendship`| Boolean  | Whether dialogue affects friendship level |
-| `spontaneousDialogueChance` | Double | Probability of spontaneous dialogue (default: 0.15) |
-| `visibleAiWarnings`       | Boolean  | Show mod-related warning messages in chat |
-| `listenToChat`            | Boolean  | If true, AI listens to normal chat messages |
-| `onlyNearbyChat` *(exp)*  | Boolean  | If enabled, AI only listens to nearby players (15 blocks) |
+| Variable | Type | Description |
+|----------|------|-------------|
+| `apiKey` | String | API key (Google AI Studio, OpenAI, OpenRouter). |
+| `apiBaseUrl` | String | Base API URL. |
+| `aiModel` | String | AI model name. |
+| `temperature` | Double | Creativity control (0.0–2.0). |
+| `aiProvider` | String | Routing hint for OpenRouter. |
+| `reasoningEffort` | String | Reasoning effort (OpenRouter): `high`, `medium`, `low`, `auto`, `none`. |
+| `debugLogging` | Boolean | Enables local logs. |
+| `dialogueInChat` | Boolean | Shows dialogue in chat. |
+| `chatbubbles` | Boolean | Displays speech bubbles. |
+| `pokemonTalk` | Boolean | Toggles Pokémon speech. |
+| `allowPokemonPVP` | Boolean | Allows Pokémon PvP. |
+| `allowPokemonPVE` | Boolean | Allows Pokémon PvE against mobs. |
+| `lowTokenMode` | Boolean | Uses fewer tokens for faster responses. |
+| `dialogueOnDamage` | Boolean | Pokémon talk when someone is hurt. |
+| `dialogueOnBattle` | Boolean | Pokémon talk during battles. |
+| `spontaneousDialogueChance` | Double | Chance of spontaneous dialogue. |
+| `requestTimeoutSeconds` | Long | Request timeout in seconds. |
+| `listenToChat` | Boolean | AI listens to normal chat. |
+| `EXPERIMENTAL: onlyNearbyChat` | Boolean | AI listens only to nearby players. |
+| `maxShortMemory` | Int | Short-term memory (recent interactions). |
+| `maxLongMemory` | Int | Long-term memory. |
+| `selectedLanguage` | String | Language for AI responses. |
+| `decreaseFriendship` | Boolean | Dialogue can decrease friendship. |
+| `increaseFriendship` | Boolean | Dialogue can increase friendship. |
+| `showFriendship` | Boolean | Shows friendship level. |
+| `instruct` | String | Instructions for dialogue generation. |
 
 ---
 
-## Development Status
+## Pokémon Actions
 
-- Current version: **0.7.0**  
-- Actively in development.  
-- Open-source: free to download, modify, and improve.  
-- If you use this code (or parts of it) in another mod or software, please give proper credit.  
+<details>
+  <summary>Type-based Actions</summary>
+
+  <details>
+    <summary>Cook (Fire)</summary>
+    Can cook food and smelt ores.  
+    5% chance of item turning into charcoal.
+  </details>
+
+  <details>
+    <summary>Grow (Plant)</summary>
+    Grows tree saplings and crops.
+  </details>
+
+  <details>
+    <summary>Repair (Metal)</summary>
+    Repairs tools and weapons up to a certain durability threshold.
+  </details>
+
+  <details>
+    <summary>Swift (Ghost)</summary>
+    Transports the player to an alternate dimension.  
+    Player becomes invisible, gains increased speed and jump height, but suffers from high weakness.
+  </details>
+
+</details>
 
 ---
 
-## Roadmap
+<details>
+  <summary>General Actions</summary>
 
-You can check the full roadmap here: [ROADMAP.md](./ROADMAP.md)
+  <details>
+    <summary>Attack</summary>
+    Pokémon attacks any mobs close to it.
+  </details>
+
+  <details>
+    <summary>Protect</summary>
+    Pokémon targets hostile mobs nearest to the player; if none are found, it follows the player.
+  </details>
+
+  <details>
+    <summary>Eat</summary>
+    Pokémon consumes edible items dropped on the ground (excluding powerful items like golden apples).  
+    Food effects will be added in future updates.
+  </details>
+
+  <details>
+    <summary>Buff</summary>
+    Pokémon grants the player a positive status effect based on its primary type (e.g., regeneration, speed).
+  </details>
+
+  <details>
+    <summary>Debuff</summary>
+    Pokémon applies a negative status effect to nearby mobs based on its primary type (e.g., slowness, weakness).
+  </details>
+
+  <details>
+    <summary>Sit</summary>
+    Pokémon stays fixed in place, ignoring other actions.
+  </details>
+
+  <details>
+    <summary>Idle</summary>
+    Pokémon cancels all active commands and returns to normal behavior.
+  </details>
+
+</details>
+
+
+---
 
 ## FAQ
 
-**Q: Can I say anything to my Pokémon?**  
-A: Technically yes, but remember it’s YOUR Google key being used. Keep interactions reasonable.  
+<details>
+  <summary>Can I play with a free model?</summary>
+  Yes, many providers offer free models, but usually with usage limits.
+</details>
 
-**Q: Does the mod share my API key?**  
-A: No. The key is stored locally and only used to communicate with Google’s servers.  
+<details>
+  <summary>Pokémon responses are too slow. Why?</summary>
+  It depends on:  
+  1. Model size (larger models are slower).  
+  2. Prompt length.  
+  3. Internet connection quality.  
+  4. Provider traffic load.  
+</details>
 
-**Q: Will this mod continue to be updated?**  
-A: Yes, but no guarantees. It’s open-source so others can improve or fork it.  
+<details>
+  <summary>How can I speed up Pokémon responses?</summary>
+  1. Shorten the prompt.  
+  2. Enable `lowTokenMode`.  
+  3. Use smaller/quantized models.  
+  4. Adjust `maxShortMemory` and `maxLongMemory`.  
+</details>
 
-**Q: Can I use this mod in a modpack?**  
-A: Yes, but beta versions may cause unknown issues or incompatibilities.  
+<details>
+  <summary>I have issues with my key or provider. What should I do?</summary>
+  CobbleBrain only bridges the game and the provider. If problems occur, contact the provider’s support directly.
+</details>
+
+<details>
+  <summary>I found a bug / have a suggestion / have a question.</summary>
+  - Bugs and suggestions: open an *issue* on GitHub.  
+  - Questions: join the official Cobblemon server, go to the help section, and search for CobbleBrain.  
+</details>
+
+<details>
+  <summary>Does the mod collect personal data?</summary>
+  No. The mod only forwards the player’s prompt to the chosen AI provider and returns the response.  
+  Local logs are generated only if `debugLogging = true`.  
+</details>
+
+<details>
+  <summary>Can I use local models?</summary>
+  Yes, via LM Studio. But be careful: large models may cause crashes or require strong hardware.  
+</details>
 
 ---
 
 ## Contributing
-
-Contributions are welcome!  
-- Open an [issue](#) for bugs or feature requests.
-- Before submitting code changes, read through [CONTRIBUTING](CONTRIBUTING) 
+- Open *issues* for bugs or suggestions.  
+- Read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting code.  
 
 ---
 
 ## License
-
-This project is licensed under the **MIT License**.  
-See the [LICENSE](LICENSE) file for details.  
+This project is licensed under the **MIT License**. See [LICENSE](./LICENSE).
 
 ---
 
 ## Contact
+Reach me via the email available in my GitHub bio.
 
-If you want to contact me, you can send a message to my email registered in the bio of my github profile.
