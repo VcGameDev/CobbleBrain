@@ -266,7 +266,7 @@ Location: `.minecraft/config/cobblebrain.json`
 <details>
   <summary>I found a bug / have a suggestion / have a question.</summary>
   - Bugs and suggestions: open an *issue* on GitHub.  
-  - Questions: join the official Cobblemon server, go to the help section, and search for CobbleBrain.  
+  - Questions: join the official Cobblemon server, go to the content-zone-help section, and search for CobbleBrain.  
 </details>
 
 <details>
