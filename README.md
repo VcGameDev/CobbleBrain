@@ -54,15 +54,7 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
 ## How to Play
 
 <details>
-  <summary>1. Initial Setup</summary>
-
-  - After installing the mod, go to `.minecraft/config/cobblebrain.json`.  
-  - Edit the file with your AI preferences (API key, model, language, etc.).  
-
-</details>
-
-<details>
-  <summary>2. Choosing AI Mode</summary>
+  <summary>1. Choosing AI Mode</summary>
 
   <details>
     <summary>Cloud Mode (Easiest)</summary>
@@ -106,7 +98,7 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
 </details>
 
 <details>
-  <summary>3. Interacting with Pokémon</summary>
+  <summary>2. Interacting with Pokémon</summary>
 
   - Use the command `/msgpk <message>` to talk to your Pokémon.  
   - If `listenToChat = true`, any chat message can be interpreted by the AI.  
@@ -115,7 +107,7 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
 </details>
 
 <details>
-  <summary>4. Performance Adjustments</summary>
+  <summary>3. Performance Adjustments</summary>
 
   - Use `lowTokenMode` for faster and lighter responses.  
   - Adjust `maxShortMemory` and `maxLongMemory` to control how much dialogue memory Pokémon retain.  
