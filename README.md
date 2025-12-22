@@ -65,7 +65,7 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
     1. Create an account with a provider (examples: Google AI Studio, OpenAI, OpenRouter).  
     2. Generate an API key from the provider’s dashboard.  
     3. Choose a model (examples: `gemma-3-12b-it`, `gpt-4.1-mini`, `anthropic/claude-3.5-sonnet`).  
-    4. Edit `cobblebrain.json` with:  
+    4. Edit `/config/cobblebrain.json` with:  
        - `apiKey`: your generated key  
        - `apiBaseUrl`: provider’s official URL  
        - `aiModel`: ID of the chosen model  
@@ -87,7 +87,7 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
        - 12b+ models → complex, detailed dialogues, requiring significant RAM and GPU.  
     4. Prefer quantized versions (q4, q5, q8) to reduce resource usage.  
     5. Start the LM Studio server; it will show a local API address (e.g., `http://localhost:port`).  
-    6. Edit `cobblebrain.json` with:  
+    6. Edit `/config/cobblebrain.json` with:  
        - `apiBaseUrl`: local server address  
        - `aiModel`: ID or name of the installed model
 
@@ -100,7 +100,7 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
 <details>
   <summary>2. Interacting with Pokémon</summary>
 
-  - Use the command `/msgpk <message>` to talk to your Pokémon.  
+  - Use the command `/mpk <message>` to talk to your Pokémon.  
   - If `listenToChat = true`, any chat message can be interpreted by the AI.  
   - Enable `onlyNearbyChat = true` so only nearby players are considered.  
 
@@ -122,7 +122,7 @@ Location: `.minecraft/config/cobblebrain.json`
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `apiKey` | String | API key (Google AI Studio, OpenAI, OpenRouter). |
+| `apiKey` | String | API key |
 | `apiBaseUrl` | String | Base API URL. |
 | `aiModel` | String | AI model name. |
 | `temperature` | Double | Creativity control (0.0–2.0). |
@@ -248,6 +248,7 @@ Location: `.minecraft/config/cobblebrain.json`
   2. Enable `lowTokenMode`.  
   3. Use smaller/quantized models.  
   4. Adjust `maxShortMemory` and `maxLongMemory`.  
+  All these settings are in cobblebrain.json inside the config folder.
 </details>
 
 <details>
