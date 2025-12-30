@@ -86,28 +86,51 @@ object DialogueSystem {
             player.sendSystemMessage(
                 Component.literal("customize the mod (and its language) as you wish in ")
                     .withStyle(ChatFormatting.YELLOW)
-                    .append(Component.literal("cobblebrain.json").withStyle(ChatFormatting.AQUA))
-                    .append(" in the config folder. If you need help, open setup_tutorial_cobblebrain.txt")
+                    .append(Component.literal("config/cobblebrain.json").withStyle(ChatFormatting.AQUA))
             )
         }
 
-        // Evento de chat: intercepta mensagens normais
         if (config.listenToChat) {
             ServerMessageEvents.CHAT_MESSAGE.register { message, sender, _ ->
-                val conteudo = message.signedContent()
+                val rawContent = message.signedContent()
 
-                // Se onlyNearbyChat estiver ativo, só processa se houver alguém perto
                 if (config.onlyNearbyChat) {
-                    val hasNearby = sender.server.playerList.players.any { other ->
-                        other != sender && other.distanceTo(sender) <= 15.0 // raio de 15 blocos
+                    // Lista de jogadores no raio de 15 blocos (inclui o próprio sender)
+                    val nearbyPlayers = sender.server.playerList.players.filter { other ->
+                        other.distanceTo(sender) <= 15.0
                     }
-                    if (!hasNearby) {
-                        return@register // não agenda nada se não tiver ninguém perto
+
+                    if (nearbyPlayers.isEmpty()) {
+                        sender.sendSystemMessage(Component.literal("Nenhum jogador próximo para ouvir sua fala."))
+                        return@register
+                    }
+
+                    // Para cada jogador próximo, gera conteúdo diferente
+                    nearbyPlayers.forEach { player ->
+                        val conteudo = if (player == sender) {
+                            // Se for o próprio emissor, não prefixa
+                            rawContent
+                        } else {
+                            // Se for outro jogador, prefixa com o nome do emissor
+                            "${sender.name.string} disse: $rawContent"
+                        }
+                        onPlayerChat(player, conteudo)
+                    }
+                } else {
+                    // Caso não esteja limitado por raio, todos recebem
+                    sender.server.playerList.players.forEach { player ->
+                        val conteudo = if (player == sender) {
+                            rawContent
+                        } else {
+                            "${sender.name.string} disse: $rawContent"
+                        }
+                        onPlayerChat(player, conteudo)
                     }
                 }
-                onPlayerChat(sender, conteudo)
             }
         }
+
+
 
         CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
             val battle = event.battle
@@ -322,7 +345,7 @@ object DialogueSystem {
 
             chatThread = Thread {
                 try {
-                    val chave = config.apiKey.trim()
+                    val chave = KeyManager.rotator.current()
 
                     // Informational warning only — no hard stop
                     if (chave.isBlank()) {
@@ -347,12 +370,24 @@ object DialogueSystem {
         scheduledMessages.clear()
 
         val ativos = PokemonQuery.findActivePokemon(player)
-        val prompt = buildPrompt(player, ativos, "\n\n[The player (owner of the pokemon team) said: $text")
+
+        // Verifica se algum Pokémon ativo tem o mesmo id/uuid do jogador
+        val isOwnerPokemon = ativos.any { it.uuid == player.uuid }
+
+        // Se for o próprio jogador, adiciona prefixo; senão, deixa só o texto cru
+        val conteudo = if (isOwnerPokemon) {
+            "[The player (owner of the pokemon team) said: $text"
+        } else {
+            text
+        }
+
+        val prompt = buildPrompt(player, ativos, "\n\n$conteudo")
         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
 
         // Marca que esse jogador foi o último a falar
         lastSpeakerPlayer = player
     }
+
 
     // NÃO alterar o comportamento de tick/loop do flush
     private fun flushScheduledMessages(server: MinecraftServer) {
@@ -712,69 +747,8 @@ object DialogueSystem {
             appendLine("Important variables:")
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
             appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
-            appendLine("""##OUTPUT FORMAT##
-You must generate your entire response following these STRICT rules:
-
-DIALOGUE FORMAT
-- Each dialogue line MUST follow this format:
-<PokemonName>: <message>
-- Use pipes (|) and the Pokémon name to separate dialogue lines.
-- Each line must have MAX 11 words.
-- If 1 Pokémon active → max 3 lines total.
-- If 2–5 Pokémon active → max 5 lines total.
-- If 6 Pokémon active → max 6 lines total.
-- Dialogue only between Pokémon in active team and the human player.
-
-FRIENDSHIP FORMAT
-- Each friendship line MUST follow this format:
-  Friendship <PokemonName>: <current_value> + <change>
-  Friendship <PokemonName>: <current_value> - <change>
-- If AFFECT_FRIENDSHIP_PLUS = true → increase friendship (min +1, max +5).
-- If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5).
-- If both true → decide based on positive or negative impact.
-- A Pokémon's friendship doesn't change more than once in the same dialogue
-
-MEMORY FORMAT
-- Each memory line MUST follow this format:
-  @<PokemonName>: <short memory sentence>
-  @@<PokemonName>: <core memory sentence>
-- Use @ for short memory, @@ for core memory.
-- Each Pokémon records events from its own perspective.
-- Short memories = fleeting perceptions; Core memories = impactful events.
-- Memories MUST be written from the perspective of a third-person narrator, describing what happens to the Pokémon 
-- Memories should not appear in the dialogue
-- Memories function as a historical log: Pokémon must use past memories to understand the context of future events
-
-ACTION FORMAT
-- Each action line MUST follow this format:
-  #<PokemonName>: <action>
-- At the very end, output one action per Pokémon.
-- Use exactly one of:
-  #PokemonName: attack
-  #PokemonName: eat
-  #PokemonName: buff
-  #PokemonName: debuff enemy
-  #PokemonName: sit
-  #PokemonName: protect
-  #PokemonName: idle
-  (fire type) #PokemonName: cook
-  (steel type) #PokemonName: repair
-  (grass type) #PokemonName: grow
-  (ghost type) #PokemonName: shift
-- If no action is needed, ALWAYS use idle.
-
-GENERAL RULES
-1. Each line of dialogue must respect the word and line limits.
-2. Never mix nickname and species; use only one consistently.
-3. Do not invent characters outside Pokémon and the human player.
-4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts
-5. Always follow the formats exactly; no hyphens or alternative separators.
-6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action.
-7. If no action is relevant, always output idle.
-8. Send the entire response in ${config.selectedLanguage}
-9. Dialogue, friendship, memory, and action content must integrate the [CREATIVE PROMPT] but never break format.
-10. Dialogue must be generated using past memories as context, recalling previous events to explain or justify reactions."""
-            )
+            appendLine("Send the entire response in ${config.selectedLanguage}")
+            appendLine(config.outputFormat)
         }.trim()
     }
 

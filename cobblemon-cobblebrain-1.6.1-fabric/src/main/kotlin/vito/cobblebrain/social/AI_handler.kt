@@ -1,6 +1,7 @@
 package vito.cobblebrain.social
 
 import com.google.gson.Gson
+import kotlinx.io.IOException
 import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
@@ -13,18 +14,33 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.system.exitProcess
 import vito.cobblebrain.config.CobblebrainConfig
-import java.io.IOException
 import java.net.http.HttpTimeoutException
 import kotlin.collections.get
+
+object KeyManager {
+    private val configFile = File("config/cobblebrain.json")
+    private val config = Gson().fromJson(configFile.readText(), CobblebrainConfig::class.java)
+
+    val rotator = ApiKeyRotator(config.apiKey)
+}
 
 // ------------------------------------------------------------
 // DATA CLASSES
 // ------------------------------------------------------------
 data class Mensagem(val role: String, val text: String)
 
-// ------------------------------------------------------------
-// AI HANDLER
-// ------------------------------------------------------------
+class ApiKeyRotator(private val keys: List<String>) {
+    private var index = 0
+    fun current(): String = keys[index]
+    fun next() { index = (index + 1) % keys.size }
+}
+
+class ModelRotator(private val models: List<String>) {
+    private var index = 0
+    fun current(): String = models[index]
+    fun next() { index = (index + 1) % models.size }
+}
+
 class AIHandler(dirPath: String) {
 
     companion object {
@@ -33,7 +49,6 @@ class AIHandler(dirPath: String) {
         private val config =
             gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
-        private val MODEL = config.aiModel
         private val INSTRUCTS = config.instruct.trimIndent()
         private val TEMPERATURE = config.temperature
         private val PROVIDER_HINT = config.aiProvider.trim()
@@ -42,11 +57,12 @@ class AIHandler(dirPath: String) {
         private val TIMEOUT_SECONDS = config.requestTimeoutSeconds
     }
 
-    private val apiKey = config.apiKey.trim()
+    // agora usando rotadores
+    private val apiKeyRotator = ApiKeyRotator(config.apiKey)
+    private val modelRotator = ModelRotator(config.aiModel)
+
     private val apiBase =
-        config.apiBaseUrl
-            .trimEnd('/')
-            .replace("localhost", "127.0.0.1") // defensive
+        config.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
 
     private val comandoPath = Paths.get(dirPath, "comando_ia.txt")
     private val respostaPath = Paths.get(dirPath, "resposta_ia.txt")
@@ -198,42 +214,19 @@ class AIHandler(dirPath: String) {
     //Extrai uma mensagem de erro amigável a partir do status HTTP (opcional) e do corpo.
      //* - Se status != 200, tenta detalhar via JSON ou regex.
      //* - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
-     //*/
-    fun extractErrorMessage(body: String, status: Int? = null): String {
-    // 1) Se temos status e é erro, tenta detalhar
-        if (status != null && status != 200) {
-            // Tenta JSON estruturado (OpenAI/Google)
-            try {
-                val json = gson.fromJson(body, Map::class.java)
-                val error = json["error"] as? Map<*, *>
-                if (error != null) {
-                    val code = (error["code"] as? Number)?.toInt() ?: status
-                    val msg = error["message"] as? String ?: "Erro desconhecido"
-                    return "Erro $code: $msg"
-                }
-            } catch (_: Exception) {
-                // Se não for JSON, tenta regex tipo "HTTP 404"
-                val regex = Regex("HTTP (\\d+)")
-                val match = regex.find(body)
-                if (match != null) {
-                    val code = match.groupValues[1].toInt()
-                    return errorMessages[code] ?: "Erro HTTP $code: não mapeado"
-                }
-            }
-            // Fallback: status + corpo
-            return "HTTP $status: $body"
-        }
 
-        // 2) Sem status (ou status 200 mas corpo indica erro): tenta extrair do body
+    fun extractErrorMessage(body: String, status: Int? = null): String {
+        // tenta JSON
         try {
             val json = gson.fromJson(body, Map::class.java)
             val error = json["error"] as? Map<*, *>
             if (error != null) {
-                val code = (error["code"] as? Number)?.toInt()
+                val code = (error["code"] as? Number)?.toInt() ?: status
                 val msg = error["message"] as? String ?: "Erro desconhecido"
                 return if (code != null) "Erro $code: $msg" else "Erro: $msg"
             }
         } catch (_: Exception) {
+            // tenta regex
             val regex = Regex("HTTP (\\d+)")
             val match = regex.find(body)
             if (match != null) {
@@ -242,7 +235,12 @@ class AIHandler(dirPath: String) {
             }
         }
 
-        // 3) Fallback final: devolve o body
+        // se status veio e não é 200, devolve junto
+        if (status != null && status != 200) {
+            return "HTTP $status: $body"
+        }
+
+        // fallback final
         return body
     }
 
@@ -293,7 +291,6 @@ class AIHandler(dirPath: String) {
         limitarHistorico()
     }
 
-    // ================= OPENAI-SCHEMA =================
     private fun callOpenAISchema(prompt: String): String {
         val jsonBody = buildOpenAIJson(prompt)
         log("REQUEST JSON:\n${jsonBody.lines().joinToString("\n") { "│ $it" }}")
@@ -304,8 +301,9 @@ class AIHandler(dirPath: String) {
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
-        if (apiKey.isNotBlank()) {
-            builder.header("Authorization", "Bearer $apiKey")
+        val key = apiKeyRotator.current()
+        if (key.isNotBlank()) {
+            builder.header("Authorization", "Bearer $key")
         }
 
         val req = builder.build()
@@ -389,7 +387,7 @@ class AIHandler(dirPath: String) {
 
         return """
     {
-      "model": "$MODEL",
+      "model": "${modelRotator.current()}
       "messages": [
         { "role": "system", "content": "${escape(INSTRUCTS)}" },
         $messages
@@ -401,6 +399,7 @@ class AIHandler(dirPath: String) {
 
     private fun extractOpenAIContent(body: String): String {
         return try {
+            println(body)
             val json = gson.fromJson(body, Map::class.java)
             val choices = json["choices"] as? List<*> ?: return "Erro parsing resposta"
             val first = choices.firstOrNull() as? Map<*, *> ?: return "Erro parsing resposta"
@@ -423,7 +422,7 @@ class AIHandler(dirPath: String) {
 
     // ================= GOOGLE GEMMA / GEMINI =================
     private fun callGoogleGemma(prompt: String): String {
-        val url = "$apiBase/v1beta/models/$MODEL:generateContent?key=${apiKey}"
+        val url = "$apiBase/v1beta/models/${modelRotator.current()}:generateContent?key=${apiKeyRotator.current()}"
 
         val requestBody = mapOf(
             "contents" to listOf(

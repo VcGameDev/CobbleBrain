@@ -6,7 +6,7 @@ class CobblebrainConfig {
     // API key usada para autenticação com o sistema de IA.
     // Para OpenAI‑compatíveis: Bearer token.
     // Para Google AI Studio: chave da API do Google.
-    var apiKey: String = "YOUR_API_KEY"
+    val apiKey: List<String> = listOf("YOUR_API_KEY")
 
     // Base URL da API.
     // Exemplos:
@@ -21,7 +21,7 @@ class CobblebrainConfig {
     //  - Gemma: gemma-7b-it
     //  - OpenAI: gpt-4.1-mini
     //  - OpenRouter: anthropic/claude-3.5-sonnet
-    var aiModel: String = "gemma-3-12b-it"
+    var aiModel: List<String> = listOf("gemma-3-12b-it")
 
     /** Temperatura enviada ao modelo (0.0 … 2.0). */
     var temperature: Double = 0.7
@@ -113,4 +113,65 @@ Dialogue must feel emotional and personal:
 - If the player asks a question, respond from the Pokémon’s perspective.
 - Never use human elements (phones, social media, etc).
 """
+    var outputFormat: String = """ ##OUTPUT FORMAT##
+You must generate your entire response following these STRICT rules:
+
+DIALOGUE FORMAT
+- Each dialogue line MUST follow this format:
+<PokemonName>: <message>
+- Use pipes (|) and the Pokémon name to separate dialogue lines.
+- Each line must have MAX 11 words.
+- If 1 Pokémon active → max 3 lines total.
+- If 2–5 Pokémon active → max 5 lines total.
+- If 6 Pokémon active → max 6 lines total.
+- Dialogue only between Pokémon in active team and the human player.
+
+FRIENDSHIP FORMAT
+- Each friendship line MUST follow this format:
+  Friendship <PokemonName>: <current_value> + <change>
+  Friendship <PokemonName>: <current_value> - <change>
+- If AFFECT_FRIENDSHIP_PLUS = true → increase friendship (min +1, max +5).
+- If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5).
+- If both true → decide based on positive or negative impact.
+- A Pokémon's friendship doesn't change more than once in the same dialogue
+
+MEMORY FORMAT
+- Each memory line MUST follow this format:
+  @<PokemonName>: <short memory sentence>
+  @@<PokemonName>: <core memory sentence>
+- Use @ for short memory, @@ for core memory.
+- Each Pokémon records events from its own perspective.
+- Short memories = fleeting perceptions; Core memories = impactful events.
+- Memories MUST be written from the perspective of a third-person narrator, describing what happens to the Pokémon 
+- Memories should not appear in the dialogue
+- Memories function as a historical log: Pokémon must use past memories to understand the context of future events
+
+ACTION FORMAT
+- Each action line MUST follow this format:
+  #<PokemonName>: <action>
+- At the very end, output one action per Pokémon.
+- Use exactly one of:
+  #PokemonName: attack
+  #PokemonName: eat
+  #PokemonName: buff
+  #PokemonName: debuff enemy
+  #PokemonName: sit
+  #PokemonName: protect
+  #PokemonName: idle
+  (fire type) #PokemonName: cook
+  (steel type) #PokemonName: repair
+  (grass type) #PokemonName: grow
+  (ghost type) #PokemonName: shift
+- If no action is needed, ALWAYS use idle.
+
+GENERAL RULES
+1. Each line of dialogue must respect the word and line limits.
+2. Never mix nickname and species; use only one consistently.
+3. Do not invent characters outside Pokémon and the human player.
+4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts
+5. Always follow the formats exactly; no hyphens or alternative separators.
+6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action.
+7. If no action is relevant, always output idle.
+8. Dialogue, friendship, memory, and action content must integrate the [CREATIVE PROMPT] but never break format.
+9. Dialogue must be generated using past memories as context, recalling previous events to explain or justify reactions. """
 }

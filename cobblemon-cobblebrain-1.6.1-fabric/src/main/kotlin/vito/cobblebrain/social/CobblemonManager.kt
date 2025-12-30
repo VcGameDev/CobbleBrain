@@ -144,23 +144,6 @@ object ConfigCommands {
                 )
         )
 
-
-        dispatcher.register(
-            Commands.literal("setAiModel")
-                .then(
-                    Commands.argument("value", StringArgumentType.string())
-                        .executes { ctx ->
-                            val value = StringArgumentType.getString(ctx, "value")
-                            config.aiModel = value
-                            ctx.source.sendSuccess(
-                                { Component.literal("aiModel set to $value") },
-                                true
-                            )
-                            1
-                        }
-                )
-        )
-
         dispatcher.register(
             Commands.literal("addToInstruct")
                 .then(
