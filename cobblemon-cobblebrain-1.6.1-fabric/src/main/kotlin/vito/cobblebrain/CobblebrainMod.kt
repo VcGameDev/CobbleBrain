@@ -3,7 +3,6 @@ package vito.cobblebrain
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
-import vito.cobblebrain.config.ConfigBuilder
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.social.DebugPartyCommand
 import vito.cobblebrain.social.DialogueSystem.register

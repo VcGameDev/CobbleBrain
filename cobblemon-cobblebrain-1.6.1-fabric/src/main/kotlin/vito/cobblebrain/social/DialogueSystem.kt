@@ -43,7 +43,7 @@ import kotlin.math.atan2
 
 object DialogueSystem {
     val gson = Gson()
-    val configFile = File("config/cobblebrain.json")
+    val configFile = File("config/cobblebrain.json5")
     val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
     private val scheduledMessages = mutableListOf<ScheduledMessage>()
@@ -86,7 +86,7 @@ object DialogueSystem {
             player.sendSystemMessage(
                 Component.literal("customize the mod (and its language) as you wish in ")
                     .withStyle(ChatFormatting.YELLOW)
-                    .append(Component.literal("config/cobblebrain.json").withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal("config/cobblebrain.json5").withStyle(ChatFormatting.AQUA))
             )
         }
 
@@ -105,24 +105,20 @@ object DialogueSystem {
                         return@register
                     }
 
-                    // Para cada jogador próximo, gera conteúdo diferente
                     nearbyPlayers.forEach { player ->
                         val conteudo = if (player == sender) {
-                            // Se for o próprio emissor, não prefixa
-                            rawContent
+                            "The player (owner of the pokemon team) said to the pokemons: $rawContent"
                         } else {
-                            // Se for outro jogador, prefixa com o nome do emissor
-                            "${sender.name.string} disse: $rawContent"
+                            "${sender.name.string} said: $rawContent"
                         }
                         onPlayerChat(player, conteudo)
                     }
                 } else {
-                    // Caso não esteja limitado por raio, todos recebem
                     sender.server.playerList.players.forEach { player ->
                         val conteudo = if (player == sender) {
-                            rawContent
+                            "The player (owner of the pokemon team) said to the pokemons: $rawContent"
                         } else {
-                            "${sender.name.string} disse: $rawContent"
+                            "${sender.name.string} said: $rawContent"
                         }
                         onPlayerChat(player, conteudo)
                     }
@@ -130,9 +126,7 @@ object DialogueSystem {
             }
         }
 
-
-
-        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
+            CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
             val battle = event.battle
             val server = battle.players.firstOrNull()?.server ?: return@subscribe
             if (config.dialogueOnBattle) {
@@ -371,20 +365,10 @@ object DialogueSystem {
 
         val ativos = PokemonQuery.findActivePokemon(player)
 
-        // Verifica se algum Pokémon ativo tem o mesmo id/uuid do jogador
-        val isOwnerPokemon = ativos.any { it.uuid == player.uuid }
-
-        // Se for o próprio jogador, adiciona prefixo; senão, deixa só o texto cru
-        val conteudo = if (isOwnerPokemon) {
-            "[The player (owner of the pokemon team) said: $text"
-        } else {
-            text
-        }
-
-        val prompt = buildPrompt(player, ativos, "\n\n$conteudo")
+        // Prefixo já vem pronto do bloco de CHAT_MESSAGE
+        val prompt = buildPrompt(player, ativos, "\n\n$text")
         File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
 
-        // Marca que esse jogador foi o último a falar
         lastSpeakerPlayer = player
     }
 

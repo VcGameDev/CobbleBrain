@@ -18,7 +18,7 @@ import java.net.http.HttpTimeoutException
 import kotlin.collections.get
 
 object KeyManager {
-    private val configFile = File("config/cobblebrain.json")
+    private val configFile = File("config/cobblebrain.json5")
     private val config = Gson().fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
     val rotator = ApiKeyRotator(config.apiKey)
@@ -45,7 +45,7 @@ class AIHandler(dirPath: String) {
 
     companion object {
         private val gson = Gson()
-        private val configFile = File("config/cobblebrain.json")
+        private val configFile = File("config/cobblebrain.json5")
         private val config =
             gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
@@ -132,25 +132,21 @@ class AIHandler(dirPath: String) {
         println(comandoPath.fileName.toString())
         if (fullText.isEmpty()) return
 
-        val playerLine = extractUtterance(fullText) ?: return
-        val hash = sha256(playerLine)
-        if (hash == lastPromptHash) return
+        // usa o prompt inteiro como base do hash
+        val hash = sha256(fullText)
+        if (hash == lastPromptHash) {
+            println("duplicata detectada")
+            return
+        }
 
         lastPromptHash = hash
-        log("FULL PROMPT:\n${playerLine.lines().joinToString("\n") { "│ $it" }}")
+
+        // log detalhado mostrando início do prompt e hash
+        log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
+        log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
 
         println("processcommandfile ativo")
         enviarMensagem(fullText)
-    }
-
-    fun extractUtterance(text: String): String? {
-        return text.lines().firstNotNullOfOrNull { line ->
-            when {
-                line.startsWith("[") -> line.removePrefix("[").trim()
-                line.startsWith("IMPORTANT:") -> line.removePrefix("IMPORTANT:").trim()
-                else -> null
-            }
-        }
     }
 
     // ------------------------------------------------------------
@@ -310,7 +306,7 @@ class AIHandler(dirPath: String) {
 
         return try {
             val client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_2)
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                 .build()
 
@@ -356,7 +352,7 @@ class AIHandler(dirPath: String) {
 
         // incluir max_tokens SOMENTE para OpenRouter e LM Studio
         if (usesMaxTokens(apiBase)) {
-            extras.add("\"max_tokens\": -1") // LM Studio aceita -1; OpenRouter também costuma aceitar
+            extras.add("\"max_tokens\": -1")
         }
 
         // extras específicos de OpenRouter/LM Studio
@@ -387,7 +383,7 @@ class AIHandler(dirPath: String) {
 
         return """
     {
-      "model": "${modelRotator.current()}
+      "model": "${modelRotator.current()}",
       "messages": [
         { "role": "system", "content": "${escape(INSTRUCTS)}" },
         $messages
@@ -395,7 +391,6 @@ class AIHandler(dirPath: String) {
     }
     """.trimIndent()
     }
-
 
     private fun extractOpenAIContent(body: String): String {
         return try {
@@ -419,21 +414,28 @@ class AIHandler(dirPath: String) {
         }
     }
 
-
     // ================= GOOGLE GEMMA / GEMINI =================
     private fun callGoogleGemma(prompt: String): String {
         val url = "$apiBase/v1beta/models/${modelRotator.current()}:generateContent?key=${apiKeyRotator.current()}"
 
         val requestBody = mapOf(
             "contents" to listOf(
+                // instruções fixas (equivalente ao "system" em OpenAI)
                 mapOf(
                     "role" to "user",
-                    "parts" to listOf(mapOf("text" to escape(INSTRUCTS + prompt)))
+                    "parts" to listOf(mapOf("text" to escape(INSTRUCTS)))
+                ),
+                // prompt real do usuário
+                mapOf(
+                    "role" to "user",
+                    "parts" to listOf(mapOf("text" to escape(prompt)))
                 )
             ),
             "generationConfig" to mapOf("temperature" to TEMPERATURE)
         )
+
         val jsonBody = gson.toJson(requestBody)
+        log("REQUEST JSON:\n${jsonBody.lines().joinToString("\n") { "│ $it" }}")
 
         val req = HttpRequest.newBuilder()
             .uri(URI.create(url))
@@ -450,12 +452,15 @@ class AIHandler(dirPath: String) {
 
             val res = client.send(req, HttpResponse.BodyHandlers.ofString())
 
+            log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
+
             if (res.statusCode() != 200) {
-                throw RuntimeException("HTTP ${res.statusCode()} - ${res.body()}")
+                throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
             extractGoogleGemmaContent(res.body())
         } catch (e: Exception) {
+            log("ERROR: ${e.message}")
             "Erro API Google: ${e.message}"
         }
     }

@@ -74,7 +74,7 @@ object DebugPartyCommand {
 
 object ConfigCommands {
     private val gson = Gson()
-    private val configFile = File("config/cobblebrain.json")
+    private val configFile = File("config/cobblebrain.json5")
     private val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
     // Agora você já tem o objeto carregado
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {

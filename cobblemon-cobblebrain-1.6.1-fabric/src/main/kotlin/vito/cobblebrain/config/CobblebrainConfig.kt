@@ -13,6 +13,7 @@ class CobblebrainConfig {
     //  - OpenAI: https://api.openai.com
     //  - OpenRouter: https://openrouter.ai/api
     //  - Google AI Studio (Gemma/Gemini): https://generativelanguage.googleapis.com
+    //  - Lm studio: http://localhost:1234
     var apiBaseUrl: String = "https://generativelanguage.googleapis.com"
 
     // Nome do modelo de IA.
