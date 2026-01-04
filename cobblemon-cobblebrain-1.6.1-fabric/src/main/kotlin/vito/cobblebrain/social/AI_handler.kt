@@ -151,7 +151,7 @@ class AIHandler(dirPath: String) {
 
     // ------------------------------------------------------------
     private fun enviarMensagem(prompt: String) {
-        println(INSTRUCTS)
+        println(INSTRUCTS + config.outputFormat)
         if (prompt == "/end") exitProcess(0)
 
         try {
@@ -385,7 +385,7 @@ class AIHandler(dirPath: String) {
     {
       "model": "${modelRotator.current()}",
       "messages": [
-        { "role": "system", "content": "${escape(INSTRUCTS)}" },
+        { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
         $messages
       ]$extraJson
     }
@@ -402,16 +402,26 @@ class AIHandler(dirPath: String) {
             // Formato OpenAI/OpenRouter
             val message = first["message"] as? Map<*, *>
             val content = message?.get("content") as? String
-            if (!content.isNullOrBlank()) return content
+            if (!content.isNullOrBlank()) {
+                return removeThinkBlocks(content) // <<< limpeza aplicada aqui
+            }
 
             // Alguns provedores retornam "text"
             val text = first["text"] as? String
-            if (!text.isNullOrBlank()) return text
+            if (!text.isNullOrBlank()) {
+                return removeThinkBlocks(text) // <<< limpeza aplicada aqui também
+            }
 
             "Erro parsing resposta"
         } catch (_: Exception) {
             "Erro parsing resposta"
         }
+    }
+
+    // Função auxiliar para remover blocos <think>...</think>
+    private fun removeThinkBlocks(text: String): String {
+        val regex = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
+        return text.replace(regex, "")
     }
 
     // ================= GOOGLE GEMMA / GEMINI =================
@@ -423,7 +433,7 @@ class AIHandler(dirPath: String) {
                 // instruções fixas (equivalente ao "system" em OpenAI)
                 mapOf(
                     "role" to "user",
-                    "parts" to listOf(mapOf("text" to escape(INSTRUCTS)))
+                    "parts" to listOf(mapOf("text" to escape(INSTRUCTS + config.outputFormat))),
                 ),
                 // prompt real do usuário
                 mapOf(

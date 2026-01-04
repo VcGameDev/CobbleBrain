@@ -732,7 +732,6 @@ object DialogueSystem {
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
             appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
             appendLine("Send the entire response in ${config.selectedLanguage}")
-            appendLine(config.outputFormat)
         }.trim()
     }
 
