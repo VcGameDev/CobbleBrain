@@ -121,7 +121,7 @@ fun registerTickHandler() {
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
             val scaledDamage = 2.0f + (atk * 0.03f)
-            val speed = 1.05 + (spd * 0.01)
+            val speed = 0.70 + (spd * 0.0075)
 
             when (action) {
                 "grow" -> {

@@ -8,6 +8,7 @@ import vito.cobblebrain.social.DebugPartyCommand
 import vito.cobblebrain.social.DialogueSystem.register
 import java.io.File
 import net.minecraft.server.MinecraftServer
+import vito.cobblebrain.config.ConfigBuilder
 import vito.cobblebrain.sensors.registerTickHandler
 import vito.cobblebrain.social.PokemonTalkCommand
 

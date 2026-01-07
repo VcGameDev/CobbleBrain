@@ -8,6 +8,12 @@ class CobblebrainConfig {
     // Para Google AI Studio: chave da API do Google.
     val apiKey: List<String> = listOf("YOUR_API_KEY")
 
+    // Enable or disable API key rotation when trigger errors occur
+    val keyRotation: Boolean = false
+
+    // List of HTTP status codes that trigger API key rotation
+    val keyRotationTrigger: List<Int> = listOf(401,429)
+
     // Base URL da API.
     // Exemplos:
     //  - OpenAI: https://api.openai.com
@@ -22,7 +28,13 @@ class CobblebrainConfig {
     //  - Gemma: gemma-7b-it
     //  - OpenAI: gpt-4.1-mini
     //  - OpenRouter: anthropic/claude-3.5-sonnet
-    var aiModel: List<String> = listOf("gemma-3-12b-it")
+    var aiModel: List<String> = listOf("gemma-3-12b-it", "gemma-3-4b-it")
+
+    // Enable or disable model rotation when trigger errors occur
+    val modelRotation: Boolean = false
+
+    // List of HTTP status codes that trigger model rotation
+    val modelRotationTrigger: List<Int> = listOf(404,429)
 
     /** Temperatura enviada ao modelo (0.0 … 2.0). */
     var temperature: Double = 0.7
@@ -62,7 +74,7 @@ class CobblebrainConfig {
     var lowTokenMode: Boolean = false
 
     // Determines if Pokémon talk when someone is hurt
-    val dialogueOnDamage: Boolean = true
+    val dialogueOnDamage: Boolean = false
 
     // Determines whether Pokémon speak when something related to battle happens.
     val dialogueOnBattle: Boolean = true

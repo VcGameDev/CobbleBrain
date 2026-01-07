@@ -124,6 +124,38 @@ class AIHandler(dirPath: String) {
         }
     }
 
+    private fun rotateApiKey(status: Int) {
+        if (config.keyRotation && status in config.keyRotationTrigger) {
+            apiKeyRotator.next()
+            if (apiKeyRotator.current() == config.apiKey.first()) {
+                val msg = "API key rotation has cycled through all keys and returned to the first key. First key: ${apiKeyRotator.current()}."
+                sendSystemMessage(msg)
+            } else {
+                val msg = "API key has been rotated due to error $status. New key: ${apiKeyRotator.current()}."
+                sendSystemMessage(msg)
+            }
+        }
+    }
+
+    private fun rotateModel(status: Int) {
+        if (config.modelRotation && status in config.modelRotationTrigger) {
+            modelRotator.next()
+            println("func de rotate ativa")
+            if (modelRotator.current() == config.aiModel.first()) {
+                val msg = "Model rotation has cycled through all models and returned to the first model. First model: ${modelRotator.current()} \n"
+                sendSystemMessage(msg)
+            } else {
+                val msg = "Model has been rotated due to error $status. New model: ${modelRotator.current()} \n"
+                sendSystemMessage(msg)
+            }
+        }
+    }
+
+    private fun sendSystemMessage(msg: String) {
+        Files.writeString(respostaPath, msg,StandardOpenOption.APPEND)
+        log("SYSTEM MESSAGE: $msg")
+    }
+
     // ------------------------------------------------------------
     private fun processCommandFile() {
         if (!config.pokemonTalk) return
@@ -265,7 +297,7 @@ class AIHandler(dirPath: String) {
             val hash = sha256(prompt)
             Files.writeString(
                 respostaPath,
-                msg
+                msg,StandardOpenOption.APPEND
             )
 
             // Resetar o hash garante que não trava novas tentativas
@@ -315,10 +347,14 @@ class AIHandler(dirPath: String) {
             log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
 
             if (res.statusCode() != 200) {
+                // ROTACIONA AQUI
+                rotateApiKey(res.statusCode())
+                rotateModel(res.statusCode())
                 throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
-            extractOpenAIContent(res.body())
+            return extractOpenAIContent(res.body())
+
         } catch (e: Exception) {
             log("ERROR: ${e.message}")
             "Erro API: ${e.message}"
@@ -465,10 +501,15 @@ class AIHandler(dirPath: String) {
             log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
 
             if (res.statusCode() != 200) {
+                // ROTACIONA AQUI
+                println(res.statusCode())
+                rotateApiKey(res.statusCode())
+                rotateModel(res.statusCode())
                 throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
-            extractGoogleGemmaContent(res.body())
+            return extractGoogleGemmaContent(res.body())
+
         } catch (e: Exception) {
             log("ERROR: ${e.message}")
             "Erro API Google: ${e.message}"
