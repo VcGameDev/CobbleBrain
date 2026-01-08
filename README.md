@@ -76,7 +76,7 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
     <summary>Local Mode</summary>
 
     Local mode runs AI models directly on your computer using LM Studio.
-    WARNING: LOCAL MODELS HAVE NOT YET BEEN TESTED IN THE MOD AND MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO HEAVY. USE AT YOUR OWN RISK!
+    WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO HEAVY.
 
     **Steps:**  
     1. Install [LM Studio](https://lmstudio.ai) (available for Windows, Mac, Linux).  
@@ -88,10 +88,8 @@ CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic per
     4. Prefer quantized versions (q4, q5, q8) to reduce resource usage.  
     5. Start the LM Studio server; it will show a local API address (e.g., `http://localhost:port`).  
     6. Edit `/config/cobblebrain.json` with:  
-       - `apiBaseUrl`: local server address  
-       - `aiModel`: ID or name of the installed model
-
-    Tip: It is recommended to watch a tutorial video, since depending on the LM Studio version and OS, the setup steps may change.
+       - `apiBaseUrl`: local server address (http://localhost:1234)
+       - `aiModel`: ID or name of the model running in the server
 
   </details>
 
@@ -122,32 +120,38 @@ Location: `.minecraft/config/cobblebrain.json`
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `apiKey` | String | API key |
-| `apiBaseUrl` | String | Base API URL. |
-| `aiModel` | String | AI model name. |
-| `temperature` | Double | Creativity control (0.0–2.0). |
-| `aiProvider` | String | Routing hint for OpenRouter. |
-| `reasoningEffort` | String | Reasoning effort (OpenRouter): `high`, `medium`, `low`, `auto`, `none`. |
-| `debugLogging` | Boolean | Enables local logs. |
+| Variable | Type | Description |
+|----------|------|-------------|
+| `apiKey` | String | API key used for authentication with the AI system.<br>• OpenAI‑compatible: Bearer token<br>• Google AI Studio: Google API key |
+| `apiBaseUrl` | String | Base URL of the API.<br>Examples:<br>• OpenAI: `https://api.openai.com`<br>• OpenRouter: `https://openrouter.ai/api`<br>• Google AI Studio (Gemma/Gemini): `https://generativelanguage.googleapis.com`<br>• Lm studio: `http://localhost:1234` |
+| `aiModel` | String | Name of the AI model.<br>Examples:<br>• Gemini (Google): `gemini-2.5-flash`<br>• Gemma (Google): `gemma-3-12b-it`<br>• OpenAI: `gpt-4.1-mini`<br>• OpenRouter: `anthropic/claude-3.5-sonnet` |
+| `temperature` | Double | Controls the randomness/creativity of the model’s responses.<br>Range: 0.0 (deterministic, repetitive) → 2.0 (very creative, unpredictable).<br>Recommended values:<br>• 0.0–0.3 → factual, precise answers<br>• 0.7–1.0 → balanced, natural conversation<br>• 1.2+ → highly creative or exploratory outputs |
+| `aiProvider` | String | Provider hint for routing in OpenRouter.<br>Example: `"DeepInfra"`, `"OpenAI"`, `"Anthropic"`.<br>Ignored for Google AI Studio. |
+| `reasoningEffort` | String | Reasoning effort for models that support it.<br>Accepted values: `"high"`, `"medium"`, `"low"`, `"auto"`, `"none"`.<br>`"none"` disables the reasoning block. |
+| `debugLogging` | Boolean | Enables debug logging, logs are stored in `cobblebrain-ai/logs`. |
 | `dialogueInChat` | Boolean | Shows dialogue in chat. |
-| `chatbubbles` | Boolean | Displays speech bubbles. |
-| `pokemonTalk` | Boolean | Toggles Pokémon speech. |
-| `allowPokemonPVP` | Boolean | Allows Pokémon PvP. |
-| `allowPokemonPVE` | Boolean | Allows Pokémon PvE against mobs. |
-| `lowTokenMode` | Boolean | Uses fewer tokens for faster responses. |
-| `dialogueOnDamage` | Boolean | Pokémon talk when someone is hurt. |
-| `dialogueOnBattle` | Boolean | Pokémon talk during battles. |
-| `spontaneousDialogueChance` | Double | Chance of spontaneous dialogue. |
-| `requestTimeoutSeconds` | Long | Request timeout in seconds. |
-| `listenToChat` | Boolean | AI listens to normal chat. |
-| `EXPERIMENTAL: onlyNearbyChat` | Boolean | AI listens only to nearby players. |
-| `maxShortMemory` | Int | Short-term memory (recent interactions). |
-| `maxLongMemory` | Int | Long-term memory. |
-| `selectedLanguage` | String | Language for AI responses. |
-| `decreaseFriendship` | Boolean | Dialogue can decrease friendship. |
-| `increaseFriendship` | Boolean | Dialogue can increase friendship. |
-| `showFriendship` | Boolean | Shows friendship level. |
-| `instruct` | String | Instructions for dialogue generation. |
+| `chatbubbles` | Boolean | Enables chat bubbles. |
+| `pokemonTalk` | Boolean | Determines if Pokémon can talk or hear (on/off switch). |
+| `allowPokemonPVP` | Boolean | Determines whether Pokémon can attack other players’ Pokémon. |
+| `allowPokemonPVE` | Boolean | Determines whether Pokémon can attack mobs (except Pokémon, tamed mobs, and non‑aggressive mobs with a tag). |
+| `lowTokenMode` | Boolean | When active, omits some world information to use fewer tokens. |
+| `dialogueOnDamage` | Boolean | Determines if Pokémon talk when someone is hurt. |
+| `dialogueOnBattle` | Boolean | Determines whether Pokémon speak when something related to battle happens. |
+| `spontaneousDialogueChance` | Double | Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments). |
+| `requestTimeoutSeconds` | Long | Request timeout in seconds (local models may need longer). |
+| `listenToChat` | Boolean | Enables or disables listening to regular player chat.<br>If false, the AI ignores all non‑command messages. |
+| `EXPERIMENTAL: onlyNearbyChat` | Boolean | If true, the AI only listens to chat messages from nearby players.<br>Only applies if `listenToChat` is also true. |
+| `maxShortMemory` | Int | Maximum short memory size of each Pokémon. |
+| `maxLongMemory` | Int | Maximum long memory size of each Pokémon. |
+| `selectedLanguage` | String | The language selected for the AI to respond. |
+| `decreaseFriendship` | Boolean | Defines whether dialogue decreases the Pokémon’s friendship with players. |
+| `increaseFriendship` | Boolean | Defines whether dialogue increases the Pokémon’s friendship with players. |
+| `showFriendship` | Boolean | Defines whether friendship is shown in chat. |
+| `instruct` | String | Instructions for the AI to generate dialogue.<br>⚠️ Not recommended to change the output format; doing so may break the mod. |
+| `keyRotation` | Boolean | Enable or disable API key rotation when trigger errors occur. |
+| `modelRotation` | Boolean | Enable or disable model rotation when trigger errors occur. |
+| `keyRotationTrigger` | List[Int] | List of HTTP status codes that trigger API key rotation. |
+| `modelRotationTrigger` | List[Int] | List of HTTP status codes that trigger model rotation. |
 
 ---
 
