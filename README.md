@@ -147,7 +147,8 @@ Location: `.minecraft/config/cobblebrain.json`
 | `decreaseFriendship` | Boolean | Defines whether dialogue decreases the Pokémon’s friendship with players. |
 | `increaseFriendship` | Boolean | Defines whether dialogue increases the Pokémon’s friendship with players. |
 | `showFriendship` | Boolean | Defines whether friendship is shown in chat. |
-| `instruct` | String | Instructions for the AI to generate dialogue.<br>⚠️ Not recommended to change the output format; doing so may break the mod. |
+| `instruct` | String | User prompt to generate dialogues.<br>|
+| `outputFormat` | String | System instructions for the AI to generate dialogues.<br>⚠️ Not recommended to change the output format; doing so may break the mod. |
 | `keyRotation` | Boolean | Enable or disable API key rotation when trigger errors occur. |
 | `modelRotation` | Boolean | Enable or disable model rotation when trigger errors occur. |
 | `keyRotationTrigger` | List[Int] | List of HTTP status codes that trigger API key rotation. |
