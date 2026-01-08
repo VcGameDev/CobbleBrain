@@ -122,9 +122,9 @@ Location: `.minecraft/config/cobblebrain.json`
 |----------|------|-------------|
 | Variable | Type | Description |
 |----------|------|-------------|
-| `apiKey` | String | API key used for authentication with the AI system.<br>• OpenAI‑compatible: Bearer token<br>• Google AI Studio: Google API key |
+| `apiKey` | List of Strings | API key used for authentication with the AI system.|
 | `apiBaseUrl` | String | Base URL of the API.<br>Examples:<br>• OpenAI: `https://api.openai.com`<br>• OpenRouter: `https://openrouter.ai/api`<br>• Google AI Studio (Gemma/Gemini): `https://generativelanguage.googleapis.com`<br>• Lm studio: `http://localhost:1234` |
-| `aiModel` | String | Name of the AI model.<br>Examples:<br>• Gemini (Google): `gemini-2.5-flash`<br>• Gemma (Google): `gemma-3-12b-it`<br>• OpenAI: `gpt-4.1-mini`<br>• OpenRouter: `anthropic/claude-3.5-sonnet` |
+| `aiModel` | List of Strings | Name of the AI model.<br>Examples:<br>• Gemini (Google): `gemini-2.5-flash`<br>• Gemma (Google): `gemma-3-12b-it`<br>• OpenAI: `gpt-4.1-mini`<br>• OpenRouter: `anthropic/claude-3.5-sonnet` |
 | `temperature` | Double | Controls the randomness/creativity of the model’s responses.<br>Range: 0.0 (deterministic, repetitive) → 2.0 (very creative, unpredictable).<br>Recommended values:<br>• 0.0–0.3 → factual, precise answers<br>• 0.7–1.0 → balanced, natural conversation<br>• 1.2+ → highly creative or exploratory outputs |
 | `aiProvider` | String | Provider hint for routing in OpenRouter.<br>Example: `"DeepInfra"`, `"OpenAI"`, `"Anthropic"`.<br>Ignored for Google AI Studio. |
 | `reasoningEffort` | String | Reasoning effort for models that support it.<br>Accepted values: `"high"`, `"medium"`, `"low"`, `"auto"`, `"none"`.<br>`"none"` disables the reasoning block. |
