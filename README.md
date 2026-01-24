@@ -178,7 +178,7 @@ Location: `.minecraft/config/cobblebrain.json`
   </details>
 
   <details>
-    <summary>Swift (Ghost)</summary>
+    <summary>Shift (Ghost)</summary>
     Transports the player to an alternate dimension.  
     Player becomes invisible, gains increased speed and jump height, but suffers from high weakness.
   </details>
