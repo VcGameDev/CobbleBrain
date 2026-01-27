@@ -15,6 +15,8 @@ import java.time.format.DateTimeFormatter
 import kotlin.system.exitProcess
 import vito.cobblebrain.config.CobblebrainConfig
 import java.net.http.HttpTimeoutException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.collections.get
 
 object KeyManager {
@@ -107,6 +109,12 @@ class AIHandler(dirPath: String) {
             StandardWatchEventKinds.ENTRY_CREATE
         )
 
+        // Executor para rodar o pingHealth a cada 60s
+        if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+            val scheduler = Executors.newSingleThreadScheduledExecutor()
+            scheduler.scheduleAtFixedRate({ pingHealth() }, 0, 60, TimeUnit.SECONDS)
+        }
+
         while (true) {
             try {
                 val key = watchService.take()
@@ -123,6 +131,33 @@ class AIHandler(dirPath: String) {
             }
         }
     }
+
+    private fun pingHealth() {
+        try {
+            val req = HttpRequest.newBuilder()
+                .uri(URI.create("$apiBase/v1/health"))
+                .header("player2-game-key", "019bfb65-9ed4-79af-a348-90d86bbb6cbb")
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build()
+
+            val client = HttpClient.newHttpClient()
+            val res = client.send(req, HttpResponse.BodyHandlers.ofString())
+
+            if (res.statusCode() == 200) {
+                log("Health OK → ${res.body()}")
+                println("Health OK → ${res.body()}")
+            } else {
+                log("Health ping falhou: HTTP ${res.statusCode()} → ${res.body()}")
+                println("Health ping falhou: HTTP ${res.statusCode()} → ${res.body()}")
+            }
+        } catch (e: Exception) {
+            log("Erro no health ping: ${e.message}")
+            println("Erro no health ping: ${e.message}")
+        }
+    }
+
+
 
     private fun rotateApiKey(status: Int) {
         if (config.keyRotation && status in config.keyRotationTrigger) {
@@ -341,9 +376,16 @@ class AIHandler(dirPath: String) {
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
-        val key = apiKeyRotator.current()
-        if (key.isNotBlank()) {
-            builder.header("Authorization", "Bearer $key")
+        // 🔑 Autenticação
+        if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+            // Player2 exige Game Client id no header
+            builder.header("player2-game-key", "019bfb65-9ed4-79af-a348-90d86bbb6cbb")
+        } else {
+            // Padrão OpenAI / OpenRouter / LM Studio
+            val key = apiKeyRotator.current()
+            if (key.isNotBlank()) {
+                builder.header("Authorization", "Bearer $key")
+            }
         }
 
         val req = builder.build()
