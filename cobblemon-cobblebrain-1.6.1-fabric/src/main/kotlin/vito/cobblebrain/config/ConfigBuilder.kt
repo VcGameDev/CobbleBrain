@@ -68,37 +68,51 @@ class ConfigBuilder<T> private constructor(
     private fun writeFile(file: File, gson: Gson, json: JsonObject) {
         var commentedJson = gson.toJson(json)
 
+        // depois de gerar o JSON com gson.toJson(...)
+        commentedJson = commentedJson.replace(
+            Regex("""\[\s*([\s\S]*?)\s*]""")
+        ) { match ->
+            val conteudo = match.groupValues[1]
+                .replace(Regex("""\s+"""), "") // tira espaços e quebras
+            "[${conteudo}]"
+        }
+
         val comments = mapOf(
-            "\"apiKey\"" to "\n// API key used for authentication with the AI system.\n// For OpenAI‑compatible: Bearer token.\n// For Google AI Studio: Google API key.",
-            "\"apiBaseUrl\"" to "\n// Base URL of the API.\n// Examples:\n//  - OpenAI: https://api.openai.com\n//  - OpenRouter: https://openrouter.ai/api\n//  - Google AI Studio (Gemma/Gemini): https://generativelanguage.googleapis.com\n//  - Lm studio: http://localhost:1234",
-            "\"aiModel\"" to "\n// Name of the AI model.\n// Examples:\n//  - Gemini (Google): gemini-2.5-flash\n//  - Gemma (Google): gemma-3-12b-it\n//  - OpenAI: gpt-4.1-mini\n//  - OpenRouter: anthropic/claude-3.5-sonnet",
-            "\"temperature\"" to "\n/** Controls the randomness/creativity of the model's responses.\n * Range: 0.0 (deterministic, repetitive) to 2.0 (very creative, unpredictable).\n * Recommended values:\n *  - 0.0–0.3 → factual, precise answers.\n *  - 0.7–1.0 → balanced, natural conversation.\n *  - 1.2+ → highly creative or exploratory outputs.\n */",
-            "\"aiProvider\"" to "\n/** Provider hint for routing in OpenRouter.\n * Example: \"DeepInfra\", \"OpenAI\", \"Anthropic\", etc.\n * Ignored for Google AI Studio.\n */",
-            "\"reasoningEffort\"" to "\n/** Reasoning effort for models that support it.\n * Accepted values: \"high\", \"medium\", \"low\", \"auto\", \"none\".\n * \"none\" disables the reasoning block.\n */",
-            "\"debugLogging\"" to "\n// Enables debug logging, logs are stored in cobblebrain-ai/logs.",
-            "\"dialogueInChat\"" to "\n// Shows dialogue in chat.",
-            "\"chatbubbles\"" to "\n// Enables chat bubbles.",
-            "\"pokemonTalk\"" to "\n// Determines if Pokémon can talk or hear (basically an on/off switch of the mod).",
-            "\"allowPokemonPVP\"" to "\n// Determines whether your Pokémon can attack other players' Pokémon.",
-            "\"allowPokemonPVE\"" to "\n// Determines whether your Pokémon can attack mobs (except Pokémon, tamed mobs, and non‑aggressive mobs with a tag).",
-            "\"lowTokenMode\"" to "\n// When active, it omits some world information to use fewer tokens.",
-            "\"dialogueOnDamage\"" to "\n// Determines if Pokémon talk when someone is hurt.",
-            "\"dialogueOnBattle\"" to "\n// Determines whether Pokémon speak when something related to battle happens.",
-            "\"spontaneousDialogueChance\"" to "\n// Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).",
-            "\"requestTimeoutSeconds\"" to "\n// Request timeout in seconds (local models may need longer).",
-            "\"listenToChat\"" to "\n// Enables or disables listening to regular player chat.\n// If false, the AI ignores all non‑command messages (like normal chat).",
-            "\"onlyNearbyChat\"" to "\n// EXPERIMENTAL: If true, the AI only listens to chat messages from players who are nearby.\n// Only applies if listenToChat is also true.",
-            "\"maxShortMemory\"" to "\n// Maximum short memory size of each pokemon.",
-            "\"maxLongMemory\"" to "\n// Maximum long memory size of each pokemon.",
-            "\"selectedLanguage\"" to "\n// The language selected for the AI to respond.",
-            "\"decreaseFriendship\"" to "\n// Defines whether the dialogue decreases the Pokémon's friendship with the players.",
-            "\"increaseFriendship\"" to "\n// Defines whether the dialogue increases the Pokémon's friendship with the players.",
-            "\"showFriendship\"" to "\n// Defines whether friendship is shown in chat.",
-            "\"instruct\"" to "\n// Instructions for the AI to generate dialogue.\n// It is NOT recommended to change the output format; doing so may break the mod.",
-            "\"keyRotation\"" to "\n// Enable or disable API key rotation when trigger errors occur.",
-            "\"modelRotation\"" to "\n// Enable or disable model rotation when trigger errors occur.",
-            "\"keyRotationTrigger\"" to "\n// List of HTTP status codes that trigger API key rotation.",
-            "\"modelRotationTrigger\"" to "\n// List of HTTP status codes that trigger model rotation."
+            //========================= // AI CONFIGURATION // =========================
+            "\"apiKey\"" to "//========================= // AI CONFIGURATION // =========================\n\n\n// The API key used for authentication with the AI system. It can be a Bearer token or a Google API key depending on the provider.",
+            "\"apiBaseUrl\"" to "\n// The base URL of the API endpoint. Examples include OpenAI, OpenRouter, Google AI Studio, or a local LM Studio server.",
+            "\"aiModel\"" to "\n// The names of the AI models to use. Examples are gemini-2.5-flash, gemma-3-12b-it, or gpt-4.1-mini.",
+            "\"temperature\"" to "\n// Controls the randomness of responses. Lower values give precise answers, higher values make them more creative.",
+            "\"aiProvider\"" to "\n// A provider hint used for routing in OpenRouter. This is ignored when using Google AI Studio.",
+            "\"reasoningEffort\"" to "\n// Defines the reasoning effort level for supported models. Options include high, medium, low, auto, or none.",
+            "\"debugLogging\"" to "\n// Enables debug logging for troubleshooting. Logs are stored in the cobblebrain-ai/logs directory.",
+            "\"localApiProvider\"" to "\n// If apiBaseUrl is a local address (127.0.0.1), the system uses the provider name in localApiProvider to adapt messages for the correct provider... (Officially supported local APIs: player2, lmstudio)",
+            //"" to "\n\n//========================= // GAME AND INTERACTIONS // =========================\n\n",
+            "\"dialogueInChat\"" to "\n\n//========================= // GAME AND INTERACTIONS // =========================\n\n\n// Shows generated dialogue directly in the chat. This makes Pokémon conversations visible to players.",
+            "\"chatbubbles\"" to "\n// Enables chat bubbles above characters. Dialogue will appear visually instead of only in text chat.",
+            "\"pokemonTalk\"" to "\n// Toggles whether Pokémon can talk or listen. This acts as a simple on/off switch for dialogue.",
+            "\"allowPokemonPVP\"" to "\n// Allows Pokémon to attack other players’ Pokémon. Disabling prevents player-versus-player battles.",
+            "\"allowPokemonPVE\"" to "\n// Allows Pokémon to attack mobs in the world. Exceptions include tamed mobs and non-aggressive tagged mobs.",
+            "\"lowTokenMode\"" to "\n// Reduces world information sent to the AI. This helps conserve tokens and lower usage costs.",
+            "\"dialogueOnDamage\"" to "\n// Makes Pokémon speak when someone is hurt. Dialogue is triggered by damage events.",
+            "\"dialogueOnBattle\"" to "\n// Makes Pokémon speak during battle events. Dialogue reflects combat situations.",
+            "\"spontaneousDialogueChance\"" to "\n// Sets the chance of spontaneous dialogue. Pokémon may speak randomly during idle moments.",
+            "\"requestTimeoutSeconds\"" to "\n// Defines the request timeout in seconds. Local models may require longer values.",
+            "\"listenToChat\"" to "\n// Enables listening to regular player chat. If disabled, the AI ignores non-command messages.",
+            "\"onlyNearbyChat\"" to "\n// Restricts listening to nearby players only. Works only if listenToChat is enabled.",
+            "\"maxShortMemory\"" to "\n// Maximum short-term memory size per Pokémon. Controls how much recent context is stored.",
+            "\"maxLongMemory\"" to "\n// Maximum long-term memory size per Pokémon. Controls how much persistent context is stored.",
+            "\"selectedLanguage\"" to "\n// The language the AI uses for responses. Determines dialogue output language.",
+            "\"decreaseFriendship\"" to "\n// Dialogue can decrease friendship with players. Used for negative interactions.",
+            "\"increaseFriendship\"" to "\n// Dialogue can increase friendship with players. Used for positive interactions.",
+            "\"showFriendship\"" to "\n// Displays friendship values in chat. Players can see relationship changes.",
+            "\"instruct\"" to "\n\n//========================= // PROMPT AND OUTPUT // =========================\n\n\n// Instructions for generating dialogue.",
+            //"" to "\n\n\n//========================= // PROMPT AND OUTPUT // =========================\n\n",
+            "\"outputFormat\"" to "\n// System Instructions for the AI model. Do not change the output format to avoid breaking the mod.",
+            "\"keyRotation\"" to "\n// Enables API key rotation when errors occur. Useful for handling invalid or expired keys.",
+            "\"modelRotation\"" to "\n// Enables model rotation when errors occur. Useful for fallback to alternative models.",
+            "\"keyRotationTrigger\"" to "\n// List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys.",
+            "\"modelRotationTrigger\"" to "\n// List of HTTP status codes that trigger model rotation. Defines error conditions for switching models."
         )
 
         comments.forEach { (field, comment) ->

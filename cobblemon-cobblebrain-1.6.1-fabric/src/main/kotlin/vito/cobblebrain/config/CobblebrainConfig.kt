@@ -22,6 +22,11 @@ class CobblebrainConfig {
     //  - Lm studio: http://localhost:1234
     var apiBaseUrl: String = "https://generativelanguage.googleapis.com"
 
+    // if the apikey is a local adress (http://127.0.0.1...), you must put the apiprovider here...
+    // official supported local apis: player2, lm studio
+
+    val localApiProvider: String = ""
+
     // Nome do modelo de IA.
     // Exemplos:
     //  - Gemini: gemini-1.5-pro
@@ -53,9 +58,15 @@ class CobblebrainConfig {
      */
     var reasoningEffort: String = "none"
 
+    // Request timeout in seconds (local models may need longer)
+    var requestTimeoutSeconds: Long = 60
+
     // ================= DIALOGUE & UI SETTINGS =================
 
     var debugLogging: Boolean = false
+
+    // The language selected for the AI to respond.
+    var selectedLanguage: String = "English"
 
     var dialogueInChat: Boolean = true
 
@@ -82,9 +93,6 @@ class CobblebrainConfig {
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
     var spontaneousDialogueChance: Double = 0.1
 
-    // Request timeout in seconds (local models may need longer)
-    var requestTimeoutSeconds: Long = 60
-
     // Enables or disables listening to regular player chat.
     // If false, the AI ignores all non‑command messages (like normal chat).
     var listenToChat: Boolean = false
@@ -95,9 +103,6 @@ class CobblebrainConfig {
 
     var maxShortMemory: Int = 5
     var maxLongMemory: Int = 5
-
-    // The language selected for the AI to respond.
-    var selectedLanguage: String = "English"
 
     // ================= RELATIONSHIP SETTINGS =================
 

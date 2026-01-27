@@ -26,8 +26,10 @@ object CobbleBrainModClient : ClientModInitializer {
                 val minAlpha = 50
                 val maxAlpha = 180
 
-                val pulse = ((sin(time / 10.0) + 1) / 2.0 * (maxAlpha - minAlpha) + minAlpha).toInt()
-                val color = (pulse shl 24) or 0x00FFAA
+                // pulsar mais lento (20.0 em vez de 10.0)
+                val pulse = ((sin(time / 20.0) + 1) / 2.0 * (maxAlpha - minAlpha) + minAlpha).toInt()
+                // roxo escuro discreto
+                val color = (pulse shl 24) or 0x3A0066
                 guiGraphics.fill(0, 0, width, height, color)
             }
         }

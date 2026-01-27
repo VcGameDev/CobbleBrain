@@ -69,7 +69,7 @@ private fun enterAttackMode(pokemon: Mob) {
     val mobAccessor = pokemon as MobAccessor
     val toDisable = mobAccessor.goalSelector.availableGoals
         .map { it.goal }
-        .filter { it is FollowOwnerGoal }
+        .filterIsInstance<FollowOwnerGoal>()
 
     if (toDisable.isNotEmpty()) {
         disabledGoals[pokemon.uuid] = toDisable
@@ -121,7 +121,7 @@ fun registerTickHandler() {
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
             val scaledDamage = 2.0f + (atk * 0.03f)
-            val speed = 0.70 + (spd * 0.0075)
+            val speed = 0.40 + (spd * 0.005)
 
             when (action) {
                 "grow" -> {
@@ -138,7 +138,6 @@ fun registerTickHandler() {
                                 )
                                 announcedStates[pokemonId] = "grow"
                             }
-                            val server = level
                             val range = 5
 
                             // lista de blocos ao redor
@@ -151,9 +150,8 @@ fun registerTickHandler() {
                             val targetPos = blocksAround
                                 .map { it.immutable() }
                                 .filter { pos ->
-                                    val state = server.getBlockState(pos)
-                                    val block = state.block
-                                    when (block) {
+                                    val state = level.getBlockState(pos)
+                                    when (val block = state.block) {
                                         is CropBlock -> !block.isMaxAge(state) // só crops não maduras
                                         is SaplingBlock -> true                // toda sapling é válida
                                         else -> false
@@ -164,15 +162,13 @@ fun registerTickHandler() {
                             val cooldown = growCooldowns.getOrDefault(pokemonId, 0)
 
                             if (targetPos != null && cooldown <= 0) {
-                                val state = server.getBlockState(targetPos)
-                                val block = state.block
-
-                                when (block) {
+                                val state = level.getBlockState(targetPos)
+                                when (val block = state.block) {
                                     is SaplingBlock -> {
-                                        block.advanceTree(server, targetPos, state, server.random)
+                                        block.advanceTree(level, targetPos, state, level.random)
                                     }
                                     is CropBlock -> {
-                                        block.performBonemeal(server, server.random, targetPos, state)
+                                        block.performBonemeal(level, level.random, targetPos, state)
                                     }
                                 }
 
@@ -182,14 +178,21 @@ fun registerTickHandler() {
                                 // partículas verdes claras
                                 val option = DustParticleOptions(Vector3f(0.5f, 1.0f, 0.5f), 1.0f)
                                 repeat(20) {
-                                    val px = pokemon.x + (server.random.nextDouble() - 0.5) * 0.8
-                                    val py = pokemon.y + server.random.nextDouble() * pokemon.bbHeight
-                                    val pz = pokemon.z + (server.random.nextDouble() - 0.5) * 0.8
-                                    server.sendParticles(option, px, py, pz, 1, 0.0, 0.0, 0.0, 0.0)
+                                    val px = pokemon.x + (level.random.nextDouble() - 0.5) * 0.8
+                                    val py = pokemon.y + level.random.nextDouble() * pokemon.bbHeight
+                                    val pz = pokemon.z + (level.random.nextDouble() - 0.5) * 0.8
+                                    level.sendParticles(option, px, py, pz, 1, 0.0, 0.0, 0.0, 0.0)
                                 }
 
                                 pokemon.swing(InteractionHand.MAIN_HAND)
-                                server.playSound(null, targetPos, SoundEvents.BONE_MEAL_USE, SoundSource.BLOCKS, 1.0f, 1.0f)
+                                level.playSound(
+                                    null,
+                                    targetPos,
+                                    SoundEvents.BONE_MEAL_USE,
+                                    SoundSource.BLOCKS,
+                                    1.0f,
+                                    1.0f
+                                )
                             }
 
                             // decrementa cooldown
@@ -216,9 +219,9 @@ fun registerTickHandler() {
                                 )
                                 announcedStates[pokemonId] = "fire"
                             }
-                            val server = level as? ServerLevel ?: return@forEach
                             val range = 3.0
-                            val items = server.getEntitiesOfClass(ItemEntity::class.java, pokemon.boundingBox.inflate(range))
+                            val items =
+                                level.getEntitiesOfClass(ItemEntity::class.java, pokemon.boundingBox.inflate(range))
                             val recipeTypes = listOf(RecipeType.SMELTING, RecipeType.SMOKING, RecipeType.CAMPFIRE_COOKING)
 
                             // escolhe um único item "cozinhável" mais próximo
@@ -228,7 +231,7 @@ fun registerTickHandler() {
                                     if (stack.isEmpty) return@filter false
                                     val input = SingleRecipeInput(stack)
                                     // existe ao menos uma receita válida
-                                    recipeTypes.any { type -> server.recipeManager.getRecipeFor(type, input, server).isPresent }
+                                    recipeTypes.any { type -> level.recipeManager.getRecipeFor(type, input, level).isPresent }
                                 }
                                 .minByOrNull { it.distanceTo(pokemon) }
 
@@ -241,14 +244,17 @@ fun registerTickHandler() {
                                     val input = SingleRecipeInput(stack)
 
                                     // pega a primeira receita aplicável
-                                    val recipeOpt = recipeTypes
-                                        .asSequence()
-                                        .mapNotNull { type -> server.recipeManager.getRecipeFor(type, input, server).orElse(null) }
-                                        .firstOrNull()
+                                    val recipeOpt = recipeTypes.firstNotNullOfOrNull { type ->
+                                            level.recipeManager.getRecipeFor(
+                                                type,
+                                                input,
+                                                level
+                                            ).orElse(null)
+                                        }
 
                                     if (recipeOpt != null) {
                                         val recipe = recipeOpt.value()
-                                        val result = recipe.getResultItem(server.registryAccess()).copy()
+                                        val result = recipe.getResultItem(level.registryAccess()).copy()
                                         if (!result.isEmpty) {
                                             // cozinha o ITEM inteiro (uma entidade por vez)
                                             result.count = stack.count
@@ -259,21 +265,38 @@ fun registerTickHandler() {
 
                                             // partículas simples e confiáveis
                                             repeat(20) {
-                                                val dx = (server.random.nextDouble() - 0.5) * 2 * range
-                                                val dz = (server.random.nextDouble() - 0.5) * 2 * range
+                                                val dx = (level.random.nextDouble() - 0.5) * 2 * range
+                                                val dz = (level.random.nextDouble() - 0.5) * 2 * range
                                                 if (dx * dx + dz * dz <= range * range) {
                                                     val px = pokemon.x + dx
-                                                    val py = pokemon.y + server.random.nextDouble() * pokemon.bbHeight
+                                                    val py = pokemon.y + level.random.nextDouble() * pokemon.bbHeight
                                                     val pz = pokemon.z + dz
-                                                    server.sendParticles(ParticleTypes.FLAME, px, py, pz, 1, 0.0, 0.0, 0.0, 0.0)
+                                                    level.sendParticles(
+                                                        ParticleTypes.FLAME,
+                                                        px,
+                                                        py,
+                                                        pz,
+                                                        1,
+                                                        0.0,
+                                                        0.0,
+                                                        0.0,
+                                                        0.0
+                                                    )
                                                 }
                                             }
 
                                             pokemon.swing(InteractionHand.MAIN_HAND)
-                                            server.playSound(null, target.blockPosition(), SoundEvents.FURNACE_FIRE_CRACKLE, SoundSource.BLOCKS, 1.0f, 1.0f)
+                                            level.playSound(
+                                                null,
+                                                target.blockPosition(),
+                                                SoundEvents.FURNACE_FIRE_CRACKLE,
+                                                SoundSource.BLOCKS,
+                                                1.0f,
+                                                1.0f
+                                            )
 
                                             // chance de transformar UM item em carvão
-                                            if (server.random.nextFloat() < 0.05f && !target.item.isEmpty) {
+                                            if (level.random.nextFloat() < 0.05f && !target.item.isEmpty) {
                                                 val stack = target.item
                                                 stack.shrink(1)
                                                 val coal = ItemStack(Items.COAL, 1)
@@ -281,7 +304,15 @@ fun registerTickHandler() {
                                                 if (stack.isEmpty) {
                                                     target.item = coal
                                                 } else {
-                                                    server.addFreshEntity(ItemEntity(server, target.x, target.y, target.z, coal))
+                                                    level.addFreshEntity(
+                                                        ItemEntity(
+                                                            level,
+                                                            target.x,
+                                                            target.y,
+                                                            target.z,
+                                                            coal
+                                                        )
+                                                    )
                                                 }
                                             }
                                         }
@@ -633,12 +664,11 @@ fun registerTickHandler() {
 
                     when (primaryType.lowercase()) {
                         "steel" -> {
-                            val server = level as? ServerLevel ?: return@forEach
-                            val now = server.gameTime
-                            val lastRepair = repairCooldowns.getOrDefault(pokemonId, 0L)
+                            val now = level.gameTime
+                            val lastRepair = repairCooldowns[pokemonId] // null if never repaired
 
                             val ownerId = pokemon.ownerUUID
-                            val owner: ServerPlayer? = server.server.playerList.getPlayer(ownerId!!)
+                            val owner: ServerPlayer? = level.server.playerList.getPlayer(ownerId!!)
                             if (announcedStates[pokemonId] != "repair") {
                                 sendMessage(
                                     owner,
@@ -648,34 +678,44 @@ fun registerTickHandler() {
                                 announcedStates[pokemonId] = "repair"
                             }
 
-                            // cooldown de 5 minutos
-                            if (now - lastRepair < 6000) {
-                                // manda mensagem uma vez e volta pro idle
+                            // cooldown of 5 minutes (6000 ticks)
+                            if (lastRepair != null && now - lastRepair < 6000) {
                                 if (CommandState.activeCommands[pokemonId] == "repair") {
-                                    sendMessage(owner, "${pokemon.displayName?.string} is recharging REPAIR...",
+                                    sendMessage(
+                                        owner,
+                                        "${pokemon.displayName?.string} is recharging REPAIR...",
                                         ChatFormatting.GOLD
-                                    )}
+                                    )
+                                }
                                 CommandState.activeCommands[pokemonId] = "idle"
                                 return@forEach
                             }
 
                             val range = 3.0
-                            val items = server.getEntitiesOfClass(ItemEntity::class.java, pokemon.boundingBox.inflate(range))
+                            val items = level.getEntitiesOfClass(ItemEntity::class.java, pokemon.boundingBox.inflate(range))
                             val target = items.firstOrNull { it.item.isDamageableItem }
 
                             if (target != null) {
                                 val stack = target.item
                                 stack.damageValue = (stack.damageValue - 60).coerceAtLeast(0)
-                                repairCooldowns[pokemonId] = now
+                                repairCooldowns[pokemonId] = now // record repair time
 
                                 pokemon.swing(InteractionHand.MAIN_HAND)
-                                server.playSound(null, target.blockPosition(), SoundEvents.ANVIL_USE, SoundSource.BLOCKS, 1.0f, 1.0f)
+                                level.playSound(
+                                    null,
+                                    target.blockPosition(),
+                                    SoundEvents.ANVIL_USE,
+                                    SoundSource.BLOCKS,
+                                    1.0f,
+                                    1.0f
+                                )
 
-                                sendMessage(owner, "${pokemon.displayName?.string} REPAIRED your dropped weapon a bit!",
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} REPAIRED your dropped weapon a bit!",
                                     ChatFormatting.GREEN
                                 )
 
-                                // depois de reparar, volta pro idle
                                 CommandState.activeCommands[pokemonId] = "idle"
                             }
                         }
@@ -712,7 +752,7 @@ fun registerTickHandler() {
                             owner.addEffect(MobEffectInstance(MobEffects.JUMP, 20 * 3, 2))
                             owner.addEffect(MobEffectInstance(MobEffects.SLOW_FALLING, 20 * 3, 0))
                             owner.addEffect(MobEffectInstance(MobEffects.WEAKNESS, 20 * 3, 2))
-                            owner.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 20 * 3, 0))
+                            owner.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 20 * 3, 2))
 
                             pokemon.swing(InteractionHand.MAIN_HAND)
                             if (announcedStates[pokemonId] != "shift") {

@@ -272,13 +272,25 @@ class AIHandler(dirPath: String) {
         return body
     }
 
+    private fun isLocalApi(apiBase: String): Boolean {
+        return apiBase.contains("127.0.0.1") || apiBase.contains("localhost")
+    }
+
     private fun respostaNormal(prompt: String) {
         println("RespostaNormal ativada")
         val responseText = try {
-            if (apiBase.contains("generativelanguage.googleapis.com")) {
-                callGoogleGemma(prompt)
-            } else {
-                callOpenAISchema(prompt)
+            when {
+                apiBase.contains("generativelanguage.googleapis.com") -> {
+                    callGoogleGemma(prompt)
+                }
+                isLocalApi(apiBase) -> {
+                    // Local: tanto Player2 quanto LM Studio usam o mesmo caller
+                    println("Usando provider local: ${config.localApiProvider}")
+                    callOpenAISchema(prompt)
+                }
+                else -> {
+                    callOpenAISchema(prompt)
+                }
             }
         } catch (e: Exception) {
             println("erro na requisição")
@@ -289,7 +301,7 @@ class AIHandler(dirPath: String) {
             }
         }
 
-        // Se vier erro ou vazio
+    // Se vier erro ou vazio
         if (responseText.isBlank() || responseText.startsWith("Erro")) {
             val msg = extractErrorMessage(responseText)
 
@@ -364,13 +376,12 @@ class AIHandler(dirPath: String) {
     private fun isOpenRouter(apiBase: String) =
         apiBase.contains("openrouter.ai", ignoreCase = true)
 
-    private fun isLMStudio(apiBase: String) =
-        // ajuste conforme sua URL local do LM Studio (ex.: http://localhost:1234)
-        apiBase.contains("lmstudio", ignoreCase = true) ||
-                apiBase.contains("localhost", ignoreCase = true) // se você usar LM Studio local
+    private fun isLMStudio() =
+        // ajuste conforme sua URL local do LM Studio
+        config.localApiProvider.contains("lmstudio", ignoreCase = true)
 
-    private fun usesMaxTokens(apiBase: String) =
-        isOpenRouter(apiBase) || isLMStudio(apiBase)
+    //private fun usesMaxTokens(apiBase: String) =
+        //isOpenRouter(apiBase) || isLMStudio(apiBase)
 
 
     private fun buildOpenAIJson(prompt: String): String {
@@ -381,18 +392,11 @@ class AIHandler(dirPath: String) {
         }
 
         val extras = mutableListOf<String>()
-
-        // sempre válido
         extras.add("\"temperature\": $TEMPERATURE")
         extras.add("\"stream\": false")
 
-        // incluir max_tokens SOMENTE para OpenRouter e LM Studio
-        if (usesMaxTokens(apiBase)) {
-            extras.add("\"max_tokens\": -1")
-        }
-
         // extras específicos de OpenRouter/LM Studio
-        if (isOpenRouter(apiBase) || isLMStudio(apiBase)) {
+        if (isOpenRouter(apiBase) || isLMStudio()) {
             if (PROVIDER_HINT.isNotEmpty()) {
                 extras.add(
                     """
@@ -403,7 +407,6 @@ class AIHandler(dirPath: String) {
                 """.trimIndent()
                 )
             }
-
             if (REASONING != "none") {
                 extras.add(
                     """
@@ -417,16 +420,29 @@ class AIHandler(dirPath: String) {
 
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
-        return """
-    {
-      "model": "${modelRotator.current()}",
-      "messages": [
-        { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
-        $messages
-      ]$extraJson
+        // Se for Player2, não inclui "model"
+        return if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+            """
+        {
+          "messages": [
+            { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
+            $messages
+          ]$extraJson
+        }
+        """.trimIndent()
+        } else {
+            """
+        {
+          "model": "${modelRotator.current()}",
+          "messages": [
+            { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
+            $messages
+          ]$extraJson
+        }
+        """.trimIndent()
+        }
     }
-    """.trimIndent()
-    }
+
 
     private fun extractOpenAIContent(body: String): String {
         return try {
