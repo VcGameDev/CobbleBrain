@@ -1,7 +1,9 @@
-package vito.cobblebrain.social
+package vito.cobblebrain.client
 
 import com.google.gson.Gson
 import kotlinx.io.IOException
+import net.minecraft.client.Minecraft
+import net.minecraft.network.chat.Component
 import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
@@ -12,19 +14,18 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import kotlin.system.exitProcess
 import vito.cobblebrain.config.CobblebrainConfig
 import java.net.http.HttpTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.collections.get
 
-object KeyManager {
-    private val configFile = File("config/cobblebrain.json5")
-    private val config = Gson().fromJson(configFile.readText(), CobblebrainConfig::class.java)
+//object KeyManager {
+//    private val configFile = File("config/cobblebrain.json5")
+//    private val config = Gson().fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
-    val rotator = ApiKeyRotator(config.apiKey)
-}
+//    val rotator = ApiKeyRotator(config.apiKey)
+//}
 
 // ------------------------------------------------------------
 // DATA CLASSES
@@ -43,7 +44,7 @@ class ModelRotator(private val models: List<String>) {
     fun next() { index = (index + 1) % models.size }
 }
 
-class AIHandler(dirPath: String) {
+class AIHandler{
 
     companion object {
         private val gson = Gson()
@@ -66,48 +67,46 @@ class AIHandler(dirPath: String) {
     private val apiBase =
         config.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
 
-    private val comandoPath = Paths.get(dirPath, "comando_ia.txt")
-    private val respostaPath = Paths.get(dirPath, "resposta_ia.txt")
-
     // ---------------- Logging ----------------
-    private val logDir = Paths.get(dirPath, "logs").also {
-        if (DEBUG) Files.createDirectories(it)
-    }
-
-    private val logFile =
-        if (DEBUG)
-            logDir.resolve(
-                "ai_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
-            )
-        else null
-
     private fun log(text: String) {
-        if (!DEBUG || logFile == null) return
-        Files.writeString(
-            logFile,
-            "[${LocalDateTime.now()}] $text\n",
-            StandardOpenOption.CREATE,
-            StandardOpenOption.APPEND
-        )
+        if (!DEBUG) return
+        val line = "[${LocalDateTime.now()}] $text"
+
+        try {
+            // cria a pasta se não existir
+            val dir = Minecraft.getInstance().gameDirectory.toPath().resolve("cobblebrain-ai/logs")
+            Files.createDirectories(dir)
+
+            // cria um arquivo de log por sessão (ex.: data/hora de início)
+            val logFile = dir.resolve(
+                "log_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
+            )
+
+            // escreve continuamente no mesmo arquivo enquanto o jogo estiver rodando
+            Files.writeString(
+                logFile,
+                "$line\n",
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
+
 
     // ---------------- Conversation ----------------
     private val historico = mutableListOf<Mensagem>()
     private var lastPromptHash: String? = null
 
-    init {
-        if (!Files.exists(comandoPath)) Files.writeString(comandoPath, "")
-        if (!Files.exists(respostaPath)) Files.writeString(respostaPath, "")
-    }
-
     // ------------------------------------------------------------
     fun start() {
-        val watchService = FileSystems.getDefault().newWatchService()
-        comandoPath.parent.register(
-            watchService,
-            StandardWatchEventKinds.ENTRY_MODIFY,
-            StandardWatchEventKinds.ENTRY_CREATE
-        )
+        //val watchService = FileSystems.getDefault().newWatchService()
+        //comandoPath.parent.register(
+            //watchService,
+            //StandardWatchEventKinds.ENTRY_MODIFY,
+           //StandardWatchEventKinds.ENTRY_CREATE
+        //)
 
         // Executor para rodar o pingHealth a cada 60s
         if (config.localApiProvider.equals("player2", ignoreCase = true)) {
@@ -115,22 +114,22 @@ class AIHandler(dirPath: String) {
             scheduler.scheduleAtFixedRate({ pingHealth() }, 0, 60, TimeUnit.SECONDS)
         }
 
-        while (true) {
-            try {
-                val key = watchService.take()
-                for (event in key.pollEvents()) {
-                    if ((event.context() as Path).endsWith(comandoPath.fileName)) {
-                        Thread.sleep(60)
-                        println("tentativa de processcommandfile")
-                        processCommandFile()
-                    }
-                }
-                key.reset()
-            } catch (e: Exception) {
-                Thread.sleep(200)
-            }
+        //while (true) {
+            //try {
+                //val key = watchService.take()
+                //for (event in key.pollEvents()) {
+                    //if ((event.context() as Path).endsWith(comandoPath.fileName)) {
+                        //Thread.sleep(60)
+                        //println("tentativa de processcommandfile")
+                        //processCommandFile()
+                    //}
+                //}
+                //key.reset()
+            //} catch (e: Exception) {
+                //Thread.sleep(200)
+            //}
         }
-    }
+    //}
 
     private fun pingHealth() {
         try {
@@ -187,50 +186,36 @@ class AIHandler(dirPath: String) {
     }
 
     private fun sendSystemMessage(msg: String) {
-        Files.writeString(respostaPath, msg,StandardOpenOption.APPEND)
+        Minecraft.getInstance().player?.sendSystemMessage(Component.literal(msg))
         log("SYSTEM MESSAGE: $msg")
     }
 
     // ------------------------------------------------------------
-    private fun processCommandFile() {
-        if (!config.pokemonTalk) return
+    //private fun processCommandFile() {
+        //if (!config.pokemonTalk) return
 
-        val fullText = Files.readString(comandoPath).trim()
-        println(comandoPath.fileName.toString())
-        if (fullText.isEmpty()) return
+        //val fullText = Files.readString(comandoPath).trim()
+        //println(comandoPath.fileName.toString())
+        //if (fullText.isEmpty()) return
 
         // usa o prompt inteiro como base do hash
-        val hash = sha256(fullText)
-        if (hash == lastPromptHash) {
-            println("duplicata detectada")
-            return
-        }
+        //val hash = sha256(fullText)
+        //if (hash == lastPromptHash) {
+           // println("duplicata detectada")
+            //return
+        //}
 
-        lastPromptHash = hash
+        //lastPromptHash = hash
 
         // log detalhado mostrando início do prompt e hash
-        log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
-        log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
+        //log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
+        //log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
 
-        println("processcommandfile ativo")
-        enviarMensagem(fullText)
-    }
+        //println("processcommandfile ativo")
+        //enviarMensagem(fullText)
+    //}
 
     // ------------------------------------------------------------
-    private fun enviarMensagem(prompt: String) {
-        println(INSTRUCTS + config.outputFormat)
-        if (prompt == "/end") exitProcess(0)
-
-        try {
-            println("tentativa de acionar respostaNormal")
-            respostaNormal(prompt)
-        } catch (e: Exception) {
-            lastPromptHash = null
-            Files.writeString(respostaPath, "Erro interno: ${e.message}")
-            println("tentativa falha")
-        }
-    }
-
     // Lista de erros HTTP mais comuns
     private val errorMessages = mapOf(
         400 to """
@@ -311,16 +296,15 @@ class AIHandler(dirPath: String) {
         return apiBase.contains("127.0.0.1") || apiBase.contains("localhost")
     }
 
-    private fun respostaNormal(prompt: String) {
-        println("RespostaNormal ativada")
+    fun respostaNormal(prompt: String): String {
+        println("respostaNormal activated")
         val responseText = try {
             when {
                 apiBase.contains("generativelanguage.googleapis.com") -> {
                     callGoogleGemma(prompt)
                 }
                 isLocalApi(apiBase) -> {
-                    // Local: tanto Player2 quanto LM Studio usam o mesmo caller
-                    println("Usando provider local: ${config.localApiProvider}")
+                    println("Using local provider: ${config.localApiProvider}")
                     callOpenAISchema(prompt)
                 }
                 else -> {
@@ -328,30 +312,19 @@ class AIHandler(dirPath: String) {
                 }
             }
         } catch (e: Exception) {
-            println("erro na requisição")
+            println("Request error")
             when (e) {
-                is HttpTimeoutException -> "Erro: Timeout na requisição"
-                is IOException -> "Erro: Problema de rede (${e.message})"
-                else -> "Erro: ${e.message}"
+                is HttpTimeoutException -> "Error: Request timeout"
+                is IOException -> "Error: Network problem (${e.message})"
+                else -> "Error: ${e.message}"
             }
         }
 
-    // Se vier erro ou vazio
-        if (responseText.isBlank() || responseText.startsWith("Erro")) {
+        if (responseText.isBlank() || responseText.startsWith("Error")) {
             val msg = extractErrorMessage(responseText)
-
-            // Loga o erro junto com o hash do prompt
-            val hash = sha256(prompt)
-            Files.writeString(
-                respostaPath,
-                msg,StandardOpenOption.APPEND
-            )
-
-            // Resetar o hash garante que não trava novas tentativas
             lastPromptHash = null
-
-            log("Erro tratado para prompt $hash: $msg")
-            return
+            log("Error handled for prompt ${sha256(prompt)}: $msg")
+            return msg
         }
 
         val formatted = responseText
@@ -359,12 +332,13 @@ class AIHandler(dirPath: String) {
             .replace("\n", "|")
             .replace("\\", "")
 
-        Files.writeString(respostaPath, formatted)
-
         historico.add(Mensagem("user", prompt))
         historico.add(Mensagem("assistant", responseText))
         limitarHistorico()
+
+        return formatted
     }
+
 
     private fun callOpenAISchema(prompt: String): String {
         val jsonBody = buildOpenAIJson(prompt)
@@ -605,5 +579,5 @@ class AIHandler(dirPath: String) {
 
 // ------------------------------------------------------------
 fun main() {
-    AIHandler(Paths.get("").toAbsolutePath().toString()).start()
+    AIHandler().start()
 }

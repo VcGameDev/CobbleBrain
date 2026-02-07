@@ -3,11 +3,13 @@ package vito.cobblebrain
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.social.DebugPartyCommand
 import vito.cobblebrain.social.DialogueSystem.register
 import java.io.File
 import net.minecraft.server.MinecraftServer
+import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.config.ConfigBuilder
 import vito.cobblebrain.sensors.registerTickHandler
 import vito.cobblebrain.social.PokemonTalkCommand
@@ -30,18 +32,34 @@ object CobblebrainMod : ModInitializer {
         }
 
         // cria os arquivos dentro da pasta
-        val file = File(pasta, "resposta_ia.txt")
-        val file2 = File(pasta, "comando_ia.txt")
+        //val file = File(pasta, "resposta_ia.txt")
+        //val file2 = File(pasta, "comando_ia.txt")
 
         // writeText já cria o arquivo se não existir
-        file.writeText("")
-        file2.writeText("")
+        //file.writeText("")
+        //file2.writeText("")
 
-        println("Arquivos prontos em: ${pasta.absolutePath}")
+        //println("Arquivos prontos em: ${pasta.absolutePath}")
         config = ConfigBuilder.load(CobblebrainConfig::class.java, MOD_ID)
         println("o mod cobblebrain carregou")
         register()
         registerTickHandler()
+
+        // registra o tipo de payload PROMPT (server → client)
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainClientHandler.PromptPayload.TYPE,
+            CobblebrainClientHandler.PromptPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainClientHandler.ActionPayload.TYPE,
+            CobblebrainClientHandler.ActionPayload.CODEC
+        )
+
+
+        // registra handlers de networking
+        CobblebrainClientHandler.registerReceivers()
+        vito.cobblebrain.server.CobblebrainServerHandler.registerReceivers()
 
         // Aqui registramos o comando
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->

@@ -16,6 +16,7 @@ import com.google.gson.Gson
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.ChatFormatting
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.chat.Component
@@ -27,6 +28,8 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.decoration.ArmorStand
+import vito.cobblebrain.client.AIClientHandler
+import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
@@ -126,7 +129,7 @@ object DialogueSystem {
             }
         }
 
-            CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
+        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
             val battle = event.battle
             val server = battle.players.firstOrNull()?.server ?: return@subscribe
             if (config.dialogueOnBattle) {
@@ -139,7 +142,6 @@ object DialogueSystem {
                         return@execute
                     }
 
-                    // separa Pokémon com dono (jogador) e sem dono (selvagem)
                     val meus = ativos.filter { it.originalPokemon.getOwnerUUID() != null }
                     val inimigos = ativos.filter { it.originalPokemon.getOwnerUUID() == null }
 
@@ -161,11 +163,12 @@ object DialogueSystem {
                         pokemonsTime,
                         "IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]"
                     )
-                    File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                    ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
                     println("IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
                 }
             }
         }
+
 
         CobblemonEvents.POKEMON_SENT_POST.subscribe { event: PokemonSentEvent ->
             val pokemon = event.pokemon
@@ -180,10 +183,7 @@ object DialogueSystem {
                 val level = pokemon.level
                 val ownerPlayer = pokemon.getOwnerPlayer() ?: return@subscribe
 
-                // regra: se nickname != null → usa species, senão usa nickname
                 val displayName = if (nickname != null) species else nickname ?: species
-
-                // se o dono do Pokémon for o próprio jogador local → "eu"
                 val playerNameForPrompt = if (ownerPlayer == currentServer?.playerList?.getPlayer(ownerId)) {
                     "I"
                 } else {
@@ -198,13 +198,12 @@ object DialogueSystem {
                     ativos,
                     "IMPORTANT: During the battle, $playerNameForPrompt sent $displayName (Lv.$level) to fight!"
                 )
-                File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                ServerPlayNetworking.send(ownerPlayer, CobblebrainClientHandler.PromptPayload(prompt))
             }
         }
 
-
         CobblemonEvents.BATTLE_FLED.subscribe { event: BattleFledEvent ->
-            val actor = event.player // PlayerBattleActor que fugiu
+            val actor = event.player
             val uuids = actor.getPlayerUUIDs()
             if (config.dialogueOnBattle) {
                 if (uuids.isEmpty()) {
@@ -223,7 +222,7 @@ object DialogueSystem {
                             ativos,
                             "IMPORTANT: we run away from the battle"
                         )
-                        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                        ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
                         println("${player.name.string} we run away from the battle")
                     }
                 }
@@ -234,7 +233,6 @@ object DialogueSystem {
             val battle = event.battle
             if (config.dialogueOnBattle) {
                 for (player in battle.players) {
-                    // encontra o ator pelo UUID do jogador
                     val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
 
                     if (event.winners.contains(myActor)) {
@@ -242,13 +240,12 @@ object DialogueSystem {
                         println("We won the battle")
                         val ativos = PokemonQuery.findActivePokemon(player)
                         val prompt = buildPrompt(player, ativos, "IMPORTANT: We won the battle")
-                        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                        ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
                     } else {
                         scheduledMessages.clear()
                         val ativos = PokemonQuery.findActivePokemon(player)
                         val prompt = buildPrompt(player, ativos, "IMPORTANT: We lost the battle")
-                        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
-
+                        ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
                     }
                 }
             }
@@ -258,7 +255,7 @@ object DialogueSystem {
             when (entity) {
                 is ServerPlayer -> {
                     val ativos = PokemonQuery.findActivePokemon(entity)
-                    if (ativos.isEmpty()) return@register  // só ativa se tiver pelo menos 1 Pokémon ativo
+                    if (ativos.isEmpty()) return@register
 
                     val now = System.currentTimeMillis()
                     val last = lastPrompt[entity.uuid] ?: 0L
@@ -272,7 +269,7 @@ object DialogueSystem {
                             ativos,
                             "IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth"
                         )
-                        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                        ServerPlayNetworking.send(entity, CobblebrainClientHandler.PromptPayload(prompt))
                     }
                 }
 
@@ -284,7 +281,7 @@ object DialogueSystem {
 
                         if (owner != null) {
                             val ativos = PokemonQuery.findActivePokemon(owner)
-                            if (ativos.isEmpty()) return@register  // só ativa se tiver pelo menos 1 Pokémon ativo
+                            if (ativos.isEmpty()) return@register
 
                             val now = System.currentTimeMillis()
                             val last = lastPrompt[owner.uuid] ?: 0L
@@ -294,14 +291,15 @@ object DialogueSystem {
                                 val cause = source.msgId
                                 val pokemonNickname = entity.pokemon.nickname?.string
                                 val pokemonSpecies = entity.pokemon.species.name
-                                val pokemonName = if (pokemonNickname.isNullOrBlank()) pokemonSpecies else pokemonNickname
+                                val pokemonName =
+                                    if (pokemonNickname.isNullOrBlank()) pokemonSpecies else pokemonNickname
                                 println("My Pokémon $pokemonName took $amount of damage from $cause.")
                                 val prompt = buildPrompt(
                                     owner,
                                     ativos,
                                     "My Pokémon $pokemonName took $amount of damage from $cause."
                                 )
-                                File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+                                ServerPlayNetworking.send(owner, CobblebrainClientHandler.PromptPayload(prompt))
                             }
                         }
                     }
@@ -321,44 +319,42 @@ object DialogueSystem {
                 runSocialTick(server)
             }
 
-            if (server.tickCount % 70 == 0) {
-                checkIaResponse(server)
-            }
+            //if (server.tickCount % 70 == 0) {
+                //checkIaResponse(server)
+            //}
 
-            if (server.tickCount % 20 == 0) {
-                ensureChatRunning()
-            }
+            //if (server.tickCount % 20 == 0) {
+            //ensureChatRunning()
+            //}
         }
     }
 
-    private var chatThread: Thread? = null
+    //fun ensureChatRunning() {
+    //if (chatThread == null || !chatThread!!.isAlive) {
+    //println("[CobbleBrain] AI not running, starting...")
 
-    fun ensureChatRunning() {
-        if (chatThread == null || !chatThread!!.isAlive) {
-            println("[CobbleBrain] AI not running, starting...")
+    //chatThread = Thread {
+    //try {
+    //val chave = KeyManager.rotator.current()
 
-            chatThread = Thread {
-                try {
-                    val chave = KeyManager.rotator.current()
+    // Informational warning only — no hard stop
+    //if (chave.isBlank()) {
+    // println("[CobbleBrain] No API key configured. Assuming local / unauthenticated LLM.")
+    //}
 
-                    // Informational warning only — no hard stop
-                    if (chave.isBlank()) {
-                        println("[CobbleBrain] No API key configured. Assuming local / unauthenticated LLM.")
-                    }
+    //val chat = AIHandler("cobblebrain-ai")
+    //chat.start()
 
-                    val chat = AIHandler("cobblebrain-ai")
-                    chat.start()
+    //} catch (e: Exception) {
+    //e.printStackTrace()
+    //}
+    //}
 
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
+    //chatThread!!.start()
+    //}
+    //}
 
-            chatThread!!.start()
-        }
-    }
-
-    private var lastSpeakerPlayer: ServerPlayer? = null
+    var lastSpeakerPlayer: ServerPlayer? = null
 
     fun onPlayerChat(player: ServerPlayer, text: String) {
         scheduledMessages.clear()
@@ -367,11 +363,14 @@ object DialogueSystem {
 
         // Prefixo já vem pronto do bloco de CHAT_MESSAGE
         val prompt = buildPrompt(player, ativos, "\n\n$text")
-        File("cobblebrain-ai/comando_ia.txt").writeText(prompt)
+
+        // chama IA diretamente
+        val resposta = AIClientHandler.sendPrompt(prompt)
+        checkIaResponse(player.server, resposta)
 
         lastSpeakerPlayer = player
-    }
 
+    }
 
     // NÃO alterar o comportamento de tick/loop do flush
     private fun flushScheduledMessages(server: MinecraftServer) {
@@ -380,7 +379,8 @@ object DialogueSystem {
         if (ready.isNotEmpty()) {
             ready.forEach { msg ->
                 if (msg.text.startsWith("#") ||
-                    (!config.showFriendship && msg.text.lowercase().startsWith("friendship"))) {
+                    (!config.showFriendship && msg.text.lowercase().startsWith("friendship"))
+                ) {
                     return@forEach
                 }
                 println("=== DEBUG FLUSH ===")
@@ -593,13 +593,6 @@ object DialogueSystem {
     }
 
     private fun runSocialTick(server: MinecraftServer) {
-        val comandoFile = File("cobblebrain-ai/comando_ia.txt")
-        val isEmpty = !comandoFile.exists() || comandoFile.readText().isBlank()
-
-        if (!isEmpty) {
-            return
-        }
-
         for (player in server.playerList.players) {
             val ativos = PokemonQuery.findActivePokemon(player)
             if (ativos.isEmpty()) continue
@@ -612,12 +605,16 @@ object DialogueSystem {
                     ativos,
                     "IMPORTANT: The Pokemon are thinking of something different to say... (use the world variables or refer to something else...)"
                 )
-                comandoFile.writeText(prompt)
-                println("tentativa de dialogo espontaneo")
+
+                // envia prompt direto para o cliente processar
+                ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+
+                println("Spontaneous dialogue attempt triggered")
                 return
             }
         }
     }
+
 
     fun playPokemonCry(pokemon: Pokemon, pitch: Float = 1.0f) {
         val entity = pokemon.entity ?: return
@@ -670,9 +667,9 @@ object DialogueSystem {
         )
     }
 
-    private fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
+    fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
         val context = collectWorldContext(player)
-        println(context)
+        //println(context)
 
         return buildString {
             appendLine(moreText)
@@ -711,8 +708,8 @@ object DialogueSystem {
             pokemons.forEach { p ->
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
                 appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
-                println("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $$allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
-                println(p.types.map { it.name })
+                //println("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $$allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
+                //println(p.types.map { it.name })
                 val memories = currentServer?.let { srv ->
                     loadPokemonMemories(
                         srv,
@@ -725,7 +722,7 @@ object DialogueSystem {
                     appendLine("\nMemories:\n")
                     memories.forEach { m ->
                         appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
-                        println("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
+                        //println("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
                     }
                 }
             }
@@ -739,15 +736,10 @@ object DialogueSystem {
 
     private var lastResponseContent: String? = null
 
-    private fun checkIaResponse(server: MinecraftServer) {
-        val file = File("cobblebrain-ai/resposta_ia.txt")
-        if (!file.exists()) return
-
-        val content = file.readText().trim()
-        if (content.isEmpty() || content == lastResponseContent) return
+    fun checkIaResponse(server: MinecraftServer, content: String) {
+        if (content.isBlank() || content == lastResponseContent) return
 
         // Linhas para chat (falas + friendship), excluindo memórias
-        // 1. Separa falas (chat) e memórias (não vão pro chat)
         val falas = content.split("|")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
@@ -758,15 +750,12 @@ object DialogueSystem {
             .filter { it.isNotEmpty() }
             .filter { it.startsWith("@") }
 
-        println(">>> Fala pega: $memoryLines")
-
-        // 2. Salva as memórias no JSON
+        // 1. Salva as memórias no JSON
         memoryLines.forEach { line ->
-            println(">>> Fala pega: $line")
             savePokemonMemory(server, line, config.maxShortMemory)
         }
 
-        //detects if there is any action (#) in the dialogue
+        // 2. Detecta ações (#)
         val commandLines = falas.filter { it.startsWith("#") }
         commandLines.forEach { line ->
             val cmd = parseCommand(line)
@@ -782,39 +771,19 @@ object DialogueSystem {
             }
         }
 
-        fun findPokemonByName(name: String, pokemons: List<Pokemon>): Pokemon? {
-            return pokemons.firstOrNull { it.species.name.equals(name, ignoreCase = true) }
-        }
-
-        // estrutura para guardar nome + UUID
-        data class Participante(val nome: String, val id: String)
-
-        val participantes = mutableListOf<Participante>()
-
-        // adiciona o jogador que falou por último
-        lastSpeakerPlayer?.let {
-            participantes.add(Participante(it.gameProfile.name, it.uuid.toString()))
-        }
-
+        // 3. Friendship updates
         val ativos = server.playerList.players.flatMap { PokemonQuery.findActivePokemon(it) }
-
         val regex = Regex(
             """friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*([+-])\s*(-?\d+)""",
             RegexOption.IGNORE_CASE
         )
-
         val matches = regex.findAll(content)
         for (match in matches) {
             val nomePokemon = match.groupValues[1]
-            val atual = match.groupValues[2].toDouble()
-            val sinal = match.groupValues[3] // "+" ou "-"
+            //val atual = match.groupValues[2].toDouble()
+            val sinal = match.groupValues[3]
             val incrementoValor = match.groupValues[4].toDouble()
-
-            // aplica o sinal corretamente
             val incremento = if (sinal == "-") -incrementoValor else incrementoValor
-
-            println("Pokémon: $nomePokemon")
-            println("New friendship: ${atual + incremento}")
 
             val alvo = ativos.firstOrNull { ativo ->
                 val nomeNormalizado = nomePokemon.trim()
@@ -825,50 +794,23 @@ object DialogueSystem {
 
             if (alvo != null) {
                 val incrementoInt = incremento.toInt()
-
                 alvo.entity?.let {
                     if (incremento > 0 && config.increaseFriendship) {
                         alvo.incrementFriendship(incrementoInt)
-                        println("Friendship of ${alvo.species.name} increased to ${alvo.friendship}")
-
-                        val basePitch = (1.0f + incrementoInt * 0.04f).coerceAtMost(1.5f)
-                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = basePitch }
                     }
-
                     if (incremento < 0 && config.decreaseFriendship) {
                         alvo.decrementFriendship(incrementoInt)
-                        println("Friendship of ${alvo.species.name} decreased to ${alvo.friendship}")
-
-                        val basePitch = (1.0f + incrementoInt * 0.04f).coerceAtLeast(0.5f)
-                        alvo.entity?.uuid?.let { pokemonPitchMap[it] = basePitch }
                     }
                 }
-            } else {
-                println("I couldn't find $nomePokemon among the active ones.")
             }
         }
 
-        falas.map { it.substringBefore(":").trim() }.distinct().forEach { nome ->
-            val poke = findPokemonByName(nome, ativos)
-            if (poke != null) {
-                participantes.add(Participante(poke.species.name, poke.uuid.toString()))
-            } else {
-                server.playerList.players
-                    .firstOrNull { it.name.string.equals(nome, ignoreCase = true) }
-                    ?.let { p ->
-                        participantes.add(Participante(p.gameProfile.name, p.uuid.toString()))
-                    }
-            }
-        }
-
+        // 4. Agenda mensagens para players
         lastResponseContent = content
-        file.writeText("")
-
-
         val startTick = server.tickCount.toLong()
         falas.forEachIndexed { i, line ->
             val speakerName = line.substringBefore(":").trim()
-            val speaker = findPokemonByName(speakerName, ativos)
+            val speaker = ativos.firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) }
 
             server.playerList.players.forEach { player ->
                 scheduledMessages.add(

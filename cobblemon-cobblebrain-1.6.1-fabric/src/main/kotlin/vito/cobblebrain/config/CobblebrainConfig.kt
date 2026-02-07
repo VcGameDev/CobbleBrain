@@ -20,12 +20,12 @@ class CobblebrainConfig {
     //  - OpenRouter: https://openrouter.ai/api
     //  - Google AI Studio (Gemma/Gemini): https://generativelanguage.googleapis.com
     //  - Lm studio: http://localhost:1234
-    var apiBaseUrl: String = "https://generativelanguage.googleapis.com"
+    var apiBaseUrl: String = "http://127.0.0.1:4315"
 
     // if the apikey is a local adress (http://127.0.0.1...), you must put the apiprovider here...
     // official supported local apis: player2, lm studio
 
-    val localApiProvider: String = ""
+    val localApiProvider: String = "player2"
 
     // Nome do modelo de IA.
     // Exemplos:

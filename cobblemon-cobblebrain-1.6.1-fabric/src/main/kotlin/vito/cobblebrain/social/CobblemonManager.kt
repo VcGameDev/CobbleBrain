@@ -11,9 +11,10 @@ import com.google.gson.Gson
 import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.DoubleArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.network.chat.Component
+import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.config.CobblebrainConfig
-import vito.cobblebrain.social.DialogueSystem.onPlayerChat
 import java.io.File
 
 object PokemonQuery {
@@ -42,10 +43,17 @@ object PokemonTalkCommand {
                         val player: ServerPlayer = ctx.source.playerOrException
                         val conteudo = StringArgumentType.getString(ctx, "message")
 
-                        // Chama sua função já existente
-                        onPlayerChat(player, conteudo)
+                        val ativos = PokemonQuery.findActivePokemon(player)
 
-                        //remanda a mensagem no chat
+                        val prompt = DialogueSystem.buildPrompt(player, ativos, conteudo)
+
+                        // marca quem falou por último
+                        DialogueSystem.lastSpeakerPlayer = player
+
+                        // envia prompt para o cliente processar (evita travar o servidor)
+                        ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+
+                        // opcional: ecoar mensagem original no chat
                         player.sendSystemMessage(
                             Component.literal("${player.name.string}: $conteudo")
                         )
@@ -56,6 +64,7 @@ object PokemonTalkCommand {
         )
     }
 }
+
 
 object DebugPartyCommand {
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
