@@ -6,13 +6,13 @@ class CobblebrainConfig {
     // API key usada para autenticação com o sistema de IA.
     // Para OpenAI‑compatíveis: Bearer token.
     // Para Google AI Studio: chave da API do Google.
-    val apiKey: List<String> = listOf("YOUR_API_KEY")
+    var apiKey: List<String> = listOf("YOUR_API_KEY")
 
     // Enable or disable API key rotation when trigger errors occur
-    val keyRotation: Boolean = false
+    var keyRotation: Boolean = false
 
     // List of HTTP status codes that trigger API key rotation
-    val keyRotationTrigger: List<Int> = listOf(401,429)
+    var keyRotationTrigger: List<Int> = listOf(401,429)
 
     // Base URL da API.
     // Exemplos:
@@ -25,7 +25,7 @@ class CobblebrainConfig {
     // if the apikey is a local adress (http://127.0.0.1...), you must put the apiprovider here...
     // official supported local apis: player2, lm studio
 
-    val localApiProvider: String = "player2"
+    var localApiProvider: String = "player2"
 
     // Nome do modelo de IA.
     // Exemplos:
@@ -36,10 +36,10 @@ class CobblebrainConfig {
     var aiModel: List<String> = listOf("gemma-3-12b-it", "gemma-3-4b-it")
 
     // Enable or disable model rotation when trigger errors occur
-    val modelRotation: Boolean = false
+    var modelRotation: Boolean = false
 
     // List of HTTP status codes that trigger model rotation
-    val modelRotationTrigger: List<Int> = listOf(404,429)
+    var modelRotationTrigger: List<Int> = listOf(404,429)
 
     /** Temperatura enviada ao modelo (0.0 … 2.0). */
     var temperature: Double = 0.7
@@ -85,10 +85,10 @@ class CobblebrainConfig {
     var lowTokenMode: Boolean = false
 
     // Determines if Pokémon talk when someone is hurt
-    val dialogueOnDamage: Boolean = false
+    var dialogueOnDamage: Boolean = false
 
     // Determines whether Pokémon speak when something related to battle happens.
-    val dialogueOnBattle: Boolean = true
+    var dialogueOnBattle: Boolean = true
 
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
     var spontaneousDialogueChance: Double = 0.1

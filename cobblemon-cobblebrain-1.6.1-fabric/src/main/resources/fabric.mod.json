@@ -12,6 +12,10 @@
   "mixins": [
     "cobblebrain.mixins.json"
   ],
+  "suggests": {
+    "modmenu": "11.0.3",
+    "cloth_config_version": "15.0.*"
+  },
   "entrypoints": {
     "client": [
       {
@@ -24,7 +28,10 @@
         "adapter": "kotlin",
         "value": "vito.cobblebrain.CobblebrainMod"
       }
-    ]
+    ],
+      "modmenu": [
+        "vito.cobblebrain.config.ConfigModMenu"
+      ]
   },
   "depends": {
     "java": ">=21",

@@ -15,6 +15,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.config.CobblebrainConfig
+import vito.cobblebrain.config.ConfigHandler
 import java.io.File
 
 object PokemonQuery {
@@ -143,7 +144,8 @@ object ConfigCommands {
                     Commands.argument("value", BoolArgumentType.bool())
                         .executes { ctx ->
                             val value = BoolArgumentType.getBool(ctx, "value")
-                            config.listenToChat = value
+                            ConfigHandler.config.listenToChat = value
+                            ConfigHandler.save()
                             ctx.source.sendSuccess(
                                 { Component.literal("listenToChat set to $value") },
                                 true
@@ -152,6 +154,21 @@ object ConfigCommands {
                         }
                 )
         )
+
+        dispatcher.register(
+            Commands.literal("cobblebrain")
+                .then(Commands.literal("reload")
+                    .executes { ctx ->
+                        ConfigHandler.load()
+                        ctx.source.sendSuccess(
+                            { Component.literal("Cobblebrain config reloaded!") },
+                            true
+                        )
+                        1
+                    }
+                )
+        )
+
 
         dispatcher.register(
             Commands.literal("addToInstruct")

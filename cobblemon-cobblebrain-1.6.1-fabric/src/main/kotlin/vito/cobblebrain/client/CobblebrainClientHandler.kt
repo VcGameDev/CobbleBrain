@@ -15,30 +15,30 @@ object CobblebrainClientHandler {
         ClientLifecycleEvents.CLIENT_STARTED.register {
             AIHandler().start()
         }
+
         // Recebe PROMPT do servidor
         ClientPlayNetworking.registerGlobalReceiver(PromptPayload.TYPE) { payload, context ->
             val prompt = payload.prompt
 
-            Thread {
-                try {
-                    val resposta = AIClientHandler.sendPrompt(prompt)
-                    context.client().execute {
-                        val server = currentServer ?: return@execute
-                        checkIaResponse(server, resposta)
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    context.client().execute {
-                        context.client().player?.sendSystemMessage(
-                            Component.literal("Erro ao processar IA: ${e.message}")
-                        )
-                    }
+            AIClientHandler.sendPrompt(prompt).thenAccept { resposta ->
+                // volta para o thread do cliente
+                context.client().execute {
+                    val server = currentServer ?: return@execute
+                    checkIaResponse(server, resposta)
                 }
-            }.start()
+            }.exceptionally { e ->
+                e.printStackTrace()
+                context.client().execute {
+                    context.player()?.sendSystemMessage(
+                        Component.literal("Erro ao processar IA: ${e.message}")
+                    )
+                }
+                null
+            }
         }
     }
 
-    // Payload para enviar PROMPT (Server → Client)
+        // Payload para enviar PROMPT (Server → Client)
     data class PromptPayload(val prompt: String) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "send_prompt")

@@ -124,3 +124,21 @@ class ConfigBuilder<T> private constructor(
         }
     }
 }
+
+object ConfigHandler {
+    // instância atual da config
+    lateinit var config: CobblebrainConfig
+
+    fun load() {
+        config = ConfigBuilder.load(CobblebrainConfig::class.java, "cobblebrain")
+    }
+
+    fun save() {
+        val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
+        val json = JsonParser.parseString(gson.toJson(config)).asJsonObject
+        val file = File("config/cobblebrain.json5")
+        PrintWriter(file).use { pw ->
+            pw.print(gson.toJson(json))
+        }
+    }
+}

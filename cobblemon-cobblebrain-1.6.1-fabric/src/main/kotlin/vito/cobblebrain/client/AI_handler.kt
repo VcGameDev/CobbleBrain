@@ -4,7 +4,6 @@ import com.google.gson.Gson
 import kotlinx.io.IOException
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
-import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -14,7 +13,7 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import vito.cobblebrain.config.CobblebrainConfig
+import vito.cobblebrain.config.ConfigHandler.config
 import java.net.http.HttpTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -48,10 +47,6 @@ class AIHandler{
 
     companion object {
         private val gson = Gson()
-        private val configFile = File("config/cobblebrain.json5")
-        private val config =
-            gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
-
         private val INSTRUCTS = config.instruct.trimIndent()
         private val TEMPERATURE = config.temperature
         private val PROVIDER_HINT = config.aiProvider.trim()

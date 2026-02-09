@@ -12,7 +12,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.storage.LevelResource
-import vito.cobblebrain.CobblebrainMod.config
+import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.social.PokemonQuery
 import java.nio.file.Files
 import java.nio.file.Path

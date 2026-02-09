@@ -33,7 +33,7 @@ import net.minecraft.world.level.block.CropBlock
 import net.minecraft.world.level.block.SaplingBlock
 import net.minecraft.world.phys.AABB
 import org.joml.Vector3f
-import vito.cobblebrain.CobblebrainMod.config
+import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.mixin.MobAccessor
 import java.util.UUID
 

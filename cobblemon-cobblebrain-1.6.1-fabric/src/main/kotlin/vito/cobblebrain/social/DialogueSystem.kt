@@ -12,7 +12,6 @@ import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import kotlin.random.Random
 import com.cobblemon.mod.common.pokemon.Pokemon
-import com.google.gson.Gson
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
@@ -28,27 +27,20 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.decoration.ArmorStand
-import vito.cobblebrain.client.AIClientHandler
 import vito.cobblebrain.client.CobblebrainClientHandler
-import vito.cobblebrain.config.CobblebrainConfig
+import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
 import vito.cobblebrain.sensors.MemoryStore.savePokemonMemory
 import vito.cobblebrain.sensors.collectWorldContext
 import vito.cobblebrain.sensors.parseCommand
-
-import java.io.File
 import java.lang.Math.toDegrees
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.atan2
 
 object DialogueSystem {
-    val gson = Gson()
-    val configFile = File("config/cobblebrain.json5")
-    val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
-
     private val scheduledMessages = mutableListOf<ScheduledMessage>()
 
     private data class ScheduledMessage(
@@ -93,82 +85,80 @@ object DialogueSystem {
             )
         }
 
-        if (config.listenToChat) {
-            ServerMessageEvents.CHAT_MESSAGE.register { message, sender, _ ->
-                val rawContent = message.signedContent()
+        ServerMessageEvents.CHAT_MESSAGE.register { message, sender, _ ->
+            if (!config.listenToChat) return@register  // checa em tempo real
 
-                if (config.onlyNearbyChat) {
-                    // Lista de jogadores no raio de 15 blocos (inclui o próprio sender)
-                    val nearbyPlayers = sender.server.playerList.players.filter { other ->
-                        other.distanceTo(sender) <= 15.0
-                    }
+            val rawContent = message.signedContent()
 
-                    if (nearbyPlayers.isEmpty()) {
-                        sender.sendSystemMessage(Component.literal("Nenhum jogador próximo para ouvir sua fala."))
-                        return@register
-                    }
+            if (config.onlyNearbyChat) {
+                val nearbyPlayers = sender.server.playerList.players.filter { other ->
+                    other.distanceTo(sender) <= 15.0
+                }
 
-                    nearbyPlayers.forEach { player ->
-                        val conteudo = if (player == sender) {
-                            "The player (owner of the pokemon team) said to the pokemons: $rawContent"
-                        } else {
-                            "${sender.name.string} said: $rawContent"
-                        }
-                        onPlayerChat(player, conteudo)
+                if (nearbyPlayers.isEmpty()) {
+                    sender.sendSystemMessage(Component.literal("Nenhum jogador próximo para ouvir sua fala."))
+                    return@register
+                }
+
+                nearbyPlayers.forEach { player ->
+                    val conteudo = if (player == sender) {
+                        "The player (owner of the pokemon team) said to the pokemons: $rawContent"
+                    } else {
+                        "${sender.name.string} said: $rawContent"
                     }
-                } else {
-                    sender.server.playerList.players.forEach { player ->
-                        val conteudo = if (player == sender) {
-                            "The player (owner of the pokemon team) said to the pokemons: $rawContent"
-                        } else {
-                            "${sender.name.string} said: $rawContent"
-                        }
-                        onPlayerChat(player, conteudo)
+                    onPlayerChat(player, conteudo)
+                }
+            } else {
+                sender.server.playerList.players.forEach { player ->
+                    val conteudo = if (player == sender) {
+                        "The player (owner of the pokemon team) said to the pokemons: $rawContent"
+                    } else {
+                        "${sender.name.string} said: $rawContent"
                     }
+                    onPlayerChat(player, conteudo)
                 }
             }
         }
 
-        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
-            val battle = event.battle
-            val server = battle.players.firstOrNull()?.server ?: return@subscribe
-            if (config.dialogueOnBattle) {
-                server.execute {
-                    scheduledMessages.clear()
-                    val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
+    CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
+        val battle = event.battle
+        val server = battle.players.firstOrNull()?.server ?: return@subscribe
+        if (config.dialogueOnBattle) {
+            server.execute {
+                scheduledMessages.clear()
+                val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
 
-                    if (ativos.size < 2) {
-                        println("Battle started, but no active Pokémon detected yet.")
-                        return@execute
-                    }
-
-                    val meus = ativos.filter { it.originalPokemon.getOwnerUUID() != null }
-                    val inimigos = ativos.filter { it.originalPokemon.getOwnerUUID() == null }
-
-                    val player = meus.firstOrNull()?.originalPokemon?.let {
-                        val ownerId = it.getOwnerUUID() ?: return@execute
-                        server.playerList.getPlayer(ownerId)
-                    } ?: return@execute
-
-                    val meusNomes = meus.joinToString(", ") {
-                        "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
-                    }
-                    val inimigosNomes = inimigos.joinToString(", ") {
-                        "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
-                    }
-
-                    val pokemonsTime = PokemonQuery.findActivePokemon(player)
-                    val prompt = buildPrompt(
-                        player,
-                        pokemonsTime,
-                        "IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]"
-                    )
-                    ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
-                    println("IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
+                if (ativos.size < 2) {
+                    println("Battle started, but no active Pokémon detected yet.")
+                    return@execute
                 }
+
+                val meus = ativos.filter { it.originalPokemon.getOwnerUUID() != null }
+                val inimigos = ativos.filter { it.originalPokemon.getOwnerUUID() == null }
+
+                val player = meus.firstOrNull()?.originalPokemon?.let {
+                    val ownerId = it.getOwnerUUID() ?: return@execute
+                    server.playerList.getPlayer(ownerId)
+                } ?: return@execute
+
+                val meusNomes = meus.joinToString(", ") {
+                    "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
+                }
+                val inimigosNomes = inimigos.joinToString(", ") {
+                    "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
+                }
+
+                val pokemonsTime = PokemonQuery.findActivePokemon(player)
+                val prompt = buildPrompt(
+                    player,
+                    pokemonsTime,
+                    "IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]"
+                )
+                ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+                println("IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
             }
         }
-
+    }
 
         CobblemonEvents.POKEMON_SENT_POST.subscribe { event: PokemonSentEvent ->
             val pokemon = event.pokemon
@@ -358,19 +348,15 @@ object DialogueSystem {
 
     fun onPlayerChat(player: ServerPlayer, text: String) {
         scheduledMessages.clear()
-
         val ativos = PokemonQuery.findActivePokemon(player)
-
-        // Prefixo já vem pronto do bloco de CHAT_MESSAGE
         val prompt = buildPrompt(player, ativos, "\n\n$text")
 
-        // chama IA diretamente
-        val resposta = AIClientHandler.sendPrompt(prompt)
-        checkIaResponse(player.server, resposta)
+        // envia prompt para o cliente processar
+        ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
 
         lastSpeakerPlayer = player
-
     }
+
 
     // NÃO alterar o comportamento de tick/loop do flush
     private fun flushScheduledMessages(server: MinecraftServer) {
