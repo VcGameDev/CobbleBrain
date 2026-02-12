@@ -61,14 +61,17 @@ class CobblebrainConfig {
     // Request timeout in seconds (local models may need longer)
     var requestTimeoutSeconds: Long = 60
 
-    // ================= DIALOGUE & UI SETTINGS =================
+    var selectedLanguage: String = "English"
 
     var debugLogging: Boolean = false
 
+    // ================= DIALOGUE & UI SETTINGS =================
+
     // The language selected for the AI to respond.
-    var selectedLanguage: String = "English"
 
     var dialogueInChat: Boolean = true
+
+    var characteristics: List<String> = listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm")
 
     var chatbubbles: Boolean = true
 
@@ -92,6 +95,10 @@ class CobblebrainConfig {
 
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
     var spontaneousDialogueChance: Double = 0.1
+
+    var wildPokemonTalkChance: Double = 1.0
+
+    var wildQuestChance: Double = 1.0
 
     // Enables or disables listening to regular player chat.
     // If false, the AI ignores all non‑command messages (like normal chat).
@@ -181,6 +188,21 @@ ACTION FORMAT
   (grass type) #PokemonName: grow
   (ghost type) #PokemonName: shift
 - If no action is needed, ALWAYS use idle.
+
+QUEST FORMAT:
+- When you receive the message **`QUEST INITIATED: <Quest Type>`**, create a dialogue where the Wild Pokémon asks the player or their team to perform the quest.
+- From the moment the quest is created until it is completed, you must ALWAYS add one of the following lines in your response (note: all of them have to begin with %):
+  %CONTINUE → Quest is ongoing or lacks enough interaction/reason to end.  
+  %POSITIVE_END → Quest ends with a positive, satisfying outcome for the Pokémon.  
+  %NEGATIVE_END → Quest ends with a negative, unsatisfying outcome for the Pokémon.  
+  %BETRAY_END → Pokémon betrays the player. *(Only use if you receive `QUEST CAN END WITH BETRAY`)*  
+  %LEAVE_END → Pokémon decides to leave the mission.  
+- Delivery Quests:  
+  Only end the quest if you receive **`QUEST_COMPLETED`.  
+  Then choose the appropriate ending marker based on interactions (except `LEAVE_END`).  
+- Advice Quests:  
+  You decide when the quest ends, based on the Pokémon’s personality and whether it found the conversation good, bad, or chose betrayal.  
+  Make Advice quests last more than 2 dialogues.  
 
 GENERAL RULES
 1. Each line of dialogue must respect the word and line limits.

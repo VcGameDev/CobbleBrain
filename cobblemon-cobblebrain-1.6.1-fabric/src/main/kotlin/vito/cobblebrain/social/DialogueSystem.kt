@@ -18,6 +18,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.ChatFormatting
 import net.minecraft.core.particles.ParticleTypes
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.server.level.ServerLevel
@@ -26,8 +27,13 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.decoration.ArmorStand
+import net.minecraft.world.entity.item.ItemEntity
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
@@ -39,11 +45,13 @@ import java.lang.Math.toDegrees
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.atan2
+import kotlin.math.sqrt
 
 object DialogueSystem {
-    private val scheduledMessages = mutableListOf<ScheduledMessage>()
+    val justSentMessage: MutableMap<UUID, Boolean> = ConcurrentHashMap()
+    val scheduledMessages: MutableMap<UUID, MutableList<ScheduledMessage>> = ConcurrentHashMap()
 
-    private data class ScheduledMessage(
+    data class ScheduledMessage(
         val player: ServerPlayer,
         val text: String,
         val sendAtTick: Long,
@@ -57,6 +65,7 @@ object DialogueSystem {
 
     // guarda o último momento em que cada jogador disparou a lógica
     private val lastPrompt: MutableMap<UUID, Long> = ConcurrentHashMap()
+    var questEnded: Boolean = false
 
     // guarda o pitch atual de cada Pokémon ativo
     private val pokemonPitchMap = mutableMapOf<UUID, Float>()
@@ -120,45 +129,50 @@ object DialogueSystem {
             }
         }
 
-    CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
-        val battle = event.battle
-        val server = battle.players.firstOrNull()?.server ?: return@subscribe
-        if (config.dialogueOnBattle) {
-            server.execute {
-                scheduledMessages.clear()
-                val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
+        CobblemonEvents.BATTLE_STARTED_POST.subscribe { event: BattleStartedEvent ->
+            val battle = event.battle
+            val server = battle.players.firstOrNull()?.server ?: return@subscribe
 
-                if (ativos.size < 2) {
-                    println("Battle started, but no active Pokémon detected yet.")
-                    return@execute
+            if (config.dialogueOnBattle) {
+                server.execute {
+                    val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
+
+                    if (ativos.size < 2) {
+                        println("Battle started, but no active Pokémon detected yet.")
+                        return@execute
+                    }
+
+                    // resolve o jogador dono dos pokémons
+                    val meus = ativos.filter { it.originalPokemon.getOwnerUUID() != null }
+                    val inimigos = ativos.filter { it.originalPokemon.getOwnerUUID() == null }
+
+                    val player = meus.firstOrNull()?.originalPokemon?.let {
+                        val ownerId = it.getOwnerUUID() ?: return@execute
+                        server.playerList.getPlayer(ownerId)
+                    } ?: return@execute
+
+                    // limpa apenas a fila desse jogador
+                    scheduledMessages[player.uuid]?.clear()
+
+                    val meusNomes = meus.joinToString(", ") {
+                        "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
+                    }
+                    val inimigosNomes = inimigos.joinToString(", ") {
+                        "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
+                    }
+
+                    val pokemonsTime = PokemonQuery.findActivePokemon(player)
+                    val prompt = buildPrompt(
+                        player,
+                        pokemonsTime,
+                        "IMPORTANT: I (the player) started a battle with my team[$meusNomes] against [$inimigosNomes]"
+                    )
+
+                    ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+                    println("IMPORTANT: I (the player) started a battle with my team[$meusNomes] against [$inimigosNomes]")
                 }
-
-                val meus = ativos.filter { it.originalPokemon.getOwnerUUID() != null }
-                val inimigos = ativos.filter { it.originalPokemon.getOwnerUUID() == null }
-
-                val player = meus.firstOrNull()?.originalPokemon?.let {
-                    val ownerId = it.getOwnerUUID() ?: return@execute
-                    server.playerList.getPlayer(ownerId)
-                } ?: return@execute
-
-                val meusNomes = meus.joinToString(", ") {
-                    "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
-                }
-                val inimigosNomes = inimigos.joinToString(", ") {
-                    "${it.originalPokemon.species.name} (Lv.${it.originalPokemon.level})"
-                }
-
-                val pokemonsTime = PokemonQuery.findActivePokemon(player)
-                val prompt = buildPrompt(
-                    player,
-                    pokemonsTime,
-                    "IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]"
-                )
-                ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
-                println("IMPORTANT: I started a battle with my team[$meusNomes] against [$inimigosNomes]")
             }
         }
-    }
 
         CobblemonEvents.POKEMON_SENT_POST.subscribe { event: PokemonSentEvent ->
             val pokemon = event.pokemon
@@ -166,12 +180,14 @@ object DialogueSystem {
 
             val battle = BattleRegistry.getBattleByParticipatingPlayerId(ownerId)
             if (battle != null && config.dialogueOnBattle) {
-                scheduledMessages.clear()
+                val ownerPlayer = pokemon.getOwnerPlayer() ?: return@subscribe
+
+                // limpa apenas a fila desse jogador
+                scheduledMessages[ownerPlayer.uuid]?.clear()
 
                 val nickname = pokemon.nickname
                 val species = pokemon.species.name
                 val level = pokemon.level
-                val ownerPlayer = pokemon.getOwnerPlayer() ?: return@subscribe
 
                 val displayName = if (nickname != null) species else nickname ?: species
                 val playerNameForPrompt = if (ownerPlayer == currentServer?.playerList?.getPlayer(ownerId)) {
@@ -192,6 +208,7 @@ object DialogueSystem {
             }
         }
 
+
         CobblemonEvents.BATTLE_FLED.subscribe { event: BattleFledEvent ->
             val actor = event.player
             val uuids = actor.getPlayerUUIDs()
@@ -206,6 +223,9 @@ object DialogueSystem {
                 uuids.forEach { uuid ->
                     val player = server.playerList.getPlayer(uuid)
                     if (player != null) {
+                        // limpa apenas a fila desse jogador
+                        scheduledMessages[player.uuid]?.clear()
+
                         val ativos = PokemonQuery.findActivePokemon(player)
                         val prompt = buildPrompt(
                             player,
@@ -225,14 +245,15 @@ object DialogueSystem {
                 for (player in battle.players) {
                     val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
 
+                    // limpa apenas a fila desse jogador
+                    scheduledMessages[player.uuid]?.clear()
+
                     if (event.winners.contains(myActor)) {
-                        scheduledMessages.clear()
                         println("We won the battle")
                         val ativos = PokemonQuery.findActivePokemon(player)
                         val prompt = buildPrompt(player, ativos, "IMPORTANT: We won the battle")
                         ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
                     } else {
-                        scheduledMessages.clear()
                         val ativos = PokemonQuery.findActivePokemon(player)
                         val prompt = buildPrompt(player, ativos, "IMPORTANT: We lost the battle")
                         ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
@@ -250,7 +271,9 @@ object DialogueSystem {
                     val now = System.currentTimeMillis()
                     val last = lastPrompt[entity.uuid] ?: 0L
                     if (now - last >= 22000 && config.dialogueOnDamage) {
-                        scheduledMessages.clear()
+                        // limpa apenas a fila desse jogador
+                        scheduledMessages[entity.uuid]?.clear()
+
                         lastPrompt[entity.uuid] = now
                         val cause = source.msgId
                         println("IMPORTANT: I took $amount of damage from $cause. Final health: $newHealth")
@@ -276,7 +299,9 @@ object DialogueSystem {
                             val now = System.currentTimeMillis()
                             val last = lastPrompt[owner.uuid] ?: 0L
                             if (now - last >= 22000) {
-                                scheduledMessages.clear()
+                                // limpa apenas a fila desse jogador
+                                scheduledMessages[owner.uuid]?.clear()
+
                                 lastPrompt[owner.uuid] = now
                                 val cause = source.msgId
                                 val pokemonNickname = entity.pokemon.nickname?.string
@@ -297,7 +322,6 @@ object DialogueSystem {
             }
         }
 
-
         ServerTickEvents.END_SERVER_TICK.register { server ->
             flushScheduledMessages(server)
             tickBubbles(currentServer!!)
@@ -305,13 +329,16 @@ object DialogueSystem {
             // mantém o olhar fixo enquanto durar o foco
             maintainLookAt(server)
 
-            if (server.tickCount % 200 == 0 && scheduledMessages.isEmpty()) {
-                runSocialTick(server)
+            if (server.tickCount % 200 == 0) {
+                for (player in server.playerList.players) {
+                    runSocialTick(player)
+                }
             }
 
-            //if (server.tickCount % 70 == 0) {
+            if (server.tickCount % 40 == 0) {
+                validateItemQuests(server)
                 //checkIaResponse(server)
-            //}
+            }
 
             //if (server.tickCount % 20 == 0) {
             //ensureChatRunning()
@@ -347,7 +374,8 @@ object DialogueSystem {
     var lastSpeakerPlayer: ServerPlayer? = null
 
     fun onPlayerChat(player: ServerPlayer, text: String) {
-        scheduledMessages.clear()
+        scheduledMessages[player.uuid]?.clear()
+        justSentMessage[player.uuid] = true
         val ativos = PokemonQuery.findActivePokemon(player)
         val prompt = buildPrompt(player, ativos, "\n\n$text")
 
@@ -361,88 +389,103 @@ object DialogueSystem {
     // NÃO alterar o comportamento de tick/loop do flush
     private fun flushScheduledMessages(server: MinecraftServer) {
         val currentTick = server.tickCount.toLong()
-        val ready = scheduledMessages.filter { it.sendAtTick <= currentTick }
-        if (ready.isNotEmpty()) {
-            ready.forEach { msg ->
-                if (msg.text.startsWith("#") ||
-                    (!config.showFriendship && msg.text.lowercase().startsWith("friendship"))
-                ) {
-                    return@forEach
-                }
-                println("=== DEBUG FLUSH ===")
-                println("msg.text='${msg.text}'")
-                println("msg.speaker='${msg.speaker}'")
 
-                if (config.dialogueInChat) {
-                    val text = msg.text
+        // percorre todos os jogadores online
+        for (player in server.playerList.players) {
+            val playerMessages = scheduledMessages[player.uuid] ?: continue
+            val ready = playerMessages.filter { it.sendAtTick <= currentTick }
 
-                    // Regex para detectar "!Error 123!"
-                    val regex = Regex("!Error \\d{3}!")
+            if (ready.isNotEmpty()) {
+                ready.forEach { msg ->
+                    if (msg.text.startsWith("#") ||
+                        (!config.showFriendship && msg.text.lowercase().startsWith("friendship"))
+                    ) {
+                        return@forEach
+                    }
+                    println("=== DEBUG FLUSH ===")
+                    println("msg.text='${msg.text}'")
+                    println("msg.speaker='${msg.speaker}'")
 
-                    val component = if (regex.containsMatchIn(text)) {
-                        // Mensagem inteira em vermelho
-                        Component.literal(text).withStyle { style ->
-                            style.withColor(ChatFormatting.RED)
+                    if (config.dialogueInChat) {
+                        val text = msg.text
+
+                        // Regex para detectar "!Error 123!"
+                        val regex = Regex("!Error \\d{3}!")
+
+                        val component = if (regex.containsMatchIn(text)) {
+                            // Mensagem inteira em vermelho
+                            Component.literal(text).withStyle { style ->
+                                style.withColor(ChatFormatting.RED)
+                            }
+                        } else {
+                            // Mensagem normal
+                            Component.literal(text)
                         }
-                    } else {
-                        // Mensagem normal
-                        Component.literal(text)
+
+                        msg.player.sendSystemMessage(component)
                     }
 
-                    msg.player.sendSystemMessage(component)
-                }
+                    // tenta resolver o falante pelo apelido OU pela espécie
+                    val ativos = PokemonQuery.findActivePokemon(msg.player)
 
-                // tenta resolver o falante pelo apelido OU pela espécie
-                val ativos = PokemonQuery.findActivePokemon(msg.player)
-                ativos.forEach { poke ->
-                    println("ativo nickname='${poke.nickname}' especie='${poke.species.resourceIdentifier.path}'")
-                }
-                val rawName = msg.text.substringBefore(":").trim()
+                    // usa a função/variável que você já tem no collectWorldContext
+                    val wildEntities = collectWorldContext(msg.player).nearbyPokemonEntities
+                    val wilds = wildEntities.map { it.pokemon }
 
-                val speaker = msg.speaker ?: ativos.find { poke ->
-                    val nick = poke.nickname?.string // pega o texto puro do Component
-                    nick?.equals(rawName, ignoreCase = true) == true ||
-                            poke.species.resourceIdentifier.path.equals(rawName, ignoreCase = true)
-                }
+                    // junta os dois conjuntos
+                    val participantes = ativos + wilds
 
-                println("speaker resolvido = ${speaker?.nickname ?: speaker?.species?.resourceIdentifier?.path ?: "null"}")
-
-                speaker?.let { pokemon ->
-                    val entity = pokemon.entity
-                    val basePitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
-                    expressPokemon(pokemon, basePitch)
-
-                    // bolha de diálogo temporária
-                    if (entity != null && config.chatbubbles) {
-                        val bubbleText = msg.text.substringAfter(":").trim()
-                        spawnSpeechBubble(server, pokemon, bubbleText, 100) // 100 ticks ≈ 5 segundos
+                    participantes.forEach { poke ->
+                        println("participante nickname='${poke.nickname}' especie='${poke.species.resourceIdentifier.path}'")
                     }
 
-                    // define foco social e espectadores
-                    currentSpeaker = pokemon
-                    speakerUntilTick = server.tickCount.toLong() + 100 // ~5s
-                    currentViewers.clear()
+                    val rawName = msg.text.substringBefore(":").trim()
 
-                    // espectadores: pokémon ativos do mesmo player, exceto o falante
-                    ativos.filter { other -> other != pokemon }.forEach { other ->
-                        currentViewers.add(other)
-                        val otherEntity = other.entity
-                        val speakerEntity = pokemon.entity
-                        if (otherEntity != null && speakerEntity != null) {
-                            otherEntity.lookControl.setLookAt(
-                                speakerEntity.x,
-                                speakerEntity.eyeY,
-                                speakerEntity.z,
-                                30f,
-                                30f
-                            )
+                    val speaker = msg.speaker ?: participantes.find { poke ->
+                        val nick = poke.nickname?.string
+                        nick?.equals(rawName, ignoreCase = true) == true ||
+                                poke.species.resourceIdentifier.path.equals(rawName, ignoreCase = true)
+                    }
+
+                    println("speaker resolvido = ${speaker?.nickname ?: speaker?.species?.resourceIdentifier?.path ?: "null"}")
+
+                    speaker?.let { pokemon ->
+                        val entity = pokemon.entity
+                        val basePitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
+                        expressPokemon(pokemon, basePitch)
+
+                        if (entity != null && config.chatbubbles) {
+                            val bubbleText = msg.text.substringAfter(":").trim()
+                            spawnSpeechBubble(server, pokemon, bubbleText, 100)
+                        }
+
+                        // define foco social e espectadores
+                        currentSpeaker = pokemon
+                        speakerUntilTick = server.tickCount.toLong() + 100 // ~5s
+                        currentViewers.clear()
+
+                        // espectadores: pokémon ativos do mesmo player, exceto o falante
+                        ativos.filter { other -> other != pokemon }.forEach { other ->
+                            currentViewers.add(other)
+                            val otherEntity = other.entity
+                            val speakerEntity = pokemon.entity
+                            if (otherEntity != null && speakerEntity != null) {
+                                otherEntity.lookControl.setLookAt(
+                                    speakerEntity.x,
+                                    speakerEntity.eyeY,
+                                    speakerEntity.z,
+                                    30f,
+                                    30f
+                                )
+                            }
                         }
                     }
                 }
+                playerMessages.removeAll(ready)
             }
-            scheduledMessages.removeAll(ready)
         }
     }
+
 
     // mapa para controlar quando limpar cada bolha
     private val bubbleUntilTick = mutableMapOf<UUID, Long>()
@@ -552,8 +595,184 @@ object DialogueSystem {
         toRemove.forEach { bubbleStands.remove(it) }
     }
 
+    // ---------------         QUEST SECTION            -----------------------
+    fun canBetray(player: ServerPlayer, giver: PokemonEntity): Boolean {
+        val playerHealth = player.health
+        val playerArmor = player.armorValue // total de pontos de armadura
 
-    // reaplica o olhar todos os ticks enquanto durar o foco
+        val giverHealth = giver.health
+        val physicalAttack = giver.pokemon.attack
+        val specialAttack = giver.pokemon.specialAttack
+        val giverDamage = maxOf(physicalAttack, specialAttack) / 10
+
+        // compara vida+armadura do player com vida+dano do Pokémon
+        return (playerHealth + playerArmor) <= (giverHealth + giverDamage * 1.2)
+    }
+
+
+    fun adjustKarma(giverName: String, delta: Int) {
+        val karma = CobblebrainWorldSave.data.getAsJsonObject("karma")
+        val current = karma.get(giverName)?.asInt ?: 0
+        karma.addProperty(giverName, current + delta)
+        CobblebrainWorldSave.save()
+    }
+
+    fun maybeGiveReward(player: ServerPlayer, giverName: String) {
+        val karma = CobblebrainWorldSave.data.getAsJsonObject("karma")
+        val current = karma.get(giverName)?.asInt ?: 0
+
+        // depois alterar current pra 4 e o nextfloat para 0.3f
+        if (current >= 1 && player.server.overworld().random.nextFloat() < 1.0f) {
+            // exemplo: dar uma berry como presente
+            val rewardItem = ItemStack(Items.SWEET_BERRIES, 3)
+            if (!player.inventory.add(rewardItem)) {
+                player.drop(rewardItem, false)
+            }
+        }
+    }
+
+    fun validateItemQuests(server: MinecraftServer) {
+        val level = server.overworld()
+
+        val quests = CobblebrainWorldSave.data
+            .getAsJsonObject("quests")
+            .getAsJsonArray("active")
+            .map { it.asJsonObject }
+            .filter { it.get("type").asString == "ITEM" && it.get("status").asString == "IN_PROGRESS" }
+
+        quests.forEach { questObj ->
+            val giverUuid = UUID.fromString(questObj.get("giverUuid").asString)
+            val target = questObj.get("target").asString
+            val amount = questObj.get("amount").asInt
+
+            val giverEntity = level.getEntity(giverUuid) as? PokemonEntity ?: return@forEach
+            val nearbyItems = level.getEntitiesOfClass(ItemEntity::class.java, giverEntity.boundingBox.inflate(5.0))
+
+            val collected = nearbyItems
+                .filter { BuiltInRegistries.ITEM.getKey(it.item.item).path == target }
+                .sumOf { it.item.count }
+
+            if (collected >= amount) {
+                // marca como concluída
+                questObj.addProperty("status", "COMPLETED")
+                CobblebrainWorldSave.save()
+
+                val giverName = giverEntity.pokemon.nickname?.string ?: giverEntity.pokemon.species.resourceIdentifier.path
+
+                // aumenta karma da espécie
+                val karma = CobblebrainWorldSave.data.getAsJsonObject("karma")
+                val current = karma.get(giverName)?.asInt ?: 0
+                karma.addProperty(giverName, current + 1)
+
+                // fala de agradecimento
+                val player = server.playerList.players.firstOrNull { it.uuid == giverEntity.pokemon.getOwnerUUID() }
+                if (player != null) {
+                    println("missao de delivery concluido")
+                    buildPrompt(
+                        player,
+                        PokemonQuery.findActivePokemon(player),
+                        "IMPORTANT: Mission concluded! $giverName thanks the player for bringing the $target(s)!")
+                }
+            }
+        }
+    }
+
+    fun handleAdviceQuestResponse(player: ServerPlayer, giver: PokemonEntity?, response: String) {
+        println("[DEBUG] Entrou em handleAdviceQuestResponse")
+        println("[DEBUG] Resposta recebida: $response")
+
+        val quest = CobblebrainWorldSave.getActiveQuest()
+        if (quest == null) {
+            println("[DEBUG] Nenhuma quest ativa encontrada")
+            return
+        }
+
+        val giverUuid = quest.get("giverUuid").asString
+        val giverName = giver?.pokemon?.nickname?.string
+            ?: giver?.pokemon?.species?.resourceIdentifier?.path
+            ?: CobblebrainWorldSave.getGiverNameFromQuest(quest)
+
+        var questEnded = false
+
+        when {
+            response.contains("%positive_end", ignoreCase = true) -> {
+                println("[DEBUG] Detectado %positive_end")
+                player.sendSystemMessage(
+                    Component.literal("$giverName appreciated your help!")
+                        .withStyle(ChatFormatting.GREEN)
+                )
+                CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "COMPLETED")
+                CobblebrainWorldSave.adjustKarma(giverName, +1)
+                CobblebrainWorldSave.debugQuests()
+                maybeGiveReward(player, giverName)
+                questEnded = true
+            }
+
+            response.contains("%negative_end", ignoreCase = true) -> {
+                println("[DEBUG] Detectado %negative_end")
+                player.sendSystemMessage(
+                    Component.literal("$giverName didn't like your help!")
+                        .withStyle(ChatFormatting.RED)
+                )
+                CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "COMPLETED")
+                CobblebrainWorldSave.adjustKarma(giverName, -1)
+                CobblebrainWorldSave.debugQuests()
+                questEnded = true
+            }
+
+            response.contains("%betray_end", ignoreCase = true) -> {
+                println("[DEBUG] Detectado %betray_end")
+                player.sendSystemMessage(
+                    Component.literal("$giverName betrayed you!")
+                        .withStyle(ChatFormatting.RED)
+                )
+                if (giver != null && canBetray(player, giver)) {
+                    CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "COMPLETED")
+                    CobblebrainWorldSave.adjustKarma(giverName, -2)
+                    CobblebrainWorldSave.debugQuests()
+                    val chosenAttack = maxOf(giver.pokemon.attack, giver.pokemon.specialAttack)
+                    giver.getAttribute(Attributes.ATTACK_DAMAGE)?.baseValue = chosenAttack.toDouble() / 20
+                    giver.target = player
+                    giver.isAggressive = true
+                    println("[DEBUG] Pokémon ficou agressivo contra o player")
+                    questEnded = true
+                }
+            }
+
+            response.contains("%leave_end", ignoreCase = true) -> {
+                println("[DEBUG] Detectado %leave_end")
+                player.sendSystemMessage(
+                    Component.literal("$giverName decided to abandon the quest!")
+                        .withStyle(ChatFormatting.YELLOW)
+                )
+                CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "ABANDONED")
+                CobblebrainWorldSave.debugQuests()
+                if (giver != null) {
+                    val dx = giver.x - player.x
+                    val dz = giver.z - player.z
+                    val dist = sqrt(dx * dx + dz * dz)
+                    if (dist > 0) {
+                        val awayX = giver.x + (dx / dist) * 10.0
+                        val awayZ = giver.z + (dz / dist) * 10.0
+                        giver.navigation.moveTo(awayX, giver.y, awayZ, 1.0)
+                        println("[DEBUG] Pokémon se afastou do player")
+                    }
+                }
+                questEnded = true
+            }
+
+            else -> {
+                println("[DEBUG] Nenhum marcador detectado nesta resposta")
+            }
+        }
+
+        // No final da função
+        if (questEnded) {
+            println("[DEBUG] Missão concluída ou abandonada. Gatilho disponível para iniciar nova missão.")
+        }
+    }
+
+        // reaplica o olhar todos os ticks enquanto durar o foco
     private fun maintainLookAt(server: MinecraftServer) {
         val now = server.tickCount.toLong()
         val speakerEntity = currentSpeaker?.entity
@@ -578,26 +797,36 @@ object DialogueSystem {
         }
     }
 
-    private fun runSocialTick(server: MinecraftServer) {
-        for (player in server.playerList.players) {
-            val ativos = PokemonQuery.findActivePokemon(player)
-            if (ativos.isEmpty()) continue
+    private fun runSocialTick(player: ServerPlayer) {
+        // Se esse jogador acabou de mandar mensagem, não dispara espontâneo neste tick
+        if (justSentMessage[player.uuid] == true) {
+            justSentMessage[player.uuid] = false
+            println("[DEBUG] Bloqueando diálogo espontâneo para ${player.name.string} porque ele acabou de falar")
+            return
+        }
 
-            val chance = config.spontaneousDialogueChance
+        // Se esse jogador tem mensagens pendentes, não dispara espontâneo para ele
+        val playerMessages = scheduledMessages[player.uuid] ?: emptyList()
+        if (playerMessages.isNotEmpty()) {
+            println("[DEBUG] Jogador ${player.name.string} tem mensagens pendentes, não disparar espontâneo")
+            return
+        }
 
-            if (Random.nextDouble() <= chance) {
-                val prompt = buildPrompt(
-                    player,
-                    ativos,
-                    "IMPORTANT: The Pokemon are thinking of something different to say... (use the world variables or refer to something else...)"
-                )
+        val ativos = PokemonQuery.findActivePokemon(player)
+        if (ativos.isEmpty()) return
 
-                // envia prompt direto para o cliente processar
-                ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+        val chance = config.spontaneousDialogueChance
 
-                println("Spontaneous dialogue attempt triggered")
-                return
-            }
+        // Sorteio para disparar diálogo espontâneo só para esse jogador
+        if (Random.nextDouble() <= chance) {
+            val prompt = buildPrompt(
+                player,
+                ativos,
+                "IMPORTANT: The Pokémon are thinking of something different to say..."
+            )
+
+            ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+            println("[DEBUG] Spontaneous dialogue triggered for ${player.name.string}")
         }
     }
 
@@ -652,10 +881,8 @@ object DialogueSystem {
             0.0
         )
     }
-
     fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
         val context = collectWorldContext(player)
-        //println(context)
 
         return buildString {
             appendLine(moreText)
@@ -666,36 +893,72 @@ object DialogueSystem {
             appendLine("Time: ${context.timeOfDay}, ${context.timeLabel})")
 
             if (!config.lowTokenMode) {
-                // Location and terrain
                 appendLine("Light: ${context.lightLevel}")
                 appendLine("Block under the player's feet: ${context.blockUnder}")
-                // appendLine("Terrain: ${context.terrainHint}")
                 appendLine("Nearby special blocks: ${context.specialBlocks}")
             }
 
-            // Entities
             if (!config.lowTokenMode) {
                 appendLine("Nearby entities: ${context.nearbyEntities}")
                 appendLine("Nearby mobs: ${context.nearbyMobs}")
+                appendLine("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
+                println("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
             }
             appendLine("Items on the ground: ${context.nearbyItems}")
 
-            // Player status
             appendLine("Player health: ${context.health}/${context.maxHealth}")
-            // appendLine("Player armor: ${context.armor}")
-
-            // Items in use
             appendLine("Player's main hand: ${context.mainHand}")
-            // appendLine("Player's offhand: ${context.offHand}")
             appendLine()
+
+            if (config.wildPokemonTalkChance > 0.0
+                && Random.nextDouble() <= config.wildPokemonTalkChance
+                && context.nearbyPokemon.isNotEmpty()) {
+
+                val wildEntity = context.nearbyPokemonEntities.random()
+                val giver = wildEntity.pokemon
+
+                val hasActiveQuest = CobblebrainWorldSave.load(player)
+                    .any { it.active }
+
+                // Se não há missão ativa e o gatilho questEnded está marcado
+                if (!hasActiveQuest && questEnded && Random.nextDouble() <= config.wildQuestChance) {
+                    if (Random.nextBoolean()) {
+                        CobblebrainWorldSave.createAdviceQuest(player, wildEntity)
+                        appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest! It wants to talk with the player or their Pokémon team!")
+                    } else {
+                        // provavelmente tem jeito bem melhor de fazer isso, mas, enquanto tiver só uma missao ativa, da pro gasto
+                        CobblebrainWorldSave.createItemQuest(player, wildEntity)
+                        val activeQuests = CobblebrainWorldSave.data.getAsJsonObject("quests").getAsJsonArray("active")
+                        val itemQuest = activeQuests.last().asJsonObject
+                        val targetItem = itemQuest.get("target").asString
+                        val amount = itemQuest.get("amount").asInt
+                        appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ITEM quest! it needs the player or their Pokémon team to gather x$amount $targetItem!")
+                    }
+                    questEnded = false // reset gatilho
+                } else if (!hasActiveQuest) {
+                    appendLine("IMPORTANT: Wild pokemons are talking!")
+                }
+            }
 
             appendLine("[Active pokemons]")
 
             pokemons.forEach { p ->
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
                 appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
-                //println("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $$allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()}")
-                //println(p.types.map { it.name })
+
+                // Adiciona características se houver
+                val nameToCheck = p.nickname?.string ?: p.species.name
+                config.characteristics.forEach { entry ->
+                    val parts = entry.split(":")
+                    if (parts.size >= 2) {
+                        val charName = parts[0].trim()
+                        val charDesc = parts.drop(1).joinToString(":").trim()
+                        if (nameToCheck.equals(charName, ignoreCase = true)) {
+                            appendLine("Characteristics of $nameToCheck: $charDesc")
+                        }
+                    }
+                }
+
                 val memories = currentServer?.let { srv ->
                     loadPokemonMemories(
                         srv,
@@ -708,7 +971,6 @@ object DialogueSystem {
                     appendLine("\nMemories:\n")
                     memories.forEach { m ->
                         appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
-                        //println("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
                     }
                 }
             }
@@ -719,6 +981,7 @@ object DialogueSystem {
             appendLine("Send the entire response in ${config.selectedLanguage}")
         }.trim()
     }
+
 
     private var lastResponseContent: String? = null
 
@@ -798,15 +1061,34 @@ object DialogueSystem {
             val speakerName = line.substringBefore(":").trim()
             val speaker = ativos.firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) }
 
+            // Detecta marcadores (%POSITIVE_END, etc.)
+            if (line.contains("%", ignoreCase = true)) {
+                println("[DEBUG] Marcador detectado na fala: $line")
+                server.playerList.players.forEach { player ->
+                    handleAdviceQuestResponse(player, speaker?.entity, line)
+                }
+            }
+
             server.playerList.players.forEach { player ->
-                scheduledMessages.add(
-                    ScheduledMessage(
-                        player = player,
-                        text = line,
-                        sendAtTick = if (i == 0) startTick else startTick + (i * 100),
-                        speaker = speaker
-                    )
-                )
+                if (line.contains("%", ignoreCase = true)) {
+                    println("[DEBUG] Marcador detectado na fala: $line")
+                    server.playerList.players.forEach { player ->
+                        handleAdviceQuestResponse(player, speaker?.entity, line)
+                    }
+                }
+
+                server.playerList.players.forEach { player ->
+                    // Adiciona na fila do jogador específico
+                    scheduledMessages.computeIfAbsent(player.uuid) { mutableListOf() }
+                        .add(
+                            ScheduledMessage(
+                                player = player,
+                                text = line,
+                                sendAtTick = if (i == 0) startTick else startTick + (i * 100),
+                                speaker = speaker
+                            )
+                        )
+                }
             }
         }
     }

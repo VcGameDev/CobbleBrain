@@ -66,7 +66,7 @@ class ConfigModMenu : ModMenuApi {
                 config.apiKey
             ).setDefaultValue(listOf("YOUR_API_KEY"))
                 .setSaveConsumer { value -> config.apiKey = value }
-                .setTooltip(Component.literal("The API key used for authentication with the AI system. It can be a Bearer token or a Google API key depending on the provider."))
+                .setTooltip(Component.literal("The API key used for authentication with the AI system. \nIt can be a Bearer token or a Google API key depending on the provider."))
                 .build()
 
             val keyRotationEntry = entryBuilder.startBooleanToggle(
@@ -74,7 +74,7 @@ class ConfigModMenu : ModMenuApi {
                 config.keyRotation
             ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.keyRotation = value }
-                .setTooltip(Component.literal("Enables API key rotation when errors occur. Useful for handling invalid or expired keys."))
+                .setTooltip(Component.literal("Enables API key rotation when errors occur. \nUseful for handling invalid or expired keys."))
                 .build()
 
             val keyRotationTriggerEntry = entryBuilder.startIntList(
@@ -82,7 +82,7 @@ class ConfigModMenu : ModMenuApi {
                 config.keyRotationTrigger
             ).setDefaultValue(listOf(401, 429))
                 .setSaveConsumer { value -> config.keyRotationTrigger = value }
-                .setTooltip(Component.literal("List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys."))
+                .setTooltip(Component.literal("List of HTTP status codes that trigger key rotation. \nDefines error conditions for switching keys."))
                 .build()
 
             val apiBaseUrlEntry = entryBuilder.startStrField(
@@ -90,7 +90,7 @@ class ConfigModMenu : ModMenuApi {
                 config.apiBaseUrl
             ).setDefaultValue("http://127.0.0.1:4315")
                 .setSaveConsumer { value -> config.apiBaseUrl = value }
-                .setTooltip(Component.literal("The base URL of the API endpoint. \n Examples include OpenAI, OpenRouter, Google AI Studio, or a local LM Studio server."))
+                .setTooltip(Component.literal("The base URL of the API endpoint. \nExamples include OpenRouter, Google AI Studio, or a local LM Studio server."))
                 .build()
 
             val localApiProviderEntry = entryBuilder.startStrField(
@@ -98,7 +98,7 @@ class ConfigModMenu : ModMenuApi {
                 config.localApiProvider
             ).setDefaultValue("player2")
                 .setSaveConsumer { value -> config.localApiProvider = value }
-                .setTooltip(Component.literal("If apiBaseUrl is a local address (127.0.0.1), \n the system uses the provider name in localApiProvider to adapt messages for the correct provider. \n Officially supported providers: player2, lmstudio"))
+                .setTooltip(Component.literal("If apiBaseUrl is a local address (127.0.0.1), \nThe system uses the provider name to adapt messages for the correct provider. \nOfficially supported providers: player2, lmstudio"))
                 .build()
 
             val aiModelEntry = entryBuilder.startStrList(
@@ -122,7 +122,7 @@ class ConfigModMenu : ModMenuApi {
                 config.modelRotationTrigger
             ).setDefaultValue(listOf(404, 429))
                 .setSaveConsumer { value -> config.modelRotationTrigger = value }
-                .setTooltip(Component.literal("List of HTTP status codes that trigger model rotation. \n Defines error conditions for switching models."))
+                .setTooltip(Component.literal("List of HTTP status codes that trigger model rotation. \nDefines error conditions for switching models."))
                 .build()
 
             val temperatureEntry = entryBuilder.startFloatField(
@@ -130,7 +130,7 @@ class ConfigModMenu : ModMenuApi {
                 config.temperature.toFloat()
             ).setDefaultValue(0.7f)
                 .setSaveConsumer { value -> config.temperature = value.toDouble() }
-                .setTooltip(Component.literal("Controls the randomness of responses. \n Lower values give precise answers, higher values make them more creative."))
+                .setTooltip(Component.literal("Controls the randomness of responses. \nLower values give precise answers, higher values make them more creative."))
                 .build()
 
             val aiProviderEntry = entryBuilder.startStrField(
@@ -138,7 +138,7 @@ class ConfigModMenu : ModMenuApi {
                 config.aiProvider
             ).setDefaultValue("")
                 .setSaveConsumer { value -> config.aiProvider = value }
-                .setTooltip(Component.literal("A provider hint used for routing in OpenRouter. \n This is ignored when using other provider."))
+                .setTooltip(Component.literal("A provider hint used for routing in OpenRouter. \nThis is ignored when using other provider."))
                 .build()
 
             val reasoningEffortEntry = entryBuilder.startStrField(
@@ -146,7 +146,7 @@ class ConfigModMenu : ModMenuApi {
                 config.reasoningEffort
             ).setDefaultValue("none")
                 .setSaveConsumer { value -> config.reasoningEffort = value }
-                .setTooltip(Component.literal("Defines the reasoning effort level for supported models. Options include high, medium, low, auto, or none."))
+                .setTooltip(Component.literal("Defines the reasoning effort level for supported models. \nOptions include high, medium, low, auto, or none."))
                 .build()
 
             val requestTimeoutEntry = entryBuilder.startLongField(
@@ -154,7 +154,7 @@ class ConfigModMenu : ModMenuApi {
                 config.requestTimeoutSeconds
             ).setDefaultValue(60L)
                 .setSaveConsumer { value -> config.requestTimeoutSeconds = value }
-                .setTooltip(Component.literal("Defines the request timeout in seconds. Local models may require longer values."))
+                .setTooltip(Component.literal("Defines the request timeout in seconds. \nLocal models may require longer values."))
                 .build()
 
             val debugLoggingEntry = entryBuilder.startBooleanToggle(
@@ -162,7 +162,7 @@ class ConfigModMenu : ModMenuApi {
                 config.debugLogging
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.debugLogging = value }
-                .setTooltip(Component.literal("Enables debug logging for troubleshooting. Logs are stored in the cobblebrain-ai/logs directory."))
+                .setTooltip(Component.literal("Enables debug logging for troubleshooting. \nLogs are stored in the cobblebrain-ai/logs directory."))
                 .build()
 
             val selectedLanguageEntry = entryBuilder.startStrField(
@@ -170,7 +170,7 @@ class ConfigModMenu : ModMenuApi {
                 config.selectedLanguage
             ).setDefaultValue("Portugues Brasil")
                 .setSaveConsumer { value -> config.selectedLanguage = value }
-                .setTooltip(Component.literal("The language the AI uses for responses. Determines dialogue output language."))
+                .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
                 .build()
 
             val dialogueInChatEntry = entryBuilder.startBooleanToggle(
@@ -178,7 +178,7 @@ class ConfigModMenu : ModMenuApi {
                 config.dialogueInChat
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.dialogueInChat = value }
-                .setTooltip(Component.literal("Shows generated dialogue directly in the chat. This makes Pokémon conversations visible to players."))
+                .setTooltip(Component.literal("Shows generated dialogue directly in the chat. \nThis makes Pokémon conversations visible to players."))
                 .build()
 
             val chatbubblesEntry = entryBuilder.startBooleanToggle(
@@ -186,7 +186,7 @@ class ConfigModMenu : ModMenuApi {
                 config.chatbubbles
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.chatbubbles = value }
-                .setTooltip(Component.literal("Enables chat bubbles above characters. Dialogue will appear visually instead of only in text chat."))
+                .setTooltip(Component.literal("Enables chat bubbles above characters. \nDialogue will appear visually instead of only in text chat."))
                 .build()
 
             val pokemonTalkEntry = entryBuilder.startBooleanToggle(
@@ -194,7 +194,7 @@ class ConfigModMenu : ModMenuApi {
                 config.pokemonTalk
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.pokemonTalk = value }
-                .setTooltip(Component.literal("Toggles whether Pokémon can talk or listen. This acts as a simple on/off switch for dialogue."))
+                .setTooltip(Component.literal("Toggles whether Pokémon can talk or listen. \nThis acts as a simple on/off switch for dialogue."))
                 .build()
 
             val allowPokemonPVPEntry = entryBuilder.startBooleanToggle(
@@ -202,7 +202,7 @@ class ConfigModMenu : ModMenuApi {
                 config.allowPokemonPVP
             ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.allowPokemonPVP = value }
-                .setTooltip(Component.literal("Allows Pokémon to attack other players’ Pokémon. Disabling prevents player-versus-player battles."))
+                .setTooltip(Component.literal("Allows Pokémon to attack other players’ Pokémon. \nDisabling prevents player-versus-player battles."))
                 .build()
 
             val allowPokemonPVEEntry = entryBuilder.startBooleanToggle(
@@ -210,7 +210,7 @@ class ConfigModMenu : ModMenuApi {
                 config.allowPokemonPVE
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.allowPokemonPVE = value }
-                .setTooltip(Component.literal("Allows Pokémon to attack mobs in the world. Exceptions include tamed mobs and non-aggressive tagged mobs."))
+                .setTooltip(Component.literal("Allows Pokémon to attack mobs in the world. \nExceptions include tamed mobs and non-aggressive tagged mobs."))
                 .build()
 
             // ========================= GAME AND INTERACTIONS =========================
@@ -220,7 +220,7 @@ class ConfigModMenu : ModMenuApi {
                 config.lowTokenMode
             ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.lowTokenMode = value }
-                .setTooltip(Component.literal("Reduces world information sent to the AI. This helps conserve tokens and lower usage costs."))
+                .setTooltip(Component.literal("Reduces world information sent to the AI. \nThis helps conserve tokens and lower usage costs."))
                 .build()
 
             val dialogueOnDamageEntry = entryBuilder.startBooleanToggle(
@@ -228,7 +228,7 @@ class ConfigModMenu : ModMenuApi {
                 config.dialogueOnDamage
             ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.dialogueOnDamage = value }
-                .setTooltip(Component.literal("Makes Pokémon speak when someone is hurt. Dialogue is triggered by damage events."))
+                .setTooltip(Component.literal("Makes Pokémon speak when someone is hurt. \nDialogue is triggered by damage events."))
                 .build()
 
             val dialogueOnBattleEntry = entryBuilder.startBooleanToggle(
@@ -236,7 +236,7 @@ class ConfigModMenu : ModMenuApi {
                 config.dialogueOnBattle
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.dialogueOnBattle = value }
-                .setTooltip(Component.literal("Makes Pokémon speak during battle events. Dialogue reflects combat situations."))
+                .setTooltip(Component.literal("Makes Pokémon speak during battle events. \nDialogue reflects combat situations."))
                 .build()
 
             val spontaneousDialogueChanceEntry = entryBuilder.startFloatField(
@@ -244,7 +244,7 @@ class ConfigModMenu : ModMenuApi {
                 config.spontaneousDialogueChance.toFloat()
             ).setDefaultValue(0.1f)
                 .setSaveConsumer { value -> config.spontaneousDialogueChance = value.toDouble() }
-                .setTooltip(Component.literal("Sets the chance of spontaneous dialogue. Pokémon may speak randomly during idle moments."))
+                .setTooltip(Component.literal("Sets the chance of spontaneous dialogue. \nPokémon may speak randomly during idle moments."))
                 .build()
 
             val listenToChatEntry = entryBuilder.startBooleanToggle(
@@ -252,7 +252,7 @@ class ConfigModMenu : ModMenuApi {
                 config.listenToChat
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.listenToChat = value }
-                .setTooltip(Component.literal("Enables listening to regular player chat. If disabled, the AI ignores non-command messages."))
+                .setTooltip(Component.literal("Enables listening to regular player chat. \nIf disabled, the AI ignores non-command messages."))
                 .build()
 
             val onlyNearbyChatEntry = entryBuilder.startBooleanToggle(
@@ -260,7 +260,7 @@ class ConfigModMenu : ModMenuApi {
                 config.onlyNearbyChat
             ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.onlyNearbyChat = value }
-                .setTooltip(Component.literal("Restricts listening to nearby players only. Works only if listenToChat is enabled."))
+                .setTooltip(Component.literal("Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
                 .build()
 
             val maxShortMemoryEntry = entryBuilder.startIntField(
@@ -268,7 +268,7 @@ class ConfigModMenu : ModMenuApi {
                 config.maxShortMemory
             ).setDefaultValue(5)
                 .setSaveConsumer { value -> config.maxShortMemory = value }
-                .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. Controls how much recent context is stored."))
+                .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. \nControls how much recent context is stored."))
                 .build()
 
             val maxLongMemoryEntry = entryBuilder.startIntField(
@@ -276,7 +276,7 @@ class ConfigModMenu : ModMenuApi {
                 config.maxLongMemory
             ).setDefaultValue(5)
                 .setSaveConsumer { value -> config.maxLongMemory = value }
-                .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. Controls how much persistent context is stored."))
+                .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. \nControls how much persistent context is stored."))
                 .build()
 
             val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -284,7 +284,7 @@ class ConfigModMenu : ModMenuApi {
                 config.decreaseFriendship
             ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.decreaseFriendship = value }
-                .setTooltip(Component.literal("Dialogue can decrease friendship with players. Used for negative interactions."))
+                .setTooltip(Component.literal("Dialogue can decrease friendship with players. \nUsed for negative interactions."))
                 .build()
 
             val increaseFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -292,7 +292,7 @@ class ConfigModMenu : ModMenuApi {
                 config.increaseFriendship
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.increaseFriendship = value }
-                .setTooltip(Component.literal("Dialogue can increase friendship with players. Used for positive interactions."))
+                .setTooltip(Component.literal("Dialogue can increase friendship with players. \nUsed for positive interactions."))
                 .build()
 
             val showFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -300,7 +300,7 @@ class ConfigModMenu : ModMenuApi {
                 config.showFriendship
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.showFriendship = value }
-                .setTooltip(Component.literal("Displays friendship values in chat. Players can see relationship changes."))
+                .setTooltip(Component.literal("Displays friendship values in chat. \nPlayers can see relationship changes."))
                 .build()
 
             // ========================= PROMPT AND OUTPUT =========================
