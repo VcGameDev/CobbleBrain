@@ -657,7 +657,8 @@ object DialogueSystem {
                 questObj.addProperty("status", "COMPLETED")
                 CobblebrainWorldSave.save()
 
-                val giverName = giverEntity.pokemon.nickname?.string ?: giverEntity.pokemon.species.resourceIdentifier.path
+                val giverName =
+                    giverEntity.pokemon.nickname?.string ?: giverEntity.pokemon.species.resourceIdentifier.path
 
                 // aumenta karma da espécie
                 val karma = CobblebrainWorldSave.data.getAsJsonObject("karma")
@@ -671,7 +672,8 @@ object DialogueSystem {
                     buildPrompt(
                         player,
                         PokemonQuery.findActivePokemon(player),
-                        "IMPORTANT: Mission concluded! $giverName thanks the player for bringing the $target(s)!")
+                        "IMPORTANT: Mission concluded! $giverName thanks the player for bringing the $target(s)!"
+                    )
                 }
             }
         }
@@ -772,7 +774,7 @@ object DialogueSystem {
         }
     }
 
-        // reaplica o olhar todos os ticks enquanto durar o foco
+    // reaplica o olhar todos os ticks enquanto durar o foco
     private fun maintainLookAt(server: MinecraftServer) {
         val now = server.tickCount.toLong()
         val speakerEntity = currentSpeaker?.entity
@@ -881,6 +883,7 @@ object DialogueSystem {
             0.0
         )
     }
+
     fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
         val context = collectWorldContext(player)
 
@@ -912,31 +915,32 @@ object DialogueSystem {
 
             if (config.wildPokemonTalkChance > 0.0
                 && Random.nextDouble() <= config.wildPokemonTalkChance
-                && context.nearbyPokemon.isNotEmpty()) {
+                && context.nearbyPokemonEntities.isNotEmpty()
+            ) {
+                val wildEntity = context.nearbyPokemonEntities.randomOrNull()
+                if (wildEntity != null) {
+                    val giver = wildEntity.pokemon
 
-                val wildEntity = context.nearbyPokemonEntities.random()
-                val giver = wildEntity.pokemon
+                    val hasActiveQuest = CobblebrainWorldSave.load(player)
+                        .any { it.active }
 
-                val hasActiveQuest = CobblebrainWorldSave.load(player)
-                    .any { it.active }
-
-                // Se não há missão ativa e o gatilho questEnded está marcado
-                if (!hasActiveQuest && questEnded && Random.nextDouble() <= config.wildQuestChance) {
-                    if (Random.nextBoolean()) {
-                        CobblebrainWorldSave.createAdviceQuest(player, wildEntity)
-                        appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest! It wants to talk with the player or their Pokémon team!")
-                    } else {
-                        // provavelmente tem jeito bem melhor de fazer isso, mas, enquanto tiver só uma missao ativa, da pro gasto
-                        CobblebrainWorldSave.createItemQuest(player, wildEntity)
-                        val activeQuests = CobblebrainWorldSave.data.getAsJsonObject("quests").getAsJsonArray("active")
-                        val itemQuest = activeQuests.last().asJsonObject
-                        val targetItem = itemQuest.get("target").asString
-                        val amount = itemQuest.get("amount").asInt
-                        appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ITEM quest! it needs the player or their Pokémon team to gather x$amount $targetItem!")
+                    // Se não há missão ativa e o gatilho questEnded está marcado
+                    if (!hasActiveQuest && questEnded && Random.nextDouble() <= config.wildQuestChance) {
+                        if (Random.nextBoolean()) {
+                            CobblebrainWorldSave.createAdviceQuest(player, wildEntity)
+                            appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest! It wants to talk with the player or their Pokémon team!")
+                        } else {
+                            CobblebrainWorldSave.createItemQuest(player, wildEntity)
+                            val activeQuests = CobblebrainWorldSave.data.getAsJsonObject("quests").getAsJsonArray("active")
+                            val itemQuest = activeQuests.last().asJsonObject
+                            val targetItem = itemQuest.get("target").asString
+                            val amount = itemQuest.get("amount").asInt
+                            appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ITEM quest! it needs the player or their Pokémon team to gather x$amount $targetItem!")
+                        }
+                        questEnded = false // reset gatilho
+                    } else if (!hasActiveQuest) {
+                        appendLine("IMPORTANT: Wild pokemons are talking!")
                     }
-                    questEnded = false // reset gatilho
-                } else if (!hasActiveQuest) {
-                    appendLine("IMPORTANT: Wild pokemons are talking!")
                 }
             }
 
@@ -1054,42 +1058,33 @@ object DialogueSystem {
             }
         }
 
-        // 4. Agenda mensagens para players
+        // 4. Agenda mensagens para o jogador que falou
         lastResponseContent = content
         val startTick = server.tickCount.toLong()
-        falas.forEachIndexed { i, line ->
+        val player = lastSpeakerPlayer ?: return
+
+        // Monta todas as falas do novo diálogo
+        val novasMensagens = falas.mapIndexed { i, line ->
             val speakerName = line.substringBefore(":").trim()
-            val speaker = ativos.firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) }
+            val speaker = PokemonQuery.findActivePokemon(player)
+                .firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) }
 
             // Detecta marcadores (%POSITIVE_END, etc.)
             if (line.contains("%", ignoreCase = true)) {
                 println("[DEBUG] Marcador detectado na fala: $line")
-                server.playerList.players.forEach { player ->
-                    handleAdviceQuestResponse(player, speaker?.entity, line)
-                }
+                handleAdviceQuestResponse(player, speaker?.entity, line)
             }
 
-            server.playerList.players.forEach { player ->
-                if (line.contains("%", ignoreCase = true)) {
-                    println("[DEBUG] Marcador detectado na fala: $line")
-                    server.playerList.players.forEach { player ->
-                        handleAdviceQuestResponse(player, speaker?.entity, line)
-                    }
-                }
-
-                server.playerList.players.forEach { player ->
-                    // Adiciona na fila do jogador específico
-                    scheduledMessages.computeIfAbsent(player.uuid) { mutableListOf() }
-                        .add(
-                            ScheduledMessage(
-                                player = player,
-                                text = line,
-                                sendAtTick = if (i == 0) startTick else startTick + (i * 100),
-                                speaker = speaker
-                            )
-                        )
-                }
-            }
+            ScheduledMessage(
+                player = player,
+                text = line,
+                sendAtTick = if (i == 0) startTick else startTick + (i * 100),
+                speaker = speaker
+            )
         }
+
+        // Substitui qualquer diálogo anterior por este novo conjunto
+        scheduledMessages[player.uuid] = novasMensagens.toMutableList()
+
     }
 }
