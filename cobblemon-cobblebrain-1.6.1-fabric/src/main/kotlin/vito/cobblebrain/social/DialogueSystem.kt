@@ -65,7 +65,7 @@ object DialogueSystem {
 
     // guarda o último momento em que cada jogador disparou a lógica
     private val lastPrompt: MutableMap<UUID, Long> = ConcurrentHashMap()
-    var questEnded: Boolean = false
+    var questEnded: Boolean = true
 
     // guarda o pitch atual de cada Pokémon ativo
     private val pokemonPitchMap = mutableMapOf<UUID, Float>()
@@ -244,19 +244,34 @@ object DialogueSystem {
             if (config.dialogueOnBattle) {
                 for (player in battle.players) {
                     val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
-
-                    // limpa apenas a fila desse jogador
                     scheduledMessages[player.uuid]?.clear()
 
                     if (event.winners.contains(myActor)) {
-                        println("We won the battle")
-                        val ativos = PokemonQuery.findActivePokemon(player)
-                        val prompt = buildPrompt(player, ativos, "IMPORTANT: We won the battle")
-                        ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
-                    } else {
-                        val ativos = PokemonQuery.findActivePokemon(player)
-                        val prompt = buildPrompt(player, ativos, "IMPORTANT: We lost the battle")
-                        ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+                        for (loser in event.losers) {
+                            // Sempre diminui o karma da espécie derrotada
+                            val defeatedName = loser.getName().string
+                            CobblebrainWorldSave.adjustKarma(defeatedName, -1)
+
+                            // Se houver uma missão de batalha ativa, valida
+                            val ativos = PokemonQuery.findActivePokemon(player)
+                            val activeQuest = CobblebrainWorldSave.getActiveQuest()
+                            if (activeQuest != null && activeQuest.get("type").asString == "BATTLE") {
+                                val targetSpecies = activeQuest.get("targetSpecies").asString
+                                if (defeatedName.equals(targetSpecies, ignoreCase = true)) {
+                                    val giverName = CobblebrainWorldSave.getGiverNameFromQuest(activeQuest)
+                                    println("IMPORTANT: You defeated the $targetSpecies! $giverName thanks you!")
+                                    val prompt = buildPrompt(
+                                        player,
+                                        ativos,
+                                        "IMPORTANT: The player defeated the $targetSpecies! $giverName thanks him!"
+                                    )
+                                    ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+
+                                    CobblebrainWorldSave.adjustKarma(giverName, 2)
+                                    maybeGiveReward(player, giverName)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -620,14 +635,23 @@ object DialogueSystem {
     fun maybeGiveReward(player: ServerPlayer, giverName: String) {
         val karma = CobblebrainWorldSave.data.getAsJsonObject("karma")
         val current = karma.get(giverName)?.asInt ?: 0
-
-        // depois alterar current pra 4 e o nextfloat para 0.3f
-        if (current >= 1 && player.server.overworld().random.nextFloat() < 1.0f) {
-            // exemplo: dar uma berry como presente
+        // ajustar current pra 5 e chance pra 0.4f
+        if (current >= 5 && player.server.overworld().random.nextFloat() < 0.4f) {
             val rewardItem = ItemStack(Items.SWEET_BERRIES, 3)
+
+            // GUARDA ANTES de adicionar
+            val count = rewardItem.count
+            val itemNameComponent = rewardItem.hoverName.copy()
+
             if (!player.inventory.add(rewardItem)) {
                 player.drop(rewardItem, false)
             }
+            player.sendSystemMessage(
+                Component.literal("$giverName gave you ")
+                    .append(itemNameComponent)
+                    .append(" x$count as a gift!")
+                    .withStyle(ChatFormatting.GREEN)
+            )
         }
     }
 
@@ -694,15 +718,23 @@ object DialogueSystem {
             ?: giver?.pokemon?.species?.resourceIdentifier?.path
             ?: CobblebrainWorldSave.getGiverNameFromQuest(quest)
 
-        var questEnded = false
+        val endTagRegex = Regex(
+            """%\s*[:\-]?\s*(positive|negative|betray|leave)[\s_\-]*end""",
+            RegexOption.IGNORE_CASE
+        )
 
-        when {
-            response.contains("%positive_end", ignoreCase = true) -> {
+        val match = endTagRegex.find(response)
+        val tag = match?.groupValues?.get(1)?.lowercase()
+
+        when (tag) {
+
+            "positive" -> {
                 println("[DEBUG] Detectado %positive_end")
                 player.sendSystemMessage(
                     Component.literal("$giverName appreciated your help!")
                         .withStyle(ChatFormatting.GREEN)
                 )
+
                 CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "COMPLETED")
                 CobblebrainWorldSave.adjustKarma(giverName, +1)
                 CobblebrainWorldSave.debugQuests()
@@ -710,49 +742,58 @@ object DialogueSystem {
                 questEnded = true
             }
 
-            response.contains("%negative_end", ignoreCase = true) -> {
+            "negative" -> {
                 println("[DEBUG] Detectado %negative_end")
                 player.sendSystemMessage(
                     Component.literal("$giverName didn't like your help!")
                         .withStyle(ChatFormatting.RED)
                 )
+
                 CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "COMPLETED")
                 CobblebrainWorldSave.adjustKarma(giverName, -1)
                 CobblebrainWorldSave.debugQuests()
                 questEnded = true
             }
 
-            response.contains("%betray_end", ignoreCase = true) -> {
+            "betray" -> {
                 println("[DEBUG] Detectado %betray_end")
                 player.sendSystemMessage(
                     Component.literal("$giverName betrayed you!")
                         .withStyle(ChatFormatting.RED)
                 )
+
                 if (giver != null && canBetray(player, giver)) {
                     CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "COMPLETED")
                     CobblebrainWorldSave.adjustKarma(giverName, -2)
                     CobblebrainWorldSave.debugQuests()
+
                     val chosenAttack = maxOf(giver.pokemon.attack, giver.pokemon.specialAttack)
-                    giver.getAttribute(Attributes.ATTACK_DAMAGE)?.baseValue = chosenAttack.toDouble() / 20
+                    giver.getAttribute(Attributes.ATTACK_DAMAGE)?.baseValue =
+                        chosenAttack.toDouble() / 20
+
                     giver.target = player
                     giver.isAggressive = true
+
                     println("[DEBUG] Pokémon ficou agressivo contra o player")
                     questEnded = true
                 }
             }
 
-            response.contains("%leave_end", ignoreCase = true) -> {
+            "leave" -> {
                 println("[DEBUG] Detectado %leave_end")
                 player.sendSystemMessage(
                     Component.literal("$giverName decided to abandon the quest!")
                         .withStyle(ChatFormatting.YELLOW)
                 )
+
                 CobblebrainWorldSave.moveQuest(giverUuid, quest.get("type").asString, "ABANDONED")
                 CobblebrainWorldSave.debugQuests()
+
                 if (giver != null) {
                     val dx = giver.x - player.x
                     val dz = giver.z - player.z
                     val dist = sqrt(dx * dx + dz * dz)
+
                     if (dist > 0) {
                         val awayX = giver.x + (dx / dist) * 10.0
                         val awayZ = giver.z + (dz / dist) * 10.0
@@ -760,6 +801,7 @@ object DialogueSystem {
                         println("[DEBUG] Pokémon se afastou do player")
                     }
                 }
+
                 questEnded = true
             }
 
@@ -926,20 +968,35 @@ object DialogueSystem {
 
                     // Se não há missão ativa e o gatilho questEnded está marcado
                     if (!hasActiveQuest && questEnded && Random.nextDouble() <= config.wildQuestChance) {
-                        if (Random.nextBoolean()) {
-                            CobblebrainWorldSave.createAdviceQuest(player, wildEntity)
-                            appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest! It wants to talk with the player or their Pokémon team!")
-                        } else {
-                            CobblebrainWorldSave.createItemQuest(player, wildEntity)
-                            val activeQuests = CobblebrainWorldSave.data.getAsJsonObject("quests").getAsJsonArray("active")
-                            val itemQuest = activeQuests.last().asJsonObject
-                            val targetItem = itemQuest.get("target").asString
-                            val amount = itemQuest.get("amount").asInt
-                            appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ITEM quest! it needs the player or their Pokémon team to gather x$amount $targetItem!")
+                        val roll = Random.nextInt(3) // 0 = Advice, 1 = Item, 2 = Battle
+                        when (roll) {
+                            0 -> {
+                                CobblebrainWorldSave.createAdviceQuest(player, wildEntity)
+                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest! It wants to talk with the player or their Pokémon team!")
+                            }
+
+                            1 -> {
+                                CobblebrainWorldSave.createItemQuest(player, wildEntity)
+                                val activeQuests =
+                                    CobblebrainWorldSave.data.getAsJsonObject("quests").getAsJsonArray("active")
+                                val itemQuest = activeQuests.last().asJsonObject
+                                val targetItem = itemQuest.get("target").asString
+                                val amount = itemQuest.get("amount").asInt
+                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ITEM quest! It needs the player or their Pokémon team to gather x$amount $targetItem! It wants to talk with the player or their Pokémon team!")
+                            }
+
+                            2 -> {
+                                CobblebrainWorldSave.createBattleQuest(player, wildEntity)
+                                val activeQuests =
+                                    CobblebrainWorldSave.data.getAsJsonObject("quests").getAsJsonArray("active")
+                                val battleQuest = activeQuests.last().asJsonObject
+                                val targetSpecies = battleQuest.get("targetSpecies").asString
+                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started a BATTLE quest! It wants the player or their Pokémon team to defeat a $targetSpecies in a pokemon battle! It wants to talk with the player or their Pokémon team!")
+                            }
                         }
                         questEnded = false // reset gatilho
                     } else if (!hasActiveQuest) {
-                        appendLine("IMPORTANT: Wild pokemons are talking!")
+                        appendLine("IMPORTANT: Wild Nearby pokemons (not on the team) are talking about something!")
                     }
                 }
             }
@@ -961,6 +1018,14 @@ object DialogueSystem {
                             appendLine("Characteristics of $nameToCheck: $charDesc")
                         }
                     }
+                }
+
+                // Adiciona karma se houver
+                val karmaObj = CobblebrainWorldSave.data.getAsJsonObject("karma")
+                val speciesName = p.species.name
+                if (karmaObj.has(speciesName)) {
+                    val karmaValue = karmaObj.get(speciesName).asInt
+                    appendLine("Karma of $speciesName: $karmaValue")
                 }
 
                 val memories = currentServer?.let { srv ->

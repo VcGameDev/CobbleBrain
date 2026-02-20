@@ -62,24 +62,28 @@ class AIHandler{
     private val apiBase =
         config.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
 
+    private val sessionLogFile: Path by lazy {
+        val dir = Minecraft.getInstance().gameDirectory.toPath()
+            .resolve("cobblebrain-ai/logs")
+
+        Files.createDirectories(dir)
+
+        val fileName = "session_${LocalDateTime.now()
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
+
+        dir.resolve(fileName)
+    }
+
     // ---------------- Logging ----------------
     private fun log(text: String) {
         if (!DEBUG) return
+
         val line = "[${LocalDateTime.now()}] $text"
+        println(line)
 
         try {
-            // cria a pasta se não existir
-            val dir = Minecraft.getInstance().gameDirectory.toPath().resolve("cobblebrain-ai/logs")
-            Files.createDirectories(dir)
-
-            // cria um arquivo de log por sessão (ex.: data/hora de início)
-            val logFile = dir.resolve(
-                "log_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
-            )
-
-            // escreve continuamente no mesmo arquivo enquanto o jogo estiver rodando
             Files.writeString(
-                logFile,
+                sessionLogFile,
                 "$line\n",
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND
@@ -88,7 +92,6 @@ class AIHandler{
             e.printStackTrace()
         }
     }
-
 
     // ---------------- Conversation ----------------
     private val historico = mutableListOf<Mensagem>()
@@ -336,8 +339,18 @@ class AIHandler{
 
 
     private fun callOpenAISchema(prompt: String): String {
+        log("===== OPENAI REQUEST =====")
+        log("Local Provider: ${config.localApiProvider}")
+        log("ApiBaseUrl: ${config.apiBaseUrl}")
+        log("Model: ${config.aiModel}")
+
+        log("\n--- PROMPT ---")
+        log(prompt)
+
         val jsonBody = buildOpenAIJson(prompt)
-        log("REQUEST JSON:\n${jsonBody.lines().joinToString("\n") { "│ $it" }}")
+
+        log("\n--- REQUEST JSON ---")
+        log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
         val builder = HttpRequest.newBuilder()
             .uri(URI.create("$apiBase/v1/chat/completions"))
@@ -345,14 +358,18 @@ class AIHandler{
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
-        // 🔑 Autenticação
+        // Autenticação
         if (config.localApiProvider.equals("player2", ignoreCase = true)) {
-            // Player2 exige Game Client id no header
             builder.header("player2-game-key", "019bfb65-9ed4-79af-a348-90d86bbb6cbb")
+            log("Auth: player2-game-key header")
         } else {
-            // Padrão OpenAI / OpenRouter / LM Studio
             val key = apiKeyRotator.current()
             if (key.isNotBlank()) {
+                val masked = if (key.length > 8)
+                    key.take(4) + "..." + key.takeLast(4)
+                else "INVALID_KEY"
+
+                log("Auth: Bearer $masked")
                 builder.header("Authorization", "Bearer $key")
             }
         }
@@ -360,6 +377,7 @@ class AIHandler{
         val req = builder.build()
 
         return try {
+
             val client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
@@ -367,19 +385,26 @@ class AIHandler{
 
             val res = client.send(req, HttpResponse.BodyHandlers.ofString())
 
-            log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
+            log("\n===== OPENAI RESPONSE =====")
+            log("HTTP ${res.statusCode()}")
+            log(res.body())
 
             if (res.statusCode() != 200) {
-                // ROTACIONA AQUI
+                log("Error code detected: ${res.statusCode()}")
                 rotateApiKey(res.statusCode())
                 rotateModel(res.statusCode())
                 throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
-            return extractOpenAIContent(res.body())
+            extractOpenAIContent(res.body())
 
         } catch (e: Exception) {
-            log("ERROR: ${e.message}")
+
+            log("\n===== OPENAI ERROR =====")
+            log("Type: ${e::class.simpleName}")
+            log("Message: ${e.message}")
+            e.printStackTrace()
+
             "Erro API: ${e.message}"
         }
     }
@@ -489,26 +514,48 @@ class AIHandler{
 
     // ================= GOOGLE GEMMA / GEMINI =================
     private fun callGoogleGemma(prompt: String): String {
-        val url = "$apiBase/v1beta/models/${modelRotator.current()}:generateContent?key=${apiKeyRotator.current()}"
+
+        val currentModel = modelRotator.current()
+        val currentKey = apiKeyRotator.current()
+
+        val maskedKey = if (currentKey.length > 8)
+            currentKey.take(4) + "..." + currentKey.takeLast(4)
+        else
+            "INVALID_KEY"
+
+        log("===== GOOGLE GEMMA REQUEST =====")
+        log("Model: $currentModel")
+        log("API Key: $maskedKey")
+
+        log("\n--- PROMPT ---")
+        log(prompt)
+
+        val url = "$apiBase/v1beta/models/$currentModel:generateContent?key=$currentKey"
 
         val requestBody = mapOf(
             "contents" to listOf(
-                // instruções fixas (equivalente ao "system" em OpenAI)
                 mapOf(
                     "role" to "user",
-                    "parts" to listOf(mapOf("text" to escape(INSTRUCTS + config.outputFormat))),
+                    "parts" to listOf(
+                        mapOf("text" to escape(INSTRUCTS + config.outputFormat))
+                    )
                 ),
-                // prompt real do usuário
                 mapOf(
                     "role" to "user",
-                    "parts" to listOf(mapOf("text" to escape(prompt)))
+                    "parts" to listOf(
+                        mapOf("text" to escape(prompt))
+                    )
                 )
             ),
-            "generationConfig" to mapOf("temperature" to TEMPERATURE)
+            "generationConfig" to mapOf(
+                "temperature" to TEMPERATURE
+            )
         )
 
         val jsonBody = gson.toJson(requestBody)
-        log("REQUEST JSON:\n${jsonBody.lines().joinToString("\n") { "│ $it" }}")
+
+        log("\n--- REQUEST JSON ---")
+        log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
         val req = HttpRequest.newBuilder()
             .uri(URI.create(url))
@@ -518,6 +565,7 @@ class AIHandler{
             .build()
 
         return try {
+
             val client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_2)
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
@@ -525,20 +573,26 @@ class AIHandler{
 
             val res = client.send(req, HttpResponse.BodyHandlers.ofString())
 
-            log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
+            log("\n===== GOOGLE GEMMA RESPONSE =====")
+            log("HTTP ${res.statusCode()}")
+            log(res.body())
 
             if (res.statusCode() != 200) {
-                // ROTACIONA AQUI
-                println(res.statusCode())
+                log("Error code detected: ${res.statusCode()}")
                 rotateApiKey(res.statusCode())
                 rotateModel(res.statusCode())
                 throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
-            return extractGoogleGemmaContent(res.body())
+            extractGoogleGemmaContent(res.body())
 
         } catch (e: Exception) {
-            log("ERROR: ${e.message}")
+
+            log("\n===== GOOGLE GEMMA ERROR =====")
+            log("Type: ${e::class.simpleName}")
+            log("Message: ${e.message}")
+            e.printStackTrace()
+
             "Erro API Google: ${e.message}"
         }
     }

@@ -13,6 +13,7 @@ import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.sensors.registerTickHandler
 import vito.cobblebrain.social.ConfigCommands
 import vito.cobblebrain.social.PokemonTalkCommand
+import vito.cobblebrain.social.WorldEventsSystem
 
 
 object CobblebrainMod : ModInitializer {
@@ -29,16 +30,9 @@ object CobblebrainMod : ModInitializer {
             pasta.mkdirs()
         }
 
-        // cria os arquivos dentro da pasta
-        //val file = File(pasta, "resposta_ia.txt")
-        //val file2 = File(pasta, "comando_ia.txt")
-
-        // writeText já cria o arquivo se não existir
-        //file.writeText("")
-        //file2.writeText("")
-
         println("o mod cobblebrain carregou")
         register()
+        WorldEventsSystem.register()
         registerTickHandler()
 
         // registra o tipo de payload PROMPT (server → client)

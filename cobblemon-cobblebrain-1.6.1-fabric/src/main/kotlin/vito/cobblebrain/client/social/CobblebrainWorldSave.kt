@@ -8,6 +8,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.minecraft.server.level.ServerPlayer
 
 object CobblebrainWorldSave {
@@ -37,6 +38,11 @@ object CobblebrainWorldSave {
             }
             save()
         }
+
+        // REGISTRA O TICK AQUI
+        ServerTickEvents.END_SERVER_TICK.register {
+            handleFollowers()
+        }
     }
 
     fun save() {
@@ -48,6 +54,76 @@ object CobblebrainWorldSave {
     fun load(player: ServerPlayer): List<Quest> {
         return quests.filter { it.player == player }
     }
+
+    var battleSpecies = listOf(
+        // Kanto (20)
+        "Pidgey", "Rattata", "Zubat", "Geodude", "Oddish",
+        "Caterpie", "Weedle", "Ekans", "Sandshrew", "Poliwag",
+        "Machop", "Magnemite", "Gastly", "Cubone", "Tentacool",
+        "Venonat", "Paras", "Diglett", "Doduo", "Meowth",
+        // Johto (15)
+        "Sentret", "Hoothoot", "Mareep", "Wooper", "Spinarak",
+        "Ledyba", "Slugma", "Swinub", "Remoraid", "Phanpy",
+        "Aipom", "Natu", "Sunkern", "Snubbull",
+        // Hoenn (15)
+        "Wurmple", "Zigzagoon", "Lotad", "Wingull", "Shroomish",
+        "Electrike", "Gulpin", "Numel", "Spoink", "Meditite",
+        "Makuhita", "Aron", "Trapinch", "Baltoy", "Swablu",
+        // Sinnoh (15)
+        "Bidoof", "Starly", "Kricketot", "Buizel", "Shellos",
+        "Cherubi", "Combee", "Glameow", "Stunky", "Bronzor",
+        "Croagunk", "Finneon", "Snover", "Hippopotas", "Pachirisu",
+        // Unova (15)
+        "Patrat", "Purrloin", "Blitzle", "Sewaddle", "Roggenrola",
+        "Tympole", "Venipede", "Cottonee", "Petilil", "Sandile",
+        "Darumaka", "Trubbish", "Foongus", "Joltik", "Ducklett",
+        // Kalos (15)
+        "Fletchling", "Scatterbug", "Bunnelby", "Skiddo", "Pancham",
+        "Espurr", "Inkay", "Binacle", "Helioptile", "Pumpkaboo",
+        "Swirlix", "Spritzee", "Honedge", "Clauncher", "Litleo",
+        // Alola (10)
+        "Pikipek", "Yungoos", "Grubbin", "Cutiefly", "Rockruff",
+        "Fomantis", "Salandit", "Stufful", "Crabrawler", "Bounsweet",
+        // Galar (5)
+        "Skwovet", "Rookidee", "Nickit", "Chewtle", "Wooloo"
+    )
+
+    private val followers = mutableMapOf<String, Pair<PokemonEntity, ServerPlayer>>()
+
+    private fun startFollowingPlayer(giver: PokemonEntity, player: ServerPlayer) {
+        giver.setPersistenceRequired()
+        giver.isNoAi = false
+
+        followers[giver.uuid.toString()] = Pair(giver, player)
+    }
+
+    fun createBattleQuest(player: ServerPlayer, giver: PokemonEntity): Quest {
+        val targetSpecies = battleSpecies.random()
+
+        val questObj = JsonObject().apply {
+            addProperty("giverUuid", giver.uuid.toString())
+            addProperty("type", "BATTLE")
+            addProperty("targetSpecies", targetSpecies)
+            addProperty("status", "IN_PROGRESS")
+            addProperty("giverSpecies", giver.pokemon.species.name)
+            giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
+        }
+
+        data.getAsJsonObject("quests").getAsJsonArray("active").add(questObj)
+        save()
+
+        val quest = Quest(player, "BATTLE", true)
+        quests.add(quest)
+
+        val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
+        println("IMPORTANT: $giverName asks you to defeat a $targetSpecies in battle!")
+
+        // Ativa comportamento de seguir o jogador
+        startFollowingPlayer(giver, player)
+
+        return quest
+    }
+
 
     fun createItemQuest(player: ServerPlayer, giver: PokemonEntity): Quest {
         val items = listOf("sweet_berries", "apple", "coal", "cooper_ingot")
@@ -165,16 +241,61 @@ object CobblebrainWorldSave {
                 completedArray.add(questObj)
                 println("[DEBUG] Quest adicionada em completed")
             }
+
             "ABANDONED" -> {
                 abandonedArray.add(questObj)
                 println("[DEBUG] Quest adicionada em abandoned")
             }
+
             else -> println("[DEBUG] Status $newStatus não moveu para completed/abandoned")
         }
 
         save()
         println("[DEBUG] Arquivo salvo após moveQuest")
         debugQuests()
+
+        // Se o Pokémon estava seguindo, para de seguir
+        followers[giverUuid]?.let { pair ->
+            val pokemon = pair.first
+            pokemon.navigation.stop()
+            followers.remove(giverUuid)
+            println("[DEBUG] Follower ${pokemon.pokemon.species.name} parou de seguir o jogador (quest $newStatus)")
+        }
+    }
+
+    private fun handleFollowers() {
+        val iterator = followers.iterator()
+
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val (pokemon, player) = entry.value
+
+            if (!pokemon.isAlive || pokemon.isRemoved) {
+                iterator.remove()
+                continue
+            }
+
+            val distance = pokemon.distanceTo(player)
+
+            val followDist = 5.5
+            val teleportDist = 25.0
+
+            when {
+                distance > teleportDist -> {
+                    pokemon.teleportTo(
+                        player.x + pokemon.level().random.nextInt(-2, 3),
+                        player.y,
+                        player.z + pokemon.level().random.nextInt(-2, 3)
+                    )
+                }
+
+                distance > followDist -> {
+                    pokemon.navigation.moveTo(player, 0.65)
+                }
+            }
+
+            pokemon.lookAt(player, 30f, 30f)
+        }
     }
 
     fun adjustKarma(giverName: String, delta: Int) {
