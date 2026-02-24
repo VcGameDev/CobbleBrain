@@ -8,7 +8,6 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
 import vito.cobblebrain.currentServer
-import vito.cobblebrain.social.DialogueSystem.checkIaResponse
 
 object CobblebrainClientHandler {
     fun registerReceivers() {
@@ -23,8 +22,10 @@ object CobblebrainClientHandler {
             AIClientHandler.sendPrompt(prompt).thenAccept { resposta ->
                 // volta para o thread do cliente
                 context.client().execute {
-                    val server = currentServer ?: return@execute
-                    checkIaResponse(server, resposta)
+                    currentServer ?: return@execute
+                    ClientPlayNetworking.send(
+                        AIResponsePayload(resposta)
+                    )
                 }
             }.exceptionally { e ->
                 e.printStackTrace()
@@ -38,7 +39,7 @@ object CobblebrainClientHandler {
         }
     }
 
-        // Payload para enviar PROMPT (Server → Client)
+    // Payload para enviar PROMPT (Server → Client)
     data class PromptPayload(val prompt: String) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "send_prompt")
@@ -64,5 +65,21 @@ object CobblebrainClientHandler {
         }
 
         override fun type(): CustomPacketPayload.Type<ActionPayload> = TYPE
+    }
+
+    data class AIResponsePayload(val content: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "ai_response")
+            val TYPE: CustomPacketPayload.Type<AIResponsePayload> =
+                CustomPacketPayload.Type(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, AIResponsePayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.content) },
+                    { buf -> AIResponsePayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type(): CustomPacketPayload.Type<AIResponsePayload> = TYPE
     }
 }

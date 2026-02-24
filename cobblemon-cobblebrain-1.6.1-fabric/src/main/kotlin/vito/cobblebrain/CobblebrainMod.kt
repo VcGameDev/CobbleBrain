@@ -4,14 +4,17 @@ import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import vito.cobblebrain.social.DebugPartyCommand
 import vito.cobblebrain.social.DialogueSystem.register
 import java.io.File
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.sensors.registerTickHandler
 import vito.cobblebrain.social.ConfigCommands
+import vito.cobblebrain.social.DialogueSystem
 import vito.cobblebrain.social.PokemonTalkCommand
 import vito.cobblebrain.social.WorldEventsSystem
 
@@ -46,6 +49,10 @@ object CobblebrainMod : ModInitializer {
             CobblebrainClientHandler.ActionPayload.CODEC
         )
 
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainClientHandler.AIResponsePayload.TYPE,
+            CobblebrainClientHandler.AIResponsePayload.CODEC
+        )
 
         // registra handlers de networking
         CobblebrainClientHandler.registerReceivers()
@@ -65,6 +72,14 @@ object CobblebrainMod : ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register { server: MinecraftServer ->
             currentServer = server
+            // remover se der problemas
+            CobblebrainWorldSave.init(server)
+        }
+
+        ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
+            val player = handler.player
+
+            DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
         }
 
         // limpa quando o servidor para

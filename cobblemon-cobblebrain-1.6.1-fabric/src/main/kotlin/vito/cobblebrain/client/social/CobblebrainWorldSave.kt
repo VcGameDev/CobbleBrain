@@ -8,8 +8,41 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.level.storage.LevelResource
+import net.minecraft.world.entity.ai.goal.Goal
+import vito.cobblebrain.mixin.MobAccessor
+
+class FollowPlayerGoal(
+    val pokemon: PokemonEntity,
+    val player: ServerPlayer,
+    val speed: Double,
+    val minDistance: Float,
+    val maxDistance: Double
+) : Goal() {
+
+    override fun canUse(): Boolean {
+        return player.isAlive && pokemon.distanceTo(player) > minDistance
+    }
+
+    override fun canContinueToUse(): Boolean {
+        return pokemon.distanceTo(player) > minDistance && pokemon.isAlive
+    }
+
+    override fun start() {
+        // nada aqui, só start do Goal
+    }
+
+    override fun tick() {
+        if (pokemon.distanceTo(player) > maxDistance) {
+            pokemon.teleportTo(player.x, player.y, player.z)
+        } else {
+            pokemon.navigation.moveTo(player, speed)
+        }
+        pokemon.lookAt(player, 30f, 30f)
+    }
+}
 
 object CobblebrainWorldSave {
     data class Quest(
@@ -17,19 +50,27 @@ object CobblebrainWorldSave {
         val type: String,
         var active: Boolean,
         val itemName: String? = null,
-        val amount: Int? = null
+        val amount: Int? = null,
+        val questSummary: String? = null
     )
 
-    private val saveFile = File("cobblebrain-ai/cobblebrainWorldSave.json")
+    private lateinit var saveFile: File
     private val quests: MutableList<Quest> = mutableListOf()
     var data: JsonObject = JsonObject()
 
-    init {
+    // Agora precisa ser chamado quando o server iniciar
+    fun init(server: MinecraftServer) {
+        val dataDir = server.getWorldPath(LevelResource.ROOT).resolve("data").toFile()
+        dataDir.mkdirs()
+
+        saveFile = File(dataDir, "cobblebrainWorldSave.json")
+
         if (saveFile.exists()) {
             data = JsonParser.parseReader(FileReader(saveFile)).asJsonObject
         } else {
             data = JsonObject().apply {
                 add("karma", JsonObject())
+                add("kill_count", JsonObject())
                 add("quests", JsonObject().apply {
                     add("active", JsonArray())
                     add("completed", JsonArray())
@@ -38,15 +79,11 @@ object CobblebrainWorldSave {
             }
             save()
         }
-
-        // REGISTRA O TICK AQUI
-        ServerTickEvents.END_SERVER_TICK.register {
-            handleFollowers()
-        }
     }
 
     fun save() {
-        FileWriter(saveFile).use { writer ->
+        val file = saveFile
+        FileWriter(file).use { writer ->
             GsonBuilder().setPrettyPrinting().create().toJson(data, writer)
         }
     }
@@ -101,11 +138,13 @@ object CobblebrainWorldSave {
         val targetSpecies = battleSpecies.random()
 
         val questObj = JsonObject().apply {
+            addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
             addProperty("type", "BATTLE")
             addProperty("targetSpecies", targetSpecies)
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
+            addProperty("questSummary", "This is a Battle quest!")
             giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
         }
 
@@ -124,21 +163,22 @@ object CobblebrainWorldSave {
         return quest
     }
 
-
     fun createItemQuest(player: ServerPlayer, giver: PokemonEntity): Quest {
         val items = listOf("sweet_berries", "apple", "coal", "cooper_ingot")
         val target = items.random()
         val amount = (1..10).random()
 
         val questObj = JsonObject().apply {
+            addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
             addProperty("type", "ITEM")
             addProperty("target", target)
             addProperty("amount", amount)
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
-            giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it)}
-        }
+            addProperty("questSummary", "This is a Item quest!")
+            val accessor = giver as MobAccessor
+            accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 2.5f, 30.0))        }
 
         data.getAsJsonObject("quests").getAsJsonArray("active").add(questObj)
         save()
@@ -148,17 +188,19 @@ object CobblebrainWorldSave {
 
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
         println("IMPORTANT: $giverName asks you to bring $amount $target(s)!")
-        giver.navigation.moveTo(player.x, player.y, player.z, 1.0)
-
+        val accessor = giver as MobAccessor
+        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 2.5f, 30.0))
         return quest
     }
 
     fun createAdviceQuest(player: ServerPlayer, giver: PokemonEntity) {
         val questObj = JsonObject().apply {
+            addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
             addProperty("type", "ADVICE")
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
+            addProperty("questSummary", "This is a Advice quest!")
             giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
         }
 
@@ -170,8 +212,8 @@ object CobblebrainWorldSave {
 
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
         println("IMPORTANT: $giverName has started an ADVICE quest! It wants to talk to the player.")
-        giver.navigation.moveTo(player.x, player.y, player.z, 1.0)
-    }
+        val accessor = giver as MobAccessor
+        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 2.5f, 30.0))    }
 
     fun findQuest(giverUuid: String, type: String, status: String? = null): JsonObject? {
         val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active")
@@ -183,12 +225,16 @@ object CobblebrainWorldSave {
         }?.asJsonObject
     }
 
-    fun getActiveQuest(): JsonObject? {
+    fun getActiveQuest(player: ServerPlayer): JsonObject? {
         val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active")
-        return activeArray.lastOrNull {
-            val obj = it.asJsonObject
-            obj.get("status").asString == "IN_PROGRESS"
-        }?.asJsonObject
+
+        return activeArray
+            .map { it.asJsonObject }
+            .asReversed()
+            .firstOrNull {
+                it.get("status").asString == "IN_PROGRESS" &&
+                        it.get("ownerUuid")?.asString == player.uuid.toString()
+            }
     }
 
     fun getGiverNameFromQuest(quest: JsonObject): String {
@@ -207,7 +253,7 @@ object CobblebrainWorldSave {
     }
 
     // Move uma quest de active para completed ou abandoned
-    fun moveQuest(giverUuid: String, type: String, newStatus: String) {
+    fun moveQuest(ownerUuid: String, giverUuid: String, type: String, newStatus: String) {
         println("[DEBUG] moveQuest chamado com giverUuid=$giverUuid, type=$type, newStatus=$newStatus")
 
         val questsObj = data.getAsJsonObject("quests")
@@ -218,7 +264,8 @@ object CobblebrainWorldSave {
         val questElement = activeArray.firstOrNull {
             val obj = it.asJsonObject
             obj.get("giverUuid").asString == giverUuid &&
-                    obj.get("type").asString == type
+                    obj.get("type").asString == type &&
+                    obj.get("ownerUuid").asString == ownerUuid
         }
 
         if (questElement == null) {
@@ -263,54 +310,25 @@ object CobblebrainWorldSave {
         }
     }
 
-    private fun handleFollowers() {
-        val iterator = followers.iterator()
+    fun adjustKarma(player: ServerPlayer, species: String, delta: Int) {
+        println("[DEBUG] adjustKarma chamado para ${player.name.string} | espécie=$species | delta=$delta")
+        val karmaRoot = data.getAsJsonObject("karma")
+        val playerKey = player.uuid.toString()
 
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            val (pokemon, player) = entry.value
-
-            if (!pokemon.isAlive || pokemon.isRemoved) {
-                iterator.remove()
-                continue
-            }
-
-            val distance = pokemon.distanceTo(player)
-
-            val followDist = 5.5
-            val teleportDist = 25.0
-
-            when {
-                distance > teleportDist -> {
-                    pokemon.teleportTo(
-                        player.x + pokemon.level().random.nextInt(-2, 3),
-                        player.y,
-                        player.z + pokemon.level().random.nextInt(-2, 3)
-                    )
-                }
-
-                distance > followDist -> {
-                    pokemon.navigation.moveTo(player, 0.65)
-                }
-            }
-
-            pokemon.lookAt(player, 30f, 30f)
+        val playerObj = if (karmaRoot.has(playerKey)) {
+            karmaRoot.getAsJsonObject(playerKey)
+        } else {
+            val newObj = JsonObject()
+            karmaRoot.add(playerKey, newObj)
+            newObj
         }
-    }
 
-    fun adjustKarma(giverName: String, delta: Int) {
-        println("[DEBUG] adjustKarma chamado para $giverName com delta=$delta")
+        val current = playerObj.get(species)?.asInt ?: 0
+        val newValue = current + delta
 
-        val karmaObj = data.getAsJsonObject("karma")
-        val current = karmaObj.get(giverName)?.asInt ?: 0
-        println("[DEBUG] Karma atual de $giverName = $current")
-
-        karmaObj.addProperty(giverName, current + delta)
-        println("[DEBUG] Karma atualizado para ${current + delta}")
-
+        playerObj.addProperty(species, newValue)
+        println("[DEBUG] Karma atualizado: $species = $newValue para ${player.name.string}")
         save()
-        println("[DEBUG] Arquivo salvo após adjustKarma")
-        debugQuests()
     }
 
     // Debug: imprime estado atual das quests
@@ -320,5 +338,25 @@ object CobblebrainWorldSave {
         println("Completed quests: ${questsObj.getAsJsonArray("completed")}")
         println("Abandoned quests: ${questsObj.getAsJsonArray("abandoned")}")
         println("Karma: ${data.getAsJsonObject("karma")}")
+    }
+
+    fun adjustKillCount(player: ServerPlayer, species: String, delta: Int) {
+        println("[DEBUG] adjustKillCount chamado para ${player.name.string} | espécie=$species | delta=$delta")
+        val killRoot = data.getAsJsonObject("kill_count")
+        val playerKey = player.uuid.toString()
+
+        val playerObj = if (killRoot.has(playerKey)) {
+            killRoot.getAsJsonObject(playerKey)
+        } else {
+            val newObj = JsonObject()
+            killRoot.add(playerKey, newObj)
+            newObj
+        }
+
+        val current = playerObj.get(species)?.asInt ?: 0
+        val newValue = current + delta
+        playerObj.addProperty(species, newValue)
+        println("[DEBUG] Kill count atualizado: $species = $newValue para ${player.name.string}")
+        save()
     }
 }

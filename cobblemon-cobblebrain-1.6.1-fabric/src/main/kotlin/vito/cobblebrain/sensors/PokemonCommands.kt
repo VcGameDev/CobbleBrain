@@ -847,26 +847,15 @@ private fun isEnemy(source: LivingEntity, target: LivingEntity): Boolean {
 }
 
 fun determineFoodTier(item: Item): FoodTier {
-    return when {
-
+    return when (
         // RAROS – ouro / encantados
-        item == Items.GOLDEN_APPLE ||
-                item == Items.ENCHANTED_GOLDEN_APPLE ||
-                item == Items.GOLDEN_CARROT -> FoodTier.RARE
+        item) {
+        Items.GOLDEN_APPLE, Items.ENCHANTED_GOLDEN_APPLE, Items.GOLDEN_CARROT -> FoodTier.RARE
 
         // INCOMUNS – cozidos / craft médio
-        item == Items.COOKED_BEEF ||
-                item == Items.COOKED_CHICKEN ||
-                item == Items.COOKED_PORKCHOP ||
-                item == Items.COOKED_MUTTON ||
-                item == Items.COOKED_RABBIT ||
-                item == Items.COOKED_COD ||
-                item == Items.COOKED_SALMON ||
-                item == Items.BAKED_POTATO ||
-                item == Items.BREAD ||
-                item == Items.PUMPKIN_PIE ||
-                item == Items.RABBIT_STEW ||
-                item == Items.MUSHROOM_STEW -> FoodTier.UNCOMMON
+        Items.COOKED_BEEF, Items.COOKED_CHICKEN, Items.COOKED_PORKCHOP, Items.COOKED_MUTTON,
+        Items.COOKED_RABBIT, Items.COOKED_COD, Items.COOKED_SALMON, Items.BAKED_POTATO,
+        Items.BREAD, Items.PUMPKIN_PIE, Items.RABBIT_STEW, Items.MUSHROOM_STEW -> FoodTier.UNCOMMON
 
         else -> FoodTier.COMMON
     }
@@ -933,25 +922,25 @@ fun applyFoodEffects(
     when (tier) {
 
         FoodTier.COMMON -> {
-            var healAmount = baseValue * 1.5f
-            if (bonus) healAmount *= 1.3f
+            var healAmount = baseValue * 0.8f
+            if (bonus) healAmount *= 1.2f
             pokemon.heal(healAmount)
         }
 
         FoodTier.UNCOMMON -> {
-            var healAmount = baseValue * 2f
-            if (bonus) healAmount *= 1.3f
+            var healAmount = baseValue * 0.8f
+            if (bonus) healAmount *= 1.2f
             pokemon.heal(healAmount)
 
-            increaseFriendship(pokemon, if (bonus) 6 else 3)
-            givePokemonExp(pokemon, (baseValue * 3).toInt())
+            increaseFriendship(pokemon, if (bonus) 4 else 2)
+            givePokemonExp(pokemon, (baseValue * 0.7).toInt())
         }
 
         FoodTier.RARE -> {
             pokemon.heal(pokemon.maxHealth)
 
-            increaseFriendship(pokemon, if (bonus) 15 else 10)
-            givePokemonExp(pokemon, (baseValue * 8).toInt())
+            increaseFriendship(pokemon, if (bonus) 10 else 7)
+            givePokemonExp(pokemon, (baseValue).toInt())
 
             pokemon.addEffect(
                 MobEffectInstance(

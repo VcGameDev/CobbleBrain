@@ -50,8 +50,6 @@ object PokemonTalkCommand {
                             val ativos = PokemonQuery.findActivePokemon(player)
                             val prompt = DialogueSystem.buildPrompt(player, ativos, "\n\n$conteudo")
 
-                            DialogueSystem.lastSpeakerPlayer = player
-
                             ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
 
                             // opcional: ecoar mensagem original

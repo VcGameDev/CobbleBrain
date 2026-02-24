@@ -195,7 +195,6 @@ QUEST FORMAT:
   %CONTINUE → Quest is ongoing or lacks enough interaction/reason to end.  
   %POSITIVE_END → Quest ends with a positive, satisfying outcome for the Pokémon.  
   %NEGATIVE_END → Quest ends with a negative, unsatisfying outcome for the Pokémon.  
-  %BETRAY_END → Pokémon betrays the player. *(Only use if you receive `QUEST CAN END WITH BETRAY`)*  
   %LEAVE_END → Pokémon decides to leave the mission.  
 - Delivery Quests:
   Only end the quest if you receive **`QUEST_COMPLETED`.  
@@ -205,6 +204,13 @@ QUEST FORMAT:
   Make Advice quests last more than 2 dialogues.  
 - Hunt Quests:
   Same as Delivery Quests.
+- After sending the marker, create a small summary of the current quest reporting
+    1. Why the quest was created.
+    2. The key events that happened.
+    3. The Pokémon’s opinion about how the mission is progressing.
+    Keep it focused on helping the next AI continue the story.
+    Use a maximum of 6 sentences.
+    Format the summary exactly as: &<text>
 
 GENERAL RULES
 1. Each line of dialogue must respect the word and line limits.

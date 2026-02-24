@@ -9,6 +9,8 @@ import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.PokemonCommand
 import vito.cobblebrain.sensors.parseCommand
 import com.cobblemon.mod.common.pokemon.Pokemon
+import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.social.DialogueSystem.checkIaResponse
 import vito.cobblebrain.social.PokemonQuery
 
 object CobblebrainServerHandler {
@@ -43,6 +45,17 @@ object CobblebrainServerHandler {
                         player.sendSystemMessage(Component.literal("Não encontrei Pokémon ativo chamado ${command.pokemonName}"))
                     }
                 }
+            }
+        }
+        ServerPlayNetworking.registerGlobalReceiver(CobblebrainClientHandler.AIResponsePayload.TYPE) { payload, context ->
+
+            context.server().execute {
+
+                val player: ServerPlayer = context.player()
+                val content = payload.content
+
+                // AGORA a resposta da IA é processada no SERVER
+                checkIaResponse(player.server, player, content)
             }
         }
     }

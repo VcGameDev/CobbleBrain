@@ -4,6 +4,7 @@ import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -82,34 +83,36 @@ object WorldEventsSystem {
     }
 
     private fun checkForRaid(player: ServerPlayer) {
-
         if (activeRaids.any { it.player == player }) return
         if (activeRaids.size >= MAX_WORLD_RAIDS) return
 
         val saveData = CobblebrainWorldSave.data
         if (!saveData.has("karma")) return
 
-        val karmaObj = saveData.getAsJsonObject("karma") ?: return
         val world = player.serverLevel()
 
-        for ((speciesName, karmaJson) in karmaObj.entrySet()) {
+        val karmaRoot = saveData.getAsJsonObject("karma") ?: return
+        val playerObj = karmaRoot.getAsJsonObject(player.uuid.toString()) ?: return
+        playerObj.entrySet()
+            .shuffled() // embaralha a ordem
+            .forEach { (speciesName, karmaJson) ->
 
-            if (speciesName in legendarySpecies) continue
-            if (speciesName in pseudoLegendarySpecies) continue
+                if (speciesName in legendarySpecies) return@forEach
+                if (speciesName in pseudoLegendarySpecies) return@forEach
 
-            val karma = karmaJson.asInt
-            // karma teste
-            if (karma > 15) continue
+                val karma = karmaJson.asInt
 
-            val chance = 0.25 + (abs(karma) * 0.01)
+                // Apenas raides para karma <= -12
+                if (karma > -12) return@forEach
 
-            if (Random.nextDouble() <= chance) {
+                val chance = (abs(karma) * 0.015).coerceAtMost(0.6)
 
-                scheduleRaid(world, player, speciesName, karma)
-                raidCooldown = RAID_COOLDOWN_TICKS
-                break
+                if (Random.nextDouble() <= chance) {
+                    scheduleRaid(world, player, speciesName, karma)
+                    raidCooldown = RAID_COOLDOWN_TICKS
+                    return@forEach // sai do forEach após agendar
+                }
             }
-        }
     }
 
     private fun scheduleRaid(
@@ -124,7 +127,7 @@ object WorldEventsSystem {
         player.sendSystemMessage(
             Component.literal(
                 "You hear a rumble and feel that something is coming... it seems like you only have 1 minute to get ready..."
-            )
+            ).withStyle(ChatFormatting.RED)
         )
 
         when (difficulty) {
@@ -241,7 +244,7 @@ object WorldEventsSystem {
         player.sendSystemMessage(
             Component.literal(
                 "A group of $count $speciesName wants to attack you because of your actions against them (level range: $minLevel - $maxLevel)..."
-            )
+            ).withStyle(ChatFormatting.RED)
         )
     }
 
@@ -293,7 +296,7 @@ object WorldEventsSystem {
                 }
 
                 // Move até o player
-                pokemon.navigation.moveTo(player, 1.2)
+                pokemon.navigation.moveTo(player, 0.6)
 
                 // 🔥 ATAQUE MANUAL
                 val distance = pokemon.distanceTo(player)
@@ -322,16 +325,12 @@ object WorldEventsSystem {
         }
     }
 
-    private fun getDifficulty(karma: Int): RaidDifficulty {
-
-        if (karma >= 0) return RaidDifficulty.EASY // ou pode nem gerar raid
-
-        val severity = -karma // transforma -40 em 40
-
+    private fun getDifficulty(karma: Int): RaidDifficulty? {
         return when {
-            severity < 15 -> RaidDifficulty.EASY
-            severity < 25 -> RaidDifficulty.MEDIUM
-            else -> RaidDifficulty.HARD
+            karma <= -12 && karma > -22 -> RaidDifficulty.EASY
+            karma <= -22 && karma > -32 -> RaidDifficulty.MEDIUM
+            karma <= -32 -> RaidDifficulty.HARD
+            else -> null
         }
     }
 }

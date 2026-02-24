@@ -215,6 +215,14 @@ class ConfigModMenu : ModMenuApi {
 
             // ========================= GAME AND INTERACTIONS =========================
 
+            val characteristicsEntry = entryBuilder.startStrList(
+                Component.literal("Characteristics").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                config.characteristics
+            ).setDefaultValue(listOf("POKEMONNAME: He likes to sing, he fell off a bike once, he is from a farm, he is poetic."))
+                .setSaveConsumer { value -> config.characteristics = value }
+                .setTooltip(Component.literal("list to define characteristics of a specific Pokémon for the AI. \nFormat: <pokemonName>: <text>"))
+                .build()
+
             val lowTokenModeEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Low Token Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.lowTokenMode
@@ -237,6 +245,22 @@ class ConfigModMenu : ModMenuApi {
             ).setDefaultValue(true)
                 .setSaveConsumer { value -> config.dialogueOnBattle = value }
                 .setTooltip(Component.literal("Makes Pokémon speak during battle events. \nDialogue reflects combat situations."))
+                .build()
+
+            val wildPokemonTalkChanceEntry = entryBuilder.startFloatField(
+                Component.literal("Wild Pokemon Talk Chance").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                config.wildPokemonTalkChance.toFloat()
+            ).setDefaultValue(0.3f)
+                .setSaveConsumer { value -> config.wildPokemonTalkChance = value.toDouble() }
+                .setTooltip(Component.literal("Sets the chance of wild pokemon to participate in dialogue, not generate new ones. \nWild Pokémon may speak randomly during ongoing dialogues."))
+                .build()
+
+            val wildQuestPokemonEntry = entryBuilder.startFloatField(
+                Component.literal("Wild Quest Pokemon").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                config.spontaneousDialogueChance.toFloat()
+            ).setDefaultValue(0.2f)
+                .setSaveConsumer { value -> config.spontaneousDialogueChance = value.toDouble() }
+                .setTooltip(Component.literal("Set the chance for a wild Pokémon to start a quest when you have a dialogue with wild Pokémon. \nThe quests can be of the type BATTLE, ITEM, or ADVICE."))
                 .build()
 
             val spontaneousDialogueChanceEntry = entryBuilder.startFloatField(
@@ -420,6 +444,7 @@ class ConfigModMenu : ModMenuApi {
             category.entries.add(keyRotationEntry)
             category.entries.add(modelRotationEntry)
             category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS", 0xFFFF00))
+            category.entries.add(characteristicsEntry)
             category.entries.add(dialogueInChatEntry)
             category.entries.add(chatbubblesEntry)
             category.entries.add(pokemonTalkEntry)
@@ -428,6 +453,8 @@ class ConfigModMenu : ModMenuApi {
             category.entries.add(dialogueOnDamageEntry)
             category.entries.add(dialogueOnBattleEntry)
             category.entries.add(spontaneousDialogueChanceEntry)
+            category.entries.add(wildPokemonTalkChanceEntry)
+            category.entries.add(wildQuestPokemonEntry)
             category.entries.add(listenToChatEntry)
             category.entries.add(onlyNearbyChatEntry)
             category.entries.add(maxShortMemoryEntry)
