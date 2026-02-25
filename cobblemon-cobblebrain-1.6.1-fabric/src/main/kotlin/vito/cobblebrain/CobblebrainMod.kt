@@ -11,6 +11,7 @@ import java.io.File
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.client.social.CobblebrainWorldSave
+import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.sensors.registerTickHandler
 import vito.cobblebrain.social.ConfigCommands
@@ -78,8 +79,8 @@ object CobblebrainMod : ModInitializer {
 
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             val player = handler.player
-
             DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
+            giveCobblebrainGuide(player)
         }
 
         // limpa quando o servidor para

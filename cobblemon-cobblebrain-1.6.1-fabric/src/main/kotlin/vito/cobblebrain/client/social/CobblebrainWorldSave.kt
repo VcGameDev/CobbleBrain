@@ -8,10 +8,18 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import net.minecraft.ChatFormatting
+import net.minecraft.core.component.DataComponents
+import net.minecraft.network.chat.ClickEvent
+import net.minecraft.network.chat.Component
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.server.network.Filterable
 import net.minecraft.world.level.storage.LevelResource
 import net.minecraft.world.entity.ai.goal.Goal
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
+import net.minecraft.world.item.component.WrittenBookContent
 import vito.cobblebrain.mixin.MobAccessor
 
 class FollowPlayerGoal(
@@ -358,5 +366,223 @@ object CobblebrainWorldSave {
         playerObj.addProperty(species, newValue)
         println("[DEBUG] Kill count atualizado: $species = $newValue para ${player.name.string}")
         save()
+    }
+    fun giveCobblebrainGuide(player: ServerPlayer) {
+        val book = ItemStack(Items.WRITTEN_BOOK)
+
+        fun clickablePage(text: String, page: Int): Component {
+            return Component.literal(text)
+                .withStyle(ChatFormatting.BLUE, ChatFormatting.UNDERLINE)
+                .withStyle {
+                    it.withClickEvent(
+                        ClickEvent(ClickEvent.Action.CHANGE_PAGE, page.toString())
+                    )
+                }
+        }
+
+        val pages = listOf(
+            Component.literal("")
+                .append(Component.literal("COBBLEBRAIN MANUAL\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Select a section:\n\n")
+                .append(clickablePage("Setup", 2)).append("\n")
+                .append(clickablePage("Talk to Pokemon", 4)).append("\n")
+                .append(clickablePage("Actions", 5)).append("\n")
+                .append(clickablePage("Quests", 8)).append("\n")
+                .append(clickablePage("Karma", 11)).append("\n")
+                .append(clickablePage("Raids", 13)).append("\n")
+                .append(clickablePage("Custom Settings", 15)),
+
+            // PAGE 2 - SETUP
+            Component.literal("")
+                .append(Component.literal("RECOMMENDED SETUP\n\n").withStyle(ChatFormatting.BOLD))
+                .append("1. Create an account in ")
+                .append(
+                    Component.literal("Player2")
+                        .withStyle(ChatFormatting.BLUE, ChatFormatting.UNDERLINE)
+                        .withStyle {
+                            it.withClickEvent(
+                                ClickEvent(
+                                    ClickEvent.Action.OPEN_URL,
+                                    "https://player2.game/"
+                                )
+                            )
+                        }
+                )
+                .append("\n2. Install the app and log in\n")
+                .append("3. Choose a chat model inside the app\n\n")
+                .append("Cheaper models = -power but +playtime\n\n")
+                .append(
+                    Component.literal("Youtube tutorial!")
+                        .withStyle(ChatFormatting.RED, ChatFormatting.UNDERLINE)
+                        .withStyle {
+                            it.withClickEvent(
+                                ClickEvent(
+                                    ClickEvent.Action.OPEN_URL,
+                                    "https://www.youtube.com/watch?v=wHE8nMvfIPs"
+                                )
+                            )
+                        }
+                )
+                .append("\n"),
+
+            Component.literal("")
+                .append(Component.literal("ALTERNATIVE SETUP\n\n").withStyle(ChatFormatting.BOLD))
+                .append("You can use any API compatible with\n")
+                .append("the OpenAI format.\n\n")
+                .append("Examples:\n")
+                .append("- OpenRouter\n")
+                .append("- Google AI Studio\n\n")
+                .append(
+                    Component.literal("Youtube tutorial!")
+                        .withStyle(ChatFormatting.RED, ChatFormatting.UNDERLINE)
+                        .withStyle {
+                            it.withClickEvent(
+                                ClickEvent(
+                                    ClickEvent.Action.OPEN_URL,
+                                    "https://www.youtube.com/watch?v=Th1ylIsnQlg"
+                                )
+                            )
+                        }
+                ),
+
+            Component.literal("")
+                .append(Component.literal("TALKING TO POKEMON\n\n").withStyle(ChatFormatting.BOLD))
+                .append("You have two ways to communicate.\n\n")
+                .append("Private Mode:\n")
+                .append("Use /mpk to send a message.\n")
+                .append("Only you will see your sent text.\n\n")
+                .append("Chat Mode:\n")
+                .append("Enable 'Listen to Chat'.\n")
+                .append("Pokemon react to normal chat.\n")
+                .append("Other players can see your message."),
+
+            Component.literal("")
+                .append(Component.literal("ACTIONS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Pokémon can perform actions when you ask them.\n\n")
+                .append("There are two types:\n")
+                .append("1. Type-Based Actions\n")
+                .append("2. General Actions\n\n")
+                .append("Type-Based actions depend on\n")
+                .append("the PRIMARY type only."),
+
+            Component.literal("")
+                .append(Component.literal("TYPE-BASED ACTIONS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("E.g: Chandelure is (Ghost/Fire)\n")
+                .append("It can use Shift, but not Cook\n\n")
+                .append("Fire - Cook\n")
+                .append("Cooks food and smelts ores.\n")
+                .append("5% chance to turn item into charcoal.\n\n"),
+
+            Component.literal("")
+                .append("Ghost - Shift\n")
+                .append("Moves player to alternate dimension.\n")
+                .append("You gain invisibility, speed and jump.\n")
+                .append("But you suffer strong weakness.\n\n")
+                .append("Steel - Repair\n")
+                .append("Fix tools a bit. Cooldown of 5 minutes\n"),
+
+            Component.literal("")
+                .append("Grass - Grow\n")
+                .append("Grows crops and tree saplings."),
+
+            Component.literal("")
+                .append(Component.literal("GENERAL ACTIONS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Attack - Fight any nearby entities\n")
+                .append("Except tagged and tamed mobs.\n\n")
+                .append("Protect - Defend player from \n\n")
+                .append("Eat - Consume dropped food"),
+
+            Component.literal("")
+                .append("Buff - Give positive effect to player\n\n")
+                .append("Debuff - Apply negative effect to mobs\n\n")
+                .append("Sit - Stay in place\n\n")
+                .append("Idle - Cancel all actions"),
+
+            Component.literal("")
+                .append(Component.literal("QUESTS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Wild Pokemon may generate quests\n")
+                .append("during spontaneous dialogue.\n\n")
+                .append("Default chance is 40%.\n")
+                .append("You can change this in settings.\n\n")
+                .append("There are currently 3 types of quests."),
+
+            Component.literal("")
+                .append(Component.literal("QUEST TYPES\n\n").withStyle(ChatFormatting.BOLD))
+                .append("ITEM QUEST\n")
+                .append("Bring specific items to the Pokemon.\n\n")
+                .append("BATTLE QUEST\n")
+                .append("Defeat a target in Pokemon battle.\n")
+                .append("Killing outside battle does not count.\n\n"),
+
+            Component.literal("")
+                .append("ADVICE QUEST\n")
+                .append("Give advice and make Pokemon happy.\n")
+                .append("Multiple solutions are possible."),
+
+            Component.literal("")
+                .append(Component.literal("QUEST REWARDS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Completing quests grants Karma.\n\n")
+                .append("High Karma may give rewards such as:\n")
+                .append("- Berries\n")
+                .append("- EXP Candy\n")
+                .append("- Rare items\n\n")
+                .append("You can modify quest chance\n")
+                .append("in 'wild quest chance' setting."),
+
+            Component.literal("")
+                .append(Component.literal("KARMA SYSTEM\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Karma represents how much\n")
+                .append("a species respects you.\n\n")
+                .append("Karma is species-based.\n")
+                .append("Each species tracks you separately.\n"),
+
+            Component.literal("")
+                .append("+Karma:\n")
+                .append(" °Complete quests\n\n")
+                .append("-Karma:\n")
+                .append(" °Defeat or kill Pokémon\n")
+                .append(" °annoy Pokémon in quests\n\n")
+                .append("High Karma gives gifts.\n")
+                .append("Low Karma may trigger raids."),
+
+            Component.literal("")
+                .append(Component.literal("RAID DETAILS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Maximum difficulty at -30 Karma.\n\n")
+                .append("Higher difficulty means:\n")
+                .append("- More Pokemon spawn\n")
+                .append("- Higher levels\n")
+                .append("- Stronger attackers\n\n")
+                .append("Raid ends when you die\n")
+                .append("or defeat all pokémon."),
+
+            Component.literal("")
+                .append(Component.literal("CUSTOM SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Access settings in Mods menu.\n")
+                .append("Recommended settings to change:\n\n")
+                .append("SelectedLanguage:\n")
+                .append("Choose dialogue language.\n\n")
+                .append("Characteristics:\n")
+                .append("Define personality per Pokemon."),
+
+            Component.literal("")
+                .append(Component.literal("PROMPTS AND BEHAVIOR\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Instructs works as a global prompt.\n")
+                .append("You can define how Pokemon behave.\n\n")
+                .append("Edit it in config/cobblebrain.json5\n")
+                .append("Must be inside quotes.\n")
+                .append("No paragraph breaks allowed.\n\n")
+        )
+
+        val content = WrittenBookContent(
+            Filterable.passThrough("Cobblebrain Guide"),
+            "Vito",
+            0,
+            pages.map { Filterable.passThrough(it) },
+            false
+        )
+
+        book.set(DataComponents.WRITTEN_BOOK_CONTENT, content)
+
+        player.addItem(book)
     }
 }
