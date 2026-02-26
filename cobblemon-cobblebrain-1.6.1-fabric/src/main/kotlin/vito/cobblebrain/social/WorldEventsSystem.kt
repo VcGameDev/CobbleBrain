@@ -14,6 +14,7 @@ import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import vito.cobblebrain.client.social.CobblebrainWorldSave
+import vito.cobblebrain.config.ConfigHandler
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.cos
@@ -68,6 +69,8 @@ object WorldEventsSystem {
 
     fun register() {
         ServerTickEvents.END_SERVER_TICK.register { server ->
+
+            if (!ConfigHandler.config.scheduleRaids) return@register
 
             if (raidCooldown > 0) raidCooldown--
 

@@ -11,10 +11,13 @@ import com.google.gson.Gson
 import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
+import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.config.ConfigHandler
+import vito.cobblebrain.mixin.MobAccessor
 import java.io.File
 
 object PokemonQuery {
@@ -88,6 +91,89 @@ object ConfigCommands {
         dispatcher.register(
             Commands.literal("cobblebrain")
                 .then(
+                    Commands.literal("karma")
+
+                        // /cobblebrain karma
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            val uuid = player.uuid.toString()
+
+                            val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma")
+
+                            if (!karmaRoot.has(uuid)) {
+                                player.sendSystemMessage(
+                                    Component.literal("You have no karma yet.")
+                                        .withStyle(ChatFormatting.YELLOW)
+                                )
+                                return@executes 1
+                            }
+
+                            val playerKarma = karmaRoot.getAsJsonObject(uuid)
+
+                            player.sendSystemMessage(
+                                Component.literal("Your Karma:")
+                                    .withStyle(ChatFormatting.GOLD)
+                            )
+
+                            playerKarma.entrySet().forEach { entry ->
+                                val species = entry.key
+                                val value = entry.value.asInt
+
+                                val color = when {
+                                    value > 0 -> ChatFormatting.GREEN
+                                    value < 0 -> ChatFormatting.RED
+                                    else -> ChatFormatting.GRAY
+                                }
+
+                                player.sendSystemMessage(
+                                    Component.literal("- $species: $value")
+                                        .withStyle(color)
+                                )
+                            }
+
+                            1
+                        }
+
+                        // /cobblebrain karma <species>
+                        .then(
+                            Commands.argument("species", StringArgumentType.word())
+                                .executes { ctx ->
+                                    val player = ctx.source.playerOrException
+                                    val uuid = player.uuid.toString()
+                                    val species = StringArgumentType.getString(ctx, "species")
+
+                                    val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma")
+
+                                    if (!karmaRoot.has(uuid)) {
+                                        player.sendSystemMessage(
+                                            Component.literal("You have no karma with $species.")
+                                                .withStyle(ChatFormatting.RED)
+                                        )
+                                        return@executes 1
+                                    }
+
+                                    val playerKarma = karmaRoot.getAsJsonObject(uuid)
+                                    val entry = playerKarma.entrySet()
+                                        .firstOrNull { it.key.equals(species, ignoreCase = true) }
+                                    val value = entry?.value?.asInt ?: 0
+
+                                    val realSpeciesName = entry?.key ?: species
+                                    val color = when {
+                                        value > 0 -> ChatFormatting.GREEN
+                                        value < 0 -> ChatFormatting.RED
+                                        else -> ChatFormatting.GRAY
+                                    }
+
+                                    player.sendSystemMessage(
+                                        Component.literal("Your karma with $realSpeciesName: $value")
+                                            .withStyle(color)
+                                    )
+
+                                    1
+                                }
+                        )
+                )
+                .then(
                     Commands.literal("SetPokemonTalk")
                         .then(
                             Commands.argument("value", BoolArgumentType.bool())
@@ -103,6 +189,44 @@ object ConfigCommands {
                                 }
                         )
                 )
+                .then(
+                    Commands.literal("stopQuestFollower")
+                        .executes { ctx ->
+
+                            val source = ctx.source
+                            val player = source.playerOrException
+
+                            var stopped = 0
+
+                            val iterator = CobblebrainWorldSave.followers.entries.iterator()
+
+                            while (iterator.hasNext()) {
+                                val entry = iterator.next()
+                                val triple = entry.value
+
+                                val pokemon = triple.first
+                                val questOwner = triple.second
+                                val goal = triple.third
+
+                                if (questOwner.uuid == player.uuid) {
+                                    val accessor = pokemon as MobAccessor
+                                    accessor.getGoalSelector().removeGoal(goal)
+                                    pokemon.navigation.stop()
+                                    iterator.remove()
+                                    stopped++
+                                }
+                            }
+
+                            ctx.source.sendSuccess(
+                                { Component.literal("Stopped $stopped quest follower(s).")
+                                    .withStyle(ChatFormatting.GREEN) },
+                                false
+                            )
+
+                            1
+                        }
+                )
+
                 .then(
                     Commands.literal("SetInstruct")
                         .then(

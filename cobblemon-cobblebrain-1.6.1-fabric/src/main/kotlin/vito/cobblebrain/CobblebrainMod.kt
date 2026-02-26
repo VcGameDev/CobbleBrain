@@ -80,7 +80,11 @@ object CobblebrainMod : ModInitializer {
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             val player = handler.player
             DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
-            giveCobblebrainGuide(player)
+
+            if (!CobblebrainWorldSave.hasReceivedGuide(player)) {
+                giveCobblebrainGuide(player)
+                CobblebrainWorldSave.markGuideReceived(player)
+            }
         }
 
         // limpa quando o servidor para

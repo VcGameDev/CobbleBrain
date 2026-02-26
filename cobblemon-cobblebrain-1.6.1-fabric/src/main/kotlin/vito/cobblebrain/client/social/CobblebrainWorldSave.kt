@@ -26,16 +26,17 @@ class FollowPlayerGoal(
     val pokemon: PokemonEntity,
     val player: ServerPlayer,
     val speed: Double,
-    val minDistance: Float,
+    val startDistance: Float,
+    val stopDistance: Float,
     val maxDistance: Double
 ) : Goal() {
 
     override fun canUse(): Boolean {
-        return player.isAlive && pokemon.distanceTo(player) > minDistance
+        return player.isAlive && pokemon.distanceTo(player) > startDistance
     }
 
     override fun canContinueToUse(): Boolean {
-        return pokemon.distanceTo(player) > minDistance && pokemon.isAlive
+        return pokemon.distanceTo(player) > stopDistance && pokemon.isAlive
     }
 
     override fun start() {
@@ -43,11 +44,14 @@ class FollowPlayerGoal(
     }
 
     override fun tick() {
-        if (pokemon.distanceTo(player) > maxDistance) {
+        val distance = pokemon.distanceTo(player)
+
+        if (distance > maxDistance) {
             pokemon.teleportTo(player.x, player.y, player.z)
         } else {
             pokemon.navigation.moveTo(player, speed)
         }
+
         pokemon.lookAt(player, 30f, 30f)
     }
 }
@@ -77,6 +81,7 @@ object CobblebrainWorldSave {
             data = JsonParser.parseReader(FileReader(saveFile)).asJsonObject
         } else {
             data = JsonObject().apply {
+                add("received_guide", JsonArray())
                 add("karma", JsonObject())
                 add("kill_count", JsonObject())
                 add("quests", JsonObject().apply {
@@ -89,15 +94,21 @@ object CobblebrainWorldSave {
         }
     }
 
+    fun hasReceivedGuide(player: ServerPlayer): Boolean {
+        val array = data.getAsJsonArray("received_guide")
+        return array.any { it.asString == player.uuid.toString() }
+    }
+    fun markGuideReceived(player: ServerPlayer) {
+        val array = data.getAsJsonArray("received_guide")
+        array.add(player.uuid.toString())
+        save()
+    }
+
     fun save() {
         val file = saveFile
         FileWriter(file).use { writer ->
             GsonBuilder().setPrettyPrinting().create().toJson(data, writer)
         }
-    }
-
-    fun load(player: ServerPlayer): List<Quest> {
-        return quests.filter { it.player == player }
     }
 
     var battleSpecies = listOf(
@@ -133,13 +144,18 @@ object CobblebrainWorldSave {
         "Skwovet", "Rookidee", "Nickit", "Chewtle", "Wooloo"
     )
 
-    private val followers = mutableMapOf<String, Pair<PokemonEntity, ServerPlayer>>()
+    val followers = mutableMapOf<String, Triple<PokemonEntity, ServerPlayer, FollowPlayerGoal>>()
 
     private fun startFollowingPlayer(giver: PokemonEntity, player: ServerPlayer) {
         giver.setPersistenceRequired()
         giver.isNoAi = false
 
-        followers[giver.uuid.toString()] = Pair(giver, player)
+        val goal = FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0)
+
+        val accessor = giver as MobAccessor
+        accessor.getGoalSelector().addGoal(1, goal)
+
+        followers[giver.uuid.toString()] = Triple(giver, player, goal)
     }
 
     fun createBattleQuest(player: ServerPlayer, giver: PokemonEntity): Quest {
@@ -186,7 +202,8 @@ object CobblebrainWorldSave {
             addProperty("giverSpecies", giver.pokemon.species.name)
             addProperty("questSummary", "This is a Item quest!")
             val accessor = giver as MobAccessor
-            accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 2.5f, 30.0))        }
+            accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0))
+        }
 
         data.getAsJsonObject("quests").getAsJsonArray("active").add(questObj)
         save()
@@ -197,7 +214,7 @@ object CobblebrainWorldSave {
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
         println("IMPORTANT: $giverName asks you to bring $amount $target(s)!")
         val accessor = giver as MobAccessor
-        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 2.5f, 30.0))
+        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0))
         return quest
     }
 
@@ -221,7 +238,8 @@ object CobblebrainWorldSave {
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
         println("IMPORTANT: $giverName has started an ADVICE quest! It wants to talk to the player.")
         val accessor = giver as MobAccessor
-        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 2.5f, 30.0))    }
+        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0))
+    }
 
     fun findQuest(giverUuid: String, type: String, status: String? = null): JsonObject? {
         val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active")
@@ -262,7 +280,7 @@ object CobblebrainWorldSave {
 
     // Move uma quest de active para completed ou abandoned
     fun moveQuest(ownerUuid: String, giverUuid: String, type: String, newStatus: String) {
-        println("[DEBUG] moveQuest chamado com giverUuid=$giverUuid, type=$type, newStatus=$newStatus")
+        println("[DEBUG] moveQuest called with giverUuid=$giverUuid, type=$type, newStatus=$newStatus")
 
         val questsObj = data.getAsJsonObject("quests")
         val activeArray = questsObj.getAsJsonArray("active")
@@ -277,12 +295,12 @@ object CobblebrainWorldSave {
         }
 
         if (questElement == null) {
-            println("[DEBUG] Nenhuma quest encontrada em active para mover")
+            println("[DEBUG] No active quest found to move")
             return
         }
 
         val questObj = questElement.asJsonObject
-        println("[DEBUG] Quest encontrada: $questObj")
+        println("[DEBUG] Quest found: $questObj")
 
         questObj.addProperty("status", newStatus)
 
@@ -306,15 +324,21 @@ object CobblebrainWorldSave {
         }
 
         save()
-        println("[DEBUG] Arquivo salvo após moveQuest")
+        println("[DEBUG] JSON saved after moveQuest")
         debugQuests()
 
         // Se o Pokémon estava seguindo, para de seguir
-        followers[giverUuid]?.let { pair ->
-            val pokemon = pair.first
+        followers[giverUuid]?.let { triple ->
+            val pokemon = triple.first
+            val goal = triple.third
+
+            val accessor = pokemon as MobAccessor
+            accessor.getGoalSelector().removeGoal(goal)
+
             pokemon.navigation.stop()
             followers.remove(giverUuid)
-            println("[DEBUG] Follower ${pokemon.pokemon.species.name} parou de seguir o jogador (quest $newStatus)")
+
+            println("[DEBUG] FollowGoal removed")
         }
     }
 

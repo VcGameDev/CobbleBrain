@@ -84,6 +84,8 @@ class CobblebrainConfig {
     // Determines whether your Pokémon can attack mobs (except Pokémon, tamed mobs, and non‑aggressive mobs with a tag).
     var allowPokemonPVE: Boolean = true
 
+    var scheduleRaids: Boolean = true
+
     // When active, it omits some world information to use fewer tokens
     var lowTokenMode: Boolean = false
 

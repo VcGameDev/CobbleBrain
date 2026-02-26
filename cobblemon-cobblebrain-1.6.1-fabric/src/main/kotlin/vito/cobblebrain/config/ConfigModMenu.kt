@@ -189,6 +189,8 @@ class ConfigModMenu : ModMenuApi {
                 .setTooltip(Component.literal("Enables chat bubbles above characters. \nDialogue will appear visually instead of only in text chat."))
                 .build()
 
+            // ========================= GAME AND INTERACTIONS =========================
+
             val pokemonTalkEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Pokémon Talk").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.pokemonTalk
@@ -213,7 +215,13 @@ class ConfigModMenu : ModMenuApi {
                 .setTooltip(Component.literal("Allows Pokémon to attack mobs in the world. \nExceptions include tamed mobs and non-aggressive tagged mobs."))
                 .build()
 
-            // ========================= GAME AND INTERACTIONS =========================
+            val scheduleRaidEntry = entryBuilder.startBooleanToggle(
+                Component.literal("Schedule Raid").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                config.scheduleRaids
+            ).setDefaultValue(true)
+                .setSaveConsumer { value -> config.scheduleRaids = value }
+                .setTooltip(Component.literal("Determines if raids can be created in the world.\nRaids can happen when your karma with a species falls below -11"))
+                .build()
 
             val characteristicsEntry = entryBuilder.startStrList(
                 Component.literal("Characteristics").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
@@ -255,12 +263,12 @@ class ConfigModMenu : ModMenuApi {
                 .setTooltip(Component.literal("Sets the chance of wild pokemon to participate in dialogue, not generate new ones. \nWild Pokémon may speak randomly during ongoing dialogues."))
                 .build()
 
-            val wildQuestPokemonEntry = entryBuilder.startFloatField(
+            val wildQuestChanceEntry = entryBuilder.startFloatField(
                 Component.literal("Wild Quest Pokemon").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.spontaneousDialogueChance.toFloat()
-            ).setDefaultValue(0.2f)
-                .setSaveConsumer { value -> config.spontaneousDialogueChance = value.toDouble() }
-                .setTooltip(Component.literal("Set the chance for a wild Pokémon to start a quest when you have a dialogue with wild Pokémon. \nThe quests can be of the type BATTLE, ITEM, or ADVICE."))
+                config.wildQuestChance.toFloat()
+            ).setDefaultValue(0.1f)
+                .setSaveConsumer { value -> config.wildQuestChance = value.toDouble() }
+                .setTooltip(Component.literal("Set the chance for a Pokémon to start a quest when you have a dialogue with wild Pokémon. \nThe quests can be of the type BATTLE, ITEM, or ADVICE."))
                 .build()
 
             val spontaneousDialogueChanceEntry = entryBuilder.startFloatField(
@@ -444,6 +452,7 @@ class ConfigModMenu : ModMenuApi {
             category.entries.add(keyRotationEntry)
             category.entries.add(modelRotationEntry)
             category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS", 0xFFFF00))
+            category.entries.add(scheduleRaidEntry)
             category.entries.add(characteristicsEntry)
             category.entries.add(dialogueInChatEntry)
             category.entries.add(chatbubblesEntry)
@@ -454,7 +463,7 @@ class ConfigModMenu : ModMenuApi {
             category.entries.add(dialogueOnBattleEntry)
             category.entries.add(spontaneousDialogueChanceEntry)
             category.entries.add(wildPokemonTalkChanceEntry)
-            category.entries.add(wildQuestPokemonEntry)
+            category.entries.add(wildQuestChanceEntry)
             category.entries.add(listenToChatEntry)
             category.entries.add(onlyNearbyChatEntry)
             category.entries.add(maxShortMemoryEntry)
