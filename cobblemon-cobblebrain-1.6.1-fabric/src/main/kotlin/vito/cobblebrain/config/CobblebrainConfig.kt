@@ -96,11 +96,11 @@ class CobblebrainConfig {
     var dialogueOnBattle: Boolean = true
 
     // Chance for the AI to start spontaneous dialogue (e.g., Pokémon speaking on their own during idle moments).
-    var spontaneousDialogueChance: Double = 0.1
+    var spontaneousDialogueChance: Double = 0.05
 
-    var wildPokemonTalkChance: Double = 1.0
+    var wildPokemonTalkChance: Double = 0.25
 
-    var wildQuestChance: Double = 1.0
+    var wildQuestChance: Double = 0.05
 
     // Enables or disables listening to regular player chat.
     // If false, the AI ignores all non‑command messages (like normal chat).

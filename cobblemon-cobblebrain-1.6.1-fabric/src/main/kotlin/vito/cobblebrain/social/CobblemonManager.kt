@@ -15,6 +15,7 @@ import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.client.social.CobblebrainWorldSave
+import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.mixin.MobAccessor
@@ -90,6 +91,32 @@ object ConfigCommands {
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
             Commands.literal("cobblebrain")
+                .then(
+                    Commands.literal("guide")
+
+                        // /cobblebrain karma
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+
+                            val hasSpace = player.inventory.freeSlot != -1
+
+                            if (hasSpace) {
+                                giveCobblebrainGuide(player)
+
+                                ctx.source.sendSuccess(
+                                    { Component.literal("Cobblebrain guide added to your inventory!") },
+                                    false
+                                )
+                            } else {
+                                ctx.source.sendFailure(
+                                    Component.literal("Not enough inventory space!")
+                                )
+                            }
+
+                            1
+                        }
+                )
+
                 .then(
                     Commands.literal("karma")
 

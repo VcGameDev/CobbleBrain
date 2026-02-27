@@ -557,8 +557,9 @@ object CobblebrainWorldSave {
                 .append(Component.literal("KARMA SYSTEM\n\n").withStyle(ChatFormatting.BOLD))
                 .append("Karma represents how much\n")
                 .append("a species respects you.\n\n")
-                .append("Karma is species-based.\n")
-                .append("Each species tracks you separately.\n"),
+                .append("Each species tracks you separately.\n\n")
+                .append("To see your karma:\n")
+                .append("/cobblebrain karma"),
 
             Component.literal("")
                 .append("+Karma:\n")

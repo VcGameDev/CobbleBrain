@@ -160,7 +160,7 @@ class ConfigModMenu : ModMenuApi {
             val debugLoggingEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Debug Logging").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.debugLogging
-            ).setDefaultValue(true)
+            ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.debugLogging = value }
                 .setTooltip(Component.literal("Enables debug logging for troubleshooting. \nLogs are stored in the cobblebrain-ai/logs directory."))
                 .build()
@@ -168,7 +168,7 @@ class ConfigModMenu : ModMenuApi {
             val selectedLanguageEntry = entryBuilder.startStrField(
                 Component.literal("Selected Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.selectedLanguage
-            ).setDefaultValue("Portugues Brasil")
+            ).setDefaultValue("English")
                 .setSaveConsumer { value -> config.selectedLanguage = value }
                 .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
                 .build()
@@ -226,7 +226,7 @@ class ConfigModMenu : ModMenuApi {
             val characteristicsEntry = entryBuilder.startStrList(
                 Component.literal("Characteristics").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.characteristics
-            ).setDefaultValue(listOf("POKEMONNAME: He likes to sing, he fell off a bike once, he is from a farm, he is poetic."))
+            ).setDefaultValue(listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"))
                 .setSaveConsumer { value -> config.characteristics = value }
                 .setTooltip(Component.literal("list to define characteristics of a specific Pokémon for the AI. \nFormat: <pokemonName>: <text>"))
                 .build()
@@ -258,7 +258,7 @@ class ConfigModMenu : ModMenuApi {
             val wildPokemonTalkChanceEntry = entryBuilder.startFloatField(
                 Component.literal("Wild Pokemon Talk Chance").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.wildPokemonTalkChance.toFloat()
-            ).setDefaultValue(0.3f)
+            ).setDefaultValue(0.25f)
                 .setSaveConsumer { value -> config.wildPokemonTalkChance = value.toDouble() }
                 .setTooltip(Component.literal("Sets the chance of wild pokemon to participate in dialogue, not generate new ones. \nWild Pokémon may speak randomly during ongoing dialogues."))
                 .build()
@@ -266,7 +266,7 @@ class ConfigModMenu : ModMenuApi {
             val wildQuestChanceEntry = entryBuilder.startFloatField(
                 Component.literal("Wild Quest Pokemon").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.wildQuestChance.toFloat()
-            ).setDefaultValue(0.1f)
+            ).setDefaultValue(0.05f)
                 .setSaveConsumer { value -> config.wildQuestChance = value.toDouble() }
                 .setTooltip(Component.literal("Set the chance for a Pokémon to start a quest when you have a dialogue with wild Pokémon. \nThe quests can be of the type BATTLE, ITEM, or ADVICE."))
                 .build()
@@ -274,7 +274,7 @@ class ConfigModMenu : ModMenuApi {
             val spontaneousDialogueChanceEntry = entryBuilder.startFloatField(
                 Component.literal("Spontaneous Dialogue Chance").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.spontaneousDialogueChance.toFloat()
-            ).setDefaultValue(0.1f)
+            ).setDefaultValue(0.05f)
                 .setSaveConsumer { value -> config.spontaneousDialogueChance = value.toDouble() }
                 .setTooltip(Component.literal("Sets the chance of spontaneous dialogue. \nPokémon may speak randomly during idle moments."))
                 .build()
@@ -282,17 +282,17 @@ class ConfigModMenu : ModMenuApi {
             val listenToChatEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Listen To Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.listenToChat
-            ).setDefaultValue(true)
+            ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.listenToChat = value }
                 .setTooltip(Component.literal("Enables listening to regular player chat. \nIf disabled, the AI ignores non-command messages."))
                 .build()
 
             val onlyNearbyChatEntry = entryBuilder.startBooleanToggle(
-                Component.literal("Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                Component.literal("[WIP] Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
                 config.onlyNearbyChat
             ).setDefaultValue(false)
                 .setSaveConsumer { value -> config.onlyNearbyChat = value }
-                .setTooltip(Component.literal("Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
+                .setTooltip(Component.literal("EXPERIMENTAL: Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
                 .build()
 
             val maxShortMemoryEntry = entryBuilder.startIntField(

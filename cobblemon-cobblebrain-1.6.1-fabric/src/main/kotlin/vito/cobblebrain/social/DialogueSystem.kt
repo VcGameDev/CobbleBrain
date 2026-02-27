@@ -92,9 +92,9 @@ object DialogueSystem {
 
             // Lembrete sobre config
             player.sendSystemMessage(
-                Component.literal("customize the mod (and its language) as you wish in ")
+                Component.literal("Take a look at the cobblebrain guide or use\n")
                     .withStyle(ChatFormatting.YELLOW)
-                    .append(Component.literal("config/cobblebrain.json5").withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal("/cobblebrain guide").withStyle(ChatFormatting.AQUA))
             )
         }
 
