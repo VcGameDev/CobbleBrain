@@ -905,7 +905,7 @@ object DialogueSystem {
                     quest.get("type").asString,
                     "COMPLETED"
                 )
-                adjustKarma(player,giverName, +1)
+                adjustKarma(player,giverName, +2)
                 CobblebrainWorldSave.debugQuests()
                 maybeGiveReward(player, giverName)
             }

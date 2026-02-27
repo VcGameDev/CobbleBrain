@@ -147,11 +147,13 @@ object CobblebrainWorldSave {
     val followers = mutableMapOf<String, Triple<PokemonEntity, ServerPlayer, FollowPlayerGoal>>()
 
     private fun startFollowingPlayer(giver: PokemonEntity, player: ServerPlayer) {
+        // Se já estiver seguindo, não adiciona outro
+        if (followers.containsKey(giver.uuid.toString())) return
+
         giver.setPersistenceRequired()
         giver.isNoAi = false
 
         val goal = FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0)
-
         val accessor = giver as MobAccessor
         accessor.getGoalSelector().addGoal(1, goal)
 
@@ -188,7 +190,7 @@ object CobblebrainWorldSave {
     }
 
     fun createItemQuest(player: ServerPlayer, giver: PokemonEntity): Quest {
-        val items = listOf("sweet_berries", "apple", "coal", "cooper_ingot")
+        val items = listOf("sweet_berries", "apple", "coal", "copper_ingot")
         val target = items.random()
         val amount = (1..10).random()
 
@@ -201,8 +203,7 @@ object CobblebrainWorldSave {
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
             addProperty("questSummary", "This is a Item quest!")
-            val accessor = giver as MobAccessor
-            accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0))
+            startFollowingPlayer(giver, player)
         }
 
         data.getAsJsonObject("quests").getAsJsonArray("active").add(questObj)
@@ -213,8 +214,7 @@ object CobblebrainWorldSave {
 
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
         println("IMPORTANT: $giverName asks you to bring $amount $target(s)!")
-        val accessor = giver as MobAccessor
-        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0))
+        startFollowingPlayer(giver, player)
         return quest
     }
 
@@ -237,8 +237,7 @@ object CobblebrainWorldSave {
 
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
         println("IMPORTANT: $giverName has started an ADVICE quest! It wants to talk to the player.")
-        val accessor = giver as MobAccessor
-        accessor.getGoalSelector().addGoal(1, FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0))
+        startFollowingPlayer(giver, player)
     }
 
     fun findQuest(giverUuid: String, type: String, status: String? = null): JsonObject? {
@@ -411,10 +410,11 @@ object CobblebrainWorldSave {
                 .append(clickablePage("Setup", 2)).append("\n")
                 .append(clickablePage("Talk to Pokemon", 4)).append("\n")
                 .append(clickablePage("Actions", 5)).append("\n")
-                .append(clickablePage("Quests", 8)).append("\n")
-                .append(clickablePage("Karma", 11)).append("\n")
-                .append(clickablePage("Raids", 13)).append("\n")
-                .append(clickablePage("Custom Settings", 15)),
+                .append(clickablePage("Quests", 11)).append("\n")
+                .append(clickablePage("Karma", 15)).append("\n")
+                .append(clickablePage("Raids", 17)).append("\n")
+                .append(clickablePage("Custom Settings", 18)).append("\n")
+                .append(clickablePage("Developer’s Notes", 20)).append("\n"),
 
             // PAGE 2 - SETUP
             Component.literal("")
@@ -594,7 +594,11 @@ object CobblebrainWorldSave {
                 .append("You can define how Pokemon behave.\n\n")
                 .append("Edit it in config/cobblebrain.json5\n")
                 .append("Must be inside quotes.\n")
-                .append("No paragraph breaks allowed.\n\n")
+                .append("No paragraph breaks allowed.\n\n"),
+
+            Component.literal("")
+                .append(Component.literal("Developer’s Notes...\n\n").withStyle(ChatFormatting.BOLD))
+                .append("You can experience everything the mod has to offer just by talking to the Pokémon.\n\nFeel free to customize it in the mods menu or by editing config/cobblebrain\n.json5")
         )
 
         val content = WrittenBookContent(
