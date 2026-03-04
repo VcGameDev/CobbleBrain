@@ -145,3 +145,20 @@ object ConfigHandler {
         }
     }
 }
+
+object ClientConfigHandler {
+    lateinit var clientConfig: CobblebrainClientConfig
+
+    fun load() {
+        clientConfig = ConfigBuilder.load(CobblebrainClientConfig::class.java, "cobblebrain_client")
+    }
+
+    fun save() {
+        val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
+        val json = JsonParser.parseString(gson.toJson(clientConfig)).asJsonObject
+        val file = File("config/cobblebrain_client.json5")
+        PrintWriter(file).use { pw ->
+            pw.print(gson.toJson(json))
+        }
+    }
+}

@@ -591,11 +591,9 @@ object CobblebrainWorldSave {
 
             Component.literal("")
                 .append(Component.literal("PROMPTS AND BEHAVIOR\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Instructs works as a global prompt.\n")
-                .append("You can define how Pokemon behave.\n\n")
-                .append("Edit it in config/cobblebrain.json5\n")
-                .append("Must be inside quotes.\n")
-                .append("No paragraph breaks allowed.\n\n"),
+                .append("The Instructs as a whole works as a global prompt.\n")
+                .append("You can define how the AI or Pokemon behave, think and responds.\n")
+                .append("Each instruct shapes how the response is sent.\n"),
 
             Component.literal("")
                 .append(Component.literal("Developer’s Notes...\n\n").withStyle(ChatFormatting.BOLD))

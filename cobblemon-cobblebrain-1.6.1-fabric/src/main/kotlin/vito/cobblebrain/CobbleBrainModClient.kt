@@ -1,13 +1,28 @@
 package vito.cobblebrain
 
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
 import net.minecraft.client.Minecraft
 import net.minecraft.world.effect.MobEffects
+import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.config.CobblebrainClientConfig
+import java.nio.file.Files
 import kotlin.math.sin
 
 object CobbleBrainModClient : ClientModInitializer {
     override fun onInitializeClient() {
+        val clientConfigFile = Minecraft.getInstance().gameDirectory.toPath().resolve("cobblebrain_client_config.json")
+
+        val clientConfig = if (Files.exists(clientConfigFile)) {
+            Gson().fromJson(Files.readString(clientConfigFile), CobblebrainClientConfig::class.java)
+        } else {
+            val cfg = CobblebrainClientConfig()
+            Files.writeString(clientConfigFile, GsonBuilder().setPrettyPrinting().create().toJson(cfg))
+            cfg
+        }
+        CobblebrainClientHandler.registerReceivers()
         println("Cobblebrain carregado no cliente")
         HudRenderCallback.EVENT.register { guiGraphics, tickDelta ->
             val client = Minecraft.getInstance()

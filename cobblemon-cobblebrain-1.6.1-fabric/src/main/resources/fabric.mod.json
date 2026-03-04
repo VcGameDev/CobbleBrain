@@ -1,9 +1,10 @@
 {
   "schemaVersion": 1,
   "id": "cobblebrain",
-  "version": "[BETA]Fabric-1.0.0",
+  "version": "[BETA2]Fabric-1.0.0",
   "name": "CobbleBrain",
   "description": "a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons",
+  "icon": "cobblebrain_icon.png",
   "authors": [
     "VcGameDev aka vic"
   ],

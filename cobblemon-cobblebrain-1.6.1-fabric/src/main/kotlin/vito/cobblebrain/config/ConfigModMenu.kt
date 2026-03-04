@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 import net.minecraft.client.Minecraft
+import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.config.ConfigHandler.config
 import java.util.Optional
 
@@ -63,129 +64,129 @@ class ConfigModMenu : ModMenuApi {
 
             val apiKeyEntry = entryBuilder.startStrList(
                 Component.literal("API Key").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.apiKey
+                clientConfig.apiKey
             ).setDefaultValue(listOf("YOUR_API_KEY"))
-                .setSaveConsumer { value -> config.apiKey = value }
+                .setSaveConsumer { value -> clientConfig.apiKey = value }
                 .setTooltip(Component.literal("The API key used for authentication with the AI system. \nIt can be a Bearer token or a Google API key depending on the provider."))
                 .build()
 
             val keyRotationEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Key Rotation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.keyRotation
+                clientConfig.keyRotation
             ).setDefaultValue(false)
-                .setSaveConsumer { value -> config.keyRotation = value }
+                .setSaveConsumer { value -> clientConfig.keyRotation = value }
                 .setTooltip(Component.literal("Enables API key rotation when errors occur. \nUseful for handling invalid or expired keys."))
                 .build()
 
             val keyRotationTriggerEntry = entryBuilder.startIntList(
                 Component.literal("Key Rotation Trigger").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.keyRotationTrigger
+                clientConfig.keyRotationTrigger
             ).setDefaultValue(listOf(401, 429))
-                .setSaveConsumer { value -> config.keyRotationTrigger = value }
+                .setSaveConsumer { value -> clientConfig.keyRotationTrigger = value }
                 .setTooltip(Component.literal("List of HTTP status codes that trigger key rotation. \nDefines error conditions for switching keys."))
                 .build()
 
             val apiBaseUrlEntry = entryBuilder.startStrField(
                 Component.literal("API Base URL").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.apiBaseUrl
+                clientConfig.apiBaseUrl
             ).setDefaultValue("http://127.0.0.1:4315")
-                .setSaveConsumer { value -> config.apiBaseUrl = value }
-                .setTooltip(Component.literal("The base URL of the API endpoint. \nExamples include OpenRouter, Google AI Studio, or a local LM Studio server."))
+                .setSaveConsumer { value -> clientConfig.apiBaseUrl = value }
+                .setTooltip(Component.literal("The base URL of the API endpoint. \nExamples include \n- OpenRouter: https://openrouter.ai/api\n- Google AI Studio: https://generativelanguage.googleapis.com\n- Or a local LM Studio server."))
                 .build()
 
             val localApiProviderEntry = entryBuilder.startStrField(
                 Component.literal("Local API Provider").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.localApiProvider
+                clientConfig.localApiProvider
             ).setDefaultValue("player2")
-                .setSaveConsumer { value -> config.localApiProvider = value }
+                .setSaveConsumer { value -> clientConfig.localApiProvider = value }
                 .setTooltip(Component.literal("If apiBaseUrl is a local address (127.0.0.1), \nThe system uses the provider name to adapt messages for the correct provider. \nOfficially supported providers: player2, lmstudio"))
                 .build()
 
             val aiModelEntry = entryBuilder.startStrList(
                 Component.literal("AI Model").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.aiModel
+                clientConfig.aiModel
             ).setDefaultValue(listOf("gemma-3-12b-it", "gemma-3-4b-it"))
-                .setSaveConsumer { value -> config.aiModel = value }
+                .setSaveConsumer { value -> clientConfig.aiModel = value }
                 .setTooltip(Component.literal("The names of the AI models to use. \nExamples are gemini-2.5-flash, gemma-3-12b-it"))
                 .build()
 
             val modelRotationEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Model Rotation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.modelRotation
+                clientConfig.modelRotation
             ).setDefaultValue(false)
-                .setSaveConsumer { value -> config.modelRotation = value }
+                .setSaveConsumer { value -> clientConfig.modelRotation = value }
                 .setTooltip(Component.literal("Enables model rotation when errors occur. \nUseful for fallback to alternative models."))
                 .build()
 
             val modelRotationTriggerEntry = entryBuilder.startIntList(
                 Component.literal("Model Rotation Trigger").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.modelRotationTrigger
+                clientConfig.modelRotationTrigger
             ).setDefaultValue(listOf(404, 429))
-                .setSaveConsumer { value -> config.modelRotationTrigger = value }
+                .setSaveConsumer { value -> clientConfig.modelRotationTrigger = value }
                 .setTooltip(Component.literal("List of HTTP status codes that trigger model rotation. \nDefines error conditions for switching models."))
                 .build()
 
             val temperatureEntry = entryBuilder.startFloatField(
                 Component.literal("Temperature").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.temperature.toFloat()
+                clientConfig.temperature.toFloat()
             ).setDefaultValue(0.7f)
-                .setSaveConsumer { value -> config.temperature = value.toDouble() }
+                .setSaveConsumer { value -> clientConfig.temperature = value.toDouble() }
                 .setTooltip(Component.literal("Controls the randomness of responses. \nLower values give precise answers, higher values make them more creative."))
                 .build()
 
             val aiProviderEntry = entryBuilder.startStrField(
                 Component.literal("OpenRouter hint").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.aiProvider
+                clientConfig.aiProvider
             ).setDefaultValue("")
-                .setSaveConsumer { value -> config.aiProvider = value }
+                .setSaveConsumer { value -> clientConfig.aiProvider = value }
                 .setTooltip(Component.literal("A provider hint used for routing in OpenRouter. \nThis is ignored when using other provider."))
                 .build()
 
             val reasoningEffortEntry = entryBuilder.startStrField(
                 Component.literal("Reasoning Effort").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.reasoningEffort
+                clientConfig.reasoningEffort
             ).setDefaultValue("none")
-                .setSaveConsumer { value -> config.reasoningEffort = value }
+                .setSaveConsumer { value -> clientConfig.reasoningEffort = value }
                 .setTooltip(Component.literal("Defines the reasoning effort level for supported models. \nOptions include high, medium, low, auto, or none."))
                 .build()
 
             val requestTimeoutEntry = entryBuilder.startLongField(
                 Component.literal("Request Timeout (s)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.requestTimeoutSeconds
+                clientConfig.requestTimeoutSeconds
             ).setDefaultValue(60L)
-                .setSaveConsumer { value -> config.requestTimeoutSeconds = value }
+                .setSaveConsumer { value -> clientConfig.requestTimeoutSeconds = value }
                 .setTooltip(Component.literal("Defines the request timeout in seconds. \nLocal models may require longer values."))
                 .build()
 
             val debugLoggingEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Debug Logging").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.debugLogging
+                clientConfig.debugLogging
             ).setDefaultValue(false)
-                .setSaveConsumer { value -> config.debugLogging = value }
+                .setSaveConsumer { value -> clientConfig.debugLogging = value }
                 .setTooltip(Component.literal("Enables debug logging for troubleshooting. \nLogs are stored in the cobblebrain-ai/logs directory."))
                 .build()
 
             val selectedLanguageEntry = entryBuilder.startStrField(
                 Component.literal("Selected Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.selectedLanguage
+                clientConfig.selectedLanguage
             ).setDefaultValue("English")
-                .setSaveConsumer { value -> config.selectedLanguage = value }
+                .setSaveConsumer { value -> clientConfig.selectedLanguage = value }
                 .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
                 .build()
 
             val dialogueInChatEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Dialogue In Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.dialogueInChat
+                clientConfig.dialogueInChat
             ).setDefaultValue(true)
-                .setSaveConsumer { value -> config.dialogueInChat = value }
+                .setSaveConsumer { value -> clientConfig.dialogueInChat = value }
                 .setTooltip(Component.literal("Shows generated dialogue directly in the chat. \nThis makes Pokémon conversations visible to players."))
                 .build()
 
             val chatbubblesEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Chat Bubbles").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.chatbubbles
+                clientConfig.chatbubbles
             ).setDefaultValue(true)
-                .setSaveConsumer { value -> config.chatbubbles = value }
+                .setSaveConsumer { value -> clientConfig.chatbubbles = value }
                 .setTooltip(Component.literal("Enables chat bubbles above characters. \nDialogue will appear visually instead of only in text chat."))
                 .build()
 
@@ -225,33 +226,33 @@ class ConfigModMenu : ModMenuApi {
 
             val characteristicsEntry = entryBuilder.startStrList(
                 Component.literal("Characteristics").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.characteristics
+                clientConfig.characteristics
             ).setDefaultValue(listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"))
-                .setSaveConsumer { value -> config.characteristics = value }
+                .setSaveConsumer { value -> clientConfig.characteristics = value }
                 .setTooltip(Component.literal("list to define characteristics of a specific Pokémon for the AI. \nFormat: <pokemonName>: <text>"))
                 .build()
 
             val lowTokenModeEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Low Token Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.lowTokenMode
+                clientConfig.lowTokenMode
             ).setDefaultValue(false)
-                .setSaveConsumer { value -> config.lowTokenMode = value }
+                .setSaveConsumer { value -> clientConfig.lowTokenMode = value }
                 .setTooltip(Component.literal("Reduces world information sent to the AI. \nThis helps conserve tokens and lower usage costs."))
                 .build()
 
             val dialogueOnDamageEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Dialogue On Damage").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.dialogueOnDamage
+                clientConfig.dialogueOnDamage
             ).setDefaultValue(false)
-                .setSaveConsumer { value -> config.dialogueOnDamage = value }
+                .setSaveConsumer { value -> clientConfig.dialogueOnDamage = value }
                 .setTooltip(Component.literal("Makes Pokémon speak when someone is hurt. \nDialogue is triggered by damage events."))
                 .build()
 
             val dialogueOnBattleEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Dialogue On Battle").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.dialogueOnBattle
+                clientConfig.dialogueOnBattle
             ).setDefaultValue(true)
-                .setSaveConsumer { value -> config.dialogueOnBattle = value }
+                .setSaveConsumer { value -> clientConfig.dialogueOnBattle = value }
                 .setTooltip(Component.literal("Makes Pokémon speak during battle events. \nDialogue reflects combat situations."))
                 .build()
 
@@ -273,41 +274,41 @@ class ConfigModMenu : ModMenuApi {
 
             val spontaneousDialogueChanceEntry = entryBuilder.startFloatField(
                 Component.literal("Spontaneous Dialogue Chance").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.spontaneousDialogueChance.toFloat()
+                clientConfig.spontaneousDialogueChance.toFloat()
             ).setDefaultValue(0.05f)
-                .setSaveConsumer { value -> config.spontaneousDialogueChance = value.toDouble() }
+                .setSaveConsumer { value -> clientConfig.spontaneousDialogueChance = value.toDouble() }
                 .setTooltip(Component.literal("Sets the chance of spontaneous dialogue. \nPokémon may speak randomly during idle moments."))
                 .build()
 
             val listenToChatEntry = entryBuilder.startBooleanToggle(
                 Component.literal("Listen To Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.listenToChat
+                clientConfig.listenToChat
             ).setDefaultValue(false)
-                .setSaveConsumer { value -> config.listenToChat = value }
+                .setSaveConsumer { value -> clientConfig.listenToChat = value }
                 .setTooltip(Component.literal("Enables listening to regular player chat. \nIf disabled, the AI ignores non-command messages."))
                 .build()
 
             val onlyNearbyChatEntry = entryBuilder.startBooleanToggle(
                 Component.literal("[WIP] Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.onlyNearbyChat
+                clientConfig.onlyNearbyChat
             ).setDefaultValue(false)
-                .setSaveConsumer { value -> config.onlyNearbyChat = value }
+                .setSaveConsumer { value -> clientConfig.onlyNearbyChat = value }
                 .setTooltip(Component.literal("EXPERIMENTAL: Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
                 .build()
 
             val maxShortMemoryEntry = entryBuilder.startIntField(
                 Component.literal("Max Short Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.maxShortMemory
+                clientConfig.maxShortMemory
             ).setDefaultValue(5)
-                .setSaveConsumer { value -> config.maxShortMemory = value }
+                .setSaveConsumer { value -> clientConfig.maxShortMemory = value }
                 .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. \nControls how much recent context is stored."))
                 .build()
 
             val maxLongMemoryEntry = entryBuilder.startIntField(
                 Component.literal("Max Long Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                config.maxLongMemory
+                clientConfig.maxLongMemory
             ).setDefaultValue(5)
-                .setSaveConsumer { value -> config.maxLongMemory = value }
+                .setSaveConsumer { value -> clientConfig.maxLongMemory = value }
                 .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. \nControls how much persistent context is stored."))
                 .build()
 
@@ -366,40 +367,27 @@ class ConfigModMenu : ModMenuApi {
                 }
             }
 
-
-            val instructEntry = object : AbstractConfigListEntry<Unit>(
-                Component.literal("Instruct").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-                false
-            ) {
-                override fun getValue(): Unit? = null
-                override fun getDefaultValue(): Optional<Unit> = Optional.empty()
-                override fun children(): MutableList<GuiEventListener> = mutableListOf()
-                override fun narratables(): MutableList<NarratableEntry> = mutableListOf()
-
-                override fun render(
-                    guiGraphics: GuiGraphics,
-                    index: Int,
-                    y: Int,
-                    x: Int,
-                    listWidth: Int,
-                    itemHeight: Int,
-                    mouseX: Int,
-                    mouseY: Int,
-                    isSelected: Boolean,
-                    delta: Float
-                ) {
-                    val font = Minecraft.getInstance().font
-                    guiGraphics.drawString(font, fieldName, x, y, 0xFFFFFF, true)
-                    guiGraphics.drawString(
-                        font,
-                        "Only editable via /cobblebrain or config/cobblebrain.json5",
-                        x + 10,
-                        y + font.lineHeight + 4,
-                        0xAAAAAA,
-                        false
-                    )
-                }
-            }
+            val instructEntry = entryBuilder.startStrList(
+            Component.literal("Instruct").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                clientConfig.instruct
+        ).setDefaultValue(listOf(
+                "[CREATIVE PROMPT]",
+                "You are a screenwriter creating Pokémon dialogues.",
+                "Pokémon must speak informally, with casual tone and natural flow.",
+                "Humor, sarcasm, and playful banter are welcome, but not the only style.",
+                "Pokémon must also show genuine emotions: joy, fear, doubt, affection, frustration, pride.",
+                "Each Pokémon has a fixed core nature (Docile, Calm, Serious, Naive, Modest, Timid, Naughty).",
+                "This nature is the foundation, but unique traits develop over time through memories, friendship changes, and experiences.",
+                "Nature and traits are separate values, but both combine to define how each Pokémon talks.",
+                "Dialogue must feel emotional and personal:",
+                "- Show individuality, never flat or generic.",
+                "- Reactions must reflect environment (weather, biome, time of day, terrain, nearby entities, player status).",
+                "- If the player asks a question, respond from the Pokémon’s perspective.",
+                "- Never use human elements (phones, social media, etc)."
+            ))
+            .setSaveConsumer { value -> clientConfig.instruct = value }
+            .setTooltip(Component.literal("The Instructs as a whole works as a global prompt.\nDefines how the AI or Pokemon behave, think and responds.\nEach instruct (item on the list) shapes how the response is sent.\n"))
+            .build()
 
             val outputFormatEntry = object : AbstractConfigListEntry<Unit>(
                 Component.literal("Output Format").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),

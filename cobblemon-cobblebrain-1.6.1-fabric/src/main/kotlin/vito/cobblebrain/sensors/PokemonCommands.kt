@@ -466,7 +466,17 @@ fun registerTickHandler() {
                     val box = pokemon.boundingBox.inflate(8.0)
                     val items = level.getEntitiesOfClass(ItemEntity::class.java, box)
                     val foodItem = items
-                        .filter { it.item.get(DataComponents.FOOD) != null }
+                        .filter { entity ->
+                            val stack = entity.item
+                            val id = BuiltInRegistries.ITEM.getKey(stack.item)
+
+                            stack.get(DataComponents.FOOD) != null ||
+                                    (id.namespace == "cobblemon" &&
+                                            (id.path.contains("berry") || id.path.contains("malasada")
+                                                    || id.path.contains("candy") || id.path.contains("sweet")
+                                                    || id.path.contains("casteliacone") || id.path.contains("candied")
+                                                    || id.path.contains("apple") || id.path.contains("cookie")))
+                        }
                         .minByOrNull { it.distanceTo(pokemon) }
 
                     val bite = biteCooldown.getOrDefault(pokemonId, 0)

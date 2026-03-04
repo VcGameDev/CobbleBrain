@@ -16,6 +16,7 @@ import net.minecraft.network.chat.Component
 import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
+import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.mixin.MobAccessor
@@ -255,12 +256,12 @@ object ConfigCommands {
                 )
 
                 .then(
-                    Commands.literal("SetInstruct")
+                    Commands.literal("AddInstruct")
                         .then(
                             Commands.argument("value", StringArgumentType.string())
                                 .executes { ctx ->
                                     val value = StringArgumentType.getString(ctx, "value")
-                                    ConfigHandler.config.instruct = value
+                                    clientConfig.instruct = clientConfig.instruct.plus(value)
                                     ConfigHandler.save()
                                     ctx.source.sendSuccess(
                                         { Component.literal("instruct set to $value") },
@@ -276,7 +277,7 @@ object ConfigCommands {
                             Commands.argument("value", StringArgumentType.string())
                                 .executes { ctx ->
                                     val value = StringArgumentType.getString(ctx, "value")
-                                    ConfigHandler.config.outputFormat = value
+                                    clientConfig.outputFormat = value
                                     ConfigHandler.save()
                                     ctx.source.sendSuccess(
                                         { Component.literal("outputFormat set to $value") },
@@ -292,7 +293,7 @@ object ConfigCommands {
                             Commands.argument("value", BoolArgumentType.bool())
                                 .executes { ctx ->
                                     val value = BoolArgumentType.getBool(ctx, "value")
-                                    ConfigHandler.config.listenToChat = value
+                                    clientConfig.listenToChat = value
                                     ConfigHandler.save()
                                     ctx.source.sendSuccess(
                                         { Component.literal("listenToChat set to $value") },

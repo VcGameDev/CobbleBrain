@@ -3,7 +3,7 @@ package vito.cobblebrain.client
 import java.util.concurrent.CompletableFuture
 
 object AIClientHandler {
-    private val handler = AIHandler()
+    private val handler by lazy { AIHandler() }
 
     fun sendPrompt(prompt: String): CompletableFuture<String> {
         return CompletableFuture.supplyAsync {

@@ -16,6 +16,7 @@ import vito.cobblebrain.social.PokemonQuery
 object CobblebrainServerHandler {
     fun registerReceivers() {
         // Recebe ACTION do client
+        println("[SERVER] Listening payload id: " + CobblebrainClientHandler.AIResponsePayload.TYPE.id())
         ServerPlayNetworking.registerGlobalReceiver(ActionPayload.TYPE) { payload: ActionPayload, context ->
             val action = payload.action
 
@@ -50,6 +51,8 @@ object CobblebrainServerHandler {
         ServerPlayNetworking.registerGlobalReceiver(CobblebrainClientHandler.AIResponsePayload.TYPE) { payload, context ->
 
             context.server().execute {
+
+                println("[SERVER RECEIVED RESPONSE] from " + context.player().name.string)
 
                 val player: ServerPlayer = context.player()
                 val content = payload.content

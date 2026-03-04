@@ -40,6 +40,7 @@ import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.client.social.CobblebrainWorldSave.adjustKarma
 import vito.cobblebrain.client.social.CobblebrainWorldSave.adjustKillCount
 import vito.cobblebrain.config.ConfigHandler.config
+import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
@@ -99,11 +100,11 @@ object DialogueSystem {
         }
 
         ServerMessageEvents.CHAT_MESSAGE.register { message, sender, _ ->
-            if (!config.listenToChat) return@register  // checa em tempo real
+            if (!clientConfig.listenToChat) return@register  // checa em tempo real
 
             val rawContent = message.signedContent()
 
-            if (config.onlyNearbyChat) {
+            if (clientConfig.onlyNearbyChat) {
                 val nearbyPlayers = sender.server.playerList.players.filter { other ->
                     other.distanceTo(sender) <= 15.0
                 }
@@ -137,7 +138,7 @@ object DialogueSystem {
             val battle = event.battle
             val server = battle.players.firstOrNull()?.server ?: return@subscribe
 
-            if (config.dialogueOnBattle) {
+            if (clientConfig.dialogueOnBattle) {
                 server.execute {
                     val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
 
@@ -183,7 +184,7 @@ object DialogueSystem {
             val ownerId = pokemon.getOwnerUUID() ?: return@subscribe
 
             val battle = BattleRegistry.getBattleByParticipatingPlayerId(ownerId)
-            if (battle != null && config.dialogueOnBattle) {
+            if (battle != null && clientConfig.dialogueOnBattle) {
                 val ownerPlayer = pokemon.getOwnerPlayer() ?: return@subscribe
 
                 // limpa apenas a fila desse jogador
@@ -216,7 +217,7 @@ object DialogueSystem {
         CobblemonEvents.BATTLE_FLED.subscribe { event: BattleFledEvent ->
             val actor = event.player
             val uuids = actor.getPlayerUUIDs()
-            if (config.dialogueOnBattle) {
+            if (clientConfig.dialogueOnBattle) {
                 if (uuids.isEmpty()) {
                     println("${actor.getName().string} fled from battle (not human player).")
                     return@subscribe
@@ -245,7 +246,7 @@ object DialogueSystem {
 
         CobblemonEvents.BATTLE_VICTORY.subscribe { event: BattleVictoryEvent ->
             val battle = event.battle
-            if (config.dialogueOnBattle) {
+            if (clientConfig.dialogueOnBattle) {
                 for (player in battle.players) {
                     val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
                     scheduledMessages[player.uuid]?.clear()
@@ -293,7 +294,7 @@ object DialogueSystem {
 
                     val now = System.currentTimeMillis()
                     val last = lastPrompt[entity.uuid] ?: 0L
-                    if (now - last >= 22000 && config.dialogueOnDamage) {
+                    if (now - last >= 22000 && clientConfig.dialogueOnDamage) {
                         // limpa apenas a fila desse jogador
                         scheduledMessages[entity.uuid]?.clear()
 
@@ -311,7 +312,7 @@ object DialogueSystem {
 
                 is PokemonEntity -> {
                     val ownerUuid = entity.pokemon.getOwnerUUID()
-                    if (ownerUuid != null && config.dialogueOnDamage) {
+                    if (ownerUuid != null && clientConfig.dialogueOnDamage) {
                         val server = entity.server ?: return@register
                         val owner: ServerPlayer? = server.playerList.getPlayer(ownerUuid)
 
@@ -436,7 +437,7 @@ object DialogueSystem {
                     println("msg.text='${msg.text}'")
                     println("msg.speaker='${msg.speaker}'")
 
-                    if (config.dialogueInChat) {
+                    if (clientConfig.dialogueInChat) {
                         val text = msg.text
 
                         // Regex para detectar "!Error 123!"
@@ -452,7 +453,8 @@ object DialogueSystem {
                             Component.literal(text)
                         }
 
-                        msg.player.sendSystemMessage(component)
+                        player.sendSystemMessage(component)
+                        println("[SENDING] Loop=${player.name.string} | MsgPlayer=${player.name.string}")
                     }
 
                     // tenta resolver o falante pelo apelido OU pela espécie
@@ -484,7 +486,7 @@ object DialogueSystem {
                         val basePitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
                         expressPokemon(pokemon, basePitch)
 
-                        if (entity != null && config.chatbubbles) {
+                        if (entity != null && clientConfig.chatbubbles) {
                             val bubbleText = msg.text.substringAfter(":").trim()
                             spawnSpeechBubble(server, pokemon, bubbleText, 100)
                         }
@@ -1033,7 +1035,7 @@ object DialogueSystem {
         val ativos = PokemonQuery.findActivePokemon(player)
         if (ativos.isEmpty()) return
 
-        val chance = config.spontaneousDialogueChance
+        val chance = clientConfig.spontaneousDialogueChance
 
         // Sorteio para disparar diálogo espontâneo só para esse jogador
         if (Random.nextDouble() <= chance) {
@@ -1115,13 +1117,13 @@ object DialogueSystem {
             appendLine("Weather: ${context.weather}")
             appendLine("Time: ${context.timeOfDay}, ${context.timeLabel})")
 
-            if (!config.lowTokenMode) {
+            if (!clientConfig.lowTokenMode) {
                 appendLine("Light: ${context.lightLevel}")
                 appendLine("Block under the player's feet: ${context.blockUnder}")
                 appendLine("Nearby special blocks: ${context.specialBlocks}")
             }
 
-            if (!config.lowTokenMode) {
+            if (!clientConfig.lowTokenMode) {
                 appendLine("Nearby entities: ${context.nearbyEntities}")
                 appendLine("Nearby mobs: ${context.nearbyMobs}")
                 appendLine("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
@@ -1207,7 +1209,7 @@ object DialogueSystem {
 
                 // Adiciona características se houver
                 val nameToCheck = p.nickname?.string ?: p.species.name
-                config.characteristics.forEach { entry ->
+                clientConfig.characteristics.forEach { entry ->
                     val parts = entry.split(":")
                     if (parts.size >= 2) {
                         val charName = parts[0].trim()
@@ -1251,7 +1253,7 @@ object DialogueSystem {
                     loadPokemonMemories(
                         srv,
                         p.uuid.toString(),
-                        config.maxShortMemory
+                        clientConfig.maxShortMemory
                     )
                 } ?: emptyList()
 
@@ -1265,14 +1267,15 @@ object DialogueSystem {
             appendLine("Important variables:")
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
             appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
-            appendLine("Send the entire response in ${config.selectedLanguage}")
+            appendLine("Send the entire response in ${clientConfig.selectedLanguage}")
         }.trim()
     }
 
-    private var lastResponseContent: String? = null
+    private val lastResponseContent = mutableMapOf<UUID, String>()
 
     fun checkIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
-        if (content.isBlank() || content == lastResponseContent) return
+        val last = lastResponseContent[player.uuid]
+        if (content.isBlank() || content == last) return
 
         // Linhas para chat (falas + friendship), excluindo memórias
         val allLines = content.split("|")
@@ -1297,7 +1300,7 @@ object DialogueSystem {
 
         // 1. Salva as memórias no JSON
         memoryLines.forEach { line ->
-            savePokemonMemory(server, line, config.maxShortMemory)
+            savePokemonMemory(server, line, clientConfig.maxShortMemory)
         }
 
         // 2. Detecta quest summary
@@ -1377,7 +1380,7 @@ object DialogueSystem {
         }
 
         // 5. Agenda mensagens para o jogador que falou
-        lastResponseContent = content
+        lastResponseContent[player.uuid] = content
         val startTick = server.tickCount.toLong()
 
         // Monta todas as falas do novo diálogo
@@ -1402,6 +1405,7 @@ object DialogueSystem {
 
         // Substitui qualquer diálogo anterior por este novo conjunto
         scheduledMessages[player.uuid] = novasMensagens.toMutableList()
+        println("[SCHEDULE] ${player.name.string} -> ${novasMensagens.size} mensagens")
 
     }
 }

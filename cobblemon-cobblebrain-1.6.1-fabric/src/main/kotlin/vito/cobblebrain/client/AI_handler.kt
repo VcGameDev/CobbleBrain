@@ -2,8 +2,10 @@ package vito.cobblebrain.client
 
 import com.google.gson.Gson
 import kotlinx.io.IOException
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
+import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -13,7 +15,7 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import vito.cobblebrain.config.ConfigHandler.config
+import java.net.InetAddress
 import java.net.http.HttpTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -47,20 +49,22 @@ class AIHandler{
 
     companion object {
         private val gson = Gson()
-        private val INSTRUCTS = config.instruct.trimIndent()
-        private val TEMPERATURE = config.temperature
-        private val PROVIDER_HINT = config.aiProvider.trim()
-        private val REASONING = config.reasoningEffort.trim().lowercase()
-        private val DEBUG = config.debugLogging
-        private val TIMEOUT_SECONDS = config.requestTimeoutSeconds
+        private val INSTRUCTS = clientConfig.instruct
+            .filterNotNull()
+            .joinToString("\n")
+        private val TEMPERATURE = clientConfig.temperature
+        private val PROVIDER_HINT = clientConfig.aiProvider.trim()
+        private val REASONING = clientConfig.reasoningEffort.trim().lowercase()
+        private val DEBUG = clientConfig.debugLogging
+        private val TIMEOUT_SECONDS = clientConfig.requestTimeoutSeconds
     }
 
     // agora usando rotadores
-    private val apiKeyRotator = ApiKeyRotator(config.apiKey)
-    private val modelRotator = ModelRotator(config.aiModel)
+    private val apiKeyRotator = ApiKeyRotator(clientConfig.apiKey)
+    private val modelRotator = ModelRotator(clientConfig.aiModel)
 
     private val apiBase =
-        config.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
+        clientConfig.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
 
     private val sessionLogFile: Path by lazy {
         val dir = Minecraft.getInstance().gameDirectory.toPath()
@@ -72,6 +76,21 @@ class AIHandler{
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
 
         dir.resolve(fileName)
+    }
+
+    fun isLocalAddress(url: String): Boolean {
+        return try {
+            val uri = URI(url)
+            val host = uri.host ?: return false
+
+            val address = InetAddress.getByName(host)
+
+            address.isAnyLocalAddress ||
+                    address.isLoopbackAddress ||
+                    address.isSiteLocalAddress
+        } catch (e: Exception) {
+            false
+        }
     }
 
     // ---------------- Logging ----------------
@@ -107,7 +126,10 @@ class AIHandler{
         //)
 
         // Executor para rodar o pingHealth a cada 60s
-        if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+        if (
+            clientConfig.localApiProvider.equals("player2", ignoreCase = true)
+            && isLocalAddress(clientConfig.apiBaseUrl)
+        ) {
             val scheduler = Executors.newSingleThreadScheduledExecutor()
             scheduler.scheduleAtFixedRate({ pingHealth() }, 0, 60, TimeUnit.SECONDS)
         }
@@ -157,9 +179,9 @@ class AIHandler{
 
 
     private fun rotateApiKey(status: Int) {
-        if (config.keyRotation && status in config.keyRotationTrigger) {
+        if (clientConfig.keyRotation && status in clientConfig.keyRotationTrigger) {
             apiKeyRotator.next()
-            if (apiKeyRotator.current() == config.apiKey.first()) {
+            if (apiKeyRotator.current() == clientConfig.apiKey.first()) {
                 val msg = "API key rotation has cycled through all keys and returned to the first key. First key: ${apiKeyRotator.current()}."
                 sendSystemMessage(msg)
             } else {
@@ -170,10 +192,10 @@ class AIHandler{
     }
 
     private fun rotateModel(status: Int) {
-        if (config.modelRotation && status in config.modelRotationTrigger) {
+        if (clientConfig.modelRotation && status in clientConfig.modelRotationTrigger) {
             modelRotator.next()
             println("func de rotate ativa")
-            if (modelRotator.current() == config.aiModel.first()) {
+            if (modelRotator.current() == clientConfig.aiModel.first()) {
                 val msg = "Model rotation has cycled through all models and returned to the first model. First model: ${modelRotator.current()} \n"
                 sendSystemMessage(msg)
             } else {
@@ -302,7 +324,7 @@ class AIHandler{
                     callGoogleGemma(prompt)
                 }
                 isLocalApi(apiBase) -> {
-                    println("Using local provider: ${config.localApiProvider}")
+                    println("Using local provider: ${clientConfig.localApiProvider}")
                     callOpenAISchema(prompt)
                 }
                 else -> {
@@ -334,15 +356,24 @@ class AIHandler{
         historico.add(Mensagem("assistant", responseText))
         limitarHistorico()
 
+        println("[CLIENT] Sending AIResponsePayload to server")
+        println("[CLIENT] Sending payload id: " + CobblebrainClientHandler.AIResponsePayload.TYPE.id())
+
+        Minecraft.getInstance().execute {
+            println("[CLIENT] Actually sending packet now (main thread)")
+            ClientPlayNetworking.send(
+                CobblebrainClientHandler.AIResponsePayload(formatted)
+            )
+        }
         return formatted
     }
 
 
     private fun callOpenAISchema(prompt: String): String {
         log("===== OPENAI REQUEST =====")
-        log("Local Provider: ${config.localApiProvider}")
-        log("ApiBaseUrl: ${config.apiBaseUrl}")
-        log("Model: ${config.aiModel}")
+        log("Local Provider: ${clientConfig.localApiProvider}")
+        log("ApiBaseUrl: ${clientConfig.apiBaseUrl}")
+        log("Model: ${clientConfig.aiModel}")
 
         log("\n--- PROMPT ---")
         log(prompt)
@@ -359,7 +390,10 @@ class AIHandler{
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
         // Autenticação
-        if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+        if (
+            clientConfig.localApiProvider.equals("player2", ignoreCase = true)
+            && isLocalAddress(clientConfig.apiBaseUrl)
+        ) {
             builder.header("player2-game-key", "019bfb65-9ed4-79af-a348-90d86bbb6cbb")
             log("Auth: player2-game-key header")
         } else {
@@ -400,12 +434,27 @@ class AIHandler{
 
         } catch (e: Exception) {
 
-            log("\n===== OPENAI ERROR =====")
-            log("Type: ${e::class.simpleName}")
+            val env = net.fabricmc.loader.api.FabricLoader
+                .getInstance()
+                .environmentType
+                .name
+
+            val thread = Thread.currentThread().name
+            val time = LocalDateTime.now()
+
+            log("\n===== AI ERROR =====")
+            log("Time: $time")
+            log("Side: $env")
+            log("Thread: $thread")
+            log("Provider: ${clientConfig.localApiProvider}")
+            log("API Base: $apiBase")
+            log("Exception: ${e::class.qualifiedName}")
             log("Message: ${e.message}")
+            log("Cause: ${e.cause?.message}")
+            log("Stacktrace:")
             e.printStackTrace()
 
-            "Erro API: ${e.message}"
+            "Erro API (${clientConfig.localApiProvider} | $env): ${e.message}"
         }
     }
 
@@ -414,7 +463,7 @@ class AIHandler{
 
     private fun isLMStudio() =
         // ajuste conforme sua URL local do LM Studio
-        config.localApiProvider.contains("lmstudio", ignoreCase = true)
+        clientConfig.localApiProvider.contains("lmstudio", ignoreCase = true)
 
     //private fun usesMaxTokens(apiBase: String) =
         //isOpenRouter(apiBase) || isLMStudio(apiBase)
@@ -457,11 +506,14 @@ class AIHandler{
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
         // Se for Player2, não inclui "model"
-        return if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+        return if (
+            clientConfig.localApiProvider.equals("player2", ignoreCase = true) &&
+            isLocalAddress(clientConfig.apiBaseUrl)
+        ) {
             """
         {
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
+            { "role": "system", "content": "${escape(INSTRUCTS + clientConfig.outputFormat)}" },
             $messages
           ]$extraJson
         }
@@ -471,7 +523,7 @@ class AIHandler{
         {
           "model": "${modelRotator.current()}",
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
+            { "role": "system", "content": "${escape(INSTRUCTS + clientConfig.outputFormat)}" },
             $messages
           ]$extraJson
         }
@@ -537,7 +589,7 @@ class AIHandler{
                 mapOf(
                     "role" to "user",
                     "parts" to listOf(
-                        mapOf("text" to escape(INSTRUCTS + config.outputFormat))
+                        mapOf("text" to escape(INSTRUCTS + clientConfig.outputFormat))
                     )
                 ),
                 mapOf(
