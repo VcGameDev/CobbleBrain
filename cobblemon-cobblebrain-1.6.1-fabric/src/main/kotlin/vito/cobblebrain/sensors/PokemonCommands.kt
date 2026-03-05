@@ -929,6 +929,57 @@ fun applyFoodEffects(
     val baseValue = foodComponent.nutrition() + foodComponent.saturation()
     val bonus = hasTypeBonus(pokemon, item)
 
+    val id = BuiltInRegistries.ITEM.getKey(item)
+    val path = id.path
+    val namespace = id.namespace
+
+    if (namespace == "cobblemon") {
+        when {
+
+            path.contains("oran") -> {
+                pokemon.heal(6f)
+                return true
+            }
+
+            path.contains("cheri") -> {
+                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_BOOST, 200, 0))
+                return true
+            }
+
+            path.contains("chesto") -> {
+                pokemon.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 150, 1))
+                return true
+            }
+
+            path.contains("pecha") -> {
+                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 200, 0))
+                return true
+            }
+
+            path.contains("rawst") -> {
+                pokemon.addEffect(MobEffectInstance(MobEffects.FIRE_RESISTANCE, 300, 0))
+                return true
+            }
+
+            path.contains("aspear") -> {
+                pokemon.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 300, 0))
+                return true
+            }
+
+            path.contains("persim") -> {
+                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_BOOST, 200, 1))
+                return true
+            }
+
+            path.contains("lum") -> {
+                pokemon.addEffect(MobEffectInstance(MobEffects.REGENERATION, 100, 1))
+                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 100, 0))
+                return true
+            }
+        }
+    }
+
+    // comidas vanilla
     when (tier) {
 
         FoodTier.COMMON -> {

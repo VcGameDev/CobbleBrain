@@ -12,7 +12,6 @@ import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
-import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.sensors.registerTickHandler
 import vito.cobblebrain.social.ConfigCommands
@@ -28,7 +27,6 @@ object CobblebrainMod : ModInitializer {
     // Quando o jogo inicializa
     override fun onInitialize() {
         ConfigHandler.load()
-        ClientConfigHandler.load()
         val pasta = File("cobblebrain-ai")
 
         // cria a pasta se não existir

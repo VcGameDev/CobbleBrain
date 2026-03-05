@@ -466,6 +466,7 @@ class ConfigModMenu : ModMenuApi {
 
             builder.setSavingRunnable {
                 ConfigHandler.save()
+                ClientConfigHandler.save()
             }
 
             builder.build()
