@@ -492,6 +492,8 @@ fun registerTickHandler() {
                     }
 
                     if (foodItem != null && foodItem.isAlive) {
+                        val stack = foodItem.item
+                        val id = BuiltInRegistries.ITEM.getKey(stack.item)
                         pokemon.navigation.moveTo(foodItem, 1.0)
                         if (pokemon.distanceTo(foodItem) < 2.0f && bite <= 0) {
                             val stack = foodItem.item
@@ -504,6 +506,8 @@ fun registerTickHandler() {
                                 val tier = determineFoodTier(stack.item)
                                 applyFoodEffects(pokemon, foodComponent, tier, stack.item)
                             }
+                            else if (id.namespace == "cobblemon") {
+                                applyCobblemonBerryEffects(pokemon, stack)}
                             stack.shrink(1)
                             if (stack.isEmpty) {
                                 foodItem.discard()
@@ -919,6 +923,117 @@ fun givePokemonExp(pokemonEntity: PokemonEntity, amount: Int) {
     pokemonEntity.level().broadcastEntityEvent(pokemonEntity, 7.toByte())
 }
 
+fun applyCobblemonBerryEffects(pokemon: PokemonEntity, stack: ItemStack) {
+    val id = BuiltInRegistries.ITEM.getKey(stack.item)
+    val path = id.path
+
+    when {
+        path.contains("oran") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.REGENERATION,
+                    120,
+                    0
+                )
+            )
+        }
+
+        // Cura maior
+        path.contains("sitrus") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.REGENERATION,
+                    200,
+                    1
+                )
+            )
+        }
+
+        path.contains("chesto") -> {
+            pokemon.removeEffect(MobEffects.MOVEMENT_SLOWDOWN)
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.MOVEMENT_SPEED,
+                    200,
+                    0
+                )
+            )
+        }
+
+        // Cura poison
+        path.contains("pecha") -> {
+            pokemon.removeEffect(MobEffects.POISON)
+        }
+
+        // Cura burn
+        path.contains("rawst") -> {
+            pokemon.clearFire()
+            pokemon.removeEffect(MobEffects.WEAKNESS)
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.FIRE_RESISTANCE,
+                    200,
+                    0
+                )
+            )
+        }
+
+        // Cura freeze
+        path.contains("aspear") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.DAMAGE_RESISTANCE,
+                    200,
+                    0
+                )
+            )
+        }
+
+        // Recupera PP
+        path.contains("leppa") -> {
+            givePokemonExp(pokemon, 10)
+        }
+
+        // Cura todos status
+        path.contains("lum") -> {
+
+            val negative = listOf(
+                MobEffects.POISON,
+                MobEffects.WITHER,
+                MobEffects.WEAKNESS,
+                MobEffects.MOVEMENT_SLOWDOWN,
+                MobEffects.BLINDNESS,
+                MobEffects.HUNGER
+            )
+
+            negative.forEach { pokemon.removeEffect(it) }
+            pokemon.clearFire()
+        }
+
+        path.contains("chople") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.DAMAGE_RESISTANCE,
+                    200,
+                    0
+                )
+            )
+        }
+
+        path.contains("liechi") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.DAMAGE_BOOST,
+                    200,
+                    0
+                )
+            )
+        }
+
+
+    }
+}
+
 fun applyFoodEffects(
     pokemon: PokemonEntity,
     foodComponent: FoodProperties,
@@ -928,56 +1043,6 @@ fun applyFoodEffects(
 
     val baseValue = foodComponent.nutrition() + foodComponent.saturation()
     val bonus = hasTypeBonus(pokemon, item)
-
-    val id = BuiltInRegistries.ITEM.getKey(item)
-    val path = id.path
-    val namespace = id.namespace
-
-    if (namespace == "cobblemon") {
-        when {
-
-            path.contains("oran") -> {
-                pokemon.heal(6f)
-                return true
-            }
-
-            path.contains("cheri") -> {
-                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_BOOST, 200, 0))
-                return true
-            }
-
-            path.contains("chesto") -> {
-                pokemon.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 150, 1))
-                return true
-            }
-
-            path.contains("pecha") -> {
-                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 200, 0))
-                return true
-            }
-
-            path.contains("rawst") -> {
-                pokemon.addEffect(MobEffectInstance(MobEffects.FIRE_RESISTANCE, 300, 0))
-                return true
-            }
-
-            path.contains("aspear") -> {
-                pokemon.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 300, 0))
-                return true
-            }
-
-            path.contains("persim") -> {
-                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_BOOST, 200, 1))
-                return true
-            }
-
-            path.contains("lum") -> {
-                pokemon.addEffect(MobEffectInstance(MobEffects.REGENERATION, 100, 1))
-                pokemon.addEffect(MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 100, 0))
-                return true
-            }
-        }
-    }
 
     // comidas vanilla
     when (tier) {
