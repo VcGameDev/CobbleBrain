@@ -2,7 +2,7 @@
 
 CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions more lively and responsive.
 
-![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
@@ -11,7 +11,7 @@ CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” a
 - [Features](#features)
 - [Installation](#installation)
 - [How to Play](#how-to-play)
-- [Configuration](#configuration)
+- [Configuration](#Configuration)
 - [Usage Recommendations](#usage-recommendations)
 - [FAQ](#faq)
 - [Contributing](#contributing)
