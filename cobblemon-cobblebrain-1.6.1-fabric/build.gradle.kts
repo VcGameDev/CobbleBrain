@@ -13,6 +13,8 @@ repositories {
     maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
     maven("https://maven.impactdev.net/repository/development/")
     maven("https://api.modrinth.com/maven")
+    maven (url="https://maven.terraformersmc.com/releases/")
+    maven (url="https://maven.shedaniel.me/")
 }
 
 dependencies {
@@ -28,6 +30,9 @@ dependencies {
 
     // Cobblemon
     modImplementation("com.cobblemon:fabric:${property("cobblemon_version")}")
+
+    modImplementation("com.terraformersmc:modmenu:${property("modmenu_version")}")
+    modImplementation("me.shedaniel.cloth:cloth-config-fabric:${property("cloth_config_version")}")
 }
 
 tasks {

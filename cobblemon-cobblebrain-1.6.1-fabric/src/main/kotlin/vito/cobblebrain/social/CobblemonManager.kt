@@ -9,11 +9,17 @@ import net.minecraft.commands.Commands
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.google.gson.Gson
 import com.mojang.brigadier.arguments.BoolArgumentType
-import com.mojang.brigadier.arguments.DoubleArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
+import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
+import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.client.social.CobblebrainWorldSave
+import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
+import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfig
-import vito.cobblebrain.social.DialogueSystem.onPlayerChat
+import vito.cobblebrain.config.ConfigHandler
+import vito.cobblebrain.mixin.MobAccessor
 import java.io.File
 
 object PokemonQuery {
@@ -36,26 +42,31 @@ object PokemonQuery {
 object PokemonTalkCommand {
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
-            Commands.literal("mpk") // comando: /mpk <message>
-                .then(Commands.argument("message", StringArgumentType.greedyString())
-                    .executes { ctx ->
-                        val player: ServerPlayer = ctx.source.playerOrException
-                        val conteudo = StringArgumentType.getString(ctx, "message")
+            Commands.literal("mpk")
+                .then(
+                    Commands.argument("message", StringArgumentType.greedyString())
+                        .executes { ctx ->
+                            val player: ServerPlayer = ctx.source.playerOrException
+                            val conteudo = StringArgumentType.getString(ctx, "message")
 
-                        // Chama sua função já existente
-                        onPlayerChat(player, conteudo)
+                            // igual ao onPlayerChat
+                            DialogueSystem.scheduledMessages[player.uuid]?.clear()
 
-                        //remanda a mensagem no chat
-                        player.sendSystemMessage(
-                            Component.literal("${player.name.string}: $conteudo")
-                        )
+                            val ativos = PokemonQuery.findActivePokemon(player)
+                            val prompt = DialogueSystem.buildPrompt(player, ativos, "\n\n$conteudo")
 
-                        1
-                    }
+                            ServerPlayNetworking.send(player, CobblebrainClientHandler.PromptPayload(prompt))
+
+                            // opcional: ecoar mensagem original
+                            player.sendSystemMessage(Component.literal("${player.name.string}: $conteudo"))
+
+                            1
+                        }
                 )
         )
     }
 }
+
 
 object DebugPartyCommand {
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
@@ -76,152 +87,227 @@ object ConfigCommands {
     private val gson = Gson()
     private val configFile = File("config/cobblebrain.json5")
     private val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
+
     // Agora você já tem o objeto carregado
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
-            Commands.literal("setPokemonTalk")
+            Commands.literal("cobblebrain")
                 .then(
-                    Commands.argument("value", BoolArgumentType.bool())
+                    Commands.literal("guide")
+
+                        // /cobblebrain karma
                         .executes { ctx ->
-                            val value = BoolArgumentType.getBool(ctx, "value")
-                            //config.dialogueAffectFriendship = value
-                            ctx.source.sendSuccess(
-                                { Component.literal("pokemonTalk set to $value") },
-                                true
-                            )
-                            1
-                        }
-                )
-        )
+                            val player = ctx.source.playerOrException
 
-        dispatcher.register(
-            Commands.literal("setDialogueAffectFriendship")
-                .then(
-                    Commands.argument("value", BoolArgumentType.bool())
-                        .executes { ctx ->
-                            val value = BoolArgumentType.getBool(ctx, "value")
-                            //config.dialogueAffectFriendship = value
-                            ctx.source.sendSuccess(
-                                { Component.literal("dialogueAffectFriendship set to $value") },
-                                true
-                            )
-                            1
-                        }
-                )
-        )
+                            val hasSpace = player.inventory.freeSlot != -1
 
+                            if (hasSpace) {
+                                giveCobblebrainGuide(player)
 
-        dispatcher.register(
-            Commands.literal("setSpontaneousDialogueChance")
-                .then(
-                    Commands.argument("value", DoubleArgumentType.doubleArg(0.0, 1.0))
-                        .executes { ctx ->
-                            val value = DoubleArgumentType.getDouble(ctx, "value")
-                            config.spontaneousDialogueChance = value
-                            ctx.source.sendSuccess(
-                                { Component.literal("spontaneousDialogueChance set to $value") },
-                                true
-                            )
-                            1
-                        }
-                )
-        )
-
-
-        dispatcher.register(
-            Commands.literal("setListenToChat")
-                .then(
-                    Commands.argument("value", BoolArgumentType.bool())
-                        .executes { ctx ->
-                            val value = BoolArgumentType.getBool(ctx, "value")
-                            config.listenToChat = value
-                            ctx.source.sendSuccess(
-                                { Component.literal("listenToChat set to $value") },
-                                true
-                            )
-                            1
-                        }
-                )
-        )
-
-        dispatcher.register(
-            Commands.literal("addToInstruct")
-                .then(
-                    Commands.argument("value", StringArgumentType.string())
-                        .executes { ctx ->
-                            val value = StringArgumentType.getString(ctx, "value")
-
-                            // se já existe algo em instruct, concatena com espaço
-                            config.instruct = if (config.instruct.isNullOrBlank()) {
-                                value
+                                ctx.source.sendSuccess(
+                                    { Component.literal("Cobblebrain guide added to your inventory!") },
+                                    false
+                                )
                             } else {
-                                config.instruct + "\n" + value
+                                ctx.source.sendFailure(
+                                    Component.literal("Not enough inventory space!")
+                                )
+                            }
+
+                            1
+                        }
+                )
+
+                .then(
+                    Commands.literal("karma")
+
+                        // /cobblebrain karma
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            val uuid = player.uuid.toString()
+
+                            val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma")
+
+                            if (!karmaRoot.has(uuid)) {
+                                player.sendSystemMessage(
+                                    Component.literal("You have no karma yet.")
+                                        .withStyle(ChatFormatting.YELLOW)
+                                )
+                                return@executes 1
+                            }
+
+                            val playerKarma = karmaRoot.getAsJsonObject(uuid)
+
+                            player.sendSystemMessage(
+                                Component.literal("Your Karma:")
+                                    .withStyle(ChatFormatting.GOLD)
+                            )
+
+                            playerKarma.entrySet().forEach { entry ->
+                                val species = entry.key
+                                val value = entry.value.asInt
+
+                                val color = when {
+                                    value > 0 -> ChatFormatting.GREEN
+                                    value < 0 -> ChatFormatting.RED
+                                    else -> ChatFormatting.GRAY
+                                }
+
+                                player.sendSystemMessage(
+                                    Component.literal("- $species: $value")
+                                        .withStyle(color)
+                                )
+                            }
+
+                            1
+                        }
+
+                        // /cobblebrain karma <species>
+                        .then(
+                            Commands.argument("species", StringArgumentType.word())
+                                .executes { ctx ->
+                                    val player = ctx.source.playerOrException
+                                    val uuid = player.uuid.toString()
+                                    val species = StringArgumentType.getString(ctx, "species")
+
+                                    val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma")
+
+                                    if (!karmaRoot.has(uuid)) {
+                                        player.sendSystemMessage(
+                                            Component.literal("You have no karma with $species.")
+                                                .withStyle(ChatFormatting.RED)
+                                        )
+                                        return@executes 1
+                                    }
+
+                                    val playerKarma = karmaRoot.getAsJsonObject(uuid)
+                                    val entry = playerKarma.entrySet()
+                                        .firstOrNull { it.key.equals(species, ignoreCase = true) }
+                                    val value = entry?.value?.asInt ?: 0
+
+                                    val realSpeciesName = entry?.key ?: species
+                                    val color = when {
+                                        value > 0 -> ChatFormatting.GREEN
+                                        value < 0 -> ChatFormatting.RED
+                                        else -> ChatFormatting.GRAY
+                                    }
+
+                                    player.sendSystemMessage(
+                                        Component.literal("Your karma with $realSpeciesName: $value")
+                                            .withStyle(color)
+                                    )
+
+                                    1
+                                }
+                        )
+                )
+                .then(
+                    Commands.literal("SetPokemonTalk")
+                        .then(
+                            Commands.argument("value", BoolArgumentType.bool())
+                                .executes { ctx ->
+                                    val value = BoolArgumentType.getBool(ctx, "value")
+                                    ConfigHandler.config.pokemonTalk = value
+                                    ConfigHandler.save()
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("pokemonTalk set to $value") },
+                                        true
+                                    )
+                                    1
+                                }
+                        )
+                )
+                .then(
+                    Commands.literal("stopQuestFollower")
+                        .executes { ctx ->
+
+                            val source = ctx.source
+                            val player = source.playerOrException
+
+                            var stopped = 0
+
+                            val iterator = CobblebrainWorldSave.followers.entries.iterator()
+
+                            while (iterator.hasNext()) {
+                                val entry = iterator.next()
+                                val triple = entry.value
+
+                                val pokemon = triple.first
+                                val questOwner = triple.second
+                                val goal = triple.third
+
+                                if (questOwner.uuid == player.uuid) {
+                                    val accessor = pokemon as MobAccessor
+                                    accessor.getGoalSelector().removeGoal(goal)
+                                    pokemon.navigation.stop()
+                                    iterator.remove()
+                                    stopped++
+                                }
                             }
 
                             ctx.source.sendSuccess(
-                                { Component.literal("Added to instruct: \"$value\". Current instruct: ${config.instruct}") },
-                                true
+                                { Component.literal("Stopped $stopped quest follower(s).")
+                                    .withStyle(ChatFormatting.GREEN) },
+                                false
                             )
+
                             1
                         }
                 )
-        )
 
-        dispatcher.register(
-            Commands.literal("getInstruct")
-                .executes { ctx ->
-                    val current = config.instruct
-                    ctx.source.sendSuccess(
-                        { Component.literal("Current instruct:\n$current") },
-                        false
-                    )
-                    1
-                }
-        )
-
-
-        dispatcher.register(
-            Commands.literal("removeFromInstruct")
                 .then(
-                    Commands.argument("value", StringArgumentType.string())
-                        .executes { ctx ->
-                            val value = StringArgumentType.getString(ctx, "value")
-                            val current = config.instruct
-
-                            // remove todas as ocorrências exatas da substring
-                            val updated = current.replace(value, "").trim()
-
-                            config.instruct = updated
-
-                            ctx.source.sendSuccess(
-                                { Component.literal("Removed \"$value\" from instruct.") },
-                                true
-                            )
-                            1
-                        }
+                    Commands.literal("AddInstruct")
+                        .then(
+                            Commands.argument("value", StringArgumentType.string())
+                                .executes { ctx ->
+                                    val value = StringArgumentType.getString(ctx, "value")
+                                    ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.clientConfig.instruct.plus(value)
+                                    ConfigHandler.save()
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("instruct set to $value") },
+                                        true
+                                    )
+                                    1
+                                }
+                        )
                 )
-        )
-
-
-        dispatcher.register(
-            Commands.literal("setInstruct")
                 .then(
-                    Commands.argument("value", StringArgumentType.string())
-                        .executes { ctx ->
-                            val value = StringArgumentType.getString(ctx, "value")
-                            config.instruct = value
-                            ctx.source.sendSuccess(
-                                { Component.literal("instruct set to $value") },
-                                true
-                            )
-                            1
-                        }
+                    Commands.literal("SetOutputFormat")
+                        .then(
+                            Commands.argument("value", StringArgumentType.string())
+                                .executes { ctx ->
+                                    val value = StringArgumentType.getString(ctx, "value")
+                                    ClientConfigHandler.clientConfig.outputFormat = value
+                                    ConfigHandler.save()
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("outputFormat set to $value") },
+                                        true
+                                    )
+                                    1
+                                }
+                        )
+                )
+                .then(
+                    Commands.literal("SetListenToChat")
+                        .then(
+                            Commands.argument("value", BoolArgumentType.bool())
+                                .executes { ctx ->
+                                    val value = BoolArgumentType.getBool(ctx, "value")
+                                    ClientConfigHandler.clientConfig.listenToChat = value
+                                    ConfigHandler.save()
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("listenToChat set to $value") },
+                                        true
+                                    )
+                                    1
+                                }
+                        )
                 )
         )
     }
 }
 
-// codigo de debug
+        // codigo de debug
 private fun debugParty(player: ServerPlayer) {
     val party = Cobblemon.storage.getParty(player)
 

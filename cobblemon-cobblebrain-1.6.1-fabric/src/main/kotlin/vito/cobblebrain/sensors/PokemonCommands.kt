@@ -1,5 +1,6 @@
 package vito.cobblebrain.sensors
 
+import com.cobblemon.mod.common.api.pokemon.experience.ExperienceSource
 import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
@@ -25,6 +26,8 @@ import net.minecraft.world.entity.MobCategory
 import net.minecraft.world.entity.TamableAnimal
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal
 import net.minecraft.world.entity.item.ItemEntity
+import net.minecraft.world.food.FoodProperties
+import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.crafting.RecipeType
@@ -33,7 +36,7 @@ import net.minecraft.world.level.block.CropBlock
 import net.minecraft.world.level.block.SaplingBlock
 import net.minecraft.world.phys.AABB
 import org.joml.Vector3f
-import vito.cobblebrain.CobblebrainMod.config
+import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.mixin.MobAccessor
 import java.util.UUID
 
@@ -52,6 +55,7 @@ fun parseCommand(line: String): PokemonCommand? {
 
     val pokemonName = parts[0].trim()
     val action = parts[1].trim().lowercase()
+    println("$pokemonName action detected: $action")
 
     return PokemonCommand(pokemonName, action)
 }
@@ -101,6 +105,14 @@ val growCooldowns = mutableMapOf<UUID, Int>()
 val repairCooldowns: MutableMap<UUID, Long> = mutableMapOf()
 
 private val announcedStates: MutableMap<UUID, String> = mutableMapOf()
+
+enum class FoodTier {
+    COMMON,
+    UNCOMMON,
+    RARE
+}
+
+object FoodExperienceSource : ExperienceSource
 
 fun registerTickHandler() {
     var tickCounter = 0
@@ -453,11 +465,18 @@ fun registerTickHandler() {
                 "eat" -> {
                     val box = pokemon.boundingBox.inflate(8.0)
                     val items = level.getEntitiesOfClass(ItemEntity::class.java, box)
-
-
-                    // pega o item com FOOD mais próximo
                     val foodItem = items
-                        .filter { it.item.item.components().get(DataComponents.FOOD) != null }
+                        .filter { entity ->
+                            val stack = entity.item
+                            val id = BuiltInRegistries.ITEM.getKey(stack.item)
+
+                            stack.get(DataComponents.FOOD) != null ||
+                                    (id.namespace == "cobblemon" &&
+                                            (id.path.contains("berry") || id.path.contains("malasada")
+                                                    || id.path.contains("candy") || id.path.contains("sweet")
+                                                    || id.path.contains("casteliacone") || id.path.contains("candied")
+                                                    || id.path.contains("apple") || id.path.contains("cookie")))
+                        }
                         .minByOrNull { it.distanceTo(pokemon) }
 
                     val bite = biteCooldown.getOrDefault(pokemonId, 0)
@@ -473,26 +492,30 @@ fun registerTickHandler() {
                     }
 
                     if (foodItem != null && foodItem.isAlive) {
+                        val stack = foodItem.item
+                        val id = BuiltInRegistries.ITEM.getKey(stack.item)
                         pokemon.navigation.moveTo(foodItem, 1.0)
-
                         if (pokemon.distanceTo(foodItem) < 2.0f && bite <= 0) {
-                            // som de comer, se existir
-                            foodItem.item.item.eatingSound?.let { sound ->
+                            val stack = foodItem.item
+                            val foodComponent = stack.get(DataComponents.FOOD)
+
+                            stack.item.eatingSound?.let { sound ->
                                 level.playSound(null, pokemon.blockPosition(), sound, SoundSource.NEUTRAL, 1.0f, 1.0f)
                             }
-
-                            // consome 1 unidade
-                            foodItem.item.shrink(1)
-                            if (foodItem.item.isEmpty) {
+                            if (foodComponent != null) {
+                                val tier = determineFoodTier(stack.item)
+                                applyFoodEffects(pokemon, foodComponent, tier, stack.item)
+                            }
+                            else if (id.namespace == "cobblemon") {
+                                applyCobblemonBerryEffects(pokemon, stack)}
+                            stack.shrink(1)
+                            if (stack.isEmpty) {
                                 foodItem.discard()
                             }
-
-                            // cooldown de mordida (10 ticks = 0.5s)
                             biteCooldown[pokemonId] = 10
                         }
-
-                        // reset idle timer
                         eatIdleTimer[pokemonId] = 0
+
                     } else {
                         if (idle > 180) {
                             CommandState.activeCommands[pokemonId] = "idle"
@@ -502,7 +525,6 @@ fun registerTickHandler() {
                         }
                     }
 
-                    // decrementa cooldown de mordida
                     val currentBite = biteCooldown.getOrDefault(pokemonId, 0)
                     if (currentBite > 0) {
                         biteCooldown[pokemonId] = currentBite - 1
@@ -836,4 +858,239 @@ private fun isEnemy(source: LivingEntity, target: LivingEntity): Boolean {
 
     // Qualquer outro mob só é inimigo se PvE estiver habilitado
     return config.allowPokemonPVE
+}
+
+fun determineFoodTier(item: Item): FoodTier {
+    return when (
+        // RAROS – ouro / encantados
+        item) {
+        Items.GOLDEN_APPLE, Items.ENCHANTED_GOLDEN_APPLE -> FoodTier.RARE
+
+        // INCOMUNS – cozidos / craft médio
+        Items.COOKED_BEEF, Items.COOKED_CHICKEN, Items.COOKED_PORKCHOP, Items.COOKED_MUTTON,
+        Items.COOKED_RABBIT, Items.COOKED_COD, Items.COOKED_SALMON, Items.BAKED_POTATO,
+        Items.BREAD, Items.PUMPKIN_PIE, Items.RABBIT_STEW, Items.MUSHROOM_STEW, Items.GOLDEN_CARROT -> FoodTier.UNCOMMON
+
+        else -> FoodTier.COMMON
+    }
+}
+
+fun hasTypeBonus(pokemon: PokemonEntity, item: Item): Boolean {
+    val types = pokemon.pokemon.types.map { it.name.lowercase() }
+    return when {
+        "grass" in types && (
+                item == Items.WHEAT ||
+                        item == Items.CARROT ||
+                        item == Items.POTATO ||
+                        item == Items.BEETROOT ||
+                        item == Items.SWEET_BERRIES
+                ) -> true
+        "fire" in types && (
+                item == Items.COOKED_BEEF ||
+                        item == Items.COOKED_CHICKEN ||
+                        item == Items.COOKED_PORKCHOP ||
+                        item == Items.COOKED_MUTTON
+                ) -> true
+        "water" in types && (
+                item == Items.COD ||
+                        item == Items.SALMON ||
+                        item == Items.COOKED_COD ||
+                        item == Items.COOKED_SALMON
+                ) -> true
+        "poison" in types && item == Items.ROTTEN_FLESH -> true
+        "fairy" in types && (
+                item == Items.CAKE ||
+                        item == Items.PUMPKIN_PIE
+                ) -> true
+        "steel" in types && (
+                item == Items.GOLDEN_APPLE ||
+                        item == Items.ENCHANTED_GOLDEN_APPLE ||
+                        item == Items.GOLDEN_CARROT
+                ) -> true
+        else -> false
+    }
+}
+
+fun increaseFriendship(pokemonEntity: PokemonEntity, amount: Int) {
+    val pokemon = pokemonEntity.pokemon
+    pokemon.incrementFriendship(amount)
+}
+
+fun givePokemonExp(pokemonEntity: PokemonEntity, amount: Int) {
+    val pokemon = pokemonEntity.pokemon
+    // adiciona experiência
+    pokemon.addExperience(FoodExperienceSource,amount)
+    pokemonEntity.level().broadcastEntityEvent(pokemonEntity, 7.toByte())
+}
+
+fun applyCobblemonBerryEffects(pokemon: PokemonEntity, stack: ItemStack) {
+    val id = BuiltInRegistries.ITEM.getKey(stack.item)
+    val path = id.path
+
+    when {
+        path.contains("oran") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.REGENERATION,
+                    120,
+                    0
+                )
+            )
+        }
+
+        // Cura maior
+        path.contains("sitrus") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.REGENERATION,
+                    200,
+                    1
+                )
+            )
+        }
+
+        path.contains("chesto") -> {
+            pokemon.removeEffect(MobEffects.MOVEMENT_SLOWDOWN)
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.MOVEMENT_SPEED,
+                    200,
+                    0
+                )
+            )
+        }
+
+        // Cura poison
+        path.contains("pecha") -> {
+            pokemon.removeEffect(MobEffects.POISON)
+        }
+
+        // Cura burn
+        path.contains("rawst") -> {
+            pokemon.clearFire()
+            pokemon.removeEffect(MobEffects.WEAKNESS)
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.FIRE_RESISTANCE,
+                    200,
+                    0
+                )
+            )
+        }
+
+        // Cura freeze
+        path.contains("aspear") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.DAMAGE_RESISTANCE,
+                    200,
+                    0
+                )
+            )
+        }
+
+        // Recupera PP
+        path.contains("leppa") -> {
+            givePokemonExp(pokemon, 10)
+        }
+
+        // Cura todos status
+        path.contains("lum") -> {
+
+            val negative = listOf(
+                MobEffects.POISON,
+                MobEffects.WITHER,
+                MobEffects.WEAKNESS,
+                MobEffects.MOVEMENT_SLOWDOWN,
+                MobEffects.BLINDNESS,
+                MobEffects.HUNGER
+            )
+
+            negative.forEach { pokemon.removeEffect(it) }
+            pokemon.clearFire()
+        }
+
+        path.contains("chople") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.DAMAGE_RESISTANCE,
+                    200,
+                    0
+                )
+            )
+        }
+
+        path.contains("liechi") -> {
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.DAMAGE_BOOST,
+                    200,
+                    0
+                )
+            )
+        }
+
+
+    }
+}
+
+fun applyFoodEffects(
+    pokemon: PokemonEntity,
+    foodComponent: FoodProperties,
+    tier: FoodTier,
+    item: Item
+): Boolean {
+
+    val baseValue = foodComponent.nutrition() + foodComponent.saturation()
+    val bonus = hasTypeBonus(pokemon, item)
+
+    // comidas vanilla
+    when (tier) {
+
+        FoodTier.COMMON -> {
+            var healAmount = baseValue * 0.8f
+            if (bonus) healAmount *= 1.2f
+            pokemon.heal(healAmount)
+        }
+
+        FoodTier.UNCOMMON -> {
+            var healAmount = baseValue * 0.8f
+            if (bonus) healAmount *= 1.2f
+            pokemon.heal(healAmount)
+
+            increaseFriendship(pokemon, if (bonus) 4 else 2)
+            givePokemonExp(pokemon, (baseValue * 0.7).toInt())
+        }
+
+        FoodTier.RARE -> {
+            pokemon.heal(pokemon.maxHealth)
+
+            increaseFriendship(pokemon, if (bonus) 10 else 7)
+            givePokemonExp(pokemon, (baseValue).toInt())
+
+            pokemon.addEffect(
+                MobEffectInstance(
+                    MobEffects.REGENERATION,
+                    if (bonus) 400 else 200,
+                    1
+                )
+            )
+        }
+    }
+
+    val level = pokemon.level()
+
+    if (bonus && level is ServerLevel) {
+        level.sendParticles(
+            ParticleTypes.HEART,
+            pokemon.x,
+            pokemon.y + 1.0,
+            pokemon.z,
+            5,
+            0.3, 0.3, 0.3,
+            0.0
+        )
+    }
+
+    return bonus
 }

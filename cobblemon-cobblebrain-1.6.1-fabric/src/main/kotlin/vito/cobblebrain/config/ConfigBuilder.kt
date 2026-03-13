@@ -93,10 +93,13 @@ class ConfigBuilder<T> private constructor(
             "\"pokemonTalk\"" to "\n// Toggles whether Pokémon can talk or listen. This acts as a simple on/off switch for dialogue.",
             "\"allowPokemonPVP\"" to "\n// Allows Pokémon to attack other players’ Pokémon. Disabling prevents player-versus-player battles.",
             "\"allowPokemonPVE\"" to "\n// Allows Pokémon to attack mobs in the world. Exceptions include tamed mobs and non-aggressive tagged mobs.",
+            "\"scheduleRaids\"" to "\n// Determines if raids can be created in the world. Raids can happen when your karma with a species falls below -11.",
             "\"lowTokenMode\"" to "\n// Reduces world information sent to the AI. This helps conserve tokens and lower usage costs.",
             "\"dialogueOnDamage\"" to "\n// Makes Pokémon speak when someone is hurt. Dialogue is triggered by damage events.",
             "\"dialogueOnBattle\"" to "\n// Makes Pokémon speak during battle events. Dialogue reflects combat situations.",
             "\"spontaneousDialogueChance\"" to "\n// Sets the chance of spontaneous dialogue. Pokémon may speak randomly during idle moments.",
+            "\"wildPokemonTalkChance\"" to "\n// Sets the chance of wild pokemon to participate in dialogue, not generate new ones. Wild Pokémon may speak randomly during ongoing dialogues.",
+            "\"wildQuestChance\"" to "\n// Set the chance for a Pokémon to start a quest when you have a dialogue with wild Pokémon. The quests can be of the type BATTLE, ITEM, or ADVICE.",
             "\"requestTimeoutSeconds\"" to "\n// Defines the request timeout in seconds. Local models may require longer values.",
             "\"listenToChat\"" to "\n// Enables listening to regular player chat. If disabled, the AI ignores non-command messages.",
             "\"onlyNearbyChat\"" to "\n// Restricts listening to nearby players only. Works only if listenToChat is enabled.",
@@ -121,6 +124,41 @@ class ConfigBuilder<T> private constructor(
 
         PrintWriter(file).use { pw ->
             pw.print(commentedJson)
+        }
+    }
+}
+
+object ConfigHandler {
+    // instância atual da config
+    lateinit var config: CobblebrainConfig
+
+    fun load() {
+        config = ConfigBuilder.load(CobblebrainConfig::class.java, "cobblebrain")
+    }
+
+    fun save() {
+        val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
+        val json = JsonParser.parseString(gson.toJson(config)).asJsonObject
+        val file = File("config/cobblebrain.json5")
+        PrintWriter(file).use { pw ->
+            pw.print(gson.toJson(json))
+        }
+    }
+}
+
+object ClientConfigHandler {
+    lateinit var clientConfig: CobblebrainClientConfig
+
+    fun load() {
+        clientConfig = ConfigBuilder.load(CobblebrainClientConfig::class.java, "cobblebrain_client")
+    }
+
+    fun save() {
+        val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
+        val json = JsonParser.parseString(gson.toJson(clientConfig)).asJsonObject
+        val file = File("config/cobblebrain_client.json5")
+        PrintWriter(file).use { pw ->
+            pw.print(gson.toJson(json))
         }
     }
 }

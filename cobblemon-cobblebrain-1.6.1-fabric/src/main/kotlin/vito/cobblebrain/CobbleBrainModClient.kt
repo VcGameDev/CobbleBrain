@@ -4,10 +4,14 @@ import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
 import net.minecraft.client.Minecraft
 import net.minecraft.world.effect.MobEffects
+import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.config.ClientConfigHandler
 import kotlin.math.sin
 
 object CobbleBrainModClient : ClientModInitializer {
     override fun onInitializeClient() {
+        ClientConfigHandler.load()
+        CobblebrainClientHandler.registerReceivers()
         println("Cobblebrain carregado no cliente")
         HudRenderCallback.EVENT.register { guiGraphics, tickDelta ->
             val client = Minecraft.getInstance()

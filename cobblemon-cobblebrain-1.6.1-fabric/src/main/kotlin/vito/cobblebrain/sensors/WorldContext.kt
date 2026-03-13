@@ -1,5 +1,6 @@
 package vito.cobblebrain.sensors
 
+import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
@@ -12,7 +13,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.storage.LevelResource
-import vito.cobblebrain.CobblebrainMod.config
+import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.social.PokemonQuery
 import java.nio.file.Files
 import java.nio.file.Path
@@ -28,6 +29,8 @@ data class WorldContext(
     val terrainHint: String,
     val nearbyEntities: Int,
     val nearbyMobs: String,
+    val nearbyPokemon: String,
+    val nearbyPokemonEntities: List<PokemonEntity>,
     val nearbyItems: String,
     val specialBlocks: String,
     val health: Float,
@@ -78,7 +81,9 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         .filter { it != player }
 
     val nearbyEntities = nearby.size
+
     val nearbyMobs = nearby
+        .filter { it !is PokemonEntity } // exclui pokémons da lista de mobs
         .map { it.type.description.string }
         .groupingBy { it }
         .eachCount()
@@ -90,18 +95,61 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
 
     val nearbyItemsList = level.getEntitiesOfClass(
         ItemEntity::class.java,
-        player.boundingBox.inflate(8.0) // raio de 8 blocos ao redor
+        player.boundingBox.inflate(8.0)
     )
-    val nearbyItems = if (nearbyItemsList.isNotEmpty()) {
-        nearbyItemsList.joinToString { itemEntity ->
-            val stack = itemEntity.item
-            val displayName = stack.displayName.string
-            val id = BuiltInRegistries.ITEM.getKey(stack.item)
-            "$displayName (${id}) x${stack.count}"
+
+    val nearbyPokemon = level.getEntitiesOfClass(
+        PokemonEntity::class.java,
+        player.boundingBox.inflate(15.0) // raio médio
+    )
+        // exclui o time do jogador
+        .filter { entity ->
+            val ownerUuid = entity.pokemon.getOwnerUUID()
+            ownerUuid == null || ownerUuid != player.uuid
         }
+        .map { entity ->
+            val poke = entity.pokemon
+            val nickname = poke.nickname?.string ?: poke.species.resourceIdentifier.path
+            val speciesName = poke.species.resourceIdentifier.path
+            "$nickname ($speciesName)"
+        }
+        .groupingBy { it }
+        .eachCount()
+        .entries
+        .joinToString { (poke, count) ->
+            if (count > 1) "$count x $poke" else poke
+        }
+        .ifEmpty { "nenhum" }
+
+    val nearbyPokemonEntities = level.getEntitiesOfClass(
+        PokemonEntity::class.java,
+        player.boundingBox.inflate(15.0) // raio médio
+    )
+        // exclui o time do jogador
+        .filter { entity ->
+            val ownerUuid = entity.pokemon.getOwnerUUID()
+            ownerUuid == null || ownerUuid != player.uuid
+        }
+
+
+    val nearbyItems = if (nearbyItemsList.isNotEmpty()) {
+        nearbyItemsList
+            .map { itemEntity ->
+                val stack = itemEntity.item
+                val displayName = stack.displayName.string
+                val id = BuiltInRegistries.ITEM.getKey(stack.item)
+                "$displayName (${id})"
+            }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .joinToString { (item, count) ->
+                if (count > 1) "$count x $item" else item
+            }
     } else {
         "nenhum"
     }
+
 
     val specials = mutableSetOf<String>()
     BlockPos.betweenClosed(pos.offset(-5, -1, -5), pos.offset(5, 1, 5)).forEach { bp ->
@@ -136,6 +184,8 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         terrainHint,
         nearbyEntities,
         nearbyMobs,
+        nearbyPokemon,
+        nearbyPokemonEntities,
         nearbyItems,
         specialBlocks,
         health,
@@ -218,8 +268,8 @@ object MemoryStore {
                 while (targetArray.size() > maxMemories) targetArray.remove(0)
             }
 
-            if (marker == "@@" && config.maxLongMemory > 0) {
-                while (targetArray.size() > config.maxLongMemory) targetArray.remove(0)
+            if (marker == "@@" && clientConfig.maxLongMemory > 0) {
+                while (targetArray.size() > clientConfig.maxLongMemory) targetArray.remove(0)
             }
 
 
@@ -246,7 +296,7 @@ object MemoryStore {
         val longTerm = obj.getAsJsonArray("long_term")?.map { it.asString } ?: emptyList()
 
         val shortLimited = if (maxMemories > 0) shortTerm.takeLast(maxMemories) else shortTerm
-        val longLimited = if (config.maxLongMemory > 0) longTerm.takeLast(config.maxLongMemory) else longTerm
+        val longLimited = if (clientConfig.maxLongMemory > 0) longTerm.takeLast(clientConfig.maxLongMemory) else longTerm
 
         val result = mutableListOf<String>()
         if (shortLimited.isNotEmpty()) {

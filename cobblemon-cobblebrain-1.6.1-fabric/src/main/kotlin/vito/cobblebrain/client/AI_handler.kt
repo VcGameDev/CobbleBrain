@@ -1,8 +1,11 @@
-package vito.cobblebrain.social
+package vito.cobblebrain.client
 
 import com.google.gson.Gson
 import kotlinx.io.IOException
-import java.io.File
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
+import net.minecraft.client.Minecraft
+import net.minecraft.network.chat.Component
+import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -12,19 +15,18 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import kotlin.system.exitProcess
-import vito.cobblebrain.config.CobblebrainConfig
+import java.net.InetAddress
 import java.net.http.HttpTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.collections.get
 
-object KeyManager {
-    private val configFile = File("config/cobblebrain.json5")
-    private val config = Gson().fromJson(configFile.readText(), CobblebrainConfig::class.java)
+//object KeyManager {
+//    private val configFile = File("config/cobblebrain.json5")
+//    private val config = Gson().fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
-    val rotator = ApiKeyRotator(config.apiKey)
-}
+//    val rotator = ApiKeyRotator(config.apiKey)
+//}
 
 // ------------------------------------------------------------
 // DATA CLASSES
@@ -43,94 +45,111 @@ class ModelRotator(private val models: List<String>) {
     fun next() { index = (index + 1) % models.size }
 }
 
-class AIHandler(dirPath: String) {
+class AIHandler{
 
     companion object {
         private val gson = Gson()
-        private val configFile = File("config/cobblebrain.json5")
-        private val config =
-            gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
-
-        private val INSTRUCTS = config.instruct.trimIndent()
-        private val TEMPERATURE = config.temperature
-        private val PROVIDER_HINT = config.aiProvider.trim()
-        private val REASONING = config.reasoningEffort.trim().lowercase()
-        private val DEBUG = config.debugLogging
-        private val TIMEOUT_SECONDS = config.requestTimeoutSeconds
+        private val INSTRUCTS = clientConfig.instruct
+            .filterNotNull()
+            .joinToString("\n")
+        private val TEMPERATURE = clientConfig.temperature
+        private val PROVIDER_HINT = clientConfig.aiProvider.trim()
+        private val REASONING = clientConfig.reasoningEffort.trim().lowercase()
+        private val DEBUG = clientConfig.debugLogging
+        private val TIMEOUT_SECONDS = clientConfig.requestTimeoutSeconds
     }
 
     // agora usando rotadores
-    private val apiKeyRotator = ApiKeyRotator(config.apiKey)
-    private val modelRotator = ModelRotator(config.aiModel)
+    private val apiKeyRotator = ApiKeyRotator(clientConfig.apiKey)
+    private val modelRotator = ModelRotator(clientConfig.aiModel)
 
     private val apiBase =
-        config.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
+        clientConfig.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
 
-    private val comandoPath = Paths.get(dirPath, "comando_ia.txt")
-    private val respostaPath = Paths.get(dirPath, "resposta_ia.txt")
+    private val sessionLogFile: Path by lazy {
+        val dir = Minecraft.getInstance().gameDirectory.toPath()
+            .resolve("cobblebrain-ai/logs")
 
-    // ---------------- Logging ----------------
-    private val logDir = Paths.get(dirPath, "logs").also {
-        if (DEBUG) Files.createDirectories(it)
+        Files.createDirectories(dir)
+
+        val fileName = "session_${LocalDateTime.now()
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
+
+        dir.resolve(fileName)
     }
 
-    private val logFile =
-        if (DEBUG)
-            logDir.resolve(
-                "ai_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
-            )
-        else null
+    fun isLocalAddress(url: String): Boolean {
+        return try {
+            val uri = URI(url)
+            val host = uri.host ?: return false
 
+            val address = InetAddress.getByName(host)
+
+            address.isAnyLocalAddress ||
+                    address.isLoopbackAddress ||
+                    address.isSiteLocalAddress
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // ---------------- Logging ----------------
     private fun log(text: String) {
-        if (!DEBUG || logFile == null) return
-        Files.writeString(
-            logFile,
-            "[${LocalDateTime.now()}] $text\n",
-            StandardOpenOption.CREATE,
-            StandardOpenOption.APPEND
-        )
+        if (!DEBUG) return
+
+        val line = "[${LocalDateTime.now()}] $text"
+        println(line)
+
+        try {
+            Files.writeString(
+                sessionLogFile,
+                "$line\n",
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     // ---------------- Conversation ----------------
     private val historico = mutableListOf<Mensagem>()
     private var lastPromptHash: String? = null
 
-    init {
-        if (!Files.exists(comandoPath)) Files.writeString(comandoPath, "")
-        if (!Files.exists(respostaPath)) Files.writeString(respostaPath, "")
-    }
-
     // ------------------------------------------------------------
     fun start() {
-        val watchService = FileSystems.getDefault().newWatchService()
-        comandoPath.parent.register(
-            watchService,
-            StandardWatchEventKinds.ENTRY_MODIFY,
-            StandardWatchEventKinds.ENTRY_CREATE
-        )
+        //val watchService = FileSystems.getDefault().newWatchService()
+        //comandoPath.parent.register(
+            //watchService,
+            //StandardWatchEventKinds.ENTRY_MODIFY,
+           //StandardWatchEventKinds.ENTRY_CREATE
+        //)
 
         // Executor para rodar o pingHealth a cada 60s
-        if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+        if (
+            clientConfig.localApiProvider.equals("player2", ignoreCase = true)
+            && isLocalAddress(clientConfig.apiBaseUrl)
+        ) {
             val scheduler = Executors.newSingleThreadScheduledExecutor()
             scheduler.scheduleAtFixedRate({ pingHealth() }, 0, 60, TimeUnit.SECONDS)
         }
 
-        while (true) {
-            try {
-                val key = watchService.take()
-                for (event in key.pollEvents()) {
-                    if ((event.context() as Path).endsWith(comandoPath.fileName)) {
-                        Thread.sleep(60)
-                        println("tentativa de processcommandfile")
-                        processCommandFile()
-                    }
-                }
-                key.reset()
-            } catch (e: Exception) {
-                Thread.sleep(200)
-            }
+        //while (true) {
+            //try {
+                //val key = watchService.take()
+                //for (event in key.pollEvents()) {
+                    //if ((event.context() as Path).endsWith(comandoPath.fileName)) {
+                        //Thread.sleep(60)
+                        //println("tentativa de processcommandfile")
+                        //processCommandFile()
+                    //}
+                //}
+                //key.reset()
+            //} catch (e: Exception) {
+                //Thread.sleep(200)
+            //}
         }
-    }
+    //}
 
     private fun pingHealth() {
         try {
@@ -160,9 +179,9 @@ class AIHandler(dirPath: String) {
 
 
     private fun rotateApiKey(status: Int) {
-        if (config.keyRotation && status in config.keyRotationTrigger) {
+        if (clientConfig.keyRotation && status in clientConfig.keyRotationTrigger) {
             apiKeyRotator.next()
-            if (apiKeyRotator.current() == config.apiKey.first()) {
+            if (apiKeyRotator.current() == clientConfig.apiKey.first()) {
                 val msg = "API key rotation has cycled through all keys and returned to the first key. First key: ${apiKeyRotator.current()}."
                 sendSystemMessage(msg)
             } else {
@@ -173,10 +192,10 @@ class AIHandler(dirPath: String) {
     }
 
     private fun rotateModel(status: Int) {
-        if (config.modelRotation && status in config.modelRotationTrigger) {
+        if (clientConfig.modelRotation && status in clientConfig.modelRotationTrigger) {
             modelRotator.next()
             println("func de rotate ativa")
-            if (modelRotator.current() == config.aiModel.first()) {
+            if (modelRotator.current() == clientConfig.aiModel.first()) {
                 val msg = "Model rotation has cycled through all models and returned to the first model. First model: ${modelRotator.current()} \n"
                 sendSystemMessage(msg)
             } else {
@@ -187,50 +206,36 @@ class AIHandler(dirPath: String) {
     }
 
     private fun sendSystemMessage(msg: String) {
-        Files.writeString(respostaPath, msg,StandardOpenOption.APPEND)
+        Minecraft.getInstance().player?.sendSystemMessage(Component.literal(msg))
         log("SYSTEM MESSAGE: $msg")
     }
 
     // ------------------------------------------------------------
-    private fun processCommandFile() {
-        if (!config.pokemonTalk) return
+    //private fun processCommandFile() {
+        //if (!config.pokemonTalk) return
 
-        val fullText = Files.readString(comandoPath).trim()
-        println(comandoPath.fileName.toString())
-        if (fullText.isEmpty()) return
+        //val fullText = Files.readString(comandoPath).trim()
+        //println(comandoPath.fileName.toString())
+        //if (fullText.isEmpty()) return
 
         // usa o prompt inteiro como base do hash
-        val hash = sha256(fullText)
-        if (hash == lastPromptHash) {
-            println("duplicata detectada")
-            return
-        }
+        //val hash = sha256(fullText)
+        //if (hash == lastPromptHash) {
+           // println("duplicata detectada")
+            //return
+        //}
 
-        lastPromptHash = hash
+        //lastPromptHash = hash
 
         // log detalhado mostrando início do prompt e hash
-        log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
-        log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
+        //log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
+        //log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
 
-        println("processcommandfile ativo")
-        enviarMensagem(fullText)
-    }
+        //println("processcommandfile ativo")
+        //enviarMensagem(fullText)
+    //}
 
     // ------------------------------------------------------------
-    private fun enviarMensagem(prompt: String) {
-        println(INSTRUCTS + config.outputFormat)
-        if (prompt == "/end") exitProcess(0)
-
-        try {
-            println("tentativa de acionar respostaNormal")
-            respostaNormal(prompt)
-        } catch (e: Exception) {
-            lastPromptHash = null
-            Files.writeString(respostaPath, "Erro interno: ${e.message}")
-            println("tentativa falha")
-        }
-    }
-
     // Lista de erros HTTP mais comuns
     private val errorMessages = mapOf(
         400 to """
@@ -311,16 +316,15 @@ class AIHandler(dirPath: String) {
         return apiBase.contains("127.0.0.1") || apiBase.contains("localhost")
     }
 
-    private fun respostaNormal(prompt: String) {
-        println("RespostaNormal ativada")
+    fun respostaNormal(prompt: String): String {
+        println("respostaNormal activated")
         val responseText = try {
             when {
                 apiBase.contains("generativelanguage.googleapis.com") -> {
                     callGoogleGemma(prompt)
                 }
                 isLocalApi(apiBase) -> {
-                    // Local: tanto Player2 quanto LM Studio usam o mesmo caller
-                    println("Usando provider local: ${config.localApiProvider}")
+                    println("Using local provider: ${clientConfig.localApiProvider}")
                     callOpenAISchema(prompt)
                 }
                 else -> {
@@ -328,30 +332,19 @@ class AIHandler(dirPath: String) {
                 }
             }
         } catch (e: Exception) {
-            println("erro na requisição")
+            println("Request error")
             when (e) {
-                is HttpTimeoutException -> "Erro: Timeout na requisição"
-                is IOException -> "Erro: Problema de rede (${e.message})"
-                else -> "Erro: ${e.message}"
+                is HttpTimeoutException -> "Error: Request timeout"
+                is IOException -> "Error: Network problem (${e.message})"
+                else -> "Error: ${e.message}"
             }
         }
 
-    // Se vier erro ou vazio
-        if (responseText.isBlank() || responseText.startsWith("Erro")) {
+        if (responseText.isBlank() || responseText.startsWith("Error")) {
             val msg = extractErrorMessage(responseText)
-
-            // Loga o erro junto com o hash do prompt
-            val hash = sha256(prompt)
-            Files.writeString(
-                respostaPath,
-                msg,StandardOpenOption.APPEND
-            )
-
-            // Resetar o hash garante que não trava novas tentativas
             lastPromptHash = null
-
-            log("Erro tratado para prompt $hash: $msg")
-            return
+            log("Error handled for prompt ${sha256(prompt)}: $msg")
+            return msg
         }
 
         val formatted = responseText
@@ -359,16 +352,36 @@ class AIHandler(dirPath: String) {
             .replace("\n", "|")
             .replace("\\", "")
 
-        Files.writeString(respostaPath, formatted)
-
         historico.add(Mensagem("user", prompt))
         historico.add(Mensagem("assistant", responseText))
         limitarHistorico()
+
+        println("[CLIENT] Sending AIResponsePayload to server")
+        println("[CLIENT] Sending payload id: " + CobblebrainClientHandler.AIResponsePayload.TYPE.id())
+
+        Minecraft.getInstance().execute {
+            println("[CLIENT] Actually sending packet now (main thread)")
+            ClientPlayNetworking.send(
+                CobblebrainClientHandler.AIResponsePayload(formatted)
+            )
+        }
+        return formatted
     }
 
+
     private fun callOpenAISchema(prompt: String): String {
+        log("===== OPENAI REQUEST =====")
+        log("Local Provider: ${clientConfig.localApiProvider}")
+        log("ApiBaseUrl: ${clientConfig.apiBaseUrl}")
+        log("Model: ${clientConfig.aiModel}")
+
+        log("\n--- PROMPT ---")
+        log(prompt)
+
         val jsonBody = buildOpenAIJson(prompt)
-        log("REQUEST JSON:\n${jsonBody.lines().joinToString("\n") { "│ $it" }}")
+
+        log("\n--- REQUEST JSON ---")
+        log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
         val builder = HttpRequest.newBuilder()
             .uri(URI.create("$apiBase/v1/chat/completions"))
@@ -376,14 +389,21 @@ class AIHandler(dirPath: String) {
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
-        // 🔑 Autenticação
-        if (config.localApiProvider.equals("player2", ignoreCase = true)) {
-            // Player2 exige Game Client id no header
+        // Autenticação
+        if (
+            clientConfig.localApiProvider.equals("player2", ignoreCase = true)
+            && isLocalAddress(clientConfig.apiBaseUrl)
+        ) {
             builder.header("player2-game-key", "019bfb65-9ed4-79af-a348-90d86bbb6cbb")
+            log("Auth: player2-game-key header")
         } else {
-            // Padrão OpenAI / OpenRouter / LM Studio
             val key = apiKeyRotator.current()
             if (key.isNotBlank()) {
+                val masked = if (key.length > 8)
+                    key.take(4) + "..." + key.takeLast(4)
+                else "INVALID_KEY"
+
+                log("Auth: Bearer $masked")
                 builder.header("Authorization", "Bearer $key")
             }
         }
@@ -391,6 +411,7 @@ class AIHandler(dirPath: String) {
         val req = builder.build()
 
         return try {
+
             val client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
@@ -398,20 +419,42 @@ class AIHandler(dirPath: String) {
 
             val res = client.send(req, HttpResponse.BodyHandlers.ofString())
 
-            log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
+            log("\n===== OPENAI RESPONSE =====")
+            log("HTTP ${res.statusCode()}")
+            log(res.body())
 
             if (res.statusCode() != 200) {
-                // ROTACIONA AQUI
+                log("Error code detected: ${res.statusCode()}")
                 rotateApiKey(res.statusCode())
                 rotateModel(res.statusCode())
                 throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
-            return extractOpenAIContent(res.body())
+            extractOpenAIContent(res.body())
 
         } catch (e: Exception) {
-            log("ERROR: ${e.message}")
-            "Erro API: ${e.message}"
+
+            val env = net.fabricmc.loader.api.FabricLoader
+                .getInstance()
+                .environmentType
+                .name
+
+            val thread = Thread.currentThread().name
+            val time = LocalDateTime.now()
+
+            log("\n===== AI ERROR =====")
+            log("Time: $time")
+            log("Side: $env")
+            log("Thread: $thread")
+            log("Provider: ${clientConfig.localApiProvider}")
+            log("API Base: $apiBase")
+            log("Exception: ${e::class.qualifiedName}")
+            log("Message: ${e.message}")
+            log("Cause: ${e.cause?.message}")
+            log("Stacktrace:")
+            e.printStackTrace()
+
+            "Erro API (${clientConfig.localApiProvider} | $env): ${e.message}"
         }
     }
 
@@ -420,7 +463,7 @@ class AIHandler(dirPath: String) {
 
     private fun isLMStudio() =
         // ajuste conforme sua URL local do LM Studio
-        config.localApiProvider.contains("lmstudio", ignoreCase = true)
+        clientConfig.localApiProvider.contains("lmstudio", ignoreCase = true)
 
     //private fun usesMaxTokens(apiBase: String) =
         //isOpenRouter(apiBase) || isLMStudio(apiBase)
@@ -463,11 +506,14 @@ class AIHandler(dirPath: String) {
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
         // Se for Player2, não inclui "model"
-        return if (config.localApiProvider.equals("player2", ignoreCase = true)) {
+        return if (
+            clientConfig.localApiProvider.equals("player2", ignoreCase = true) &&
+            isLocalAddress(clientConfig.apiBaseUrl)
+        ) {
             """
         {
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
+            { "role": "system", "content": "${escape(INSTRUCTS + clientConfig.outputFormat)}" },
             $messages
           ]$extraJson
         }
@@ -477,7 +523,7 @@ class AIHandler(dirPath: String) {
         {
           "model": "${modelRotator.current()}",
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + config.outputFormat)}" },
+            { "role": "system", "content": "${escape(INSTRUCTS + clientConfig.outputFormat)}" },
             $messages
           ]$extraJson
         }
@@ -520,26 +566,48 @@ class AIHandler(dirPath: String) {
 
     // ================= GOOGLE GEMMA / GEMINI =================
     private fun callGoogleGemma(prompt: String): String {
-        val url = "$apiBase/v1beta/models/${modelRotator.current()}:generateContent?key=${apiKeyRotator.current()}"
+
+        val currentModel = modelRotator.current()
+        val currentKey = apiKeyRotator.current()
+
+        val maskedKey = if (currentKey.length > 8)
+            currentKey.take(4) + "..." + currentKey.takeLast(4)
+        else
+            "INVALID_KEY"
+
+        log("===== GOOGLE GEMMA REQUEST =====")
+        log("Model: $currentModel")
+        log("API Key: $maskedKey")
+
+        log("\n--- PROMPT ---")
+        log(prompt)
+
+        val url = "$apiBase/v1beta/models/$currentModel:generateContent?key=$currentKey"
 
         val requestBody = mapOf(
             "contents" to listOf(
-                // instruções fixas (equivalente ao "system" em OpenAI)
                 mapOf(
                     "role" to "user",
-                    "parts" to listOf(mapOf("text" to escape(INSTRUCTS + config.outputFormat))),
+                    "parts" to listOf(
+                        mapOf("text" to escape(INSTRUCTS + clientConfig.outputFormat))
+                    )
                 ),
-                // prompt real do usuário
                 mapOf(
                     "role" to "user",
-                    "parts" to listOf(mapOf("text" to escape(prompt)))
+                    "parts" to listOf(
+                        mapOf("text" to escape(prompt))
+                    )
                 )
             ),
-            "generationConfig" to mapOf("temperature" to TEMPERATURE)
+            "generationConfig" to mapOf(
+                "temperature" to TEMPERATURE
+            )
         )
 
         val jsonBody = gson.toJson(requestBody)
-        log("REQUEST JSON:\n${jsonBody.lines().joinToString("\n") { "│ $it" }}")
+
+        log("\n--- REQUEST JSON ---")
+        log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
         val req = HttpRequest.newBuilder()
             .uri(URI.create(url))
@@ -549,6 +617,7 @@ class AIHandler(dirPath: String) {
             .build()
 
         return try {
+
             val client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_2)
                 .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
@@ -556,20 +625,26 @@ class AIHandler(dirPath: String) {
 
             val res = client.send(req, HttpResponse.BodyHandlers.ofString())
 
-            log("HTTP ${res.statusCode()} RESPONSE:\n${res.body()}")
+            log("\n===== GOOGLE GEMMA RESPONSE =====")
+            log("HTTP ${res.statusCode()}")
+            log(res.body())
 
             if (res.statusCode() != 200) {
-                // ROTACIONA AQUI
-                println(res.statusCode())
+                log("Error code detected: ${res.statusCode()}")
                 rotateApiKey(res.statusCode())
                 rotateModel(res.statusCode())
                 throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
-            return extractGoogleGemmaContent(res.body())
+            extractGoogleGemmaContent(res.body())
 
         } catch (e: Exception) {
-            log("ERROR: ${e.message}")
+
+            log("\n===== GOOGLE GEMMA ERROR =====")
+            log("Type: ${e::class.simpleName}")
+            log("Message: ${e.message}")
+            e.printStackTrace()
+
             "Erro API Google: ${e.message}"
         }
     }
@@ -605,5 +680,5 @@ class AIHandler(dirPath: String) {
 
 // ------------------------------------------------------------
 fun main() {
-    AIHandler(Paths.get("").toAbsolutePath().toString()).start()
+    AIHandler().start()
 }
