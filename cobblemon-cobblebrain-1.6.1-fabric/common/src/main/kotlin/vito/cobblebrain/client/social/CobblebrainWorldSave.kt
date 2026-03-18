@@ -15,12 +15,19 @@ import net.minecraft.network.chat.Component
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.network.Filterable
+import net.minecraft.world.entity.Mob
 import net.minecraft.world.level.storage.LevelResource
 import net.minecraft.world.entity.ai.goal.Goal
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.WrittenBookContent
-import vito.cobblebrain.mixin.MobAccessor
+
+object MobBridge {
+    lateinit var addGoal: (Mob, Int, Goal) -> Unit
+    lateinit var removeGoal: (Mob, Goal) -> Unit
+
+    lateinit var getGoals: (Mob) -> List<Goal>
+}
 
 class FollowPlayerGoal(
     val pokemon: PokemonEntity,
@@ -154,8 +161,7 @@ object CobblebrainWorldSave {
         giver.isNoAi = false
 
         val goal = FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0)
-        val accessor = giver as MobAccessor
-        accessor.getGoalSelector().addGoal(1, goal)
+        MobBridge.addGoal(giver, 1, goal)
 
         followers[giver.uuid.toString()] = Triple(giver, player, goal)
     }
@@ -331,8 +337,7 @@ object CobblebrainWorldSave {
             val pokemon = triple.first
             val goal = triple.third
 
-            val accessor = pokemon as MobAccessor
-            accessor.getGoalSelector().removeGoal(goal)
+            MobBridge.removeGoal(pokemon, goal)
 
             pokemon.navigation.stop()
             followers.remove(giverUuid)

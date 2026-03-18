@@ -25,6 +25,7 @@ import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MobCategory
 import net.minecraft.world.entity.TamableAnimal
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal
+import net.minecraft.world.entity.ai.goal.Goal
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.food.FoodProperties
 import net.minecraft.world.item.Item
@@ -37,7 +38,6 @@ import net.minecraft.world.level.block.SaplingBlock
 import net.minecraft.world.phys.AABB
 import org.joml.Vector3f
 import vito.cobblebrain.config.ConfigHandler.config
-import vito.cobblebrain.mixin.MobAccessor
 import java.util.UUID
 
 // 1) Estrutura do comando
@@ -69,25 +69,28 @@ object CommandState {
 // guarda goals removidos para restaurar depois
 private val disabledGoals: MutableMap<UUID, List<net.minecraft.world.entity.ai.goal.Goal>> = mutableMapOf()
 
+object MobBridge {
+    lateinit var addGoal: (Mob, Int, Goal) -> Unit
+    lateinit var removeGoal: (Mob, Goal) -> Unit
+    lateinit var getGoals: (Mob) -> List<Goal>
+}
+
 private fun enterAttackMode(pokemon: Mob) {
-    val mobAccessor = pokemon as MobAccessor
-    val toDisable = mobAccessor.goalSelector.availableGoals
-        .map { it.goal }
+    val toDisable = MobBridge.getGoals(pokemon)
         .filterIsInstance<FollowOwnerGoal>()
 
     if (toDisable.isNotEmpty()) {
         disabledGoals[pokemon.uuid] = toDisable
-        toDisable.forEach { mobAccessor.goalSelector.removeGoal(it) }
+        toDisable.forEach { MobBridge.removeGoal(pokemon, it) }
     }
-
     pokemon.isAggressive = true
 }
 
 private fun exitAttackMode(pokemon: Mob) {
-    val mobAccessor = pokemon as MobAccessor
     disabledGoals.remove(pokemon.uuid)?.forEach { goal ->
-        mobAccessor.goalSelector.addGoal(2, goal) // prioridade 2 é exemplo
+        MobBridge.addGoal(pokemon, 2, goal)
     }
+
     pokemon.isAggressive = false
     pokemon.target = null
 }

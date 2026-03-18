@@ -14,10 +14,10 @@ import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
+import vito.cobblebrain.client.social.MobBridge
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.config.ConfigHandler
-import vito.cobblebrain.mixin.MobAccessor
 import java.io.File
 
 object PokemonQuery {
@@ -235,8 +235,7 @@ object ConfigCommands {
                                 val goal = triple.third
 
                                 if (questOwner.uuid == player.uuid) {
-                                    val accessor = pokemon as MobAccessor
-                                    accessor.getGoalSelector().removeGoal(goal)
+                                    MobBridge.removeGoal(pokemon, goal)
                                     pokemon.navigation.stop()
                                     iterator.remove()
                                     stopped++

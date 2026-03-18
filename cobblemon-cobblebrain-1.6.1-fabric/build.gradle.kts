@@ -21,6 +21,8 @@ allprojects {
         mavenLocal()
         mavenCentral()
 
+        maven("https://maven.neoforged.net/releases/")
+        maven("https://thedarkcolour.github.io/KotlinForForge/")
         maven("https://maven.fabricmc.net/")
         maven("https://maven.architectury.dev/")
         maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")

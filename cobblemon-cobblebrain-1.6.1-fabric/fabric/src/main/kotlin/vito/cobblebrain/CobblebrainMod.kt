@@ -11,13 +11,15 @@ import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
+import vito.cobblebrain.client.social.MobBridge
 import vito.cobblebrain.config.ConfigHandler
+import vito.cobblebrain.mixin.MobAccessor
 import vito.cobblebrain.sensors.CommandTickHandlerFabric
 import vito.cobblebrain.social.ConfigCommands
 import vito.cobblebrain.social.DialogueSystem
 import vito.cobblebrain.social.DialogueSystemFabric
 import vito.cobblebrain.social.PokemonTalkCommand
-import vito.cobblebrain.social.WorldEventsSystem
+import vito.cobblebrain.social.WorldEventsSystemFabric
 
 
 object CobblebrainMod : ModInitializer {
@@ -26,8 +28,22 @@ object CobblebrainMod : ModInitializer {
 
     // Quando o jogo inicializa
     override fun onInitialize() {
+        MobBridge.addGoal = { mob, priority, goal ->
+            val accessor = mob as MobAccessor
+            accessor.goalSelector.addGoal(priority, goal)
+        }
+
+        MobBridge.removeGoal = { mob, goal ->
+            val accessor = mob as MobAccessor
+            accessor.goalSelector.removeGoal(goal)
+        }
+
+        MobBridge.getGoals = { mob ->
+            val accessor = mob as MobAccessor
+            accessor.goalSelector.availableGoals.map { it.goal }
+        }
         DialogueSystemFabric.register()
-        WorldEventsSystem.register()
+        WorldEventsSystemFabric.register()
         ConfigHandler.load()
         val pasta = File("cobblebrain-ai")
 

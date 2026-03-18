@@ -1,11 +1,10 @@
 package vito.cobblebrain.client
 
 import com.google.gson.Gson
-import kotlinx.io.IOException
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
+import java.io.IOException
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -318,6 +317,7 @@ class AIHandler{
 
     fun respostaNormal(prompt: String): String {
         println("respostaNormal activated")
+
         val responseText = try {
             when {
                 apiBase.contains("generativelanguage.googleapis.com") -> {
@@ -356,15 +356,10 @@ class AIHandler{
         historico.add(Mensagem("assistant", responseText))
         limitarHistorico()
 
-        println("[CLIENT] Sending AIResponsePayload to server")
-        println("[CLIENT] Sending payload id: " + CobblebrainClientHandler.AIResponsePayload.TYPE.id())
+        println("[COMMON] Sending response to server")
 
-        Minecraft.getInstance().execute {
-            println("[CLIENT] Actually sending packet now (main thread)")
-            ClientPlayNetworking.send(
-                CobblebrainClientHandler.AIResponsePayload(formatted)
-            )
-        }
+        CobblebrainClientCommon.sendToServer?.invoke(formatted)
+
         return formatted
     }
 
@@ -434,17 +429,14 @@ class AIHandler{
 
         } catch (e: Exception) {
 
-            val env = net.fabricmc.loader.api.FabricLoader
-                .getInstance()
-                .environmentType
-                .name
+            val getEnvironment: (() -> String)? = null
 
             val thread = Thread.currentThread().name
             val time = LocalDateTime.now()
 
             log("\n===== AI ERROR =====")
             log("Time: $time")
-            log("Side: $env")
+            log("Side: $getEnvironment")
             log("Thread: $thread")
             log("Provider: ${clientConfig.localApiProvider}")
             log("API Base: $apiBase")
@@ -454,7 +446,7 @@ class AIHandler{
             log("Stacktrace:")
             e.printStackTrace()
 
-            "Erro API (${clientConfig.localApiProvider} | $env): ${e.message}"
+            "Erro API (${clientConfig.localApiProvider} | $getEnvironment): ${e.message}"
         }
     }
 
