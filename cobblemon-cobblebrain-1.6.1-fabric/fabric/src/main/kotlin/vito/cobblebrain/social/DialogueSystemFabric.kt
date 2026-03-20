@@ -9,7 +9,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.MinecraftServer
-import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.network.CobblebrainPayloads
 
 object DialogueSystemFabric {
     fun register() {
@@ -45,7 +45,7 @@ object DialogueSystemFabric {
         DialogueSystem.sendToPlayer = { player, prompt ->
             ServerPlayNetworking.send(
                 player,
-                CobblebrainClientHandler.PromptPayload(prompt)
+                CobblebrainPayloads.PromptPayload(prompt)
             )
         }
 

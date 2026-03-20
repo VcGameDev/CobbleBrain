@@ -1,43 +1,11 @@
-package vito.cobblebrain.client
+package vito.cobblebrain.network
 
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
-import vito.cobblebrain.currentServer
 
-object CobblebrainClientHandler {
-    fun registerReceivers() {
-        // inicia IA
-        ClientLifecycleEvents.CLIENT_STARTED.register {
-            AIHandler().start()
-        }
-
-        // conecta envio do Common → Server
-        CobblebrainClientCommon.sendToServer = { response ->
-            if (currentServer != null) {
-                ClientPlayNetworking.send(AIResponsePayload(response))
-            }
-
-            ClientPlayNetworking.send(
-                AIResponsePayload(response)
-            )
-        }
-
-        // recebe prompt do server
-        ClientPlayNetworking.registerGlobalReceiver(PromptPayload.TYPE) { payload, context ->
-            val prompt = payload.prompt
-
-            context.client().execute {
-                CobblebrainClientCommon.onPromptReceived(prompt)
-            }
-        }
-    }
-
-    // ===== PAYLOADS (Fabric only) =====
-
+object CobblebrainPayloads {
     data class PromptPayload(val prompt: String) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "send_prompt")
@@ -67,6 +35,7 @@ object CobblebrainClientHandler {
 
         override fun type() = TYPE
     }
+
     data class ActionPayload(val action: String) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "send_action")
@@ -79,6 +48,6 @@ object CobblebrainClientHandler {
                 )
         }
 
-        override fun type(): CustomPacketPayload.Type<ActionPayload> = TYPE
+        override fun type() = TYPE
     }
 }

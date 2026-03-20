@@ -1,33 +1,43 @@
 package vito.cobblebrain
 
-import net.fabricmc.api.ModInitializer
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import vito.cobblebrain.social.DebugPartyCommand
-import java.io.File
-import net.minecraft.server.MinecraftServer
-import vito.cobblebrain.client.CobblebrainClientHandler
+import net.minecraft.server.level.ServerPlayer
+import net.neoforged.bus.api.IEventBus
+import vito.cobblebrain.client.CobblebrainClientHandlerNeoForge
 import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.client.social.MobBridge
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.mixin.MobAccessor
-import vito.cobblebrain.sensors.CommandTickHandlerFabric
 import vito.cobblebrain.social.ConfigCommands
 import vito.cobblebrain.social.DialogueSystem
-import vito.cobblebrain.social.DialogueSystemFabric
 import vito.cobblebrain.social.PokemonTalkCommand
-import vito.cobblebrain.social.WorldEventsSystemFabric
+import net.neoforged.fml.common.Mod
+import net.neoforged.bus.api.SubscribeEvent
+import net.neoforged.fml.loading.FMLEnvironment
+import net.neoforged.neoforge.common.NeoForge
+import net.neoforged.neoforge.event.RegisterCommandsEvent
+import net.neoforged.neoforge.event.server.ServerStartedEvent
+import net.neoforged.neoforge.event.server.ServerStoppingEvent
+import net.neoforged.neoforge.event.entity.player.PlayerEvent
+import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
+import vito.cobblebrain.sensors.CommandTickHandlerNeoForge
+import vito.cobblebrain.server.CobblebrainServerHandlerNeoForge
+import vito.cobblebrain.social.DialogueSystemNeoForge
+import vito.cobblebrain.social.WorldEventsSystemNeoForge
+import java.io.File
 
+@Mod("cobblebrain")
+class CobblebrainNeoForge(modEventBus: IEventBus) {
+    init {
+        println("o mod cobblebrain carregou (NeoForge)")
+        modEventBus.addListener(CobblebrainServerHandlerNeoForge::registerPayloads)
 
-object CobblebrainMod : ModInitializer {
-    @Suppress("MemberVisibilityCanBePrivate")
-    const val MOD_ID = "cobblebrain"
+        if (FMLEnvironment.dist.isClient) {
+            modEventBus.addListener(CobblebrainClientHandlerNeoForge::registerPayloads)
+        }
 
-    // Quando o jogo inicializa
-    override fun onInitialize() {
+        // ===== MOB BRIDGE =====
         MobBridge.addGoal = { mob, priority, goal ->
             val accessor = mob as MobAccessor
             accessor.goalSelector.addGoal(priority, goal)
@@ -42,69 +52,61 @@ object CobblebrainMod : ModInitializer {
             val accessor = mob as MobAccessor
             accessor.goalSelector.availableGoals.map { it.goal }
         }
-        DialogueSystemFabric.register()
-        WorldEventsSystemFabric.register()
+
+        // ===== SISTEMAS =====
+        DialogueSystemNeoForge.register()
+        CobbleBrainModClientNeoForge.init()
+        WorldEventsSystemNeoForge.register()
+        CommandTickHandlerNeoForge.registerTickHandler()
+
+        // ===== NETWORKING HOOK =====
+        DialogueSystem.sendToPlayer = { player, prompt ->
+            CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
+        }
+
+        // ===== CONFIG =====
         ConfigHandler.load()
+
         val pasta = File("cobblebrain-ai")
+        if (!pasta.exists()) pasta.mkdirs()
 
-        // cria a pasta se não existir
-        if (!pasta.exists()) {
-            pasta.mkdirs()
+        // ===== EVENT BUS =====
+        NeoForge.EVENT_BUS.register(this)
+    }
+
+    @SubscribeEvent
+    fun onRegisterCommands(event: RegisterCommandsEvent) {
+        val dispatcher = event.dispatcher
+
+        DebugPartyCommand.register(dispatcher)
+        PokemonTalkCommand.register(dispatcher)
+        ConfigCommands.register(dispatcher)
+    }
+
+    @SubscribeEvent
+    fun onServerStart(event: ServerStartedEvent) {
+        val server = event.server
+        currentServer = server
+
+        CobblebrainWorldSave.init(server)
+        ConfigHandler.load()
+    }
+
+    @SubscribeEvent
+    fun onPlayerJoin(event: PlayerEvent.PlayerLoggedInEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        val server = player.server
+
+        DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
+
+        if (!CobblebrainWorldSave.hasReceivedGuide(player)) {
+            giveCobblebrainGuide(player)
+            CobblebrainWorldSave.markGuideReceived(player)
         }
+    }
 
-        println("o mod cobblebrain carregou")
-        CommandTickHandlerFabric.registerTickHandler()
-
-        // registra o tipo de payload PROMPT (server → client)
-        PayloadTypeRegistry.playS2C().register(
-            CobblebrainClientHandler.PromptPayload.TYPE,
-            CobblebrainClientHandler.PromptPayload.CODEC
-        )
-
-        PayloadTypeRegistry.playC2S().register(
-            CobblebrainClientHandler.ActionPayload.TYPE,
-            CobblebrainClientHandler.ActionPayload.CODEC
-        )
-
-        PayloadTypeRegistry.playC2S().register(
-            CobblebrainClientHandler.AIResponsePayload.TYPE,
-            CobblebrainClientHandler.AIResponsePayload.CODEC
-        )
-
-        // registra handlers de networking
-        vito.cobblebrain.server.CobblebrainServerHandlerFabric.register()
-
-        // Aqui registramos o comando
-        CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
-            DebugPartyCommand.register(dispatcher)
-            PokemonTalkCommand.register(dispatcher)
-            ConfigCommands.register(dispatcher)
-        }
-
-        ServerLifecycleEvents.END_DATA_PACK_RELOAD.register { _, _, _ ->
-            ConfigHandler.load()
-
-        }
-
-        ServerLifecycleEvents.SERVER_STARTED.register { server: MinecraftServer ->
-            currentServer = server
-            // remover se der problemas
-            CobblebrainWorldSave.init(server)
-        }
-
-        ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
-            val player = handler.player
-            DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
-
-            if (!CobblebrainWorldSave.hasReceivedGuide(player)) {
-                giveCobblebrainGuide(player)
-                CobblebrainWorldSave.markGuideReceived(player)
-            }
-        }
-
-        // limpa quando o servidor para
-        ServerLifecycleEvents.SERVER_STOPPED.register {
-            currentServer = null
-        }
+    @SubscribeEvent
+    fun onServerStop(event: ServerStoppingEvent) {
+        currentServer = null
     }
 }

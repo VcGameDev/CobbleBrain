@@ -8,12 +8,13 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import vito.cobblebrain.social.DebugPartyCommand
 import java.io.File
 import net.minecraft.server.MinecraftServer
-import vito.cobblebrain.client.CobblebrainClientHandler
 import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.client.social.MobBridge
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.mixin.MobAccessor
+import vito.cobblebrain.network.CobblebrainNetworkingFabric
+import vito.cobblebrain.network.CobblebrainPayloads
 import vito.cobblebrain.sensors.CommandTickHandlerFabric
 import vito.cobblebrain.social.ConfigCommands
 import vito.cobblebrain.social.DialogueSystem
@@ -57,18 +58,18 @@ object CobblebrainMod : ModInitializer {
 
         // registra o tipo de payload PROMPT (server → client)
         PayloadTypeRegistry.playS2C().register(
-            CobblebrainClientHandler.PromptPayload.TYPE,
-            CobblebrainClientHandler.PromptPayload.CODEC
+            CobblebrainPayloads.PromptPayload.TYPE,
+            CobblebrainPayloads.PromptPayload.CODEC
         )
 
         PayloadTypeRegistry.playC2S().register(
-            CobblebrainClientHandler.ActionPayload.TYPE,
-            CobblebrainClientHandler.ActionPayload.CODEC
+            CobblebrainPayloads.ActionPayload.TYPE,
+            CobblebrainPayloads.ActionPayload.CODEC
         )
 
         PayloadTypeRegistry.playC2S().register(
-            CobblebrainClientHandler.AIResponsePayload.TYPE,
-            CobblebrainClientHandler.AIResponsePayload.CODEC
+            CobblebrainPayloads.AIResponsePayload.TYPE,
+            CobblebrainPayloads.AIResponsePayload.CODEC
         )
 
         // registra handlers de networking

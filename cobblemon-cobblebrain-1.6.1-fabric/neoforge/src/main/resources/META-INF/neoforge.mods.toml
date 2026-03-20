@@ -1,0 +1,44 @@
+modLoader="javafml"
+loaderVersion="[2,)"
+license="MIT"
+
+[[mods]]
+modId="cobblebrain"
+version="1.0.0"
+displayName="CobbleBrain"
+description='''
+a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons
+'''
+authors="VcGameDev aka vic"
+logoFile="cobblebrain_icon.png"
+
+modClass="vito.cobblebrain.CobblebrainNeoForge"
+
+# =========================
+# DEPENDENCIES
+# =========================
+
+[[dependencies.cobblebrain]]
+modId="neoforge"
+mandatory=true
+versionRange="[21,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.cobblebrain]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.21.1]"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.cobblebrain]]
+modId="cobblemon"
+mandatory=true
+versionRange="[1.7,)"
+ordering="NONE"
+side="BOTH"
+
+# =========================
+# OPTIONAL (suggests)
+# =========================

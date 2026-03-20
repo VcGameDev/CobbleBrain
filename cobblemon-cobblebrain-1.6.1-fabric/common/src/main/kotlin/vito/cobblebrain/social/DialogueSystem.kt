@@ -202,6 +202,7 @@ object DialogueSystem {
 
     // 🔌 bridge de networking (Fabric vai implementar)
     var sendToPlayer: ((ServerPlayer, String) -> Unit)? = null
+    var onSendPromptClient: (() -> Unit)? = null
 
     fun onBattleStarted(event: BattleStartedEvent) {
         val battle = event.battle

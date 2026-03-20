@@ -1,4 +1,5 @@
 plugins {
+    id("com.github.johnrengelman.shadow") version "8.1.1"
     id("dev.architectury.loom")
     id("architectury-plugin")
     kotlin("jvm")
@@ -18,23 +19,58 @@ loom {
     }
 }
 
+val shadowBundle: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
 dependencies {
     minecraft("com.mojang:minecraft:${property("minecraft_version")}")
     mappings(loom.officialMojangMappings())
 
-    // NeoForge loader
     neoForge("net.neoforged:neoforge:${property("neoforge_version")}")
 
-    // Kotlin (versão NeoForge)
-    forgeRuntimeLibrary("thedarkcolour:kotlinforforge-neoforge:${property("kotlinforforge_version")}")
+    forgeRuntimeLibrary("thedarkcolour:kotlinforforge-neoforge:${property("kotlinforforge_version")}") {
+        exclude("net.neoforged.fancymodloader", "loader")
+    }
 
-    // Cobblemon (NeoForge)
     modImplementation("com.cobblemon:neoforge:${property("cobblemon_version")}")
 
-    // Conectar com o common
     implementation(project(":common", configuration = "namedElements"))
 
     "developmentNeoForge"(project(":common", configuration = "namedElements")) {
         isTransitive = false
+    }
+
+    // ISSO QUE FAZ O COMMON ENTRAR NO JAR
+    shadowBundle(project(":common", configuration = "transformProductionNeoForge"))
+}
+tasks {
+
+    processResources {
+        inputs.property("version", project.version)
+
+        filesMatching("META-INF/neoforge.mods.toml") {
+            expand(project.properties)
+        }
+    }
+
+    jar {
+        archiveBaseName.set("${rootProject.property("archives_base_name")}-neoforge")
+    }
+
+    // AGORA EXISTE
+    shadowJar {
+        archiveClassifier.set("dev-shadow")
+        configurations = listOf(shadowBundle)
+    }
+
+    // ESSENCIAL
+    remapJar {
+        dependsOn(shadowJar)
+        inputFile.set(shadowJar.flatMap { it.archiveFile })
+
+        archiveBaseName.set("${rootProject.property("archives_base_name")}-neoforge")
+        archiveVersion.set("${project.version}")
     }
 }

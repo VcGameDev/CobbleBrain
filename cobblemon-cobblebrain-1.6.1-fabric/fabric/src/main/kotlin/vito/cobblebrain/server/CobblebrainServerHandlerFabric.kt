@@ -3,8 +3,8 @@ package vito.cobblebrain.server
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.network.chat.Component
-import vito.cobblebrain.client.CobblebrainClientHandler.ActionPayload
-import vito.cobblebrain.client.CobblebrainClientHandler
+import vito.cobblebrain.network.CobblebrainPayloads.ActionPayload
+import vito.cobblebrain.network.CobblebrainPayloads.AIResponsePayload
 
 object CobblebrainServerHandlerFabric {
     fun register() {
@@ -20,7 +20,7 @@ object CobblebrainServerHandlerFabric {
         }
 
         // Resposta da IA
-        ServerPlayNetworking.registerGlobalReceiver(CobblebrainClientHandler.AIResponsePayload.TYPE) { payload, context ->
+        ServerPlayNetworking.registerGlobalReceiver(AIResponsePayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
                 println("[SERVER RECEIVED RESPONSE] from ${player.name.string}")
