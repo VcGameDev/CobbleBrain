@@ -23,8 +23,8 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 object WorldEventsSystem {
-    private const val CHECK_INTERVAL = 200
-    private const val RAID_COOLDOWN_TICKS = 12000 // 10 minutos
+    private const val CHECK_INTERVAL = 300
+    private const val RAID_COOLDOWN_TICKS = 9000 // 7 minutos e 30 segundos
     private const val RAID_DELAY_TICKS = 1200 // 1 minuto
     private const val SPAWN_RADIUS_MIN = 4.0
     private const val SPAWN_RADIUS_MAX = 15.0
@@ -102,10 +102,11 @@ object WorldEventsSystem {
 
                 val karma = karmaJson.asInt
 
-                // Apenas raides para karma <= -12
-                if (karma > -12) return@forEach
+                // Apenas raides para karma <= -8
+                if (karma > -8) return@forEach
 
-                val chance = (abs(karma) * 0.015).coerceAtMost(0.6)
+                val chance = (0.03 + (abs(karma) - 8) * (0.37 / 22.0))
+                    .coerceAtMost(0.4)
 
                 if (Random.nextDouble() <= chance) {
                     scheduleRaid(world, player, speciesName, karma)
@@ -268,15 +269,18 @@ object WorldEventsSystem {
             val raid = iterator.next()
             val player = raid.player
 
-            // Se player morreu → raid termina + karma +10
+            // DERROTA: player morreu
             if (!player.isAlive) {
 
                 val saveData = CobblebrainWorldSave.data
-                val karmaObj = saveData.getAsJsonObject("karma")
+                val karmaRoot = saveData.getAsJsonObject("karma")
 
-                if (karmaObj != null) {
-                    val current = karmaObj.get(raid.speciesName)?.asInt ?: 0
-                    karmaObj.addProperty(raid.speciesName, current + 10)
+                if (karmaRoot != null) {
+                    val playerObj = karmaRoot.getAsJsonObject(player.uuid.toString())
+
+                    if (playerObj != null) {
+                        playerObj.addProperty(raid.speciesName, 0)
+                    }
                 }
 
                 // remove pokémons restantes
@@ -285,6 +289,11 @@ object WorldEventsSystem {
                         it.discard()
                     }
                 }
+
+                player.sendSystemMessage(
+                    Component.literal("You were defeated... The Pokémon seem to calm down...")
+                        .withStyle(ChatFormatting.RED)
+                )
 
                 iterator.remove()
                 continue
@@ -310,7 +319,7 @@ object WorldEventsSystem {
                 // Move até o player
                 pokemon.navigation.moveTo(player, 0.6)
 
-                // 🔥 ATAQUE MANUAL
+                // ATAQUE MANUAL
                 val distance = pokemon.distanceTo(player)
                 val inRange = distance <= 1.5
 
@@ -319,7 +328,8 @@ object WorldEventsSystem {
 
                 if (inRange && cd <= 0) {
 
-                    val scaledDamage = pokemon.pokemon.level * 0.25f
+                    val pokeData = pokemon.pokemon
+                    val scaledDamage = pokeData.level * 0.25f
 
                     player.hurt(
                         pokemon.damageSources().mobAttack(pokemon),
@@ -328,20 +338,44 @@ object WorldEventsSystem {
 
                     pokemon.swing(InteractionHand.MAIN_HAND)
 
-                    attackCooldowns[pokemonId] = 10 // 0.5s (10 ticks)
+                    attackCooldowns[pokemonId] = 10
 
                 } else {
                     attackCooldowns[pokemonId] = maxOf(0, cd - 1)
                 }
+            }
+
+            // VITÓRIA: todos pokémons morreram
+            if (raid.spawnedPokemon.isEmpty()) {
+
+                val saveData = CobblebrainWorldSave.data
+                val karmaRoot = saveData.getAsJsonObject("karma")
+
+                if (karmaRoot != null) {
+                    val playerObj = karmaRoot.getAsJsonObject(player.uuid.toString())
+
+                    if (playerObj != null) {
+                        // RESETA KARMA PRA 0
+                        playerObj.addProperty(raid.speciesName, 0)
+                    }
+                }
+
+                player.sendSystemMessage(
+                    Component.literal("You survived the raid. The Pokémon seem to calm down...")
+                        .withStyle(ChatFormatting.GREEN)
+                )
+
+                iterator.remove()
+                continue
             }
         }
     }
 
     private fun getDifficulty(karma: Int): RaidDifficulty? {
         return when {
-            karma <= -12 && karma > -22 -> RaidDifficulty.EASY
-            karma <= -22 && karma > -32 -> RaidDifficulty.MEDIUM
-            karma <= -32 -> RaidDifficulty.HARD
+            karma <= -8 && karma > -19 -> RaidDifficulty.EASY
+            karma <= -19 && karma > -30 -> RaidDifficulty.MEDIUM
+            karma <= -30 -> RaidDifficulty.HARD
             else -> null
         }
     }

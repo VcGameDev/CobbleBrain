@@ -58,10 +58,10 @@ object PokemonTalkCommand {
                             //player.sendSystemMessage(Component.literal("2 - limpou mensagens"))
 
                             val ativos = PokemonQuery.findActivePokemon(player)
-                            player.sendSystemMessage(Component.literal("3 - ativos size: ${ativos.size}"))
+                            //player.sendSystemMessage(Component.literal("3 - ativos size: ${ativos.size}"))
 
                             val prompt = DialogueSystem.buildPrompt(player, ativos, "\n\n$conteudo")
-                            player.sendSystemMessage(Component.literal("4 - prompt gerado: ${prompt.take(50)}"))
+                            //player.sendSystemMessage(Component.literal("4 - prompt gerado: ${prompt.take(50)}"))
 
                             if (DialogueSystem.sendToPlayer == null) {
                                 //player.sendSystemMessage(Component.literal("5 - SEND É NULL"))
