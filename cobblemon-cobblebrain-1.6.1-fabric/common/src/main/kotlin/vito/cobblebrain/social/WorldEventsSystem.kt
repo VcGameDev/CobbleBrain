@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.level.levelgen.Heightmap
 import vito.cobblebrain.client.social.CobblebrainWorldSave
 import vito.cobblebrain.config.ConfigHandler
 import java.util.UUID
@@ -200,19 +201,31 @@ object WorldEventsSystem {
             val offsetX = cos(angle) * distance
             val offsetZ = sin(angle) * distance
 
+            val groundY = world.getHeight(
+                Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                (basePos.x + offsetX).toInt(),
+                (basePos.z + offsetZ).toInt()
+            )
+
             val spawnPos = Vec3(
                 basePos.x + offsetX,
-                basePos.y,
+                groundY.toDouble(),
                 basePos.z + offsetZ
             )
 
             val properties = PokemonProperties()
-            properties.species = (PokemonSpecies.getByName(speciesName.lowercase())
-                ?: continue).toString()
+            val species = PokemonSpecies.getByName(speciesName.lowercase()) ?: continue
+            properties.species = species.resourceIdentifier.toString()
 
             properties.level = Random.nextInt(minLevel, maxLevel + 1)
 
-            val pokemon = properties.createEntity(world)
+            val pokemon = try {
+                properties.createEntity(world)
+            } catch (e: Exception) {
+                println("[RAID ERROR] Failed to create entity for $speciesName")
+                e.printStackTrace()
+                continue
+            }
 
             pokemon.moveTo(
                 spawnPos.x,

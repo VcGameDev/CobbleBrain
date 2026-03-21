@@ -49,12 +49,13 @@ object PokemonTalkCommand {
 
                             DialogueSystem.onSendPromptClient?.invoke()
 
-                            player.sendSystemMessage(Component.literal("1 - comando executou"))
+                            // UTIL PRA DEBUG
+                            //player.sendSystemMessage(Component.literal("1 - comando executou"))
 
                             // limpa fila
                             DialogueSystem.scheduledMessages[player.uuid]?.clear()
 
-                            player.sendSystemMessage(Component.literal("2 - limpou mensagens"))
+                            //player.sendSystemMessage(Component.literal("2 - limpou mensagens"))
 
                             val ativos = PokemonQuery.findActivePokemon(player)
                             player.sendSystemMessage(Component.literal("3 - ativos size: ${ativos.size}"))
@@ -63,14 +64,14 @@ object PokemonTalkCommand {
                             player.sendSystemMessage(Component.literal("4 - prompt gerado: ${prompt.take(50)}"))
 
                             if (DialogueSystem.sendToPlayer == null) {
-                                player.sendSystemMessage(Component.literal("5 - SEND É NULL"))
+                                //player.sendSystemMessage(Component.literal("5 - SEND É NULL"))
                             } else {
-                                player.sendSystemMessage(Component.literal("5 - SEND NÃO É NULL"))
+                                //player.sendSystemMessage(Component.literal("5 - SEND NÃO É NULL"))
                             }
 
                             DialogueSystem.sendToPlayer?.invoke(player, prompt)
 
-                            player.sendSystemMessage(Component.literal("6 - passou do send"))
+                            //player.sendSystemMessage(Component.literal("6 - passou do send"))
 
                             // eco
                             player.sendSystemMessage(Component.literal("${player.name.string}: $conteudo"))

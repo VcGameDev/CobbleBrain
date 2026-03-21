@@ -1265,6 +1265,7 @@ object DialogueSystem {
             it.startsWith("@") ||
                     it.startsWith("#") ||
                     it.startsWith("&") ||
+                    it.startsWith("%") ||
                     (!config.showFriendship && it.startsWith("friendship", ignoreCase = true))
         }
 
@@ -1369,7 +1370,7 @@ object DialogueSystem {
                 .firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) }
 
             // 6. Detecta marcadores (%POSITIVE_END, etc.)
-            if (line.contains("%", ignoreCase = true)) {
+            if (line.startsWith("%")) {
                 println("[DEBUG] Marcador detectado na fala: $line")
                 handleAdviceQuestResponse(player, speaker?.entity, line)
             }

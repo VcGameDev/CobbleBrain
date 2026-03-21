@@ -22,6 +22,9 @@ dependencies {
         isTransitive = false
     }
 
+    // Cloth Config (COMMON - compile only)
+    modCompileOnly("me.shedaniel.cloth:cloth-config:15.0.140")
+
 }
 
 tasks.test {

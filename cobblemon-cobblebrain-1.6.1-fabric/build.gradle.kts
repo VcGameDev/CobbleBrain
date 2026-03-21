@@ -13,7 +13,7 @@ group = property("maven_group")!!
 version = property("mod_version")!!
 
 allprojects {
-
+    version = property("mod_version")!!
     apply(plugin = "java")
     apply(plugin = "org.jetbrains.kotlin.jvm")
 

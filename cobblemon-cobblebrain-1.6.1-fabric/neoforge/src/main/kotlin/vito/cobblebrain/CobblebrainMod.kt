@@ -21,6 +21,7 @@ import net.neoforged.neoforge.event.server.ServerStartedEvent
 import net.neoforged.neoforge.event.server.ServerStoppingEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
+import vito.cobblebrain.network.CobblebrainNetworkingNeoForge.onClientSetup
 import vito.cobblebrain.sensors.CommandTickHandlerNeoForge
 import vito.cobblebrain.server.CobblebrainServerHandlerNeoForge
 import vito.cobblebrain.social.DialogueSystemNeoForge
@@ -35,6 +36,7 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
 
         if (FMLEnvironment.dist.isClient) {
             modEventBus.addListener(CobblebrainClientHandlerNeoForge::registerPayloads)
+            modEventBus.addListener(::onClientSetup)
         }
 
         // ===== MOB BRIDGE =====

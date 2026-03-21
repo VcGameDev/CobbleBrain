@@ -35,6 +35,7 @@ dependencies {
     }
 
     modImplementation("com.cobblemon:neoforge:${property("cobblemon_version")}")
+    modImplementation("me.shedaniel.cloth:cloth-config-neoforge:15.0.140")
 
     implementation(project(":common", configuration = "namedElements"))
 

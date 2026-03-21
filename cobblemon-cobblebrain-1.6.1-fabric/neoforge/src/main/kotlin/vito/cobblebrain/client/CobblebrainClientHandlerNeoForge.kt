@@ -38,13 +38,13 @@ object CobblebrainClientHandlerNeoForge {
         ) { payload, context ->
             context.enqueueWork {
                 waitingResponse = false
+                // UTIL PRA DEBUG
+                //val mc = net.minecraft.client.Minecraft.getInstance()
+                //val player = mc.player
 
-                val mc = net.minecraft.client.Minecraft.getInstance()
-                val player = mc.player
-
-                player?.sendSystemMessage(
-                    Component.literal("CLIENT RECEBEU PAYLOAD")
-                )
+                //player?.sendSystemMessage(
+                //    Component.literal("CLIENT RECEBEU PAYLOAD")
+                //)
 
                 CobblebrainClientCommon.onPromptReceived(payload.prompt)
             }
