@@ -135,6 +135,16 @@ object ConfigCommands {
                 )
 
                 .then(
+                    Commands.literal("openConfig")
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            DialogueSystem.sendToPlayer?.invoke(player, "OPEN_CONFIG_SCREEN")
+
+                            1
+                        }
+                )
+
+                .then(
                     Commands.literal("karma")
 
                         // /cobblebrain karma

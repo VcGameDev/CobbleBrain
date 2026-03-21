@@ -2,15 +2,55 @@ package vito.cobblebrain
 
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.client.event.RenderGuiEvent
+import net.neoforged.neoforge.client.event.ClientTickEvent
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
+import net.neoforged.neoforge.common.NeoForge
 import net.minecraft.client.Minecraft
+import net.minecraft.client.KeyMapping
 import net.minecraft.world.effect.MobEffects
+import org.lwjgl.glfw.GLFW
+import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.config.ClientConfigHandler
+import vito.cobblebrain.config.CobblebrainConfigScreen
 import kotlin.math.sin
 
 object CobbleBrainModClientNeoForge {
+
+    // KEYBIND
+    private val OPEN_CONFIG = KeyMapping(
+        "key.cobblebrain.open_config",
+        GLFW.GLFW_KEY_Y,
+        "key.categories.cobblebrain"
+    )
+
     fun init() {
         ClientConfigHandler.load()
         println("Cobblebrain carregado no cliente (NeoForge)")
+
+        // conecta config screen
+        CobblebrainClientCommon.openConfigScreen = {
+            Minecraft.getInstance().setScreen(
+                CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
+            )
+        }
+
+        // registra eventos
+        NeoForge.EVENT_BUS.addListener(::onClientTick)
+        NeoForge.EVENT_BUS.addListener(::onRegisterKeybinds)
+
+        NeoForge.EVENT_BUS.register(this)
+    }
+
+    // registra keybind
+    fun onRegisterKeybinds(event: RegisterKeyMappingsEvent) {
+        event.register(OPEN_CONFIG)
+    }
+
+    // detecta tecla
+    fun onClientTick(event: ClientTickEvent.Post) {
+        while (OPEN_CONFIG.consumeClick()) {
+            CobblebrainClientCommon.openConfig()
+        }
     }
 
     @SubscribeEvent

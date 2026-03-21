@@ -4,7 +4,7 @@ license="MIT"
 
 [[mods]]
 modId="cobblebrain"
-version="1.0.0"
+version="1.0.1"
 displayName="CobbleBrain"
 description='''
 a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons
@@ -38,6 +38,13 @@ mandatory=true
 versionRange="[1.7,)"
 ordering="NONE"
 side="BOTH"
+
+[[dependencies.cobblebrain]]
+modId="cloth_config"
+mandatory=true
+versionRange="[15,)"
+ordering="NONE"
+side="CLIENT"
 
 # =========================
 # OPTIONAL (suggests)

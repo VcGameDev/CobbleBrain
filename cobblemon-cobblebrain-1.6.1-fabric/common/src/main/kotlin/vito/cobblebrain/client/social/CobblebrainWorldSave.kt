@@ -447,7 +447,7 @@ object CobblebrainWorldSave {
                             it.withClickEvent(
                                 ClickEvent(
                                     ClickEvent.Action.OPEN_URL,
-                                    "https://www.youtube.com/watch?v=wHE8nMvfIPs"
+                                    "https://youtu.be/tPInNexUEmM"
                                 )
                             )
                         }
@@ -468,7 +468,7 @@ object CobblebrainWorldSave {
                             it.withClickEvent(
                                 ClickEvent(
                                     ClickEvent.Action.OPEN_URL,
-                                    "https://www.youtube.com/watch?v=Th1ylIsnQlg"
+                                    "https://youtu.be/Th1ylIsnQlg"
                                 )
                             )
                         }
@@ -571,9 +571,9 @@ object CobblebrainWorldSave {
                 .append(" °Complete quests\n\n")
                 .append("-Karma:\n")
                 .append(" °Defeat or kill Pokémon\n")
-                .append(" °annoy Pokémon in quests\n\n")
-                .append("High Karma gives gifts.\n")
-                .append("Low Karma may trigger raids."),
+                .append(" °Annoy Pokémon in quests\n\n")
+                .append("High Karma ( > 2 ) may gives gifts.\n")
+                .append("Low Karma ( < -7 ) may trigger raids."),
 
             Component.literal("")
                 .append(Component.literal("RAID DETAILS\n\n").withStyle(ChatFormatting.BOLD))
@@ -587,7 +587,7 @@ object CobblebrainWorldSave {
 
             Component.literal("")
                 .append(Component.literal("CUSTOM SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Access settings in Mods menu.\n")
+                .append("Access settings in Mods menu or pressing Y.\n")
                 .append("Recommended settings to change:\n\n")
                 .append("SelectedLanguage:\n")
                 .append("Choose dialogue language.\n\n")
@@ -602,7 +602,7 @@ object CobblebrainWorldSave {
 
             Component.literal("")
                 .append(Component.literal("Developer’s Notes...\n\n").withStyle(ChatFormatting.BOLD))
-                .append("You can experience everything the mod has to offer just by talking to the Pokémon.\n\nFeel free to customize it in the mods menu or by editing config/cobblebrain\n.json5")
+                .append("You can experience everything the mod has to offer just by talking to the Pokémon.\n\nFeel free to customize it in the config menu or by editing config/cobblebrain\n.json5")
         )
 
         val content = WrittenBookContent(

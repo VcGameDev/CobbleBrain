@@ -1,11 +1,18 @@
 package vito.cobblebrain
 
+import com.mojang.blaze3d.platform.InputConstants
 import net.fabricmc.api.ClientModInitializer
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
+import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraft.world.effect.MobEffects
+import org.lwjgl.glfw.GLFW
+import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.client.CobblebrainClientHandlerFabric.registerReceivers
 import vito.cobblebrain.config.ClientConfigHandler
+import vito.cobblebrain.config.CobblebrainConfigScreen
 import kotlin.math.sin
 
 object CobbleBrainModClient : ClientModInitializer {
@@ -13,6 +20,30 @@ object CobbleBrainModClient : ClientModInitializer {
         ClientConfigHandler.load()
         registerReceivers()
         println("Cobblebrain carregado no cliente")
+
+        // conecta com o common
+        CobblebrainClientCommon.openConfigScreen = {
+            Minecraft.getInstance().setScreen(
+                CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
+            )
+        }
+
+        val openConfig = KeyMapping(
+            "key.cobblebrain.open_config",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_Y,
+            "category.cobblebrain"
+        )
+
+        // keybind
+        KeyBindingHelper.registerKeyBinding(openConfig)
+
+        ClientTickEvents.END_CLIENT_TICK.register { client ->
+            while (openConfig.consumeClick()) {
+                CobblebrainClientCommon.openConfig()
+            }
+        }
+
         HudRenderCallback.EVENT.register { guiGraphics, tickDelta ->
             val client = Minecraft.getInstance()
             val player = client.player ?: return@register

@@ -77,16 +77,20 @@ object DialogueSystem {
 
     fun onPlayerJoin(player: ServerPlayer) {
         player.sendSystemMessage(
-            Component.literal("Welcome to Cobblebrain! Use the command ")
+            Component.literal("Welcome to Cobblebrain!\n")
                 .withStyle(ChatFormatting.YELLOW)
-                .append(Component.literal("/mpk <message>").withStyle(ChatFormatting.AQUA))
-                .append(" to talk to Pokemón.")
-        )
 
-        player.sendSystemMessage(
-            Component.literal("Take a look at the cobblebrain guide or use\n")
-                .withStyle(ChatFormatting.YELLOW)
+                .append(Component.literal("Type ").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal("/mpk <message>").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" to talk to Pokémon.\n").withStyle(ChatFormatting.YELLOW))
+
+                .append(Component.literal("Type ").withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal("/cobblebrain guide").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" for help.\n").withStyle(ChatFormatting.YELLOW))
+
+                .append(Component.literal("Press ").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal("Y").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" to open Cobblebrain config menu.").withStyle(ChatFormatting.YELLOW))
         )
     }
 
@@ -628,9 +632,9 @@ object DialogueSystem {
             karmaRoot.getAsJsonObject(playerKey).get(giverName)?.asInt ?: 0
         } else 0
 
-        val minKarma = 6
-        val maxKarma = 20
-        val baseChance = 0.4f
+        val minKarma = 3
+        val maxKarma = 10
+        val baseChance = 0.25f
 
         val chance = when {
             current >= maxKarma -> 1.0f

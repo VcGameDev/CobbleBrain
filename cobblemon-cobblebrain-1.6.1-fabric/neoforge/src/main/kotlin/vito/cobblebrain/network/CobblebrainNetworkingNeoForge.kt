@@ -1,11 +1,13 @@
 package vito.cobblebrain.network
 
+import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import net.neoforged.fml.ModLoadingContext
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory
 import net.neoforged.neoforge.network.PacketDistributor
+import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.config.CobblebrainConfigScreen
 
 object CobblebrainNetworkingNeoForge {
@@ -38,6 +40,13 @@ object CobblebrainNetworkingNeoForge {
 
     fun onClientSetup(event: FMLClientSetupEvent) {
         event.enqueueWork {
+
+            CobblebrainClientCommon.openConfigScreen = {
+                Minecraft.getInstance().setScreen(
+                    CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
+                )
+            }
+
             ModLoadingContext.get().registerExtensionPoint(
                 IConfigScreenFactory::class.java
             ) {
