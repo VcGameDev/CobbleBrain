@@ -148,42 +148,42 @@ Advanced users can still edit the generated configuration files in the `/config`
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `apiKey` | List of Strings | API key used for authentication with the AI system. Can be a Bearer token or a Google API key depending on the provider. :contentReference[oaicite:0]{index=0} |
-| `keyRotation` | Boolean | Enables API key rotation when errors occur. Useful for handling invalid or expired keys. :contentReference[oaicite:1]{index=1} |
-| `keyRotationTrigger` | List[Int] | List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys. :contentReference[oaicite:2]{index=2} |
-| `apiBaseUrl` | String | Base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local server such as LM Studio or Player2. :contentReference[oaicite:3]{index=3} |
-| `localApiProvider` | String | Used when `apiBaseUrl` is local. Helps adapt requests for the correct provider. Supported: `player2`, `lmstudio`. :contentReference[oaicite:4]{index=4} |
-| `aiModel` | List of Strings | Names of the AI models to use. Multiple models can be provided for fallback/rotation. :contentReference[oaicite:5]{index=5} |
-| `modelRotation` | Boolean | Enables model rotation when errors occur, allowing fallback to alternative models. :contentReference[oaicite:6]{index=6} |
-| `modelRotationTrigger` | List[Int] | List of HTTP status codes that trigger model rotation. :contentReference[oaicite:7]{index=7} |
-| `temperature` | Double | Controls response randomness. Range: 0.0 (deterministic) to 1.0 (creative). Default ~0.7. :contentReference[oaicite:8]{index=8} |
-| `aiProvider` | String | Provider hint used for routing in OpenRouter. Ignored for other providers. :contentReference[oaicite:9]{index=9} |
-| `reasoningEffort` | String | Defines reasoning level for supported models. Options: `high`, `medium`, `low`, `auto`, `none`. :contentReference[oaicite:10]{index=10} |
-| `requestTimeoutSeconds` | Long | Request timeout in seconds. Local models may require higher values. :contentReference[oaicite:11]{index=11} |
-| `debugLogging` | Boolean | Enables debug logging. Logs are stored in `cobblebrain-ai/logs`. :contentReference[oaicite:12]{index=12} |
-| `selectedLanguage` | String | Language used by the AI to generate responses. :contentReference[oaicite:13]{index=13} |
-| `dialogueInChat` | Boolean | Shows generated dialogue in the chat. :contentReference[oaicite:14]{index=14} |
-| `chatbubbles` | Boolean | Enables visual chat bubbles above entities. :contentReference[oaicite:15]{index=15} |
-| `pokemonTalk` | Boolean | Global toggle for Pokémon dialogue and listening. :contentReference[oaicite:16]{index=16} |
-| `allowPokemonPVP` | Boolean | Allows Pokémon to attack other players’ Pokémon. :contentReference[oaicite:17]{index=17} |
-| `allowPokemonPVE` | Boolean | Allows Pokémon to attack mobs (excluding certain exceptions). :contentReference[oaicite:18]{index=18} |
-| `scheduleRaids` | Boolean | Enables raid events when karma conditions are met. :contentReference[oaicite:19]{index=19} |
-| `characteristics` | List of Strings | Custom traits for specific Pokémon. Format: `<pokemonName>: <text>`. :contentReference[oaicite:20]{index=20} |
-| `lowTokenMode` | Boolean | Reduces world/context data sent to AI, lowering cost and improving performance. :contentReference[oaicite:21]{index=21} |
-| `dialogueOnDamage` | Boolean | Triggers dialogue when entities take damage. :contentReference[oaicite:22]{index=22} |
-| `dialogueOnBattle` | Boolean | Enables dialogue during battle events. :contentReference[oaicite:23]{index=23} |
-| `wildPokemonTalkChance` | Double | Chance for wild Pokémon to participate in ongoing dialogue. :contentReference[oaicite:24]{index=24} |
-| `wildQuestChance` | Double | Chance for wild Pokémon to generate quests during interaction. :contentReference[oaicite:25]{index=25} |
-| `spontaneousDialogueChance` | Double | Chance for Pokémon to initiate dialogue spontaneously. :contentReference[oaicite:26]{index=26} |
-| `listenToChat` | Boolean | Enables AI to interpret normal player chat messages. :contentReference[oaicite:27]{index=27} |
-| `onlyNearbyChat` | Boolean | Restricts chat listening to nearby players. Requires `listenToChat = true`. :contentReference[oaicite:28]{index=28} |
-| `maxShortMemory` | Int | Maximum short-term memory size per Pokémon. :contentReference[oaicite:29]{index=29} |
-| `maxLongMemory` | Int | Maximum long-term memory size per Pokémon. :contentReference[oaicite:30]{index=30} |
-| `decreaseFriendship` | Boolean | Allows dialogue to decrease friendship levels. :contentReference[oaicite:31]{index=31} |
-| `increaseFriendship` | Boolean | Allows dialogue to increase friendship levels. :contentReference[oaicite:32]{index=32} |
-| `showFriendship` | Boolean | Displays friendship changes in chat. :contentReference[oaicite:33]{index=33} |
-| `instruct` | List of Strings | Global prompt defining how the AI behaves, thinks, and responds. Each entry contributes to shaping dialogue style and personality. |
-| `outputFormat` | String | System instructions for dialogue output format. Not recommended to modify. |
+| `apiKey` | List of Strings | API key used for authentication with the AI system. Can be a Bearer token or a Google API key depending on the provider.|
+| `keyRotation` | Boolean | Enables API key rotation when errors occur. Useful for handling invalid or expired keys.|
+| `keyRotationTrigger` | List[Int] | List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys.|
+| `apiBaseUrl` | String | Base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local server such as LM Studio or Player2.|
+| `localApiProvider` | String | Used when `apiBaseUrl` is local. Helps adapt requests for the correct provider. Supported: `player2`, `lmstudio`|
+| `aiModel` | List of Strings | Names of the AI models to use. Multiple models can be provided for fallback/rotation.|
+| `modelRotation` | Boolean | Enables model rotation when errors occur, allowing fallback to alternative models.|
+| `modelRotationTrigger` | List[Int] | List of HTTP status codes that trigger model rotation.|
+| `temperature` | Double | Controls response randomness. Range: 0.0 (deterministic) to 1.0 (creative). Default ~0.7.|
+| `aiProvider` | String | Provider hint used for routing in OpenRouter. Ignored for other providers.|
+| `reasoningEffort` | String | Defines reasoning level for supported models. Options: `high`, `medium`, `low`, `auto`, `none`|
+| `requestTimeoutSeconds` | Long | Request timeout in seconds. Local models may require higher values.|
+| `debugLogging` | Boolean | Enables debug logging. Logs are stored in `cobblebrain-ai/logs`|
+| `selectedLanguage` | String | Language used by the AI to generate responses.|
+| `dialogueInChat` | Boolean | Shows generated dialogue in the chat.|
+| `chatbubbles` | Boolean | Enables visual chat bubbles above entities.|
+| `pokemonTalk` | Boolean | Global toggle for Pokémon dialogue and listening.|
+| `allowPokemonPVP` | Boolean | Allows Pokémon to attack other players’ Pokémon.|
+| `allowPokemonPVE` | Boolean | Allows Pokémon to attack mobs (excluding certain exceptions).|
+| `scheduleRaids` | Boolean | Enables raid events when karma conditions are met.|
+| `characteristics` | List of Strings | Custom traits for specific Pokémon. Format: `<pokemonName>: <text>`|
+| `lowTokenMode` | Boolean | Reduces world/context data sent to AI, lowering cost and improving performance.|
+| `dialogueOnDamage` | Boolean | Triggers dialogue when entities take damage.|
+| `dialogueOnBattle` | Boolean | Enables dialogue during battle events.|
+| `wildPokemonTalkChance` | Double | Chance for wild Pokémon to participate in ongoing dialogue.|
+| `wildQuestChance` | Double | Chance for wild Pokémon to generate quests during interaction.|
+| `spontaneousDialogueChance` | Double | Chance for Pokémon to initiate dialogue spontaneously.|
+| `listenToChat` | Boolean | Enables AI to interpret normal player chat messages.|
+| `onlyNearbyChat` | Boolean | Restricts chat listening to nearby players. Requires `listenToChat = true`|
+| `maxShortMemory` | Int | Maximum short-term memory size per Pokémon.|
+| `maxLongMemory` | Int | Maximum long-term memory size per Pokémon.|
+| `decreaseFriendship` | Boolean | Allows dialogue to decrease friendship levels.|
+| `increaseFriendship` | Boolean | Allows dialogue to increase friendship levels.|
+| `showFriendship` | Boolean | Displays friendship changes in chat.|
+| `instruct` | List of Strings | Global prompt defining how the AI behaves, thinks, and responds. Each entry contributes to shaping dialogue style and personality.|
+| `outputFormat` | String | System instructions for dialogue output format. Not recommended to modify.|
 
 ---
 
