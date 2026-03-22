@@ -35,6 +35,7 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
         modEventBus.addListener(CobblebrainServerHandlerNeoForge::registerPayloads)
 
         if (FMLEnvironment.dist.isClient) {
+            modEventBus.addListener(CobbleBrainModClientNeoForge::onRegisterKeybinds)
             modEventBus.addListener(CobblebrainClientHandlerNeoForge::registerPayloads)
             modEventBus.addListener(::onClientSetup)
         }

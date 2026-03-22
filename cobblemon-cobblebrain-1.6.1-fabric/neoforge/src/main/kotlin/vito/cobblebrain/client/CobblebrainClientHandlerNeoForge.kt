@@ -59,10 +59,11 @@ object CobblebrainClientHandlerNeoForge {
         waitingResponse = true
         waitTicks = 0
 
-        val mc = net.minecraft.client.Minecraft.getInstance()
-        mc.player?.sendSystemMessage(
-            Component.literal("...esperando resposta...")
-        )
+        // UTIL PRA DEBUG
+        //val mc = net.minecraft.client.Minecraft.getInstance()
+        //mc.player?.sendSystemMessage(
+        //    Component.literal("...esperando resposta...")
+        //)
     }
 
     @SubscribeEvent

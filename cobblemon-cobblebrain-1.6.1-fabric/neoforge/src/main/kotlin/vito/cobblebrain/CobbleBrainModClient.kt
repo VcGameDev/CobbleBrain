@@ -36,8 +36,6 @@ object CobbleBrainModClientNeoForge {
 
         // registra eventos
         NeoForge.EVENT_BUS.addListener(::onClientTick)
-        NeoForge.EVENT_BUS.addListener(::onRegisterKeybinds)
-
         NeoForge.EVENT_BUS.register(this)
     }
 
