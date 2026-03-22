@@ -1,62 +1,53 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("java")
-    id("fabric-loom") version("1.11-SNAPSHOT")
-    kotlin("jvm") version ("2.2.20")
+    id("java-library")
+    kotlin("jvm") version("2.2.20")
+
+    id("architectury-plugin") version("3.4-SNAPSHOT") apply false
+    id("dev.architectury.loom") version("1.11-SNAPSHOT") apply false
 }
 
 group = property("maven_group")!!
 version = property("mod_version")!!
 
-repositories {
-    mavenLocal()
-    mavenCentral()
-    maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
-    maven("https://maven.impactdev.net/repository/development/")
-    maven("https://api.modrinth.com/maven")
-    maven (url="https://maven.terraformersmc.com/releases/")
-    maven (url="https://maven.shedaniel.me/")
-}
+allprojects {
+    version = property("mod_version")!!
+    apply(plugin = "java")
+    apply(plugin = "org.jetbrains.kotlin.jvm")
 
-dependencies {
-    minecraft("com.mojang:minecraft:${property("minecraft_version")}")
-    mappings(loom.officialMojangMappings())
-    modImplementation("net.fabricmc:fabric-loader:${property("loader_version")}")
+    repositories {
+        mavenLocal()
+        mavenCentral()
 
-    // Fabric API
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_version")}")
+        maven("https://maven.neoforged.net/releases/")
+        maven("https://thedarkcolour.github.io/KotlinForForge/")
+        maven("https://maven.fabricmc.net/")
+        maven("https://maven.architectury.dev/")
+        maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
+        maven("https://maven.impactdev.net/repository/development/")
+        maven("https://api.modrinth.com/maven")
+        maven("https://maven.terraformersmc.com/releases/")
+        maven("https://maven.shedaniel.me/")
+        maven("https://artefacts.cobblemon.com/releases/")
+    }
 
-    // Fabric Kotlin
-    modImplementation("net.fabricmc:fabric-language-kotlin:${property("fabric_kotlin_version")}")
-
-    // Cobblemon
-    modImplementation("com.cobblemon:fabric:${property("cobblemon_version")}")
-
-    modImplementation("com.terraformersmc:modmenu:${property("modmenu_version")}")
-    modImplementation("me.shedaniel.cloth:cloth-config-fabric:${property("cloth_config_version")}")
-}
-
-tasks {
-    processResources {
-        inputs.property("version", project.version)
-
-        filesMatching("fabric.mod.json") {
-            expand(mutableMapOf("version" to project.version))
+    tasks {
+        java {
+            withSourcesJar()
+            sourceCompatibility = JavaVersion.VERSION_21
+            targetCompatibility = JavaVersion.VERSION_21
         }
-    }
 
-    jar {
-        from("LICENSE")
-    }
-}
+        compileJava {
+            options.release = 21
+        }
 
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    }
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        compileKotlin {
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_21)
+            }
+        }
     }
 }
