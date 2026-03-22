@@ -176,7 +176,7 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `wildQuestChance` | Double | Chance for wild Pokémon to generate quests during interaction.|
 | `spontaneousDialogueChance` | Double | Chance for Pokémon to initiate dialogue spontaneously.|
 | `listenToChat` | Boolean | Enables AI to interpret normal player chat messages.|
-| `onlyNearbyChat` | Boolean | Restricts chat listening to nearby players. Requires `listenToChat = true`|
+| `EXPERIMENTAL: onlyNearbyChat` | Boolean | Restricts chat listening to nearby players. Requires `listenToChat = true`|
 | `maxShortMemory` | Int | Maximum short-term memory size per Pokémon.|
 | `maxLongMemory` | Int | Maximum long-term memory size per Pokémon.|
 | `decreaseFriendship` | Boolean | Allows dialogue to decrease friendship levels.|
