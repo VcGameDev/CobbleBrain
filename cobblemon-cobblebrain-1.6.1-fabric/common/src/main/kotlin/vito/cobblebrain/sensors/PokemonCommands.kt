@@ -67,28 +67,30 @@ object CommandState {
 }
 
 // guarda goals removidos para restaurar depois
-private val disabledGoals: MutableMap<UUID, List<net.minecraft.world.entity.ai.goal.Goal>> = mutableMapOf()
+private val disabledGoals: MutableMap<UUID, List<Goal>> = mutableMapOf()
 
 object MobBridge {
-    lateinit var addGoal: (Mob, Int, Goal) -> Unit
-    lateinit var removeGoal: (Mob, Goal) -> Unit
-    lateinit var getGoals: (Mob) -> List<Goal>
+    var addGoal: ((Mob, Int, Goal) -> Unit)? = null
+    var removeGoal: ((Mob, Goal) -> Unit)? = null
+    var getGoals: ((Mob) -> List<Goal>)? = null
 }
 
 private fun enterAttackMode(pokemon: Mob) {
-    val toDisable = MobBridge.getGoals(pokemon)
+    val getGoals = MobBridge.getGoals ?: return
+    val toDisable = getGoals(pokemon)
         .filterIsInstance<FollowOwnerGoal>()
 
     if (toDisable.isNotEmpty()) {
         disabledGoals[pokemon.uuid] = toDisable
-        toDisable.forEach { MobBridge.removeGoal(pokemon, it) }
+        toDisable.forEach { MobBridge.removeGoal?.invoke(pokemon, it) }
     }
     pokemon.isAggressive = true
 }
 
 private fun exitAttackMode(pokemon: Mob) {
     disabledGoals.remove(pokemon.uuid)?.forEach { goal ->
-        MobBridge.addGoal(pokemon, 2, goal)
+        val addGoal = MobBridge.addGoal ?: return
+        addGoal(pokemon, 2, goal)
     }
 
     pokemon.isAggressive = false

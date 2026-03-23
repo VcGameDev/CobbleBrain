@@ -343,7 +343,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val onlyNearbyChatEntry = entryBuilder.startBooleanToggle(
-            Component.literal("[WIP] Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("[EXPERIMENTAL] Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.onlyNearbyChat
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.onlyNearbyChat = value }
@@ -496,7 +496,9 @@ object CobblebrainConfigScreen {
         category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS", 0xFFFF00))
         category.entries.add(scheduleRaidEntry)
         category.entries.add(characteristicsEntry)
+        category.entries.add(listenToChatEntry)
         category.entries.add(dialogueInChatEntry)
+        category.entries.add(onlyNearbyChatEntry)
         category.entries.add(chatbubblesEntry)
         category.entries.add(pokemonTalkEntry)
         category.entries.add(allowPokemonPVPEntry)
@@ -506,8 +508,6 @@ object CobblebrainConfigScreen {
         category.entries.add(spontaneousDialogueChanceEntry)
         category.entries.add(wildPokemonTalkChanceEntry)
         category.entries.add(wildQuestChanceEntry)
-        category.entries.add(listenToChatEntry)
-        category.entries.add(onlyNearbyChatEntry)
         category.entries.add(maxShortMemoryEntry)
         category.entries.add(maxLongMemoryEntry)
         category.entries.add(decreaseFriendshipEntry)
