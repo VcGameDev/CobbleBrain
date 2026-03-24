@@ -263,7 +263,7 @@ object ConfigCommands {
                                 val goal = triple.third
 
                                 if (questOwner.uuid == player.uuid) {
-                                    MobBridge.removeGoal(pokemon, goal)
+                                    MobBridge.removeGoal?.invoke(pokemon, goal)
                                     pokemon.navigation.stop()
                                     iterator.remove()
                                     stopped++

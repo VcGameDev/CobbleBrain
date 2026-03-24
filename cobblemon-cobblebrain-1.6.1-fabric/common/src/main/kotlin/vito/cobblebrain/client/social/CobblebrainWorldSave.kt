@@ -23,10 +23,10 @@ import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.WrittenBookContent
 
 object MobBridge {
-    lateinit var addGoal: (Mob, Int, Goal) -> Unit
-    lateinit var removeGoal: (Mob, Goal) -> Unit
+    var addGoal: ((Mob, Int, Goal) -> Unit)? = null
+    var removeGoal: ((Mob, Goal) -> Unit)? = null
 
-    lateinit var getGoals: (Mob) -> List<Goal>
+    var getGoals: ((Mob) -> List<Goal>)? = null
 }
 
 class FollowPlayerGoal(
@@ -161,7 +161,8 @@ object CobblebrainWorldSave {
         giver.isNoAi = false
 
         val goal = FollowPlayerGoal(giver, player, 0.5, 10f, 7f, 35.0)
-        MobBridge.addGoal(giver, 1, goal)
+        val addGoal = MobBridge.addGoal ?: return
+        addGoal(giver, 1, goal)
 
         followers[giver.uuid.toString()] = Triple(giver, player, goal)
     }
@@ -337,7 +338,7 @@ object CobblebrainWorldSave {
             val pokemon = triple.first
             val goal = triple.third
 
-            MobBridge.removeGoal(pokemon, goal)
+            MobBridge.removeGoal?.invoke(pokemon, goal)
 
             pokemon.navigation.stop()
             followers.remove(giverUuid)
