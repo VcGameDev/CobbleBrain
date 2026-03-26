@@ -196,6 +196,14 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("Enables debug logging for troubleshooting. \nLogs are stored in the cobblebrain-ai/logs directory."))
             .build()
 
+        val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Use Default Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.useDefaultOutput
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> clientConfig.useDefaultOutput = value }
+            .setTooltip(Component.literal("Uses the recommended and updated output_format of the mod version. \nOnly disable it if you want to apply your own output_format, \nWhich is not recommended."))
+            .build()
+
         val selectedLanguageEntry = entryBuilder.startStrField(
             Component.literal("Selected Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.selectedLanguage
@@ -485,6 +493,7 @@ object CobblebrainConfigScreen {
         category.entries.add(reasoningEffortEntry)
         category.entries.add(requestTimeoutEntry)
         category.entries.add(debugLoggingEntry)
+        category.entries.add(useDefaultOutputEntry)
         category.entries.add(selectedLanguageEntry)
         category.entries.add(lowTokenModeEntry)
         category.entries.add(apiKeyEntry)

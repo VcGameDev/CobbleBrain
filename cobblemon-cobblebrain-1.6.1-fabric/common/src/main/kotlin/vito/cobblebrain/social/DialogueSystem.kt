@@ -38,7 +38,6 @@ import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
-import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
 import vito.cobblebrain.sensors.MemoryStore.savePokemonMemory
 import vito.cobblebrain.sensors.collectWorldContext
 import vito.cobblebrain.sensors.parseCommand
@@ -47,6 +46,51 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.atan2
 import kotlin.math.sqrt
+
+object ConversationMemory {
+    private val memory = mutableMapOf<UUID, MutableList<String>>()
+
+    fun save(playerId: UUID, text: String) {
+        val list = memory.getOrPut(playerId) { mutableListOf() }
+        list.add(text)
+
+        if (list.size > 3) {
+            list.removeAt(0)
+        }
+    }
+
+    fun get(playerId: UUID): List<String> {
+        return memory[playerId] ?: emptyList()
+    }
+}
+
+object PlayerTopicState {
+    private val topics = mutableMapOf<UUID, String>()
+
+    fun get(playerId: UUID): String? {
+        return topics[playerId]
+    }
+
+    fun set(playerId: UUID, topic: String) {
+        topics[playerId] = topic
+    }
+
+    fun clear(playerId: UUID) {
+        topics.remove(playerId)
+    }
+}
+
+object PlayerConversationState {
+    private val lastInteraction = mutableMapOf<UUID, Long>()
+
+    fun update(playerId: UUID, tick: Long) {
+        lastInteraction[playerId] = tick
+    }
+
+    fun get(playerId: UUID): Long? {
+        return lastInteraction[playerId]
+    }
+}
 
 object DialogueSystem {
     val justSentMessage: MutableMap<UUID, Boolean> = ConcurrentHashMap()
@@ -72,7 +116,7 @@ object DialogueSystem {
 
     private val bubbleProgress = mutableMapOf<UUID, Int>()          // standUuid -> chars revelados
     private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> texto completo
-    private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars por tick (opcional)
+    private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars por tick
 
 
     fun onPlayerJoin(player: ServerPlayer) {
@@ -204,7 +248,7 @@ object DialogueSystem {
         }
     }
 
-    // 🔌 bridge de networking (Fabric vai implementar)
+    // bridge de networking (Fabric vai implementar)
     var sendToPlayer: ((ServerPlayer, String) -> Unit)? = null
     var onSendPromptClient: (() -> Unit)? = null
 
@@ -319,6 +363,8 @@ object DialogueSystem {
             scheduledMessages[player.uuid]?.clear()
 
             if (event.winners.contains(myActor)) {
+                var sent = false
+
                 for (loser in event.losers) {
                     val defeatedName = loser.getName().string
                     adjustKarma(player, defeatedName, -1)
@@ -341,16 +387,43 @@ object DialogueSystem {
                             val prompt = buildPrompt(
                                 player,
                                 ativos,
-                                "IMPORTANT: The player defeated the $targetSpecies! $giverName thanks him!"
+                                "IMPORTANT: The player defeated the $targetSpecies! $giverName thanks him and reacts to the victory."
                             )
 
                             sendToPlayer?.invoke(player, prompt)
 
                             adjustKarma(player, giverName, 2)
                             maybeGiveReward(player, giverName)
+
+                            sent = true
                         }
                     }
                 }
+
+                // Vitória sem quest
+                if (!sent) {
+                    val ativos = PokemonQuery.findActivePokemon(player)
+
+                    val prompt = buildPrompt(
+                        player,
+                        ativos,
+                        "IMPORTANT: The player's team has just won a battle. The Pokémon react to the victory based on their personalities."
+                    )
+
+                    sendToPlayer?.invoke(player, prompt)
+                }
+
+            } else {
+                // Derrota
+                val ativos = PokemonQuery.findActivePokemon(player)
+
+                val prompt = buildPrompt(
+                    player,
+                    ativos,
+                    "IMPORTANT: The player's team has lost the battle. Pokémon are exhausted or knocked out, and should only react if they are still able to act and have more than 0 HP. Any response should reflect defeat, fatigue, or frustration."
+                )
+
+                sendToPlayer?.invoke(player, prompt)
             }
         }
     }
@@ -1018,22 +1091,108 @@ object DialogueSystem {
         val ativos = PokemonQuery.findActivePokemon(player)
         if (ativos.isEmpty()) return
 
+        val now = player.server?.tickCount?.toLong() ?: 0L
+
         val chance = clientConfig.spontaneousDialogueChance
 
-        // Sorteio para disparar diálogo espontâneo só para esse jogador
+        // DELETAR DPS DE TESTE
+        println("Chance: $chance | Roll: ${Random.nextDouble()}")
+
         if (Random.nextDouble() <= chance) {
+
             player.sendSystemMessage(
                 Component.literal("Your team is thinking about something to say...")
                     .withStyle(ChatFormatting.YELLOW)
             )
+
+            val topics = listOf(
+                "their current feelings or mood",
+                "something that happened recently",
+                "a question or curiosity about the world",
+                "something happening around them right now",
+                "a fact or knowledge they know",
+
+                "their opinion about the player",
+                "something they want from the player",
+                "their opinion about a teammate",
+                "a recent interaction with another Pokémon",
+
+                "their current physical state or needs",
+                "a random thought or idea they had",
+                "something confusing they are trying to understand",
+
+                "a curiosity about the world or humans",
+                "something they don't understand",
+
+                "their instincts or natural urges",
+                "something related to their type",
+
+                "something they remember briefly about their past",
+
+                "something they want to do next",
+                "a goal or desire they have",
+
+                "a joke or playful comment",
+                "teasing the player or a teammate",
+            )
+
+            val currentTopic = PlayerTopicState.get(player.uuid)
+
+            val last = PlayerConversationState.get(player.uuid) ?: now
+            val delta = now - last
+
+            val timeInstruction = when {
+                delta < 200 ->
+                    "This is a recent conversation. Continue the current topic naturally."
+                delta < 600 ->
+                    "Some time has passed. You may continue, but avoid repeating ideas from the LAST INTERACTIONS."
+                delta < 1200 ->
+                    "A while has passed. Avoid repeating ideas from the LAST INTERACTIONS and evolve the conversation into something new."
+                else ->
+                    "A long time has passed. The previous topic is no longer relevant. Start a new conversation and do not reuse ideas from the LAST INTERACTIONS."
+            }
+
+            // Atualiza tempo
+            PlayerConversationState.update(player.uuid, now)
+
+            val shouldChange = currentTopic == null || Random.nextDouble() < 0.3
+
+            val selectedTopic = if (shouldChange) {
+                val newTopic = topics.random()
+                PlayerTopicState.set(player.uuid, newTopic)
+                newTopic
+            } else {
+                currentTopic
+            }
+
+            val environmentTopics = setOf(
+                "something happening around them right now",
+                "a curiosity about the world or humans",
+                "a question or curiosity about the world"
+            )
+
+            val needsEnvironment = selectedTopic in environmentTopics
+            val useFullContext = needsEnvironment || Random.nextDouble() < 0.3
+
+            val contextInstruction = if (useFullContext) {
+                "The environment is relevant and can be used in the conversation."
+            } else {
+                "Focus less on the environment. Prioritize emotions, thoughts, interactions, or personal ideas instead of describing surroundings."
+            }
+
             val prompt = buildPrompt(
                 player,
                 ativos,
-                "IMPORTANT: The Pokémon are thinking of something different to say..."
+                "IMPORTANT: The Pokémon are having a conversation about $selectedTopic. " +
+                        "They should connect ideas naturally and develop the topic instead of changing it abruptly. " +
+                        "$contextInstruction " +
+                        "$timeInstruction " +
+                        "Use the LAST INTERACTIONS as context to avoid repetition and to evolve the conversation naturally."
             )
 
             sendToPlayer?.invoke(player, prompt)
-            println("[DEBUG] Spontaneous dialogue triggered for ${player.name.string}")
+
+            println("[DEBUG] Spontaneous dialogue for ${player.name.string} | Topic: $selectedTopic | FullContext: $useFullContext")
         }
     }
 
@@ -1095,10 +1254,17 @@ object DialogueSystem {
         return buildString {
             appendLine(moreText)
             appendLine()
+            val interactions = ConversationMemory.get(player.uuid)
+
+            if (interactions.isNotEmpty()) {
+                appendLine("[LAST INTERACTIONS]")
+                interactions.forEach { appendLine("- $it") }
+                appendLine()
+            }
             // Environment
             appendLine("Biome: ${context.biome}")
             appendLine("Weather: ${context.weather}")
-            appendLine("Time: ${context.timeOfDay}, ${context.timeLabel})")
+            appendLine("Time: ${context.timeLabel}")
 
             if (!clientConfig.lowTokenMode) {
                 appendLine("Light: ${context.lightLevel}")
@@ -1232,20 +1398,20 @@ object DialogueSystem {
                     }
                 }
 
-                val memories = currentServer?.let { srv ->
-                    loadPokemonMemories(
-                        srv,
-                        p.uuid.toString(),
-                        clientConfig.maxShortMemory
-                    )
-                } ?: emptyList()
+                //val memories = currentServer?.let { srv ->
+                    //loadPokemonMemories(
+                        //srv,
+                        //p.uuid.toString(),
+                        //clientConfig.maxShortMemory
+                    //)
+                //} ?: emptyList()
 
-                if (memories.isNotEmpty()) {
-                    appendLine("\nMemories:\n")
-                    memories.forEach { m ->
-                        appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
-                    }
-                }
+                //if (memories.isNotEmpty()) {
+                    //appendLine("\nMemories:\n")
+                    //memories.forEach { m ->
+                        //appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
+                    //}
+                //}
             }
             appendLine("Important variables:")
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
@@ -1270,17 +1436,21 @@ object DialogueSystem {
                     it.startsWith("#") ||
                     it.startsWith("&") ||
                     it.startsWith("%") ||
+                    it.startsWith("¨RESUME") ||
                     (!config.showFriendship && it.startsWith("friendship", ignoreCase = true))
         }
 
         val commandLines = allLines.filter { it.startsWith("#") }
         val summaryLines = allLines.filter { it.startsWith("&", ignoreCase = true) }
 
-
         val memoryLines = content.split("|")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .filter { it.startsWith("@") }
+
+        val resumeLines = content.split("|")
+            .map { it.trim() }
+            .filter { it.startsWith("¨RESUME", ignoreCase = true) }
 
         // 1. Salva as memórias no JSON
         memoryLines.forEach { line ->
@@ -1312,6 +1482,18 @@ object DialogueSystem {
         if (lastQuest != null) {
             lastQuest.addProperty("questSummary", summaryText)
             CobblebrainWorldSave.save()}
+        }
+
+        //2.5. Detecta resume summary
+        resumeLines.forEach { line ->
+            val resumeText = line
+                .substringAfter("¨RESUME")
+                .removePrefix(":")
+                .trim()
+
+            if (resumeText.isBlank()) return@forEach
+
+            ConversationMemory.save(player.uuid, resumeText)
         }
 
         // 3. Detecta ações (#)

@@ -1,0 +1,10 @@
+{
+  "nuke": {
+    "sounds": [
+      {
+        "name": "cobblebrain:nuke_music",
+        "stream": true
+      }
+    ]
+  }
+}

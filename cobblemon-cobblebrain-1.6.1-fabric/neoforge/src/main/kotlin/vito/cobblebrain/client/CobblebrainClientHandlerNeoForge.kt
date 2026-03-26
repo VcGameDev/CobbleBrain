@@ -75,10 +75,11 @@ object CobblebrainClientHandlerNeoForge {
         if (waitTicks >= 60) { // ~3 segundos
             waitingResponse = false
 
-            val mc = net.minecraft.client.Minecraft.getInstance()
-            mc.player?.sendSystemMessage(
-                Component.literal("NÃO RECEBEU PAYLOAD (timeout)")
-            )
+            //val mc = net.minecraft.client.Minecraft.getInstance()
+            println("Cobblebrain NÃO RECEBEU PAYLOAD (timeout)")
+            //mc.player?.sendSystemMessage(
+                //Component.literal("NÃO RECEBEU PAYLOAD (timeout)")
+            //)
         }
     }
 }

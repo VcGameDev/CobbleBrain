@@ -16,6 +16,7 @@ data class CobblebrainClientConfig(
     var requestTimeoutSeconds: Long = 60,
     var selectedLanguage: String = "English",
     var debugLogging: Boolean = false,
+    var useDefaultOutput: Boolean = true,
 
     // ================= DIALOGUE & UI SETTINGS =================
     var dialogueInChat: Boolean = true,
