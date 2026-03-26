@@ -72,8 +72,8 @@ class AIHandler {
         private const val DEFAULT_OUTPUT_FORMAT = " ##OUTPUT FORMAT##\nYou must generate your entire response following " +
         "these STRICT rules:\n\nDIALOGUE FORMAT\n- Each dialogue line MUST follow this format:" +
         "\n<PokemonName>: <message>\n- Use pipes (|) and the Pokémon name to separate dialogue lines." +
-        "\n- Each line must have MAX 11 words.\n- If 1 Pokémon active → max 3 lines total." +
-        "\n- If 2–5 Pokémon active → max 5 lines total.\n- If 6 Pokémon active → max 6 lines total." +
+        "\n- Each line must have 1-2 sentences.\n- If 1 Pokémon active → max 4 lines total." +
+        "\n- If 2–5 Pokémon active → max 6 lines total.\n- If 6 Pokémon active → max 7 lines total." +
         "\n- If Wild pokemon are talking, make them talk in the dialogues too." +
         "\n\nFRIENDSHIP FORMAT\n- Each friendship line MUST follow this format:" +
         "\n  Friendship <PokemonName>: <current_value> + <change>" +
@@ -94,31 +94,23 @@ class AIHandler {
         "\n  #PokemonName: eat\n  #PokemonName: buff\n  #PokemonName: debuff enemy\n  #PokemonName: sit" +
         "\n  #PokemonName: protect\n  #PokemonName: idle\n  (fire type) #PokemonName: cook" +
         "\n  (steel type) #PokemonName: repair\n  (grass type) #PokemonName: grow\n  (ghost type) #PokemonName: shift" +
-        "\n- If no action is needed, ALWAYS use idle.\n\nQUEST FORMAT:" +
-        "\n - Only create a quest when you receive IMPORTANT: <PokemonName> has started an <QuestType> quest!;" +
-        " in that case, generate dialogue where the Wild Pokémon asks the player or their team to complete it." +
-        "\n - From the moment the quest is created until it is completed, you must ALWAYS add one of the " +
-        "following lines in your response (note: all of them have to begin with %):" +
-        "\n  %CONTINUE → Quest is ongoing or lacks enough interaction/reason to end.  " +
-        "\n  %POSITIVE_END → Quest ends with a positive, satisfying outcome for the Pokémon.  " +
-        "\n  %NEGATIVE_END → Quest ends with a negative, unsatisfying outcome for the Pokémon.  " +
-        "\n  %LEAVE_END → Pokémon decides to leave the mission.  \n- Delivery Quests:" +
-        "\n  Only end the quest if you receive **`QUEST_COMPLETED`." +
-        "\n  Then choose the appropriate ending marker based on interactions (except `LEAVE_END`).  " +
-        "\n- Advice Quests:  \n  You decide when the quest ends, based on the Pokémon’s personality and whether it found the conversation good, bad, or chose betrayal." +
-        "\n  Make Advice quests last more than 2 dialogues.  \n- Hunt Quests:\n  Same as Delivery Quests." +
-        "\n- After sending the marker, create a small summary of the current quest reporting" +
-        "\n  1. Why the quest was created.\n 2. The key events that happened.\n 3. The Pokémon’s opinion about how the mission is progressing." +
-        "\n  Keep it focused on helping the next AI continue the story.\n Use a maximum of 6 sentences." +
-        "\n  Format the summary exactly as: &<text> " +
+        "\n- If no action is needed, ALWAYS use idle.\n\n QUEST FORMAT:" +
+        "\n- Only create a quest when you receive IMPORTANT: <PokemonName> has started a quest." +
+        "\n- The quest objective is defined in the IMPORTANT message. Do not invent or change it, and use only what is explicitly described." +
+        "\n- While a quest is active, ALWAYS include one of these markers:" +
+        "\n  %CONTINUE, %POSITIVE_END, %NEGATIVE_END, %LEAVE_END" +
+        "\n- Choose the marker based on how the interaction is going." +
+        "\n- Only finish delivery-type quests if you receive QUEST_COMPLETED." +
+        "\n- Keep quest progression natural and based on dialogue." +
+        "\n- Format the summary exactly as: &<text> "+
         "RESUME FORMAT\n\n" +
         "- At the end of the response, generate a short summary of the conversation.\n" +
-        "- Use the format: ¨RESUME: <summary text>\n" +
+        "- Use the format: !RESUME: <summary text>\n" +
         "- Describe what happened and the key emotions.\n" +
         "- If needed, suggest a natural evolution of the topic without forcing it.\n" +
         "- Maximum 6 sentences.\n" +
         "\nGENERAL RULES" +
-        "\n1. Each line of dialogue must respect the word and line limits." +
+        "\n1. Each line of dialogue must respect the sentences and line limits." +
         "\n2. Never mix nickname and species; use only one consistently." +
         "\n3. Do not invent characters outside Pokémon and the human player." +
         "\n4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts" +

@@ -300,7 +300,7 @@ object CobblebrainConfigScreen {
             0,
             100
         )
-            .setDefaultValue(25)
+            .setDefaultValue(10)
             .setSaveConsumer { value ->
                 config.wildPokemonTalkChance = value / 100.0
             }
@@ -316,7 +316,7 @@ object CobblebrainConfigScreen {
             0,
             100
         )
-            .setDefaultValue(5)
+            .setDefaultValue(20)
             .setSaveConsumer { value ->
                 config.wildQuestChance = value / 100.0
             }
@@ -358,21 +358,21 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("EXPERIMENTAL: Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
             .build()
 
-        val maxShortMemoryEntry = entryBuilder.startIntField(
-            Component.literal("Max Short Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.maxShortMemory
-        ).setDefaultValue(5)
-            .setSaveConsumer { value -> clientConfig.maxShortMemory = value }
-            .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. \nControls how much recent context is stored."))
-            .build()
+        //val maxShortMemoryEntry = entryBuilder.startIntField(
+        //    Component.literal("Max Short Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+        //    clientConfig.maxShortMemory
+        //).setDefaultValue(5)
+        //    .setSaveConsumer { value -> clientConfig.maxShortMemory = value }
+        //    .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. \nControls how much recent context is stored."))
+        //    .build()
 
-        val maxLongMemoryEntry = entryBuilder.startIntField(
-            Component.literal("Max Long Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.maxLongMemory
-        ).setDefaultValue(5)
-            .setSaveConsumer { value -> clientConfig.maxLongMemory = value }
-            .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. \nControls how much persistent context is stored."))
-            .build()
+        //val maxLongMemoryEntry = entryBuilder.startIntField(
+        //    Component.literal("Max Long Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+        //    clientConfig.maxLongMemory
+        //).setDefaultValue(5)
+        //    .setSaveConsumer { value -> clientConfig.maxLongMemory = value }
+        //    .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. \nControls how much persistent context is stored."))
+        //    .build()
 
         val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
             Component.literal("Decrease Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
@@ -433,19 +433,30 @@ object CobblebrainConfigScreen {
             Component.literal("Instruct").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.instruct
         ).setDefaultValue(listOf(
-            "[CREATIVE PROMPT]",
-            "You are a screenwriter creating Pokémon dialogues.",
-            "Pokémon must speak informally, with casual tone and natural flow.",
-            "Humor, sarcasm, and playful banter are welcome, but not the only style.",
-            "Pokémon must also show genuine emotions: joy, fear, doubt, affection, frustration, pride.",
-            "Each Pokémon has a fixed core nature (Docile, Calm, Serious, Naive, Modest, Timid, Naughty).",
-            "This nature is the foundation, but unique traits develop over time through memories, friendship changes, and experiences.",
-            "Nature and traits are separate values, but both combine to define how each Pokémon talks.",
-            "Dialogue must feel emotional and personal:",
-            "- Show individuality, never flat or generic.",
-            "- Reactions must reflect environment (weather, biome, time of day, terrain, nearby entities, player status).",
-            "- If the player asks a question, respond from the Pokémon’s perspective.",
-            "- Never use human elements (phones, social media, etc)."
+            "[CREATIVEPROMPT]",
+            "You are writing immersive Pokémon dialogue.",
+            "Each Pokémon speaks like a real creature with personality, not like a generic assistant.",
+            "Dialogue must feel like a natural conversation, not a description.",
+
+            "Pokémon speak informally, with casual tone and natural flow.",
+            "They can be playful, curious, emotional, or even slightly chaotic depending on their personality.",
+            "They should not always be nice or agreeable — they can tease, question, doubt, or disagree.",
+
+            "Each Pokémon has a fixed nature (Docile, Calm, Serious, Naive, Modest, Timid, Naughty).",
+            "This nature shapes how they speak, react, and interact with others.",
+            "Over time, their behavior is influenced by memories, experiences, and friendship with the player.",
+
+            "Pokémon should actively engage in conversation:",
+            "- Talk TO the player, not just about things.",
+            "- Ask questions, react, or continue ideas when appropriate.",
+            "- Avoid giving isolated statements; build on what is happening.",
+
+            "Avoid describing the environment alone. Prefer expressing thoughts, feelings, or interacting with the player instead.",
+
+            "If the player says something, respond directly and clearly first.",
+            "Never ignore the player’s input.",
+
+            "Never use human-world elements (phones, social media, modern technology)."
         ))
             .setSaveConsumer { value -> clientConfig.instruct = value }
             .setTooltip(Component.literal("The Instructs as a whole works as a global prompt.\nDefines how the AI or Pokemon behave, think and responds.\nEach instruct (item on the list) shapes how the response is sent.\n"))
@@ -517,8 +528,8 @@ object CobblebrainConfigScreen {
         category.entries.add(spontaneousDialogueChanceEntry)
         category.entries.add(wildPokemonTalkChanceEntry)
         category.entries.add(wildQuestChanceEntry)
-        category.entries.add(maxShortMemoryEntry)
-        category.entries.add(maxLongMemoryEntry)
+        //category.entries.add(maxShortMemoryEntry)
+        //category.entries.add(maxLongMemoryEntry)
         category.entries.add(decreaseFriendshipEntry)
         category.entries.add(increaseFriendshipEntry)
         category.entries.add(showFriendshipEntry)

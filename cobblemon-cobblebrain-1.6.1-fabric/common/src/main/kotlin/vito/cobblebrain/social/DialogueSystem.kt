@@ -1436,26 +1436,26 @@ object DialogueSystem {
                     it.startsWith("#") ||
                     it.startsWith("&") ||
                     it.startsWith("%") ||
-                    it.startsWith("¨RESUME") ||
+                    it.startsWith("!RESUME") ||
                     (!config.showFriendship && it.startsWith("friendship", ignoreCase = true))
         }
 
         val commandLines = allLines.filter { it.startsWith("#") }
         val summaryLines = allLines.filter { it.startsWith("&", ignoreCase = true) }
 
-        val memoryLines = content.split("|")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .filter { it.startsWith("@") }
+        //val memoryLines = content.split("|")
+            //.map { it.trim() }
+            //.filter { it.isNotEmpty() }
+            //.filter { it.startsWith("@") }
 
         val resumeLines = content.split("|")
             .map { it.trim() }
-            .filter { it.startsWith("¨RESUME", ignoreCase = true) }
+            .filter { it.startsWith("!RESUME", ignoreCase = true) }
 
         // 1. Salva as memórias no JSON
-        memoryLines.forEach { line ->
-            savePokemonMemory(server, line, clientConfig.maxShortMemory)
-        }
+        //memoryLines.forEach { line ->
+            //savePokemonMemory(server, line, clientConfig.maxShortMemory)
+        //}
 
         // 2. Detecta quest summary
         summaryLines.forEach { line ->
@@ -1487,7 +1487,7 @@ object DialogueSystem {
         //2.5. Detecta resume summary
         resumeLines.forEach { line ->
             val resumeText = line
-                .substringAfter("¨RESUME")
+                .substringAfter("!RESUME")
                 .removePrefix(":")
                 .trim()
 

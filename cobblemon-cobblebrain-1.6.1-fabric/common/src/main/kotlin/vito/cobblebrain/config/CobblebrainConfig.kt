@@ -11,6 +11,6 @@ data class CobblebrainConfig(
     var allowPokemonPVP: Boolean = false,
     var allowPokemonPVE: Boolean = true,
     var scheduleRaids: Boolean = true,
-    var wildPokemonTalkChance: Double = 0.25,
-    var wildQuestChance: Double = 0.05
+    var wildPokemonTalkChance: Double = 0.10,
+    var wildQuestChance: Double = 0.20
 )
