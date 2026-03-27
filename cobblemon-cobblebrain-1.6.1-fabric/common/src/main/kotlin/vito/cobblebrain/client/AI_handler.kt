@@ -74,6 +74,7 @@ class AIHandler {
         "\n<PokemonName>: <message>\n- Use pipes (|) and the Pokémon name to separate dialogue lines." +
         "\n- Each line must have 1-2 sentences.\n- If 1 Pokémon active → max 4 lines total." +
         "\n- If 2–5 Pokémon active → max 6 lines total.\n- If 6 Pokémon active → max 7 lines total." +
+        "\n- Each dialogue line MUST start with the Pokémon name. The name must be repeated on every new line, even if it is the same speaker." +
         "\n- If Wild pokemon are talking, make them talk in the dialogues too." +
         "\n\nFRIENDSHIP FORMAT\n- Each friendship line MUST follow this format:" +
         "\n  Friendship <PokemonName>: <current_value> + <change>" +

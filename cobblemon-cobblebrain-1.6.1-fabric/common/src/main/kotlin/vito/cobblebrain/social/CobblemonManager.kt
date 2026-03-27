@@ -318,7 +318,7 @@ object ConfigCommands {
                             Commands.argument("value", BoolArgumentType.bool())
                                 .executes { ctx ->
                                     val value = BoolArgumentType.getBool(ctx, "value")
-                                    ClientConfigHandler.clientConfig.listenToChat = value
+                                    ConfigHandler.config.listenToChat = value
                                     ConfigHandler.save()
                                     ctx.source.sendSuccess(
                                         { Component.literal("listenToChat set to $value") },

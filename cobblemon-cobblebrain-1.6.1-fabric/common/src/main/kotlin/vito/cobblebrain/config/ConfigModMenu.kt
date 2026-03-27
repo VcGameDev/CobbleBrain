@@ -206,25 +206,25 @@ object CobblebrainConfigScreen {
 
         val selectedLanguageEntry = entryBuilder.startStrField(
             Component.literal("Selected Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.selectedLanguage
+            config.selectedLanguage
         ).setDefaultValue("English")
-            .setSaveConsumer { value -> clientConfig.selectedLanguage = value }
+            .setSaveConsumer { value -> config.selectedLanguage = value }
             .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
             .build()
 
         val dialogueInChatEntry = entryBuilder.startBooleanToggle(
             Component.literal("Dialogue In Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.dialogueInChat
+            config.dialogueInChat
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> clientConfig.dialogueInChat = value }
+            .setSaveConsumer { value -> config.dialogueInChat = value }
             .setTooltip(Component.literal("Shows generated dialogue directly in the chat. \nThis makes Pokémon conversations visible to players."))
             .build()
 
         val chatbubblesEntry = entryBuilder.startBooleanToggle(
             Component.literal("Chat Bubbles").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.chatbubbles
+            config.chatbubbles
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> clientConfig.chatbubbles = value }
+            .setSaveConsumer { value -> config.chatbubbles = value }
             .setTooltip(Component.literal("Enables chat bubbles above characters. \nDialogue will appear visually instead of only in text chat."))
             .build()
 
@@ -264,33 +264,33 @@ object CobblebrainConfigScreen {
 
         val characteristicsEntry = entryBuilder.startStrList(
             Component.literal("Characteristics").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.characteristics
+            config.characteristics
         ).setDefaultValue(listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"))
-            .setSaveConsumer { value -> clientConfig.characteristics = value }
+            .setSaveConsumer { value -> config.characteristics = value }
             .setTooltip(Component.literal("list to define characteristics of a specific Pokémon for the AI. \nFormat: <pokemonName>: <text>"))
             .build()
 
         val lowTokenModeEntry = entryBuilder.startBooleanToggle(
             Component.literal("Low Token Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.lowTokenMode
+            config.lowTokenMode
         ).setDefaultValue(false)
-            .setSaveConsumer { value -> clientConfig.lowTokenMode = value }
+            .setSaveConsumer { value -> config.lowTokenMode = value }
             .setTooltip(Component.literal("Reduces world information sent to the AI. \nThis helps conserve tokens and lower usage costs."))
             .build()
 
         val dialogueOnDamageEntry = entryBuilder.startBooleanToggle(
             Component.literal("Dialogue On Damage").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.dialogueOnDamage
+            config.dialogueOnDamage
         ).setDefaultValue(false)
-            .setSaveConsumer { value -> clientConfig.dialogueOnDamage = value }
+            .setSaveConsumer { value -> config.dialogueOnDamage = value }
             .setTooltip(Component.literal("Makes Pokémon speak when someone is hurt. \nDialogue is triggered by damage events."))
             .build()
 
         val dialogueOnBattleEntry = entryBuilder.startBooleanToggle(
             Component.literal("Dialogue On Battle").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.dialogueOnBattle
+            config.dialogueOnBattle
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> clientConfig.dialogueOnBattle = value }
+            .setSaveConsumer { value -> config.dialogueOnBattle = value }
             .setTooltip(Component.literal("Makes Pokémon speak during battle events. \nDialogue reflects combat situations."))
             .build()
 
@@ -328,13 +328,13 @@ object CobblebrainConfigScreen {
 
         val spontaneousDialogueChanceEntry = entryBuilder.startIntSlider(
             Component.literal("Spontaneous Dialogue Chance").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            (clientConfig.spontaneousDialogueChance * 100).toInt(),
+            (config.spontaneousDialogueChance * 100).toInt(),
             0,
             100
         )
             .setDefaultValue(5)
             .setSaveConsumer { value ->
-                clientConfig.spontaneousDialogueChance = value / 100.0
+                config.spontaneousDialogueChance = value / 100.0
             }
             .setTextGetter { value ->
                 Component.literal(String.format("%.2f", value / 100.0))
@@ -344,17 +344,17 @@ object CobblebrainConfigScreen {
 
         val listenToChatEntry = entryBuilder.startBooleanToggle(
             Component.literal("Listen To Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.listenToChat
+            config.listenToChat
         ).setDefaultValue(false)
-            .setSaveConsumer { value -> clientConfig.listenToChat = value }
+            .setSaveConsumer { value -> config.listenToChat = value }
             .setTooltip(Component.literal("Enables listening to regular player chat. \nIf disabled, the AI ignores non-command messages."))
             .build()
 
         val onlyNearbyChatEntry = entryBuilder.startBooleanToggle(
             Component.literal("[EXPERIMENTAL] Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.onlyNearbyChat
+            config.onlyNearbyChat
         ).setDefaultValue(false)
-            .setSaveConsumer { value -> clientConfig.onlyNearbyChat = value }
+            .setSaveConsumer { value -> config.onlyNearbyChat = value }
             .setTooltip(Component.literal("EXPERIMENTAL: Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
             .build()
 
@@ -456,7 +456,9 @@ object CobblebrainConfigScreen {
             "If the player says something, respond directly and clearly first.",
             "Never ignore the player’s input.",
 
-            "Never use human-world elements (phones, social media, modern technology)."
+            "Never use human-world elements (phones, social media, modern technology).",
+            "Never output memories, system logs, or internal reasoning in dialogue lines. Memories are strictly internal and must NEVER appear in normal dialogue. They may only appear as summarized information inside !RESUME when required.",
+            "Never use roleplay narration or asterisk-style descriptions (e.g., *looks around*, *steps back*). All behavior must be expressed only through spoken dialogue or actions."
         ))
             .setSaveConsumer { value -> clientConfig.instruct = value }
             .setTooltip(Component.literal("The Instructs as a whole works as a global prompt.\nDefines how the AI or Pokemon behave, think and responds.\nEach instruct (item on the list) shapes how the response is sent.\n"))
@@ -496,7 +498,7 @@ object CobblebrainConfigScreen {
             }
         }
 
-        category.entries.add(makeSubtitleEntry("AI CONFIGURATION", 0xFFFF00))
+        category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
         category.entries.add(localApiProviderEntry)
         category.entries.add(temperatureEntry)
@@ -505,15 +507,15 @@ object CobblebrainConfigScreen {
         category.entries.add(requestTimeoutEntry)
         category.entries.add(debugLoggingEntry)
         category.entries.add(useDefaultOutputEntry)
-        category.entries.add(selectedLanguageEntry)
-        category.entries.add(lowTokenModeEntry)
         category.entries.add(apiKeyEntry)
         category.entries.add(keyRotationTriggerEntry)
         category.entries.add(aiModelEntry)
         category.entries.add(modelRotationTriggerEntry)
         category.entries.add(keyRotationEntry)
         category.entries.add(modelRotationEntry)
-        category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS", 0xFFFF00))
+        category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
+        category.entries.add(selectedLanguageEntry)
+        category.entries.add(lowTokenModeEntry)
         category.entries.add(scheduleRaidEntry)
         category.entries.add(characteristicsEntry)
         category.entries.add(listenToChatEntry)
@@ -533,7 +535,7 @@ object CobblebrainConfigScreen {
         category.entries.add(decreaseFriendshipEntry)
         category.entries.add(increaseFriendshipEntry)
         category.entries.add(showFriendshipEntry)
-        category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT", 0xFFFF00))
+        category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT (CLIENT)", 0xFFFF00))
         category.entries.add(instructEntry)
         category.entries.add(makeSpacer(10))
         category.entries.add(outputFormatEntry)
