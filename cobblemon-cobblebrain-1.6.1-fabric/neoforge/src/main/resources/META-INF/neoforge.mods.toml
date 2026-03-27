@@ -4,7 +4,7 @@ license="MIT"
 
 [[mods]]
 modId="cobblebrain"
-version="1.0.1"
+version="1.1.1"
 displayName="CobbleBrain"
 description='''
 a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons

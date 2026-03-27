@@ -44,18 +44,89 @@ class ModelRotator(private val models: List<String>) {
     fun next() { index = (index + 1) % models.size }
 }
 
-class AIHandler{
-
+class AIHandler {
     companion object {
+        private val sessionLogFile: Path by lazy {
+            val dir = Minecraft.getInstance().gameDirectory.toPath()
+                .resolve("cobblebrain-ai/logs")
+
+            Files.createDirectories(dir)
+
+            val fileName = "session_${
+                LocalDateTime.now()
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
+            }.log"
+
+            dir.resolve(fileName)
+        }
+
         private val gson = Gson()
-        private val INSTRUCTS = clientConfig.instruct
+        private val INSTRUCTS get() = clientConfig.instruct
             .filterNotNull()
             .joinToString("\n")
-        private val TEMPERATURE = clientConfig.temperature
-        private val PROVIDER_HINT = clientConfig.aiProvider.trim()
-        private val REASONING = clientConfig.reasoningEffort.trim().lowercase()
-        private val DEBUG = clientConfig.debugLogging
-        private val TIMEOUT_SECONDS = clientConfig.requestTimeoutSeconds
+        private val TEMPERATURE get() = clientConfig.temperature
+        private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
+        private val REASONING get() = clientConfig.reasoningEffort.trim().lowercase()
+        private val DEBUG get() = clientConfig.debugLogging
+        private val TIMEOUT_SECONDS get() = clientConfig.requestTimeoutSeconds
+        private const val DEFAULT_OUTPUT_FORMAT = " ##OUTPUT FORMAT##\nYou must generate your entire response following " +
+        "these STRICT rules:\n\nDIALOGUE FORMAT\n- Each dialogue line MUST follow this format:" +
+        "\n<PokemonName>: <message>\n- Use pipes (|) and the Pokémon name to separate dialogue lines." +
+        "\n- Each line must have 1-2 sentences.\n- If 1 Pokémon active → max 4 lines total." +
+        "\n- If 2–5 Pokémon active → max 6 lines total.\n- If 6 Pokémon active → max 7 lines total." +
+        "\n- Each dialogue line MUST start with the Pokémon name. The name must be repeated on every new line, even if it is the same speaker." +
+        "\n- If Wild pokemon are talking, make them talk in the dialogues too." +
+        "\n\nFRIENDSHIP FORMAT\n- Each friendship line MUST follow this format:" +
+        "\n  Friendship <PokemonName>: <current_value> + <change>" +
+        "\n  Friendship <PokemonName>: <current_value> - <change>" +
+        "\n- If AFFECT_FRIENDSHIP_PLUS = true → increase friendship (min +1, max +5)." +
+        "\n- If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5)." +
+        "\n- If both true → decide based on positive or negative impact." +
+        "\n- A Pokémon's friendship doesn't change more than once in the same dialogue" +
+        //"\n\nMEMORY FORMAT\n- Each memory line MUST follow this format:" +
+        //"\n  @<PokemonName>: <short memory sentence>\n  @@<PokemonName>: <core memory sentence>" +
+        //"\n- Use @ for short memory, @@ for core memory.\n- Each Pokémon records events from its own perspective." +
+        //"\n- Short memories = fleeting perceptions; Core memories = impactful events." +
+        //"\n- Memories MUST be written from the perspective of a third-person narrator, describing what happens to the Pokémon " +
+        //"\n- Do not generate memory lines EVERY response. Only generate memories when something meaningful or new happens." +
+        //"\n- Memories should not appear in the dialogue\n- Memories function as optional context and should only be used when they meaningfully improve the response." +
+        "\n\nACTION FORMAT\n- Each action line MUST follow this format:\n  #<PokemonName>: <action>" +
+        "\n- At the very end, output one action per Pokémon.\n- Use exactly one of:\n  #PokemonName: attack" +
+        "\n  #PokemonName: eat\n  #PokemonName: buff\n  #PokemonName: debuff enemy\n  #PokemonName: sit" +
+        "\n  #PokemonName: protect\n  #PokemonName: idle\n  (fire type) #PokemonName: cook" +
+        "\n  (steel type) #PokemonName: repair\n  (grass type) #PokemonName: grow\n  (ghost type) #PokemonName: shift" +
+        "\n- If no action is needed, ALWAYS use idle.\n\n QUEST FORMAT:" +
+        "\n- Only create a quest when you receive IMPORTANT: <PokemonName> has started a quest." +
+        "\n- The quest objective is defined in the IMPORTANT message. Do not invent or change it, and use only what is explicitly described." +
+        "\n- While a quest is active, ALWAYS include one of these markers:" +
+        "\n  %CONTINUE, %POSITIVE_END, %NEGATIVE_END, %LEAVE_END" +
+        "\n- Choose the marker based on how the interaction is going." +
+        "\n- Only finish delivery-type quests if you receive QUEST_COMPLETED." +
+        "\n- Keep quest progression natural and based on dialogue." +
+        "\n- Format the summary exactly as: &<text> "+
+        "RESUME FORMAT\n\n" +
+        "- At the end of the response, generate a short summary of the conversation.\n" +
+        "- Use the format: !RESUME: <summary text>\n" +
+        "- Describe what happened and the key emotions.\n" +
+        "- If needed, suggest a natural evolution of the topic without forcing it.\n" +
+        "- Maximum 6 sentences.\n" +
+        "\nGENERAL RULES" +
+        "\n1. Each line of dialogue must respect the sentences and line limits." +
+        "\n2. Never mix nickname and species; use only one consistently." +
+        "\n3. Do not invent characters outside Pokémon and the human player." +
+        "\n4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts" +
+        "\n5. Always follow the formats exactly; no hyphens or alternative separators." +
+        "\n6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action." +
+        "\n7. If no action is relevant, always output idle." +
+        "\n8. Dialogue, friendship, memory, and action content must integrate the [CREATIVEPROMPT] but never break format." +
+        "\n9. Dialogue may use past memories when relevant, but must prioritize responding directly to the current situation or player input." +
+
+                // regras pra imersao
+
+        "\n10. Pokémon should actively engage the player by continuing thoughts, expressing feelings, and occasionally asking questions." +
+        "\n11. The environment should influence behavior subtly, not be constantly described." +
+        "\n12. Use the [LAST INTERACTIONS] section as context to maintain continuity." +
+        "\n13. Avoid repeating ideas from the LAST INTERACTIONS. Instead, evolve the conversation naturally through feelings, reflections, or interaction, without abruptly changing the subject or pointing out unrelated elements."
     }
 
     // agora usando rotadores
@@ -64,18 +135,6 @@ class AIHandler{
 
     private val apiBase =
         clientConfig.apiBaseUrl.trimEnd('/').replace("localhost", "127.0.0.1")
-
-    private val sessionLogFile: Path by lazy {
-        val dir = Minecraft.getInstance().gameDirectory.toPath()
-            .resolve("cobblebrain-ai/logs")
-
-        Files.createDirectories(dir)
-
-        val fileName = "session_${LocalDateTime.now()
-            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.log"
-
-        dir.resolve(fileName)
-    }
 
     fun isLocalAddress(url: String): Boolean {
         return try {
@@ -119,9 +178,9 @@ class AIHandler{
     fun start() {
         //val watchService = FileSystems.getDefault().newWatchService()
         //comandoPath.parent.register(
-            //watchService,
-            //StandardWatchEventKinds.ENTRY_MODIFY,
-           //StandardWatchEventKinds.ENTRY_CREATE
+        //watchService,
+        //StandardWatchEventKinds.ENTRY_MODIFY,
+        //StandardWatchEventKinds.ENTRY_CREATE
         //)
 
         // Executor para rodar o pingHealth a cada 60s
@@ -134,20 +193,20 @@ class AIHandler{
         }
 
         //while (true) {
-            //try {
-                //val key = watchService.take()
-                //for (event in key.pollEvents()) {
-                    //if ((event.context() as Path).endsWith(comandoPath.fileName)) {
-                        //Thread.sleep(60)
-                        //println("tentativa de processcommandfile")
-                        //processCommandFile()
-                    //}
-                //}
-                //key.reset()
-            //} catch (e: Exception) {
-                //Thread.sleep(200)
-            //}
-        }
+        //try {
+        //val key = watchService.take()
+        //for (event in key.pollEvents()) {
+        //if ((event.context() as Path).endsWith(comandoPath.fileName)) {
+        //Thread.sleep(60)
+        //println("tentativa de processcommandfile")
+        //processCommandFile()
+        //}
+        //}
+        //key.reset()
+        //} catch (e: Exception) {
+        //Thread.sleep(200)
+        //}
+    }
     //}
 
     private fun pingHealth() {
@@ -176,12 +235,12 @@ class AIHandler{
     }
 
 
-
     private fun rotateApiKey(status: Int) {
         if (clientConfig.keyRotation && status in clientConfig.keyRotationTrigger) {
             apiKeyRotator.next()
             if (apiKeyRotator.current() == clientConfig.apiKey.first()) {
-                val msg = "API key rotation has cycled through all keys and returned to the first key. First key: ${apiKeyRotator.current()}."
+                val msg =
+                    "API key rotation has cycled through all keys and returned to the first key. First key: ${apiKeyRotator.current()}."
                 sendSystemMessage(msg)
             } else {
                 val msg = "API key has been rotated due to error $status. New key: ${apiKeyRotator.current()}."
@@ -195,7 +254,8 @@ class AIHandler{
             modelRotator.next()
             println("func de rotate ativa")
             if (modelRotator.current() == clientConfig.aiModel.first()) {
-                val msg = "Model rotation has cycled through all models and returned to the first model. First model: ${modelRotator.current()} \n"
+                val msg =
+                    "Model rotation has cycled through all models and returned to the first model. First model: ${modelRotator.current()} \n"
                 sendSystemMessage(msg)
             } else {
                 val msg = "Model has been rotated due to error $status. New model: ${modelRotator.current()} \n"
@@ -211,27 +271,27 @@ class AIHandler{
 
     // ------------------------------------------------------------
     //private fun processCommandFile() {
-        //if (!config.pokemonTalk) return
+    //if (!config.pokemonTalk) return
 
-        //val fullText = Files.readString(comandoPath).trim()
-        //println(comandoPath.fileName.toString())
-        //if (fullText.isEmpty()) return
+    //val fullText = Files.readString(comandoPath).trim()
+    //println(comandoPath.fileName.toString())
+    //if (fullText.isEmpty()) return
 
-        // usa o prompt inteiro como base do hash
-        //val hash = sha256(fullText)
-        //if (hash == lastPromptHash) {
-           // println("duplicata detectada")
-            //return
-        //}
+    // usa o prompt inteiro como base do hash
+    //val hash = sha256(fullText)
+    //if (hash == lastPromptHash) {
+    // println("duplicata detectada")
+    //return
+    //}
 
-        //lastPromptHash = hash
+    //lastPromptHash = hash
 
-        // log detalhado mostrando início do prompt e hash
-        //log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
-        //log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
+    // log detalhado mostrando início do prompt e hash
+    //log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
+    //log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
 
-        //println("processcommandfile ativo")
-        //enviarMensagem(fullText)
+    //println("processcommandfile ativo")
+    //enviarMensagem(fullText)
     //}
 
     // ------------------------------------------------------------
@@ -279,8 +339,8 @@ class AIHandler{
     )
 
     //Extrai uma mensagem de erro amigável a partir do status HTTP (opcional) e do corpo.
-     //* - Se status != 200, tenta detalhar via JSON ou regex.
-     //* - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
+    //* - Se status != 200, tenta detalhar via JSON ou regex.
+    //* - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
 
     fun extractErrorMessage(body: String, status: Int? = null): String {
         // tenta JSON
@@ -323,10 +383,12 @@ class AIHandler{
                 apiBase.contains("generativelanguage.googleapis.com") -> {
                     callGoogleGemma(prompt)
                 }
+
                 isLocalApi(apiBase) -> {
                     println("Using local provider: ${clientConfig.localApiProvider}")
                     callOpenAISchema(prompt)
                 }
+
                 else -> {
                     callOpenAISchema(prompt)
                 }
@@ -458,7 +520,7 @@ class AIHandler{
         clientConfig.localApiProvider.contains("lmstudio", ignoreCase = true)
 
     //private fun usesMaxTokens(apiBase: String) =
-        //isOpenRouter(apiBase) || isLMStudio(apiBase)
+    //isOpenRouter(apiBase) || isLMStudio(apiBase)
 
 
     private fun buildOpenAIJson(prompt: String): String {
@@ -498,6 +560,14 @@ class AIHandler{
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
         // Se for Player2, não inclui "model"
+        val outputFormatToUse = if (
+            clientConfig.useDefaultOutput
+        ) {
+            DEFAULT_OUTPUT_FORMAT
+        } else {
+            clientConfig.outputFormat
+        }
+
         return if (
             clientConfig.localApiProvider.equals("player2", ignoreCase = true) &&
             isLocalAddress(clientConfig.apiBaseUrl)
@@ -505,7 +575,7 @@ class AIHandler{
             """
         {
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + clientConfig.outputFormat)}" },
+            { "role": "system", "content": "${escape(INSTRUCTS + outputFormatToUse)}" },
             $messages
           ]$extraJson
         }
@@ -515,7 +585,7 @@ class AIHandler{
         {
           "model": "${modelRotator.current()}",
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + clientConfig.outputFormat)}" },
+            { "role": "system", "content": "${escape(INSTRUCTS + outputFormatToUse)}" },
             $messages
           ]$extraJson
         }
@@ -576,12 +646,20 @@ class AIHandler{
 
         val url = "$apiBase/v1beta/models/$currentModel:generateContent?key=$currentKey"
 
+        val outputFormatToUse = if (
+            clientConfig.useDefaultOutput
+        ) {
+            DEFAULT_OUTPUT_FORMAT
+        } else {
+            clientConfig.outputFormat
+        }
+
         val requestBody = mapOf(
             "contents" to listOf(
                 mapOf(
                     "role" to "user",
                     "parts" to listOf(
-                        mapOf("text" to escape(INSTRUCTS + clientConfig.outputFormat))
+                        mapOf("text" to escape(INSTRUCTS + outputFormatToUse))
                     )
                 ),
                 mapOf(
