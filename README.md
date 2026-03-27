@@ -2,11 +2,11 @@
 
 CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions more lively and responsive.
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
-**Discord: join the official <span style="color:#3598db"><a href="https://discord.gg/cobblemon" target="_blank" rel="nofollow">Cobblemon server</a></span>, check mods-and-plugins → CobbleBrain.**  
+**Discord: join the official <span style="color:#3598db"><a href="https://discord.gg/cobblemon" target="_blank" rel="nofollow">Cobblemon server</a></span>, check mods-and-plugins → CobbleBrain.**
 
 If you have installed older versions of the mod (<1.0.0) and are going to newer versions, make sure NOT to use the old json5. Let the mod generate a new json5 to play.
 
@@ -34,31 +34,30 @@ Wild Pokémon can also interact with the player and the world, creating quests, 
 ---
 
 ## Features
-- Pokémon can talk to the player and to each other.  
-- Pokémon can perform actions such as attacking, eating, cooking, repairing tools, growing plants, and more.  
-- Dialogue influenced by friendship, nature, past interactions, and world conditions.  
-- Memory system that stores previous interactions.  
-- Wild Pokémon quests and karma system that react to your actions.  
-- Raid events triggered when Pokémon species become hostile toward you.  
-- Fully configurable AI prompts, gameplay settings, and behaviors through the Mod Menu configuration screen.  
-- Supports cloud AI models (Google AI Studio, OpenAI, OpenRouter, Player2) and local models via LM Studio and Player2.  
-- Multiplayer compatible, with each player managing their own AI processing.  
+- Pokémon can talk to the player and to each other.
+- Pokémon can perform actions such as attacking, eating, cooking, repairing tools, growing plants, and more.
+- Dialogue influenced by friendship, nature, past interactions, and world conditions.
+- Wild Pokémon quests and karma system that react to your actions.
+- Raid events triggered when Pokémon species become hostile toward you.
+- Fully configurable AI prompts, gameplay settings, and behaviors through the Mod Menu configuration screen.
+- Supports cloud AI models (Google AI Studio, OpenAI, OpenRouter, Player2) and local models via LM Studio and Player2.
+- Multiplayer compatible, with each player managing their own AI processing.
 
 ---
 
 ## Installation
-1. Install **Minecraft** with **Fabric Loader**.  
-2. Install **Cobblemon** and **Fabric API**.  
-3. Download the latest version of **CobbleBrain** from the *Releases* tab. You can also download it from CurseForge or Modrinth.  
-4. Place the `.jar` file into the `mods` folder.  
+1. Install **Minecraft** with **Fabric Loader**.
+2. Install **Cobblemon** and **Fabric API**.
+3. Download the latest version of **CobbleBrain** from the *Releases* tab. You can also download it from CurseForge or Modrinth.
+4. Place the `.jar` file into the `mods` folder.
 
 ---
 
 ## Usage Recommendations
-- **Low-end PC / simple laptop** → Cloud AI.  
-- **Powerful laptop with dedicated GPU** → Cloud AI or lightweight local models (4b–7b).  
-- **Moderate–high-end PC** → Cloud AI or robust local models (8b–12b).  
-- For local models, always prefer **quantized versions** (q4, q5, q8) to reduce RAM/GPU usage.  
+- **Low-end PC / simple laptop** → Cloud AI.
+- **Powerful laptop with dedicated GPU** → Cloud AI or lightweight local models (4b–7b).
+- **Moderate–high-end PC** → Cloud AI or robust local models (8b–12b).
+- For local models, always prefer **quantized versions** (q4, q5, q8) to reduce RAM/GPU usage.
 
 ---
 
@@ -86,13 +85,13 @@ Here's a [Tutorial on YouTube](https://youtu.be/tPInNexUEmM)!
 
 ### Using Other Providers
 
-1. Create an account with a provider (examples: Google AI Studio, OpenAI, OpenRouter).  
-2. Generate an API key from the provider’s dashboard.  
-3. Choose a model (examples: `gemma-3-12b-it`, `gpt-4.1-mini`, `anthropic/claude-3.5-sonnet`).  
-4. Open the mod config Menu and fill:  
-   - `apiKey`: your generated key  
-   - `apiBaseUrl`: provider’s official URL  
-   - `aiModel`: ID of the chosen model  
+1. Create an account with a provider (examples: Google AI Studio, OpenAI, OpenRouter).
+2. Generate an API key from the provider’s dashboard.
+3. Choose a model (examples: `gemma-3-12b-it`, `gpt-4.1-mini`, `anthropic/claude-3.5-sonnet`).
+4. Open the mod config Menu and fill:
+   - `apiKey`: your generated key
+   - `apiBaseUrl`: provider’s official URL
+   - `aiModel`: ID of the chosen model
 
 Here's a [Tutorial on YouTube](https://youtu.be/Th1ylIsnQlg?si=KYWN34hF8qAoB7as)!
 
@@ -104,19 +103,19 @@ Here's a [Tutorial on YouTube](https://youtu.be/Th1ylIsnQlg?si=KYWN34hF8qAoB7as)
 Local mode runs AI models directly on your computer using LM Studio or Player2.  
 WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO HEAVY.
 
-**Steps:**  
-1. Install [LM Studio](https://lmstudio.ai) (available for Windows, Mac, Linux).  
-2. Open LM Studio and set up a folder for storing models.  
-3. Download a model (examples: LLaMA, Mistral).  
-   - 4b–5b models → lightweight, fast, good for simple dialogues.  
-   - 7b–8b models → balanced, deeper responses.  
-   - 12b+ models → complex, detailed dialogues, requiring significant RAM and GPU.  
-4. Prefer quantized versions (q4, q5, q8) to reduce resource usage.  
-5. Start the LM Studio server; it will show a local API address (e.g., `http://localhost:port`).  
-6. Open the Config menu and set:  
-   - `apiBaseUrl`: local server address (Example: `http://localhost:1234`)  
-   - `aiModel`: ID or name of the model running in the server  
-   - `localApiProvider`: `"lmstudio"`  
+**Steps:**
+1. Install [LM Studio](https://lmstudio.ai) (available for Windows, Mac, Linux).
+2. Open LM Studio and set up a folder for storing models.
+3. Download a model (examples: LLaMA, Mistral).
+   - 4b–5b models → lightweight, fast, good for simple dialogues.
+   - 7b–8b models → balanced, deeper responses.
+   - 12b+ models → complex, detailed dialogues, requiring significant RAM and GPU.
+4. Prefer quantized versions (q4, q5, q8) to reduce resource usage.
+5. Start the LM Studio server; it will show a local API address (e.g., `http://localhost:port`).
+6. Open the Config menu and set:
+   - `apiBaseUrl`: local server address (Example: `http://localhost:1234`)
+   - `aiModel`: ID or name of the model running in the server
+   - `localApiProvider`: `"lmstudio"`
 
   </details>
 
@@ -125,16 +124,16 @@ WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO 
 <details>
   <summary>2. Interacting with Pokémon</summary>
 
-  - Use the command `/mpk <message>` to talk to your Pokémon.  
-  - If `listenToChat = true`, any chat message can be interpreted by the AI.  
+- Use the command `/mpk <message>` to talk to your Pokémon.
+- If `listenToChat = true`, any chat message can be interpreted by the AI.
 
 </details>
 
 <details>
   <summary>3. Performance Adjustments</summary>
 
-  - Use `lowTokenMode` for faster and lighter responses.  
-  - Adjust `maxShortMemory` and `maxLongMemory` to control how much dialogue memory Pokémon retain.  
+- Use `lowTokenMode` for faster and lighter responses.
+- Adjust `maxShortMemory` and `maxLongMemory` to control how much dialogue memory Pokémon retain.
 
 </details>
 
@@ -146,44 +145,43 @@ CobbleBrain can be configured directly in-game through the mod config menu scree
 Advanced users can still edit the generated configuration files in the `/config` folder if needed.
 
 
-| Variable | Type | Description |
-|----------|------|-------------|
-| `apiKey` | List of Strings | API key used for authentication with the AI system. Can be a Bearer token or a Google API key depending on the provider. :contentReference[oaicite:0]{index=0} |
-| `keyRotation` | Boolean | Enables API key rotation when errors occur. Useful for handling invalid or expired keys. :contentReference[oaicite:1]{index=1} |
-| `keyRotationTrigger` | List[Int] | List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys. :contentReference[oaicite:2]{index=2} |
-| `apiBaseUrl` | String | Base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local server such as LM Studio or Player2. :contentReference[oaicite:3]{index=3} |
-| `localApiProvider` | String | Used when `apiBaseUrl` is local. Helps adapt requests for the correct provider. Supported: `player2`, `lmstudio`. :contentReference[oaicite:4]{index=4} |
-| `aiModel` | List of Strings | Names of the AI models to use. Multiple models can be provided for fallback/rotation. :contentReference[oaicite:5]{index=5} |
-| `modelRotation` | Boolean | Enables model rotation when errors occur, allowing fallback to alternative models. :contentReference[oaicite:6]{index=6} |
-| `modelRotationTrigger` | List[Int] | List of HTTP status codes that trigger model rotation. :contentReference[oaicite:7]{index=7} |
-| `temperature` | Double | Controls response randomness. Range: 0.0 (deterministic) to 1.0 (creative). Default ~0.7. :contentReference[oaicite:8]{index=8} |
-| `aiProvider` | String | Provider hint used for routing in OpenRouter. Ignored for other providers. :contentReference[oaicite:9]{index=9} |
-| `reasoningEffort` | String | Defines reasoning level for supported models. Options: `high`, `medium`, `low`, `auto`, `none`. :contentReference[oaicite:10]{index=10} |
-| `requestTimeoutSeconds` | Long | Request timeout in seconds. Local models may require higher values. :contentReference[oaicite:11]{index=11} |
-| `debugLogging` | Boolean | Enables debug logging. Logs are stored in `cobblebrain-ai/logs`. :contentReference[oaicite:12]{index=12} |
-| `selectedLanguage` | String | Language used by the AI to generate responses. :contentReference[oaicite:13]{index=13} |
-| `dialogueInChat` | Boolean | Shows generated dialogue in the chat. :contentReference[oaicite:14]{index=14} |
-| `chatbubbles` | Boolean | Enables visual chat bubbles above entities. :contentReference[oaicite:15]{index=15} |
-| `pokemonTalk` | Boolean | Global toggle for Pokémon dialogue and listening. :contentReference[oaicite:16]{index=16} |
-| `allowPokemonPVP` | Boolean | Allows Pokémon to attack other players’ Pokémon. :contentReference[oaicite:17]{index=17} |
-| `allowPokemonPVE` | Boolean | Allows Pokémon to attack mobs (excluding certain exceptions). :contentReference[oaicite:18]{index=18} |
-| `scheduleRaids` | Boolean | Enables raid events when karma conditions are met. :contentReference[oaicite:19]{index=19} |
-| `characteristics` | List of Strings | Custom traits for specific Pokémon. Format: `<pokemonName>: <text>`. :contentReference[oaicite:20]{index=20} |
-| `lowTokenMode` | Boolean | Reduces world/context data sent to AI, lowering cost and improving performance. :contentReference[oaicite:21]{index=21} |
-| `dialogueOnDamage` | Boolean | Triggers dialogue when entities take damage. :contentReference[oaicite:22]{index=22} |
-| `dialogueOnBattle` | Boolean | Enables dialogue during battle events. :contentReference[oaicite:23]{index=23} |
-| `wildPokemonTalkChance` | Double | Chance for wild Pokémon to participate in ongoing dialogue. :contentReference[oaicite:24]{index=24} |
-| `wildQuestChance` | Double | Chance for wild Pokémon to generate quests during interaction. :contentReference[oaicite:25]{index=25} |
-| `spontaneousDialogueChance` | Double | Chance for Pokémon to initiate dialogue spontaneously. :contentReference[oaicite:26]{index=26} |
-| `listenToChat` | Boolean | Enables AI to interpret normal player chat messages. :contentReference[oaicite:27]{index=27} |
-| `onlyNearbyChat` | Boolean | Restricts chat listening to nearby players. Requires `listenToChat = true`. :contentReference[oaicite:28]{index=28} |
-| `maxShortMemory` | Int | Maximum short-term memory size per Pokémon. :contentReference[oaicite:29]{index=29} |
-| `maxLongMemory` | Int | Maximum long-term memory size per Pokémon. :contentReference[oaicite:30]{index=30} |
-| `decreaseFriendship` | Boolean | Allows dialogue to decrease friendship levels. :contentReference[oaicite:31]{index=31} |
-| `increaseFriendship` | Boolean | Allows dialogue to increase friendship levels. :contentReference[oaicite:32]{index=32} |
-| `showFriendship` | Boolean | Displays friendship changes in chat. :contentReference[oaicite:33]{index=33} |
-| `instruct` | List of Strings | Global prompt defining how the AI behaves, thinks, and responds. Each entry contributes to shaping dialogue style and personality. |
-| `outputFormat` | String | System instructions for dialogue output format. Not recommended to modify. |
+| Variable                       | Type | Description                                                                                                                        |
+|--------------------------------|------|------------------------------------------------------------------------------------------------------------------------------------|
+| `apiKey`                       | List of Strings | API key used for authentication with the AI system. Can be a Bearer token or a Google API key depending on the provider.           |
+| `keyRotation`                  | Boolean | Enables API key rotation when errors occur. Useful for handling invalid or expired keys.                                           |
+| `keyRotationTrigger`           | List[Int] | List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys.                                  |
+| `apiBaseUrl`                   | String | Base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local server such as LM Studio or Player2.       |
+| `localApiProvider`             | String | Used when `apiBaseUrl` is local. Helps adapt requests for the correct provider. Supported: `player2`, `lmstudio`                   |
+| `aiModel`                      | List of Strings | Names of the AI models to use. Multiple models can be provided for fallback/rotation.                                              |
+| `modelRotation`                | Boolean | Enables model rotation when errors occur, allowing fallback to alternative models.                                                 |
+| `modelRotationTrigger`         | List[Int] | List of HTTP status codes that trigger model rotation.                                                                             |
+| `temperature`                  | Double | Controls response randomness. Range: 0.0 (deterministic) to 1.0 (creative). Default ~0.7.                                          |
+| `aiProvider`                   | String | Provider hint used for routing in OpenRouter. Ignored for other providers.                                                         |
+| `reasoningEffort`              | String | Defines reasoning level for supported models. Options: `high`, `medium`, `low`, `auto`, `none`                                     |
+| `requestTimeoutSeconds`        | Long | Request timeout in seconds. Local models may require higher values.                                                                |
+| `debugLogging`                 | Boolean | Enables debug logging. Logs are stored in `cobblebrain-ai/logs`                                                                    |
+| `useDefaultOutput`             | Boolean | Enables the recommended and updated output_format of the mod version.                                                              |
+| `selectedLanguage`             | String | Language used by the AI to generate responses.                                                                                     |
+| `dialogueInChat`               | Boolean | Shows generated dialogue in the chat.                                                                                              |
+| `chatbubbles`                  | Boolean | Enables visual chat bubbles above entities.                                                                                        |
+| `pokemonTalk`                  | Boolean | Global toggle for Pokémon dialogue and listening.                                                                                  |
+| `allowPokemonPVP`              | Boolean | Allows Pokémon to attack other players’ Pokémon.                                                                                   |
+| `allowPokemonPVE`              | Boolean | Allows Pokémon to attack mobs (excluding certain exceptions).                                                                      |
+| `scheduleRaids`                | Boolean | Enables raid events when karma conditions are met.                                                                                 |
+| `characteristics`              | List of Strings | Custom traits for specific Pokémon. Format: `<pokemonName>: <text>`                                                                |
+| `lowTokenMode`                 | Boolean | Reduces world/context data sent to AI, lowering cost and improving performance.                                                    |
+| `dialogueOnDamage`             | Boolean | Triggers dialogue when entities take damage.                                                                                       |
+| `dialogueOnBattle`             | Boolean | Enables dialogue during battle events.                                                                                             |
+| `wildPokemonTalkChance`        | Double | Chance for wild Pokémon to participate in ongoing dialogue.                                                                        |
+| `wildQuestChance`              | Double | Chance for wild Pokémon to generate quests during interaction.                                                                     |
+| `spontaneousDialogueChance`    | Double | Chance for Pokémon to initiate dialogue spontaneously.                                                                             |
+| `listenToChat`                 | Boolean | Enables AI to interpret normal player chat messages.                                                                               |
+| `EXPERIMENTAL: onlyNearbyChat` | Boolean | Restricts chat listening to nearby players. Requires `listenToChat = true`                                                         |
+| `decreaseFriendship`           | Boolean | Allows dialogue to decrease friendship levels.                                                                                     |
+| `increaseFriendship`           | Boolean | Allows dialogue to increase friendship levels.                                                                                     |
+| `showFriendship`               | Boolean | Displays friendship changes in chat.                                                                                               |
+| `instruct`                     | List of Strings | Global prompt defining how the AI behaves, thinks, and responds. Each entry contributes to shaping dialogue style and personality. |
+| `outputFormat`                 | String | System instructions for dialogue output format. Not recommended to modify.                                                         |
 
 ---
 
@@ -321,8 +319,8 @@ Advanced users can still edit the generated configuration files in the `/config`
 ---
 
 ## Contributing
-- Open *issues* for bugs or suggestions.  
-- Read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting code.  
+- Open *issues* for bugs or suggestions.
+- Read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting code.
 
 ---
 
