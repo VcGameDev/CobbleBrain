@@ -31,12 +31,12 @@ import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
-import vito.cobblebrain.client.social.CobblebrainWorldSave
-import vito.cobblebrain.client.social.CobblebrainWorldSave.adjustKarma
-import vito.cobblebrain.client.social.CobblebrainWorldSave.adjustKillCount
+import vito.cobblebrain.social.CobblebrainWorldSave.adjustKarma
+import vito.cobblebrain.social.CobblebrainWorldSave.adjustKillCount
 import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
+import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
 import vito.cobblebrain.sensors.MemoryStore.savePokemonMemory
 import vito.cobblebrain.sensors.collectWorldContext
 import vito.cobblebrain.sensors.parseCommand
@@ -134,6 +134,15 @@ object DialogueSystem {
                 .append(Component.literal("Press ").withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal("Y").withStyle(ChatFormatting.AQUA))
                 .append(Component.literal(" to open Cobblebrain config menu.").withStyle(ChatFormatting.YELLOW))
+
+                //.append(Component.literal("Activate 'Output April Fools Actions' in the config menu and use these new actions:\n").withStyle(ChatFormatting.LIGHT_PURPLE))
+                //.append(Component.literal("(fire pokemon) fireball machine\n").withStyle(ChatFormatting.LIGHT_PURPLE))
+                //.append(Component.literal("(fire pokemon) nuke\n").withStyle(ChatFormatting.LIGHT_PURPLE))
+                //.append(Component.literal("(electric pokemon) final judgment\n").withStyle(ChatFormatting.LIGHT_PURPLE))
+                //.append(Component.literal("(fairy pokemon) imaginary technique\n").withStyle(ChatFormatting.LIGHT_PURPLE))
+                //.append(Component.literal("(psychic pokemon) psychic stand").withStyle(ChatFormatting.LIGHT_PURPLE))
+                //.append(Component.literal("ssstyle\n").withStyle(ChatFormatting.LIGHT_PURPLE))
+
         )
     }
 
@@ -1249,10 +1258,36 @@ object DialogueSystem {
 
     fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
         val context = collectWorldContext(player)
+        val questsRoot = CobblebrainWorldSave.data.getAsJsonObject("quests")
+        val activeArray = questsRoot.getAsJsonArray("active")
+
+        val playerQuest = activeArray
+            .map { it.asJsonObject }
+            .asReversed()
+            .firstOrNull {
+                it.get("ownerUuid")?.asString == player.uuid.toString() &&
+                        it.get("status")?.asString == "IN_PROGRESS"
+            }
 
         return buildString {
             appendLine(moreText)
             appendLine()
+            if (playerQuest != null && config.outputQuests) {
+                appendLine("[ACTIVE QUEST]")
+
+                val type = playerQuest.get("type")?.asString ?: "UNKNOWN"
+                appendLine("Type: $type")
+                if (playerQuest.has("target"))
+                    appendLine("Target: ${playerQuest.get("target").asString}")
+                if (playerQuest.has("amount"))
+                    appendLine("Amount: ${playerQuest.get("amount").asInt}")
+                if (playerQuest.has("targetSpecies"))
+                    appendLine("Target Species: ${playerQuest.get("targetSpecies").asString}")
+                if (playerQuest.has("questSummary"))
+                    appendLine("Summary: ${playerQuest.get("questSummary").asString}")
+
+                appendLine()
+            }
             val interactions = ConversationMemory.get(player.uuid)
 
             if (interactions.isNotEmpty()) {
@@ -1261,26 +1296,31 @@ object DialogueSystem {
                 appendLine()
             }
             // Environment
-            appendLine("Biome: ${context.biome}")
-            appendLine("Weather: ${context.weather}")
-            appendLine("Time: ${context.timeLabel}")
+            if (config.outputWorldContext)
+                appendLine("Biome: ${context.biome}")
+                appendLine("Weather: ${context.weather}")
+                appendLine("Time: ${context.timeLabel}")
 
-            if (!config.lowTokenMode) {
+            if (!config.lowTokenMode && config.outputWorldContext) {
                 appendLine("Light: ${context.lightLevel}")
                 appendLine("Block under the player's feet: ${context.blockUnder}")
                 appendLine("Nearby special blocks: ${context.specialBlocks}")
             }
 
-            if (!config.lowTokenMode) {
+            if (!config.lowTokenMode && config.outputMobsContext) {
                 appendLine("Nearby entities: ${context.nearbyEntities}")
                 appendLine("Nearby mobs: ${context.nearbyMobs}")
-                appendLine("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
-                println("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
             }
-            appendLine("Items on the ground: ${context.nearbyItems}")
 
-            appendLine("Player health: ${context.health}/${context.maxHealth}")
-            appendLine("Player's main hand: ${context.mainHand}")
+            appendLine("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
+            println("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
+
+            if (!config.lowTokenMode && config.outputWorldContext)
+                appendLine("Items on the ground: ${context.nearbyItems}")
+
+            if (config.outputWorldContext)
+                appendLine("Player health: ${context.health}/${context.maxHealth}")
+                appendLine("Player's main hand: ${context.mainHand}")
             appendLine()
 
             if (config.wildPokemonTalkChance > 0.0
@@ -1353,7 +1393,7 @@ object DialogueSystem {
 
             pokemons.forEach { p ->
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
-                appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
+                appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | Type(s): ${p.types} | Gender: ${p.gender} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
 
                 // Adiciona características se houver
                 val nameToCheck = p.nickname?.string ?: p.species.name
@@ -1397,20 +1437,22 @@ object DialogueSystem {
                     }
                 }
 
-                //val memories = currentServer?.let { srv ->
-                    //loadPokemonMemories(
-                        //srv,
-                        //p.uuid.toString(),
-                        //clientConfig.maxShortMemory
-                    //)
-                //} ?: emptyList()
+                if (config.outputMemories) {
+                    val memories = currentServer?.let { srv ->
+                        loadPokemonMemories(
+                            srv,
+                            p.uuid.toString(),
+                            config.maxShortMemory
+                        )
+                    } ?: emptyList()
 
-                //if (memories.isNotEmpty()) {
-                    //appendLine("\nMemories:\n")
-                    //memories.forEach { m ->
-                        //appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
-                    //}
-                //}
+                    if (memories.isNotEmpty()) {
+                        appendLine("\nMemories:\n")
+                        memories.forEach { m ->
+                            appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
+                        }
+                    }
+                }
             }
             appendLine("Important variables:")
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
@@ -1441,20 +1483,21 @@ object DialogueSystem {
 
         val commandLines = allLines.filter { it.startsWith("#") }
         val summaryLines = allLines.filter { it.startsWith("&", ignoreCase = true) }
+        val questStatusLines = allLines.filter { it.trim().startsWith("%") }
 
-        //val memoryLines = content.split("|")
-            //.map { it.trim() }
-            //.filter { it.isNotEmpty() }
-            //.filter { it.startsWith("@") }
+        val memoryLines = content.split("|")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .filter { it.startsWith("@") }
 
         val resumeLines = content.split("|")
             .map { it.trim() }
             .filter { it.startsWith("!RESUME", ignoreCase = true) }
 
         // 1. Salva as memórias no JSON
-        //memoryLines.forEach { line ->
-            //savePokemonMemory(server, line, clientConfig.maxShortMemory)
-        //}
+        memoryLines.forEach { line ->
+            savePokemonMemory(server, line, config.maxShortMemory)
+        }
 
         // 2. Detecta quest summary
         summaryLines.forEach { line ->
@@ -1555,9 +1598,10 @@ object DialogueSystem {
                 .firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) }
 
             // 6. Detecta marcadores (%POSITIVE_END, etc.)
-            if (line.startsWith("%")) {
-                println("[DEBUG] Marcador detectado na fala: $line")
-                handleAdviceQuestResponse(player, speaker?.entity, line)
+            questStatusLines.forEach { line ->
+                val cleaned = line.trim()
+                println("[DEBUG] Marcador detectado: $cleaned")
+                handleAdviceQuestResponse(player, speaker?.entity, cleaned)
             }
 
             ScheduledMessage(

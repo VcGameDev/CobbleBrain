@@ -12,9 +12,7 @@ import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
-import vito.cobblebrain.client.social.CobblebrainWorldSave
-import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
-import vito.cobblebrain.client.social.MobBridge
+import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.config.ConfigHandler
@@ -47,7 +45,7 @@ object PokemonTalkCommand {
                             val player: ServerPlayer = ctx.source.playerOrException
                             val conteudo = StringArgumentType.getString(ctx, "message")
 
-                            DialogueSystem.onSendPromptClient?.invoke()
+                            //DialogueSystem.onSendPromptClient?.invoke()
 
                             // UTIL PRA DEBUG
                             //player.sendSystemMessage(Component.literal("1 - comando executou"))

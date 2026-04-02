@@ -1,38 +1,19 @@
 package vito.cobblebrain.server
 
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 import net.minecraft.server.level.ServerPlayer
 import vito.cobblebrain.network.CobblebrainPayloads
 
-object CobblebrainServerHandlerNeoForge {
+object CobblebrainServerHandlers {
 
-    fun registerPayloads(event: RegisterPayloadHandlersEvent) {
-        val registrar = event.registrar("cobblebrain").versioned("1.0")
+    fun onAction(player: ServerPlayer, payload: CobblebrainPayloads.ActionPayload) {
+        CobblebrainServerHandler.processAction(player, payload.action)
+    }
 
-        registrar.playToServer(
-            CobblebrainPayloads.ActionPayload.TYPE,
-            CobblebrainPayloads.ActionPayload.CODEC
-        ) { payload, context ->
-            val player = context.player() as? ServerPlayer ?: return@playToServer
-
-            context.enqueueWork {
-                CobblebrainServerHandler.processAction(player, payload.action)
-            }
-        }
-
-        registrar.playToServer(
-            CobblebrainPayloads.AIResponsePayload.TYPE,
-            CobblebrainPayloads.AIResponsePayload.CODEC
-        ) { payload, context ->
-            val player = context.player() as? ServerPlayer ?: return@playToServer
-
-            context.enqueueWork {
-                CobblebrainServerHandler.processIaResponse(
-                    player.server,
-                    player,
-                    payload.content
-                )
-            }
-        }
+    fun onAIResponse(player: ServerPlayer, payload: CobblebrainPayloads.AIResponsePayload) {
+        CobblebrainServerHandler.processIaResponse(
+            player.server,
+            player,
+            payload.content
+        )
     }
 }

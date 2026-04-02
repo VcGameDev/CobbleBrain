@@ -26,4 +26,16 @@ data class CobblebrainConfig(
     var spontaneousDialogueChance: Double = 0.05,
     var listenToChat: Boolean = false,
     var onlyNearbyChat: Boolean = false,
+    var maxShortMemory: Int = 2,
+    var maxLongMemory: Int = 5,
+    var outputDialogue: Boolean = true,
+    var outputActions: Boolean = true,
+    var outputFriendship: Boolean = true,
+    var outputQuests: Boolean = true,
+    var outputWorldContext: Boolean = true,
+    var outputMobsContext: Boolean = true,
+    val outputLastContext: Boolean = true,
+    val outputBlockSensors: Boolean = true,
+    var outputMemories: Boolean = false,
+    var outputApril1: Boolean = false
 )

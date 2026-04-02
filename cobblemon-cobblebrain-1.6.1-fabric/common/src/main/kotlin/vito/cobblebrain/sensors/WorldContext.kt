@@ -13,7 +13,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.storage.LevelResource
-import vito.cobblebrain.config.ClientConfigHandler.clientConfig
+import vito.cobblebrain.config.SyncedConfig
 import vito.cobblebrain.social.PokemonQuery
 import java.nio.file.Files
 import java.nio.file.Path
@@ -268,9 +268,9 @@ object MemoryStore {
                 while (targetArray.size() > maxMemories) targetArray.remove(0)
             }
 
-            //if (marker == "@@" && clientConfig.maxLongMemory > 0) {
-                //while (targetArray.size() > clientConfig.maxLongMemory) targetArray.remove(0)
-            //}
+            if (marker == "@@" && SyncedConfig.maxLongMemory > 0) {
+                while (targetArray.size() > SyncedConfig.maxLongMemory) targetArray.remove(0)
+            }
 
 
             Files.writeString(f, gson.toJson(root))
@@ -295,18 +295,18 @@ object MemoryStore {
         val shortTerm = obj.getAsJsonArray("short_term")?.map { it.asString } ?: emptyList()
         val longTerm = obj.getAsJsonArray("long_term")?.map { it.asString } ?: emptyList()
 
-        //val shortLimited = if (maxMemories > 0) shortTerm.takeLast(maxMemories) else shortTerm
-        //val longLimited = if (clientConfig.maxLongMemory > 0) longTerm.takeLast(clientConfig.maxLongMemory) else longTerm
+        val shortLimited = if (maxMemories > 0) shortTerm.takeLast(maxMemories) else shortTerm
+        val longLimited = if (SyncedConfig.maxLongMemory > 0) longTerm.takeLast(SyncedConfig.maxLongMemory) else longTerm
 
-        //val result = mutableListOf<String>()
-        //if (shortLimited.isNotEmpty()) {
-            //result.add("SHORT-TERM MEMORIES")
-            //result.addAll(shortLimited)
-        //}
-        //if (longLimited.isNotEmpty()) {
-            //result.add("IMPORTANT / CHARACTERISTIC MEMORIES")
-            //result.addAll(longLimited)
-        //}
+        val result = mutableListOf<String>()
+        if (shortLimited.isNotEmpty()) {
+            result.add("SHORT-TERM MEMORIES")
+            result.addAll(shortLimited)
+        }
+        if (longLimited.isNotEmpty()) {
+            result.add("IMPORTANT / CHARACTERISTIC MEMORIES")
+            result.addAll(longLimited)
+        }
 
         return arrayListOf()
     }

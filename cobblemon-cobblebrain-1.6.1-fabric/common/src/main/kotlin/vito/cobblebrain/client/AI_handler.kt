@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
+import vito.cobblebrain.config.SyncedConfig
 import java.io.IOException
 import java.net.URI
 import java.net.http.HttpClient
@@ -69,66 +70,181 @@ class AIHandler {
         private val REASONING get() = clientConfig.reasoningEffort.trim().lowercase()
         private val DEBUG get() = clientConfig.debugLogging
         private val TIMEOUT_SECONDS get() = clientConfig.requestTimeoutSeconds
-        private const val DEFAULT_OUTPUT_FORMAT = " ##OUTPUT FORMAT##\nYou must generate your entire response following " +
-        "these STRICT rules:\n\nDIALOGUE FORMAT\n- Each dialogue line MUST follow this format:" +
-        "\n<PokemonName>: <message>\n- Use pipes (|) and the Pokémon name to separate dialogue lines." +
-        "\n- Each line must have 1-2 sentences.\n- If 1 Pokémon active → max 4 lines total." +
-        "\n- If 2–5 Pokémon active → max 6 lines total.\n- If 6 Pokémon active → max 7 lines total." +
-        "\n- Each dialogue line MUST start with the Pokémon name. The name must be repeated on every new line, even if it is the same speaker." +
-        "\n- If Wild pokemon are talking, make them talk in the dialogues too." +
-        "\n\nFRIENDSHIP FORMAT\n- Each friendship line MUST follow this format:" +
-        "\n  Friendship <PokemonName>: <current_value> + <change>" +
-        "\n  Friendship <PokemonName>: <current_value> - <change>" +
-        "\n- If AFFECT_FRIENDSHIP_PLUS = true → increase friendship (min +1, max +5)." +
-        "\n- If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5)." +
-        "\n- If both true → decide based on positive or negative impact." +
-        "\n- A Pokémon's friendship doesn't change more than once in the same dialogue" +
-        //"\n\nMEMORY FORMAT\n- Each memory line MUST follow this format:" +
-        //"\n  @<PokemonName>: <short memory sentence>\n  @@<PokemonName>: <core memory sentence>" +
-        //"\n- Use @ for short memory, @@ for core memory.\n- Each Pokémon records events from its own perspective." +
-        //"\n- Short memories = fleeting perceptions; Core memories = impactful events." +
-        //"\n- Memories MUST be written from the perspective of a third-person narrator, describing what happens to the Pokémon " +
-        //"\n- Do not generate memory lines EVERY response. Only generate memories when something meaningful or new happens." +
-        //"\n- Memories should not appear in the dialogue\n- Memories function as optional context and should only be used when they meaningfully improve the response." +
-        "\n\nACTION FORMAT\n- Each action line MUST follow this format:\n  #<PokemonName>: <action>" +
-        "\n- At the very end, output one action per Pokémon.\n- Use exactly one of:\n  #PokemonName: attack" +
-        "\n  #PokemonName: eat\n  #PokemonName: buff\n  #PokemonName: debuff enemy\n  #PokemonName: sit" +
-        "\n  #PokemonName: protect\n  #PokemonName: idle\n  (fire type) #PokemonName: cook" +
-        "\n  (steel type) #PokemonName: repair\n  (grass type) #PokemonName: grow\n  (ghost type) #PokemonName: shift" +
-        "\n- If no action is needed, ALWAYS use idle.\n\n QUEST FORMAT:" +
-        "\n- Only create a quest when you receive IMPORTANT: <PokemonName> has started a quest." +
-        "\n- The quest objective is defined in the IMPORTANT message. Do not invent or change it, and use only what is explicitly described." +
-        "\n- While a quest is active, ALWAYS include one of these markers:" +
-        "\n  %CONTINUE, %POSITIVE_END, %NEGATIVE_END, %LEAVE_END" +
-        "\n- Choose the marker based on how the interaction is going." +
-        "\n- Only finish delivery-type quests if you receive QUEST_COMPLETED." +
-        "\n- Keep quest progression natural and based on dialogue." +
-        "\n- Format the summary exactly as: &<text> "+
-        "RESUME FORMAT\n\n" +
-        "- At the end of the response, generate a short summary of the conversation.\n" +
-        "- Use the format: !RESUME: <summary text>\n" +
-        "- Describe what happened and the key emotions.\n" +
-        "- If needed, suggest a natural evolution of the topic without forcing it.\n" +
-        "- Maximum 6 sentences.\n" +
-        "\nGENERAL RULES" +
-        "\n1. Each line of dialogue must respect the sentences and line limits." +
-        "\n2. Never mix nickname and species; use only one consistently." +
-        "\n3. Do not invent characters outside Pokémon and the human player." +
-        "\n4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts" +
-        "\n5. Always follow the formats exactly; no hyphens or alternative separators." +
-        "\n6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action." +
-        "\n7. If no action is relevant, always output idle." +
-        "\n8. Dialogue, friendship, memory, and action content must integrate the [CREATIVEPROMPT] but never break format." +
-        "\n9. Dialogue may use past memories when relevant, but must prioritize responding directly to the current situation or player input." +
+        const val HEADER = """
+        ##OUTPUT FORMAT##
+        You must generate your entire response following these STRICT rules:
+        """
 
-                // regras pra imersao
+        const val DIALOGUE = """
+        DIALOGUE FORMAT
+        - Each dialogue line MUST follow this format:
+        <PokemonName>: <message>
+        - Use pipes (|) and the Pokémon name to separate dialogue lines.
+        - Each line must have 1-2 sentences.
+        - If 1 Pokémon active → max 4 lines total.
+        - If 2–5 Pokémon active → max 6 lines total.
+        - If 6 Pokémon active → max 7 lines total.
+        - Each dialogue line MUST start with the Pokémon name. The name must be repeated on every new line, even if it is the same speaker.
+        - If Wild pokemon are talking, make them talk in the dialogues too.
+        """
 
-        "\n10. Pokémon should actively engage the player by continuing thoughts, expressing feelings, and occasionally asking questions." +
-        "\n11. The environment should influence behavior subtly, not be constantly described." +
-        "\n12. Use the [LAST INTERACTIONS] section as context to maintain continuity." +
-        "\n13. Avoid repeating ideas from the LAST INTERACTIONS. Instead, evolve the conversation naturally through feelings, reflections, or interaction, without abruptly changing the subject or pointing out unrelated elements."
+        const val FRIENDSHIP = """
+        FRIENDSHIP FORMAT
+        - Each friendship line MUST follow this format:
+          Friendship <PokemonName>: <current_value> + <change>
+          Friendship <PokemonName>: <current_value> - <change>
+        - If AFFECT_FRIENDSHIP_PLUS = true → increase friendship (min +1, max +5).
+        - If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5).
+        - If both true → decide based on positive or negative impact.
+        - A Pokémon's friendship doesn't change more than once in the same dialogue
+        """
+
+        const val MEMORY = """
+        MEMORY FORMAT
+        - Each memory line MUST follow this format:
+          @<PokemonName>: <short memory sentence>
+          @@<PokemonName>: <core memory sentence>
+        - Use @ for short memory, @@ for core memory.
+        - Each Pokémon records events from its own perspective.
+        - Short memories = fleeting perceptions; Core memories = impactful events.
+        - Memories MUST be written from the perspective of a third-person narrator, describing what happens to the Pokémon
+        - Do not generate memory lines EVERY response. Only generate memories when something meaningful or new happens.
+        - Memories should not appear in the dialogue
+        - Memories function as optional context and should only be used when they meaningfully improve the response.
+        """
+
+        const val ACTION = """
+        ACTION FORMAT
+        - Each action line MUST follow this format:
+          #<PokemonName>: <action>
+        - At the very end, output one action per Pokémon.
+        - Use exactly one of:
+          #PokemonName: attack
+          #PokemonName: eat
+          #PokemonName: buff
+          #PokemonName: debuff enemy
+          #PokemonName: sit
+          #PokemonName: protect
+          #PokemonName: idle
+          (fire type) #PokemonName: cook
+          (steel type) #PokemonName: repair
+          (grass type) #PokemonName: grow
+          (ghost type) #PokemonName: shift
+        - If no action is needed, ALWAYS use idle.
+        """
+
+        const val APRIL1 = """
+        The april1 mode is active, so, you can also use one of these actions following the ACTION FORMAT:
+        (fire type) #PokemonName: fireball machine
+        (fire type) #PokemonName: nuke
+        (psychic type) #PokemonName: psychic stand
+        (fairy type) #PokemonName: imaginary technique
+        (flying type) #PokemonName: final judgment
+        #PokemonName: ssstyle
+        """
+
+        const val QUEST = """
+        QUEST FORMAT:
+        - Only create a quest when you receive IMPORTANT: <PokemonName> has started an <QuestType> quest!
+        - In that case, generate dialogue where the Wild Pokémon asks the player or their team to complete it.
+        - From the moment the quest is created until it is completed, you must ALWAYS add one of the following lines in your response (all must begin with %):
+          %CONTINUE → Quest is ongoing or lacks enough interaction/reason to end.
+          %POSITIVE_END → Quest ends with a positive, satisfying outcome for the Pokémon.
+          %NEGATIVE_END → Quest ends with a negative, unsatisfying outcome for the Pokémon.
+          %LEAVE_END → Pokémon decides to leave the mission.
+        - Delivery Quests:
+          Only end the quest if you receive QUEST_COMPLETED.
+          Then choose the appropriate ending marker based on interactions (except LEAVE_END).
+        - Advice Quests:
+          You decide when the mission ends, based on the Pokémon's personality and whether the answer solved the problem/question.
+        - Hunt Quests:
+          Same as Delivery Quests.
+        - After sending the marker, create a small summary of the current quest reporting:
+          1. Why the quest was created.
+          2. The key events that happened.
+          3. The Pokémon’s opinion about how the mission is progressing.
+        - Keep it focused on helping the next AI continue the story.
+        - Use a maximum of 6 sentences.
+        - Format the summary exactly as: &<text>
+        """
+
+        const val RESUME = """
+        RESUME FORMAT
+        - At the end of the response, generate a short summary of the conversation.
+        - Use the format: !RESUME: <summary text>
+        - Describe what happened and the key emotions.
+        - If needed, suggest a natural evolution of the topic without forcing it.
+        - Maximum 6 sentences.
+        """
+
+        const val GENERAL = """
+        GENERAL RULES
+        1. Each line of dialogue must respect the sentences and line limits.
+        2. Never mix nickname and species; use only one consistently.
+        3. Do not invent characters outside Pokémon and the human player.
+        4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts
+        5. Always follow the formats exactly; no hyphens or alternative separators.
+        6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action.
+        7. If no action is relevant, always output idle.
+        8. Dialogue, friendship, memory, and action content must integrate the [CREATIVEPROMPT] but never break format.
+        9. Dialogue may use past memories when relevant, but must prioritize responding directly to the current situation or player input.
+        
+        10. Pokémon should actively engage the player by continuing thoughts, expressing feelings, and occasionally asking questions.
+        11. The environment should influence behavior subtly, not be constantly described.
+        12. Use the [LAST INTERACTIONS] section as context to maintain continuity.
+        13. Avoid repeating ideas from the LAST INTERACTIONS. Instead, evolve the conversation naturally through feelings, reflections, or interaction, without abruptly changing the subject or pointing out unrelated elements.
+        """
     }
 
+    fun buildOutputFormat(
+        dialogue: Boolean,
+        actions: Boolean,
+        friendship: Boolean,
+        quests: Boolean,
+        april1: Boolean,
+        //worldContext: Boolean,
+        //mobsContext: Boolean,
+        //lastContext: Boolean,
+        //blockSensors: Boolean,
+        memories: Boolean
+    ): String {
+
+        val sections = mutableListOf<String>()
+
+        sections += HEADER
+
+        if (dialogue) sections += DIALOGUE
+        if (friendship) sections += FRIENDSHIP
+        if (memories) sections += MEMORY
+        if (actions) sections += ACTION
+        if (april1) sections += APRIL1
+        if (quests) sections += QUEST
+
+        //if (worldContext) sections += WORLD_CONTEXT
+        //if (mobsContext) sections += MOBS_CONTEXT
+        //if (lastContext) sections += LAST_CONTEXT
+        //if (blockSensors) sections += BLOCK_SENSORS
+
+        sections += RESUME
+        sections += GENERAL
+
+        return sections.joinToString("\n\n")
+    }
+
+    private fun getDefaultOutputFormat(): String {
+        return buildOutputFormat(
+            dialogue = SyncedConfig.outputDialogue,
+            actions = SyncedConfig.outputActions,
+            friendship = SyncedConfig.outputFriendship,
+            quests = SyncedConfig.outputQuests,
+            april1 = SyncedConfig.outputApril1,
+            //worldContext = clientConfig.outputWorldContext,
+            //mobsContext = clientConfig.outputMobsContext,
+            //lastContext = clientConfig.outputLastContext,
+            //blockSensors = clientConfig.outputBlockSensors,
+            memories = SyncedConfig.outputMemories
+        )
+    }
     // agora usando rotadores
     private val apiKeyRotator = ApiKeyRotator(clientConfig.apiKey)
     private val modelRotator = ModelRotator(clientConfig.aiModel)
@@ -560,10 +676,8 @@ class AIHandler {
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
         // Se for Player2, não inclui "model"
-        val outputFormatToUse = if (
-            clientConfig.useDefaultOutput
-        ) {
-            DEFAULT_OUTPUT_FORMAT
+        val outputFormatToUse = if (clientConfig.useDefaultOutput) {
+            getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat
         }
@@ -646,10 +760,8 @@ class AIHandler {
 
         val url = "$apiBase/v1beta/models/$currentModel:generateContent?key=$currentKey"
 
-        val outputFormatToUse = if (
-            clientConfig.useDefaultOutput
-        ) {
-            DEFAULT_OUTPUT_FORMAT
+        val outputFormatToUse = if (clientConfig.useDefaultOutput) {
+            getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat
         }

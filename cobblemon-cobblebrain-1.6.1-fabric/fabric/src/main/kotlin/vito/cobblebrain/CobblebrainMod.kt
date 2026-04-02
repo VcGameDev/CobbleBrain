@@ -8,9 +8,9 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import vito.cobblebrain.social.DebugPartyCommand
 import java.io.File
 import net.minecraft.server.MinecraftServer
-import vito.cobblebrain.client.social.CobblebrainWorldSave
-import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
-import vito.cobblebrain.client.social.MobBridge
+import vito.cobblebrain.social.CobblebrainWorldSave
+import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
+import vito.cobblebrain.social.MobBridge
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.mixin.MobAccessor
 import vito.cobblebrain.network.CobblebrainNetworkingFabric
@@ -62,6 +62,11 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.PromptPayload.CODEC
         )
 
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.SyncConfigPayload.TYPE,
+            CobblebrainPayloads.SyncConfigPayload.CODEC
+        )
+
         PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.ActionPayload.TYPE,
             CobblebrainPayloads.ActionPayload.CODEC
@@ -95,6 +100,7 @@ object CobblebrainMod : ModInitializer {
 
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             val player = handler.player
+            CobblebrainNetworkingFabric.sendConfig(player)
             DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
 
             if (!CobblebrainWorldSave.hasReceivedGuide(player)) {

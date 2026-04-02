@@ -15,8 +15,7 @@ import vito.cobblebrain.config.CobblebrainConfigScreen
 import kotlin.math.sin
 
 object CobbleBrainModClientNeoForge {
-
-    // KEYBIND
+    // continua aqui, mas só carrega no CLIENT agora
     private val OPEN_CONFIG = KeyMapping(
         "key.cobblebrain.open_config",
         GLFW.GLFW_KEY_Y,
@@ -27,14 +26,12 @@ object CobbleBrainModClientNeoForge {
         ClientConfigHandler.load()
         println("Cobblebrain carregado no cliente (NeoForge)")
 
-        // conecta config screen
         CobblebrainClientCommon.openConfigScreen = {
             Minecraft.getInstance().setScreen(
                 CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
             )
         }
 
-        // registra eventos
         NeoForge.EVENT_BUS.addListener(::onClientTick)
         NeoForge.EVENT_BUS.register(this)
     }
@@ -44,13 +41,14 @@ object CobbleBrainModClientNeoForge {
         event.register(OPEN_CONFIG)
     }
 
-    // detecta tecla
+    // tick
     fun onClientTick(event: ClientTickEvent.Post) {
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
         }
     }
 
+    // HUD
     @SubscribeEvent
     fun onHudRender(event: RenderGuiEvent.Post) {
         val client = Minecraft.getInstance()

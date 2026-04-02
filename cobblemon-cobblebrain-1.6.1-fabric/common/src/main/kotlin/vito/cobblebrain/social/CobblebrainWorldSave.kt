@@ -1,4 +1,4 @@
-package vito.cobblebrain.client.social
+package vito.cobblebrain.social
 
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import java.io.File
