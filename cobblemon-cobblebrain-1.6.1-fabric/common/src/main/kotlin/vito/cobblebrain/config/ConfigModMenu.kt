@@ -76,6 +76,15 @@ object CobblebrainConfigScreen {
     }
 
     fun create(parent: Screen?): Screen {
+        var outputDialogue = true
+        var outputActions = true
+        var outputFriendship = true
+        var outputMemories = false
+        var outputApril1 = false
+        var outputQuests = true
+        var maxLongMemory = 3
+        var maxShortMemory = 2
+
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
             .setTitle(Component.literal("Cobblebrain Config"))
@@ -362,7 +371,7 @@ object CobblebrainConfigScreen {
             Component.literal("Max Short Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.maxShortMemory
         ).setDefaultValue(2)
-            .setSaveConsumer { value -> config.maxShortMemory = value }
+            .setSaveConsumer { value -> maxShortMemory = value }
             .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. \nControls how much recent context is stored."))
             .build()
 
@@ -370,7 +379,7 @@ object CobblebrainConfigScreen {
             Component.literal("Max Long Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.maxLongMemory
         ).setDefaultValue(3)
-            .setSaveConsumer { value -> config.maxLongMemory = value }
+            .setSaveConsumer { value -> maxLongMemory = value }
             .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. \nControls how much persistent context is stored."))
             .build()
 
@@ -502,7 +511,7 @@ object CobblebrainConfigScreen {
             Component.literal("Output Dialogue").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.outputDialogue
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> SyncedConfig.outputDialogue = value }
+            .setSaveConsumer { value -> outputDialogue = value }
             .setTooltip(Component.literal("If true, Add the DIALOGUE system to the AI system instruction.\nMaking it active in the game"))
             .build()
 
@@ -510,7 +519,7 @@ object CobblebrainConfigScreen {
             Component.literal("Output Actions").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.outputActions
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> SyncedConfig.outputActions = value }
+            .setSaveConsumer { value -> outputActions = value }
             .setTooltip(Component.literal("If true, Add the ACTIONS system to the AI system instruction.\nMaking it active in the game"))
             .build()
 
@@ -518,7 +527,7 @@ object CobblebrainConfigScreen {
             Component.literal("Output Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.outputFriendship
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> SyncedConfig.outputFriendship = value }
+            .setSaveConsumer { value -> outputFriendship = value }
             .setTooltip(Component.literal("If true, Add the FRIENDSHIP system to the AI system instruction.\nMaking it active in the game"))
             .build()
 
@@ -542,7 +551,7 @@ object CobblebrainConfigScreen {
             Component.literal("Output Quests").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.outputQuests
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> SyncedConfig.outputQuests = value }
+            .setSaveConsumer { value -> outputQuests = value }
             .setTooltip(Component.literal("If true, Add the QUESTS system to the AI system instruction.\nMaking it active in the game"))
             .build()
 
@@ -551,7 +560,7 @@ object CobblebrainConfigScreen {
             Component.literal("Output April Fools Actions").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.outputApril1
         ).setDefaultValue(false)
-            .setSaveConsumer { value -> SyncedConfig.outputApril1 = value }
+            .setSaveConsumer { value -> outputApril1 = value }
             .setTooltip(Component.literal("If true, Add the 1st APRIL ACTIONS system to the AI system instruction.\nMaking it active in the game"))
             .build()
 
@@ -559,7 +568,7 @@ object CobblebrainConfigScreen {
             Component.literal("[OUTDATED] Output Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.outputMemories
         ).setDefaultValue(false)
-            .setSaveConsumer { value -> SyncedConfig.outputMemories = value }
+            .setSaveConsumer { value -> outputMemories = value }
             .setTooltip(Component.literal("If true, Add the MEMORIES system to the AI system instruction.\nMaking it active in the game"))
             .build()
 
@@ -601,7 +610,7 @@ object CobblebrainConfigScreen {
         category.entries.add(instructEntry)
         category.entries.add(makeSpacer(10))
         category.entries.add(outputFormatEntry)
-        category.entries.add(makeSubtitleEntry("OUTPUT SYSTEMS (CLIENT)", 0xFFFF00))
+        category.entries.add(makeSubtitleEntry("OUTPUT SYSTEMS (SERVER)", 0xFFFF00))
         category.entries.add(outputDialogueEntry)
         category.entries.add(outputActionsEntry)
         category.entries.add(outputFriendshipEntry)
@@ -609,14 +618,24 @@ object CobblebrainConfigScreen {
         category.entries.add(outputMobsContextEntry)
         category.entries.add(outputQuestsEntry)
         category.entries.add(outputApril1Entry)
-        category.entries.add(outputMemoriesEntry)
         category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
+        category.entries.add(outputMemoriesEntry)
         category.entries.add(maxLongMemoryEntry)
         category.entries.add(maxShortMemoryEntry)
         category.entries.add(onlyNearbyChatEntry)
         builder.setSavingRunnable {
             ConfigHandler.save()
             ClientConfigHandler.save()
+            SyncedConfig.updateLocal(
+                outputDialogue,
+                outputActions,
+                outputFriendship,
+                outputMemories,
+                outputApril1,
+                outputQuests,
+                maxLongMemory,
+                maxShortMemory
+            )
         }
 
         return builder.build()

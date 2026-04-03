@@ -13,13 +13,15 @@ import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.client.CobblebrainClientHandlerFabric.registerReceivers
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfigScreen
+import vito.cobblebrain.config.SyncedConfig
 import kotlin.math.sin
 
 object CobbleBrainModClient : ClientModInitializer {
     override fun onInitializeClient() {
         ClientConfigHandler.load()
+        SyncedConfig.resetToLocal()
         registerReceivers()
-        println("Cobblebrain carregado no cliente")
+        println("Cobblebrain loaded on the client (Fabric)")
 
         // conecta com o common
         CobblebrainClientCommon.openConfigScreen = {

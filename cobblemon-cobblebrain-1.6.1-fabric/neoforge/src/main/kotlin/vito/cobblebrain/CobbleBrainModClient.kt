@@ -12,6 +12,7 @@ import org.lwjgl.glfw.GLFW
 import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfigScreen
+import vito.cobblebrain.config.SyncedConfig
 import kotlin.math.sin
 
 object CobbleBrainModClientNeoForge {
@@ -24,7 +25,8 @@ object CobbleBrainModClientNeoForge {
 
     fun init() {
         ClientConfigHandler.load()
-        println("Cobblebrain carregado no cliente (NeoForge)")
+        SyncedConfig.resetToLocal()
+        println("Cobblebrain loaded on the client (NeoForge)")
 
         CobblebrainClientCommon.openConfigScreen = {
             Minecraft.getInstance().setScreen(

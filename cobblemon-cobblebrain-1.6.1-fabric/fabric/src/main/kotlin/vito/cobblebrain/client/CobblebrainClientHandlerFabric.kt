@@ -34,17 +34,7 @@ object CobblebrainClientHandlerFabric {
         ) { payload, context ->
 
             context.client().execute {
-                SyncedConfig.outputDialogue = payload.outputDialogue
-                SyncedConfig.outputActions = payload.outputActions
-                SyncedConfig.outputFriendship = payload.outputFriendship
-                SyncedConfig.outputMemories = payload.outputMemories
-                SyncedConfig.outputApril1 = payload.outputApril1
-                SyncedConfig.outputQuests = payload.outputQuests
-                SyncedConfig.maxLongMemory = payload.maxLongMemory
-                SyncedConfig.maxShortMemory = payload.maxShortMemory
-
-                SyncedConfig.received = true
-
+                SyncedConfig.apply(payload)
                 println("[CobbleBrain] Synced config received from server")
             }
         }
