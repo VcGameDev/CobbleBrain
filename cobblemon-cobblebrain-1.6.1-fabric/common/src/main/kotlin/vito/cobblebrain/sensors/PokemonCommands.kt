@@ -1562,21 +1562,21 @@ fun handleNukeSystem(level: ServerLevel) {
                 ChatFormatting.DARK_RED
             )
 
-            val sound = SoundEvent.createVariableRangeEvent(
-                ResourceLocation("cobblebrain", "nuke_music")
-            )
+            //val sound = SoundEvent.createVariableRangeEvent(
+                //ResourceLocation("cobblebrain", "nuke_music")
+            //)
 
-            level.playSeededSound(
-                null,
-                pokemon.x,
-                pokemon.y,
-                pokemon.z,
-                sound,
-                SoundSource.RECORDS,
-                3.0f,
-                1.0f,
-                level.random.nextLong()
-            )
+            //level.playSeededSound(
+                //null,
+                //pokemon.x,
+                //pokemon.y,
+                //pokemon.z,
+                //sound,
+                //SoundSource.RECORDS,
+                //3.0f,
+                //1.0f,
+                //level.random.nextLong()
+            //)
         }
 
         // 3.3s — LEVITAR + PARTÍCULAS
@@ -1645,23 +1645,23 @@ fun handlePsychicStand(level: ServerLevel) {
             return@forEach
         }
 
-        if (time == 300) {
-            val sound = SoundEvent.createVariableRangeEvent(
-                ResourceLocation("cobblebrain", "psychicstand_music")
-            )
+        //if (time == 300) {
+            //val sound = SoundEvent.createVariableRangeEvent(
+                //ResourceLocation("cobblebrain", "psychicstand_music")
+            //)
 
-            level.playSeededSound(
-                null,
-                pokemon.x,
-                pokemon.y,
-                pokemon.z,
-                sound,
-                SoundSource.RECORDS,
-                3.0f,
-                1.0f,
-                level.random.nextLong()
-            )
-        }
+            //level.playSeededSound(
+                //null,
+                //pokemon.x,
+                //pokemon.y,
+                //pokemon.z,
+                //sound,
+                //SoundSource.RECORDS,
+                //3.0f,
+                //1.0f,
+                //level.random.nextLong()
+            //)
+        //}
 
         // dia/noite
         val interval = 6
@@ -1736,21 +1736,21 @@ fun handleImaginaryTechnique(level: ServerLevel) {
 
         // START + TARGET
         if (time == 120) {
-            val sound = SoundEvent.createVariableRangeEvent(
-                ResourceLocation("cobblebrain", "imaginarytechnique_music")
-            )
+            //val sound = SoundEvent.createVariableRangeEvent(
+                //ResourceLocation("cobblebrain", "imaginarytechnique_music")
+            //)
 
-            level.playSeededSound(
-                null,
-                pokemon.x,
-                pokemon.y,
-                pokemon.z,
-                sound,
-                SoundSource.RECORDS,
-                3.0f,
-                1.0f,
-                level.random.nextLong()
-            )
+            //level.playSeededSound(
+                //null,
+                //pokemon.x,
+                //pokemon.y,
+                //pokemon.z,
+                //sound,
+                //SoundSource.RECORDS,
+                //3.0f,
+                //1.0f,
+                //level.random.nextLong()
+            //)
 
             val target = findTarget(level, pokemon)
 
@@ -1957,7 +1957,6 @@ fun findTarget(level: ServerLevel, pokemon: Mob): LivingEntity? {
 
     if (filtered.isEmpty()) return null
 
-    // 🔥 pega o MAIS DISTANTE dentro do range
     return filtered.maxByOrNull { it.distanceTo(pokemon) }
 }
 
@@ -1971,35 +1970,33 @@ fun handleFinalJudgment(level: ServerLevel) {
         val time = finalJudgmentTimer.getOrDefault(pokemonId, 0)
 
         if (time <= 0) {
+            pokemon.isInvulnerable = false
             toRemove.add(pokemonId)
             return@forEach
         }
 
         val elapsed = 120 - time
 
-        // =========================
-        // EXECUTA EM 3 ONDAS
-        // =========================
         if (time == 120) {
             level.server.overworld().setWeatherParameters(0, 600, true, true)
 
             pokemon.invulnerableTime = 100
             pokemon.isInvulnerable = true
-            val sound = SoundEvent.createVariableRangeEvent(
-                ResourceLocation("cobblebrain", "finaljudgment_music")
-            )
+            //val sound = SoundEvent.createVariableRangeEvent(
+            //    ResourceLocation("cobblebrain", "finaljudgment_music")
+            //)
 
-            level.playSeededSound(
-                null,
-                pokemon.x,
-                pokemon.y,
-                pokemon.z,
-                sound,
-                SoundSource.RECORDS,
-                7.0f,
-                1.0f,
-                level.random.nextLong()
-            )
+            //level.playSeededSound(
+                //null,
+                //pokemon.x,
+                //pokemon.y,
+                //pokemon.z,
+                //sound,
+                //SoundSource.RECORDS,
+                //7.0f,
+                //1.0f,
+                //level.random.nextLong()
+            //)
         }
 
         if (elapsed % 40 == 0) {
@@ -2011,9 +2008,6 @@ fun handleFinalJudgment(level: ServerLevel) {
 
             pokemon.heal(pokemon.maxHealth)
 
-            // =========================
-            // BUSCA ALVOS
-            // =========================
             val range = 20.0
             val box = pokemon.boundingBox.inflate(range)
 
@@ -2037,9 +2031,6 @@ fun handleFinalJudgment(level: ServerLevel) {
                 }
             }
 
-            // =========================
-            // DISPARA RAIOS
-            // =========================
             if (targets.isNotEmpty()) {
                 targets.forEach { target ->
                     val lightning = EntityType.LIGHTNING_BOLT.create(level)
@@ -2126,11 +2117,11 @@ fun handleSSStyle(level: ServerLevel) {
 
             level.server.overworld().dayTime = 13000
 
-            val sound = SoundEvent.createVariableRangeEvent(
-                ResourceLocation("cobblebrain", "ssstyle_music")
-            )
+            //val sound = SoundEvent.createVariableRangeEvent(
+                //ResourceLocation("cobblebrain", "ssstyle_music")
+            //)
 
-            player.playNotifySound(sound, SoundSource.RECORDS, 5.0f, 1.0f)
+            //player.playNotifySound(sound, SoundSource.RECORDS, 5.0f, 1.0f)
 
             val enchantRegistry = level.registryAccess()
                 .registryOrThrow(Registries.ENCHANTMENT)
@@ -2166,9 +2157,7 @@ fun handleSSStyle(level: ServerLevel) {
             player.addItem(extra)
         }
 
-        // =========================
         // SPAWN CONTROLADO
-        // =========================
         fun spawnWave(wave: Int) {
             mobs.clear()
 
@@ -2245,9 +2234,6 @@ fun handleSSStyle(level: ServerLevel) {
             spawnWave(wave)
         }
 
-        // =========================
-        // KILL TRACK
-        // =========================
         val iterator = mobs.iterator()
 
         while (iterator.hasNext()) {
@@ -2273,9 +2259,7 @@ fun handleSSStyle(level: ServerLevel) {
             }
         }
 
-        // =========================
         // AVANÇO POR GHAST
-        // =========================
         var ghastAlive = false
 
         for (uuid in mobs) {
@@ -2296,9 +2280,7 @@ fun handleSSStyle(level: ServerLevel) {
             }
         }
 
-        // =========================
         // STYLE (30s)
-        // =========================
         val tick = ssStyleLastReport.getOrDefault(playerId, 0) + 1
         ssStyleLastReport[playerId] = tick
 
@@ -2310,9 +2292,6 @@ fun handleSSStyle(level: ServerLevel) {
             )
         }
 
-        // =========================
-        // BUFFS
-        // =========================
         val duration = 20 * 230
 
         player.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, duration, 7))
@@ -2323,9 +2302,7 @@ fun handleSSStyle(level: ServerLevel) {
         ssStyleTimer[playerId] = time - 1
     }
 
-    // =========================
     // CLEANUP
-    // =========================
     toRemove.forEach { id ->
         val player = level.server.playerList.getPlayer(id)
 

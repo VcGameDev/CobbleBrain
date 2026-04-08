@@ -37,5 +37,6 @@ data class CobblebrainConfig(
     val outputLastContext: Boolean = true,
     val outputBlockSensors: Boolean = true,
     var outputMemories: Boolean = false,
-    var outputApril1: Boolean = false
+    var outputApril1: Boolean = false,
+    var outputPokemonLanguage: Boolean = false
 )

@@ -72,20 +72,32 @@ class AIHandler {
         private val TIMEOUT_SECONDS get() = clientConfig.requestTimeoutSeconds
         const val HEADER = """
         ##OUTPUT FORMAT##
-        You must generate your entire response following these STRICT rules:
+        Follow all rules strictly.
         """
 
         const val DIALOGUE = """
         DIALOGUE FORMAT
-        - Each dialogue line MUST follow this format:
-        <PokemonName>: <message>
-        - Use pipes (|) and the Pokémon name to separate dialogue lines.
-        - Each line must have 1-2 sentences.
+        - Format: <PokemonName>: <message>
+        - Separate lines with | and repeat name every line
+        - 1–2 sentences max per line (unless explicitly overridden by [CREATIVEPROMPT] instructions)
         - If 1 Pokémon active → max 4 lines total.
-        - If 2–5 Pokémon active → max 6 lines total.
-        - If 6 Pokémon active → max 7 lines total.
-        - Each dialogue line MUST start with the Pokémon name. The name must be repeated on every new line, even if it is the same speaker.
-        - If Wild pokemon are talking, make them talk in the dialogues too.
+        - If 2–5 Pokémon active → max 5 lines total.
+        - If 6 Pokémon active → max 6 lines total.
+        - Include wild Pokémon in dialogue if they are speaking.
+        """
+
+        const val CANON_DIALOGUE = """
+        CANON DIALOGUE FORMAT
+        - Format: <PokemonName>: <natural vocal sound> (<emotion or intent>)
+        - Use creature-like sounds (e.g., "grrraah", "skreee", "rawrr"), NOT name repetition
+        - Sounds should reflect how the Pokémon would realistically vocalize
+        - Do NOT translate into human language
+        - Emotion or intent must be conveyed in a short parenthesis
+        - Separate lines with | and repeat name every line
+        - 1–2 short expressions per line (unless explicitly overridden by [CREATIVEPROMPT] instructions)
+        - If 1-2 Pokémon active → max 3 lines total.
+        - If 3–6 Pokémon active → max 4 lines total.
+        - Include wild Pokémon if they are speaking
         """
 
         const val FRIENDSHIP = """
@@ -97,75 +109,64 @@ class AIHandler {
         - If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5).
         - If both true → decide based on positive or negative impact.
         - A Pokémon's friendship doesn't change more than once in the same dialogue
+        - Wild Pokémon never change friendship
         """
 
         const val MEMORY = """
         MEMORY FORMAT
-        - Each memory line MUST follow this format:
-          @<PokemonName>: <short memory sentence>
-          @@<PokemonName>: <core memory sentence>
+        - Format:
+          @<PokemonName>: <short memory>
+          @@<PokemonName>: <core memory>
         - Use @ for short memory, @@ for core memory.
-        - Each Pokémon records events from its own perspective.
+        - Create memories in a Third-person narration from each Pokémon’s perspective of the situation.
         - Short memories = fleeting perceptions; Core memories = impactful events.
-        - Memories MUST be written from the perspective of a third-person narrator, describing what happens to the Pokémon
-        - Do not generate memory lines EVERY response. Only generate memories when something meaningful or new happens.
-        - Memories should not appear in the dialogue
-        - Memories function as optional context and should only be used when they meaningfully improve the response.
+        - Generate only when meaningful, not every response.
+        - Do not include in dialogue
+        - Memories function as optional context, use only if it improves response
         """
 
         const val ACTION = """
         ACTION FORMAT
-        - Each action line MUST follow this format:
-          #<PokemonName>: <action>
-        - At the very end, output one action per Pokémon.
-        - Use exactly one of:
-          #PokemonName: attack
-          #PokemonName: eat
-          #PokemonName: buff
-          #PokemonName: debuff enemy
-          #PokemonName: sit
-          #PokemonName: protect
-          #PokemonName: idle
-          (fire type) #PokemonName: cook
-          (steel type) #PokemonName: repair
-          (grass type) #PokemonName: grow
-          (ghost type) #PokemonName: shift
+        - Format: #<PokemonName>: <action>
+        - Use one action per Pokémon at the end
+        - Allowed actions:
+          attack, eat, buff, debuff enemy, sit, protect, idle
+          fire type: cook | steel type: repair | grass type: grow | ghost type: shift
         - If no action is needed, ALWAYS use idle.
         """
 
         const val APRIL1 = """
-        The april1 mode is active, so, you can also use one of these actions following the ACTION FORMAT:
-        (fire type) #PokemonName: fireball machine
-        (fire type) #PokemonName: nuke
-        (psychic type) #PokemonName: psychic stand
-        (fairy type) #PokemonName: imaginary technique
-        (flying type) #PokemonName: final judgment
-        #PokemonName: ssstyle
+        - April1 mode is active: extra actions allowed (follow ACTION FORMAT):
+          fire type: fireball machine | nuke
+          psychic type: psychic stand
+          fairy type: imaginary technique
+          flying type: final judgment
+          any type: ssstyle
         """
 
         const val QUEST = """
-        QUEST FORMAT:
-        - Only create a quest when you receive IMPORTANT: <PokemonName> has started an <QuestType> quest!
-        - In that case, generate dialogue where the Wild Pokémon asks the player or their team to complete it.
-        - From the moment the quest is created until it is completed, you must ALWAYS add one of the following lines in your response (all must begin with %):
-          %CONTINUE → Quest is ongoing or lacks enough interaction/reason to end.
-          %POSITIVE_END → Quest ends with a positive, satisfying outcome for the Pokémon.
-          %NEGATIVE_END → Quest ends with a negative, unsatisfying outcome for the Pokémon.
-          %LEAVE_END → Pokémon decides to leave the mission.
-        - Delivery Quests:
-          Only end the quest if you receive QUEST_COMPLETED.
-          Then choose the appropriate ending marker based on interactions (except LEAVE_END).
-        - Advice Quests:
-          You decide when the mission ends, based on the Pokémon's personality and whether the answer solved the problem/question.
-        - Hunt Quests:
-          Same as Delivery Quests.
-        - After sending the marker, create a small summary of the current quest reporting:
-          1. Why the quest was created.
-          2. The key events that happened.
-          3. The Pokémon’s opinion about how the mission is progressing.
-        - Keep it focused on helping the next AI continue the story.
-        - Use a maximum of 6 sentences.
-        - Format the summary exactly as: &<text>
+        QUEST FORMAT
+        - Create a quest ONLY when receiving:
+          IMPORTANT: <PokemonName> has started an <QuestType> quest!
+        - Then generate dialogue where the wild Pokémon asks for help
+        
+        - While active, ALWAYS include ONE line starting with %:
+          %CONTINUE → ongoing or insufficient interaction to end
+          %POSITIVE_END → positive outcome
+          %NEGATIVE_END → negative outcome
+          %LEAVE_END → Pokémon leaves the mission
+        
+        - Delivery/Hunt:
+          End ONLY on QUEST_COMPLETED, then choose ending (except LEAVE_END)
+        - Advice:
+          You decide when it ends based on personality and if the problem was solved
+        
+        - After the marker, add a summary:
+          summary format: &<text>
+          - why the quest started
+          - key events
+          - Pokémon’s opinion on progress
+          - max 6 sentences
         """
 
         const val RESUME = """
@@ -179,21 +180,18 @@ class AIHandler {
 
         const val GENERAL = """
         GENERAL RULES
-        1. Each line of dialogue must respect the sentences and line limits.
-        2. Never mix nickname and species; use only one consistently.
-        3. Do not invent characters outside Pokémon and the human player.
-        4. if not specified in the prompt, the Pokémon should not talk to themselves or speak their thoughts
-        5. Always follow the formats exactly; no hyphens or alternative separators.
-        6. Friendship, memory, and action sections must appear in this order: Dialogue → Friendship → Memory → Action.
-        7. If no action is relevant, always output idle.
-        8. Dialogue, friendship, memory, and action content must integrate the [CREATIVEPROMPT] but never break format.
-        9. Dialogue may use past memories when relevant, but must prioritize responding directly to the current situation or player input.
-        
-        10. Pokémon should actively engage the player by continuing thoughts, expressing feelings, and occasionally asking questions.
-        11. The environment should influence behavior subtly, not be constantly described.
-        12. Use the [LAST INTERACTIONS] section as context to maintain continuity.
-        13. Avoid repeating ideas from the LAST INTERACTIONS. Instead, evolve the conversation naturally through feelings, reflections, or interaction, without abruptly changing the subject or pointing out unrelated elements.
-        """
+        1. Follow all formats exactly; no alternative separators.
+        2. Dialogue must respect sentence and line limits.
+        3. Use only Pokémon and the human player; no new characters.
+        4. Do not mix nickname and species; stay consistent.
+        5. Pokémon should not talk to themselves or express thoughts unless specified.
+        6. Follow the exact section order defined by the instruction blocks.
+        7. Integrate [CREATIVEPROMPT] without breaking format.
+        8. Use [LAST INTERACTIONS] for continuity; avoid repetition and evolve naturally.
+        9. Dialogue should respond to the current situation, using past memories only when relevant.
+        10. Pokémon should engage the player (feelings, continuation, occasional questions).
+        11. Environment influences behavior subtly; avoid constant description.        
+"""
     }
 
     fun buildOutputFormat(
@@ -202,6 +200,7 @@ class AIHandler {
         friendship: Boolean,
         quests: Boolean,
         april1: Boolean,
+        canonDialogue: Boolean,
         //worldContext: Boolean,
         //mobsContext: Boolean,
         //lastContext: Boolean,
@@ -213,7 +212,12 @@ class AIHandler {
 
         sections += HEADER
 
-        if (dialogue) sections += DIALOGUE
+        if (canonDialogue) {
+            sections += CANON_DIALOGUE
+        } else if (dialogue) {
+            sections += DIALOGUE
+        }
+
         if (friendship) sections += FRIENDSHIP
         if (memories) sections += MEMORY
         if (actions) sections += ACTION
@@ -238,6 +242,7 @@ class AIHandler {
             friendship = SyncedConfig.outputFriendship,
             quests = SyncedConfig.outputQuests,
             april1 = SyncedConfig.outputApril1,
+            canonDialogue = SyncedConfig.outputPokemonLanguage,
             //worldContext = clientConfig.outputWorldContext,
             //mobsContext = clientConfig.outputMobsContext,
             //lastContext = clientConfig.outputLastContext,
@@ -556,8 +561,13 @@ class AIHandler {
         log("\n--- REQUEST JSON ---")
         log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
+        val url = if (clientConfig.useChatEndpoint)
+            "$apiBase/v1/chat/completions"
+        else
+            apiBase
+
         val builder = HttpRequest.newBuilder()
-            .uri(URI.create("$apiBase/v1/chat/completions"))
+            .uri(URI.create(url))
             .header("Content-Type", "application/json")
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))

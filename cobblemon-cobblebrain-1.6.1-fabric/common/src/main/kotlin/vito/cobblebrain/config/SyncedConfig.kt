@@ -1,5 +1,6 @@
 package vito.cobblebrain.config
 
+import net.minecraft.client.Minecraft
 import vito.cobblebrain.network.CobblebrainPayloads
 
 object SyncedConfig {
@@ -20,6 +21,8 @@ object SyncedConfig {
         private set
     var outputQuests = true
         private set
+    var outputPokemonLanguage = false
+        private set
     var maxLongMemory = 3
         private set
     var maxShortMemory = 2
@@ -32,10 +35,15 @@ object SyncedConfig {
         outputMemories = payload.outputMemories
         outputApril1 = payload.outputApril1
         outputQuests = payload.outputQuests
+        outputPokemonLanguage = payload.outputPokemonLanguage
         maxLongMemory = payload.maxLongMemory
         maxShortMemory = payload.maxShortMemory
         received = true
-        isServerControlled = true
+
+        val client = Minecraft.getInstance()
+        val isHost = client.isLocalServer
+
+        isServerControlled = !isHost
     }
 
     fun updateLocal(
@@ -45,6 +53,7 @@ object SyncedConfig {
         outputMemories: Boolean,
         outputApril1: Boolean,
         outputQuests: Boolean,
+        outputPokemonLanguage: Boolean,
         maxLongMemory: Int,
         maxShortMemory: Int
     ) {
@@ -59,8 +68,23 @@ object SyncedConfig {
         this.outputMemories = outputMemories
         this.outputApril1 = outputApril1
         this.outputQuests = outputQuests
+        this.outputPokemonLanguage = outputPokemonLanguage
         this.maxLongMemory = maxLongMemory
         this.maxShortMemory = maxShortMemory
+
+        val cfg = ConfigHandler.config
+
+        cfg.outputDialogue = outputDialogue
+        cfg.outputActions = outputActions
+        cfg.outputFriendship = outputFriendship
+        cfg.outputMemories = outputMemories
+        cfg.outputApril1 = outputApril1
+        cfg.outputQuests = outputQuests
+        cfg.outputPokemonLanguage = outputPokemonLanguage
+        cfg.maxLongMemory = maxLongMemory
+        cfg.maxShortMemory = maxShortMemory
+
+        ConfigHandler.save()
     }
 
     fun resetToLocal() {

@@ -62,10 +62,13 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
     val blockUnder = level.getBlockState(pos.below()).block.descriptionId
 
     val timeLabel = when (timeOfDay) {
-        in 0..4000 -> "amanhecer"
-        in 4001..8000 -> "manhã"
-        in 8001..12000 -> "meio-dia"
-        in 12001..16000 -> "anoitecer"
+        in 0..1000 -> "amanhecer"
+        in 1001..5000 -> "manhã"
+        in 5001..7000 -> "perto do meio-dia"
+        in 7001..10000 -> "tarde"
+        in 10001..12000 -> "final da tarde"
+        in 12001..13000 -> "pôr do sol"
+        in 13001..18000 -> "noite"
         else -> "madrugada"
     }
 
@@ -98,14 +101,19 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         player.boundingBox.inflate(8.0)
     )
 
+    val radius = 8.5
+
     val nearbyPokemon = level.getEntitiesOfClass(
         PokemonEntity::class.java,
-        player.boundingBox.inflate(15.0) // raio médio
+        player.boundingBox.inflate(radius)
     )
-        // exclui o time do jogador
         .filter { entity ->
             val ownerUuid = entity.pokemon.getOwnerUUID()
-            ownerUuid == null || ownerUuid != player.uuid
+            val isNotOwned = ownerUuid == null || ownerUuid != player.uuid
+
+            val distance = entity.distanceTo(player)
+
+            isNotOwned && distance <= radius
         }
         .map { entity ->
             val poke = entity.pokemon
@@ -121,16 +129,19 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         }
         .ifEmpty { "nenhum" }
 
+
     val nearbyPokemonEntities = level.getEntitiesOfClass(
         PokemonEntity::class.java,
-        player.boundingBox.inflate(15.0) // raio médio
+        player.boundingBox.inflate(radius)
     )
-        // exclui o time do jogador
         .filter { entity ->
             val ownerUuid = entity.pokemon.getOwnerUUID()
-            ownerUuid == null || ownerUuid != player.uuid
-        }
+            val isNotOwned = ownerUuid == null || ownerUuid != player.uuid
 
+            val distance = entity.distanceTo(player)
+
+            isNotOwned && distance <= radius
+        }
 
     val nearbyItems = if (nearbyItemsList.isNotEmpty()) {
         nearbyItemsList

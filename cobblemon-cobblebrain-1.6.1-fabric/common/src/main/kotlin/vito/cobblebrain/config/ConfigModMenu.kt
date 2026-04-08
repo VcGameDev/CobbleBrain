@@ -82,6 +82,7 @@ object CobblebrainConfigScreen {
         var outputMemories = false
         var outputApril1 = false
         var outputQuests = true
+        var outputPokemonLanguage = false
         var maxLongMemory = 3
         var maxShortMemory = 2
 
@@ -124,6 +125,14 @@ object CobblebrainConfigScreen {
         ).setDefaultValue("http://127.0.0.1:4315")
             .setSaveConsumer { value -> clientConfig.apiBaseUrl = value }
             .setTooltip(Component.literal("The base URL of the API endpoint. \nExamples include \n- OpenRouter: https://openrouter.ai/api\n- Google AI Studio: https://generativelanguage.googleapis.com\n- Or a local LM Studio server."))
+            .build()
+
+        val useChatEndpointEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Use Chat Endpoint").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.useChatEndpoint
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> clientConfig.useChatEndpoint = value }
+            .setTooltip(Component.literal("Automatically includes '/v1/chat/completions' in the ApiBaseUrl address.\nDisable it if you are having trouble accessing your AI API"))
             .build()
 
         val localApiProviderEntry = entryBuilder.startStrField(
@@ -564,6 +573,14 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("If true, Add the 1st APRIL ACTIONS system to the AI system instruction.\nMaking it active in the game"))
             .build()
 
+        val outputPokemonLanguageEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Pokemon Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            SyncedConfig.outputPokemonLanguage
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> outputPokemonLanguage = value }
+            .setTooltip(Component.literal("If true, Pokémon speaks according to its vocal structure (not syllables of their names) instead of real talking.\nAutomatically deactivates outputDialogue when in use"))
+            .build()
+
         val outputMemoriesEntry = entryBuilder.startBooleanToggle(
             Component.literal("[OUTDATED] Output Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.outputMemories
@@ -574,6 +591,7 @@ object CobblebrainConfigScreen {
 
         category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
+        category.entries.add(useChatEndpointEntry)
         category.entries.add(localApiProviderEntry)
         category.entries.add(temperatureEntry)
         category.entries.add(aiProviderEntry)
@@ -619,6 +637,7 @@ object CobblebrainConfigScreen {
         category.entries.add(outputQuestsEntry)
         category.entries.add(outputApril1Entry)
         category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
+        category.entries.add(outputPokemonLanguageEntry)
         category.entries.add(outputMemoriesEntry)
         category.entries.add(maxLongMemoryEntry)
         category.entries.add(maxShortMemoryEntry)
@@ -633,6 +652,7 @@ object CobblebrainConfigScreen {
                 outputMemories,
                 outputApril1,
                 outputQuests,
+                outputPokemonLanguage,
                 maxLongMemory,
                 maxShortMemory
             )

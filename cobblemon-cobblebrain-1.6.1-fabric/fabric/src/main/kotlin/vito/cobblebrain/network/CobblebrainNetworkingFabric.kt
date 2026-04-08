@@ -19,6 +19,7 @@ object CobblebrainNetworkingFabric {
             config.outputMemories,
             config.outputApril1,
             config.outputQuests,
+            config.outputPokemonLanguage,
             config.maxLongMemory,
             config.maxShortMemory
         )

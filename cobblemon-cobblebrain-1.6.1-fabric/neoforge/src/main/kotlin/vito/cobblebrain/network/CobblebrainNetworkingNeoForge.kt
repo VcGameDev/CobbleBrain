@@ -49,6 +49,7 @@ object CobblebrainNetworkingNeoForge {
             cfg.outputMemories,
             cfg.outputApril1,
             cfg.outputQuests,
+            cfg.outputPokemonLanguage,
             cfg.maxLongMemory,
             cfg.maxShortMemory
         )

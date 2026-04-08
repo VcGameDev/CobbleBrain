@@ -6,6 +6,7 @@ data class CobblebrainClientConfig(
     var keyRotation: Boolean = false,
     var keyRotationTrigger: List<Int> = listOf(401, 429),
     var apiBaseUrl: String = "http://127.0.0.1:4315",
+    var useChatEndpoint: Boolean = true,
     var localApiProvider: String = "player2",
     var aiModel: List<String> = listOf("gemma-3-12b-it", "gemma-3-4b-it"),
     var modelRotation: Boolean = false,
