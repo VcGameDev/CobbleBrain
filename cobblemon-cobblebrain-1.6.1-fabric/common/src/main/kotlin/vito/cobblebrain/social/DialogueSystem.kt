@@ -133,9 +133,16 @@ object DialogueSystem {
 
                 .append(Component.literal("Press ").withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal("Y").withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(" to open Cobblebrain config menu.").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(" to open Cobblebrain config menu.\n").withStyle(ChatFormatting.YELLOW))
 
-                //.append(Component.literal("Activate 'Output April Fools Actions' in the config menu and use these new actions:\n").withStyle(ChatFormatting.LIGHT_PURPLE))
+                .append(Component.literal("Activate ").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal("Needs Translator").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" in config so players must equip an ").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal("EXP SHARE").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" to understand Pokémon.").withStyle(ChatFormatting.YELLOW))
+
+
+            //.append(Component.literal("Activate 'Output April Fools Actions' in the config menu and use these new actions:\n").withStyle(ChatFormatting.LIGHT_PURPLE))
                 //.append(Component.literal("(fire pokemon) fireball machine\n").withStyle(ChatFormatting.LIGHT_PURPLE))
                 //.append(Component.literal("(fire pokemon) nuke\n").withStyle(ChatFormatting.LIGHT_PURPLE))
                 //.append(Component.literal("(electric pokemon) final judgment\n").withStyle(ChatFormatting.LIGHT_PURPLE))
@@ -1393,7 +1400,7 @@ object DialogueSystem {
 
             pokemons.forEach { p ->
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
-                appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | Type(s): ${p.types} | Gender: ${p.gender} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
+                appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | Type(s): ${p.types.joinToString { it.name }} | Gender: ${p.gender} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
 
                 // Adiciona características se houver
                 val nameToCheck = p.nickname?.string ?: p.species.name

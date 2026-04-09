@@ -7,7 +7,6 @@ data class CobblebrainConfig(
     var showFriendship: Boolean = true,
 
     // ================= DIALOGUE & UI SETTINGS =================
-    var pokemonTalk: Boolean = true,
     var allowPokemonPVP: Boolean = false,
     var allowPokemonPVE: Boolean = true,
     var scheduleRaids: Boolean = true,
@@ -38,5 +37,6 @@ data class CobblebrainConfig(
     val outputBlockSensors: Boolean = true,
     var outputMemories: Boolean = false,
     var outputApril1: Boolean = false,
-    var outputPokemonLanguage: Boolean = false
+    var outputPokemonLanguage: Boolean = false,
+    var needsPokemonTranslator: Boolean = false,
 )

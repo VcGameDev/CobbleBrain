@@ -44,6 +44,7 @@ object CobblebrainPayloads {
         val outputApril1: Boolean,
         val outputQuests: Boolean,
         val outputPokemonLanguage: Boolean,
+        val needsPokemonTranslator: Boolean,
         val maxLongMemory: Int,
         val maxShortMemory: Int
     ) : CustomPacketPayload {
@@ -62,11 +63,13 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.outputApril1)
                         buf.writeBoolean(payload.outputQuests)
                         buf.writeBoolean(payload.outputPokemonLanguage)
+                        buf.writeBoolean(payload.needsPokemonTranslator)
                         buf.writeInt(payload.maxLongMemory)
                         buf.writeInt(payload.maxShortMemory)
                     },
                     { buf ->
                         SyncConfigPayload(
+                            buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),

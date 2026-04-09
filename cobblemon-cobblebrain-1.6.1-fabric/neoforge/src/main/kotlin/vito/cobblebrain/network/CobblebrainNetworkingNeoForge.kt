@@ -50,13 +50,14 @@ object CobblebrainNetworkingNeoForge {
             cfg.outputApril1,
             cfg.outputQuests,
             cfg.outputPokemonLanguage,
+            cfg.needsPokemonTranslator,
             cfg.maxLongMemory,
             cfg.maxShortMemory
         )
 
         PacketDistributor.sendToPlayer(player, payload)
 
-        println("CONFIG ENVIADA PRO CLIENT")
+        println("CONFIG SENT TO CLIENT")
     }
 
     fun onClientSetup(event: FMLClientSetupEvent) {

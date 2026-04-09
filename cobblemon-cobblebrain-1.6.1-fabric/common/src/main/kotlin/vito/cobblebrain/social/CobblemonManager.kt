@@ -226,22 +226,6 @@ object ConfigCommands {
                         )
                 )
                 .then(
-                    Commands.literal("SetPokemonTalk")
-                        .then(
-                            Commands.argument("value", BoolArgumentType.bool())
-                                .executes { ctx ->
-                                    val value = BoolArgumentType.getBool(ctx, "value")
-                                    ConfigHandler.config.pokemonTalk = value
-                                    ConfigHandler.save()
-                                    ctx.source.sendSuccess(
-                                        { Component.literal("pokemonTalk set to $value") },
-                                        true
-                                    )
-                                    1
-                                }
-                        )
-                )
-                .then(
                     Commands.literal("stopQuestFollower")
                         .executes { ctx ->
 

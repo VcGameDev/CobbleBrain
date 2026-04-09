@@ -3,6 +3,7 @@ package vito.cobblebrain.client
 import com.google.gson.Gson
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
+import net.minecraft.world.item.ItemStack
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.config.SyncedConfig
 import java.io.IOException
@@ -194,6 +195,40 @@ class AIHandler {
 """
     }
 
+    private fun shouldUseNormalDialogue(): Boolean {
+        val player = Minecraft.getInstance().player ?: return false
+
+        val headItem = player.inventory.armor[3]
+        val offhandItem = player.offhandItem
+
+        return isExpShare(headItem) || isExpShare(offhandItem)
+    }
+
+    private fun isExpShare(stack: ItemStack): Boolean {
+        val id = stack.item.toString().lowercase()
+        return id.contains("exp_share")
+    }
+
+    private fun resolveDialogueSection(
+        needsTranslator: Boolean,
+        dialogue: Boolean,
+        canonDialogue: Boolean
+    ): String? {
+
+        // prioridade 1: item
+        if (needsTranslator) {
+            val hasTranslator = shouldUseNormalDialogue()
+
+            return if (hasTranslator) DIALOGUE else CANON_DIALOGUE
+        }
+
+        // prioridade 2: config
+        if (canonDialogue) return CANON_DIALOGUE
+        if (dialogue) return DIALOGUE
+
+        return null
+    }
+
     fun buildOutputFormat(
         dialogue: Boolean,
         actions: Boolean,
@@ -201,6 +236,7 @@ class AIHandler {
         quests: Boolean,
         april1: Boolean,
         canonDialogue: Boolean,
+        needsTranslator: Boolean,
         //worldContext: Boolean,
         //mobsContext: Boolean,
         //lastContext: Boolean,
@@ -212,11 +248,8 @@ class AIHandler {
 
         sections += HEADER
 
-        if (canonDialogue) {
-            sections += CANON_DIALOGUE
-        } else if (dialogue) {
-            sections += DIALOGUE
-        }
+        resolveDialogueSection(needsTranslator, dialogue, canonDialogue)
+            ?.let { sections += it }
 
         if (friendship) sections += FRIENDSHIP
         if (memories) sections += MEMORY
@@ -243,6 +276,7 @@ class AIHandler {
             quests = SyncedConfig.outputQuests,
             april1 = SyncedConfig.outputApril1,
             canonDialogue = SyncedConfig.outputPokemonLanguage,
+            needsTranslator = SyncedConfig.needsPokemonTranslator,
             //worldContext = clientConfig.outputWorldContext,
             //mobsContext = clientConfig.outputMobsContext,
             //lastContext = clientConfig.outputLastContext,
