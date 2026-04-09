@@ -235,9 +235,9 @@ object CobblebrainConfigScreen {
 
         val selectedLanguageEntry = entryBuilder.startStrField(
             Component.literal("Selected Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            config.selectedLanguage
+            clientConfig.selectedLanguage
         ).setDefaultValue("English")
-            .setSaveConsumer { value -> config.selectedLanguage = value }
+            .setSaveConsumer { value -> clientConfig.selectedLanguage = value }
             .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
             .build()
 
@@ -646,8 +646,8 @@ object CobblebrainConfigScreen {
         category.entries.add(modelRotationTriggerEntry)
         category.entries.add(keyRotationEntry)
         category.entries.add(modelRotationEntry)
-        category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(selectedLanguageEntry)
+        category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(needsPokemonTranslatorEntry)
         category.entries.add(listenToChatEntry)
         category.entries.add(dialogueInChatEntry)

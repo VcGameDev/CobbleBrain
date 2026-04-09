@@ -1464,7 +1464,6 @@ object DialogueSystem {
             appendLine("Important variables:")
             appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
             appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
-            appendLine("Send the entire response in ${config.selectedLanguage}")
         }.trim()
     }
 

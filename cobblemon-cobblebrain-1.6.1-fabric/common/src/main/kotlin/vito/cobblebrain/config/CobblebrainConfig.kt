@@ -16,8 +16,6 @@ data class CobblebrainConfig(
     var dialogueInChat: Boolean = true,
     var chatbubbles: Boolean = true,
 
-    var selectedLanguage: String = "English",
-
     var characteristics: List<String> = listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"),
     var lowTokenMode: Boolean = false,
     var dialogueOnDamage: Boolean = false,

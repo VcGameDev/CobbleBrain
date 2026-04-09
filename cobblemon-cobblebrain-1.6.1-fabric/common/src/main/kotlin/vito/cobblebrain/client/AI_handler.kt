@@ -179,7 +179,7 @@ class AIHandler {
         - Maximum 6 sentences.
         """
 
-        const val GENERAL = """
+        var GENERAL = """
         GENERAL RULES
         1. Follow all formats exactly; no alternative separators.
         2. Dialogue must respect sentence and line limits.
@@ -191,7 +191,8 @@ class AIHandler {
         8. Use [LAST INTERACTIONS] for continuity; avoid repetition and evolve naturally.
         9. Dialogue should respond to the current situation, using past memories only when relevant.
         10. Pokémon should engage the player (feelings, continuation, occasional questions).
-        11. Environment influences behavior subtly; avoid constant description.        
+        11. Environment influences behavior subtly; avoid constant description.    
+        Send the entire response in ${clientConfig.selectedLanguage}
 """
     }
 
