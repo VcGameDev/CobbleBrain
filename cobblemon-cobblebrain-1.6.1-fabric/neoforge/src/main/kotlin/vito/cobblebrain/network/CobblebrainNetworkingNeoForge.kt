@@ -43,6 +43,7 @@ object CobblebrainNetworkingNeoForge {
         val cfg = ConfigHandler.config
 
         val payload = CobblebrainPayloads.SyncConfigPayload(
+            cfg.useDefaultOutput,
             cfg.outputDialogue,
             cfg.outputActions,
             cfg.outputFriendship,

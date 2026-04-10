@@ -13,6 +13,7 @@ object CobblebrainNetworkingFabric {
     }
     fun sendConfig(player: ServerPlayer) {
         val payload = CobblebrainPayloads.SyncConfigPayload(
+            config.useDefaultOutput,
             config.outputDialogue,
             config.outputActions,
             config.outputFriendship,

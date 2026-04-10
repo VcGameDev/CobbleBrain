@@ -9,6 +9,8 @@ object SyncedConfig {
     var isServerControlled = false
         private set
 
+    var useDefaultOutput = true
+        private set
     var outputDialogue = true
         private set
     var outputActions = true
@@ -31,6 +33,7 @@ object SyncedConfig {
         private set
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
+        useDefaultOutput = payload.useDefaultOutput
         outputDialogue = payload.outputDialogue
         outputActions = payload.outputActions
         outputFriendship = payload.outputFriendship
@@ -50,6 +53,7 @@ object SyncedConfig {
     }
 
     fun updateLocal(
+        useDefaultOutput: Boolean,
         outputDialogue: Boolean,
         outputActions: Boolean,
         outputFriendship: Boolean,
@@ -66,6 +70,7 @@ object SyncedConfig {
             return
         }
 
+        this.useDefaultOutput = useDefaultOutput
         this.outputDialogue = outputDialogue
         this.outputActions = outputActions
         this.outputFriendship = outputFriendship
@@ -79,6 +84,7 @@ object SyncedConfig {
 
         val cfg = ConfigHandler.config
 
+        cfg.useDefaultOutput = useDefaultOutput
         cfg.outputDialogue = outputDialogue
         cfg.outputActions = outputActions
         cfg.outputFriendship = outputFriendship

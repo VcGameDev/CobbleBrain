@@ -16,7 +16,6 @@ data class CobblebrainClientConfig(
     var reasoningEffort: String = "none",
     var requestTimeoutSeconds: Long = 60,
     var debugLogging: Boolean = false,
-    var useDefaultOutput: Boolean = true,
     var selectedLanguage: String = "English",
 
     // ================= DIALOGUE & UI SETTINGS =================

@@ -71,6 +71,7 @@ class AIHandler {
         private val REASONING get() = clientConfig.reasoningEffort.trim().lowercase()
         private val DEBUG get() = clientConfig.debugLogging
         private val TIMEOUT_SECONDS get() = clientConfig.requestTimeoutSeconds
+        private val USER_LANGUAGE get() = clientConfig.selectedLanguage
         const val HEADER = """
         ##OUTPUT FORMAT##
         Follow all rules strictly.
@@ -179,7 +180,7 @@ class AIHandler {
         - Maximum 6 sentences.
         """
 
-        var GENERAL = """
+        val GENERAL get() = """
         GENERAL RULES
         1. Follow all formats exactly; no alternative separators.
         2. Dialogue must respect sentence and line limits.
@@ -192,7 +193,7 @@ class AIHandler {
         9. Dialogue should respond to the current situation, using past memories only when relevant.
         10. Pokémon should engage the player (feelings, continuation, occasional questions).
         11. Environment influences behavior subtly; avoid constant description.    
-        Send the entire response in ${clientConfig.selectedLanguage}
+        12. Send the entire response in $USER_LANGUAGE
 """
     }
 
@@ -721,7 +722,7 @@ class AIHandler {
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
         // Se for Player2, não inclui "model"
-        val outputFormatToUse = if (clientConfig.useDefaultOutput) {
+        val outputFormatToUse = if (SyncedConfig.useDefaultOutput) {
             getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat
@@ -805,7 +806,7 @@ class AIHandler {
 
         val url = "$apiBase/v1beta/models/$currentModel:generateContent?key=$currentKey"
 
-        val outputFormatToUse = if (clientConfig.useDefaultOutput) {
+        val outputFormatToUse = if (SyncedConfig.useDefaultOutput) {
             getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat

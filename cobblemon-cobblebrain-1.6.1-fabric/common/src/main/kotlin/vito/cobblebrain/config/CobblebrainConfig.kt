@@ -25,6 +25,7 @@ data class CobblebrainConfig(
     var onlyNearbyChat: Boolean = false,
     var maxShortMemory: Int = 2,
     var maxLongMemory: Int = 5,
+    var useDefaultOutput: Boolean = true,
     var outputDialogue: Boolean = true,
     var outputActions: Boolean = true,
     var outputFriendship: Boolean = true,

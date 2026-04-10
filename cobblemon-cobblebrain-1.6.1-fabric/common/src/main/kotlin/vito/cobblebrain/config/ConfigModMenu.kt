@@ -86,6 +86,7 @@ object CobblebrainConfigScreen {
     }
 
     fun create(parent: Screen?): Screen {
+        var useDefaultOutput = true
         var outputDialogue = true
         var outputActions = true
         var outputFriendship = true
@@ -226,10 +227,10 @@ object CobblebrainConfigScreen {
             .build()
 
         val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Use Default Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.useDefaultOutput
+            Component.literal("[Recommended] Use Default Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            SyncedConfig.useDefaultOutput
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> clientConfig.useDefaultOutput = value }
+            .setSaveConsumer { value -> useDefaultOutput = value }
             .setTooltip(Component.literal("Uses the recommended and updated output_format of the mod version. \nOnly disable it if you want to apply your own output_format, \nWhich is not recommended."))
             .build()
 
@@ -503,7 +504,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val outputFormatEntry = object : AbstractConfigListEntry<Unit>(
-            Component.literal("Output Format").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Custom Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             false
         ) {
             override fun getValue(): Unit? = null
@@ -527,7 +528,7 @@ object CobblebrainConfigScreen {
                 guiGraphics.drawString(font, fieldName, x, y, 0xFFFFFF, true)
                 guiGraphics.drawString(
                     font,
-                    "Only editable via /cobblebrain or config/cobblebrain.json5",
+                    "Only editable via config/cobblebrain.json5",
                     x + 10,
                     y + font.lineHeight + 4,
                     0xAAAAAA,
@@ -616,7 +617,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(false)
             .setSaveConsumer { value -> outputPokemonLanguage = value }
-            .setTooltip(Component.literal("If true, Pokémon speaks according to its vocal structure (not syllables of their names) instead of real talking.\nAutomatically deactivates outputDialogue when in use"))
+            .setTooltip(Component.literal("If true, Pokémon speaks according to its vocal structure instead of real talking.\nAutomatically deactivates outputDialogue when in use"))
             .build()
 
         val outputMemoriesEntry = entryBuilder.startBooleanToggle(
@@ -639,7 +640,6 @@ object CobblebrainConfigScreen {
         category.entries.add(reasoningEffortEntry)
         category.entries.add(requestTimeoutEntry)
         category.entries.add(debugLoggingEntry)
-        category.entries.add(useDefaultOutputEntry)
         category.entries.add(apiKeyEntry)
         category.entries.add(keyRotationTriggerEntry)
         category.entries.add(aiModelEntry)
@@ -669,7 +669,8 @@ object CobblebrainConfigScreen {
         category.entries.add(instructEntry)
         category.entries.add(makeSpacer(10))
         category.entries.add(outputFormatEntry)
-        category.entries.add(makeSubtitleEntry("OUTPUT SYSTEMS (SERVER)", 0xFFFF00))
+        category.entries.add(makeSubtitleEntry("DEFAULT OUTPUT SYSTEMS (SERVER)", 0xFFFF00))
+        category.entries.add(useDefaultOutputEntry)
         category.entries.add(outputDialogueEntry)
         category.entries.add(outputActionsEntry)
         category.entries.add(outputFriendshipEntry)
@@ -687,6 +688,7 @@ object CobblebrainConfigScreen {
             ConfigHandler.save()
             ClientConfigHandler.save()
             SyncedConfig.updateLocal(
+                useDefaultOutput,
                 outputDialogue,
                 outputActions,
                 outputFriendship,

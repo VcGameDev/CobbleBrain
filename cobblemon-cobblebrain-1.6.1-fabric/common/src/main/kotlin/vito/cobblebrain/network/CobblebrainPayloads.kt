@@ -37,6 +37,7 @@ object CobblebrainPayloads {
     }
 
     data class SyncConfigPayload(
+        val useDefaultOutput: Boolean,
         val outputDialogue: Boolean,
         val outputActions: Boolean,
         val outputFriendship: Boolean,
@@ -56,6 +57,7 @@ object CobblebrainPayloads {
             val CODEC: StreamCodec<RegistryFriendlyByteBuf, SyncConfigPayload> =
                 StreamCodec.of(
                     { buf, payload ->
+                        buf.writeBoolean(payload.useDefaultOutput)
                         buf.writeBoolean(payload.outputDialogue)
                         buf.writeBoolean(payload.outputActions)
                         buf.writeBoolean(payload.outputFriendship)
@@ -69,6 +71,7 @@ object CobblebrainPayloads {
                     },
                     { buf ->
                         SyncConfigPayload(
+                            buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),

@@ -139,7 +139,7 @@ object DialogueSystem {
                 .append(Component.literal("Needs Translator").withStyle(ChatFormatting.AQUA))
                 .append(Component.literal(" in config so players must equip an ").withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal("EXP SHARE").withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(" to understand Pokémon.").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(" to understand Pokémon Language.").withStyle(ChatFormatting.YELLOW))
 
 
             //.append(Component.literal("Activate 'Output April Fools Actions' in the config menu and use these new actions:\n").withStyle(ChatFormatting.LIGHT_PURPLE))

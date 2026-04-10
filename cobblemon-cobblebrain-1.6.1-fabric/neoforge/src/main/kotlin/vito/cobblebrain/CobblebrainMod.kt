@@ -2,6 +2,7 @@ package vito.cobblebrain
 
 import vito.cobblebrain.social.DebugPartyCommand
 import net.minecraft.server.level.ServerPlayer
+import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.IEventBus
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.mixin.MobAccessor
@@ -10,6 +11,7 @@ import vito.cobblebrain.social.DialogueSystem
 import vito.cobblebrain.social.PokemonTalkCommand
 import net.neoforged.fml.common.Mod
 import net.neoforged.bus.api.SubscribeEvent
+import net.neoforged.fml.loading.FMLEnvironment
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.server.ServerStartedEvent
@@ -18,6 +20,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import vito.cobblebrain.client.CobblebrainClientRuntimeNeoForge
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
+import vito.cobblebrain.network.CobblebrainNetworkingNeoForge.onClientSetup
 import vito.cobblebrain.sensors.CommandTickHandlerNeoForge
 import vito.cobblebrain.server.CobblebrainPayloadRegistrarNeoForge
 import vito.cobblebrain.social.CobblebrainWorldSave
@@ -32,6 +35,9 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
     init {
         println("o mod cobblebrain carregou (NeoForge)")
         modEventBus.addListener(CobblebrainPayloadRegistrarNeoForge::register)
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            modEventBus.addListener(::onClientSetup)
+        }
         ClientConfigHandler.load()
         ClientOnlySetup.register(modEventBus)
         CobblebrainClientRuntimeNeoForge.init()
