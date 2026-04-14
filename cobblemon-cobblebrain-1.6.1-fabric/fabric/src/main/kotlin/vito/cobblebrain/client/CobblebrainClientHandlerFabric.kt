@@ -2,6 +2,7 @@ package vito.cobblebrain.client
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
+import vito.cobblebrain.config.SyncedConfig
 import vito.cobblebrain.network.CobblebrainPayloads
 
 object CobblebrainClientHandlerFabric {
@@ -25,6 +26,16 @@ object CobblebrainClientHandlerFabric {
 
             context.client().execute {
                 CobblebrainClientCommon.onPromptReceived(payload.prompt)
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.SyncConfigPayload.TYPE
+        ) { payload, context ->
+
+            context.client().execute {
+                SyncedConfig.apply(payload)
+                println("[CobbleBrain] Synced config received from server")
             }
         }
     }

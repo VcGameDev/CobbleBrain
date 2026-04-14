@@ -36,6 +36,60 @@ object CobblebrainPayloads {
         override fun type() = TYPE
     }
 
+    data class SyncConfigPayload(
+        val useDefaultOutput: Boolean,
+        val outputDialogue: Boolean,
+        val outputActions: Boolean,
+        val outputFriendship: Boolean,
+        val outputMemories: Boolean,
+        val outputApril1: Boolean,
+        val outputQuests: Boolean,
+        val outputPokemonLanguage: Boolean,
+        val needsPokemonTranslator: Boolean,
+        val maxLongMemory: Int,
+        val maxShortMemory: Int
+    ) : CustomPacketPayload {
+
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "sync_config")
+            val TYPE = CustomPacketPayload.Type<SyncConfigPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, SyncConfigPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeBoolean(payload.useDefaultOutput)
+                        buf.writeBoolean(payload.outputDialogue)
+                        buf.writeBoolean(payload.outputActions)
+                        buf.writeBoolean(payload.outputFriendship)
+                        buf.writeBoolean(payload.outputMemories)
+                        buf.writeBoolean(payload.outputApril1)
+                        buf.writeBoolean(payload.outputQuests)
+                        buf.writeBoolean(payload.outputPokemonLanguage)
+                        buf.writeBoolean(payload.needsPokemonTranslator)
+                        buf.writeInt(payload.maxLongMemory)
+                        buf.writeInt(payload.maxShortMemory)
+                    },
+                    { buf ->
+                        SyncConfigPayload(
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readBoolean(),
+                            buf.readInt(),
+                            buf.readInt()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
     data class ActionPayload(val action: String) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "send_action")

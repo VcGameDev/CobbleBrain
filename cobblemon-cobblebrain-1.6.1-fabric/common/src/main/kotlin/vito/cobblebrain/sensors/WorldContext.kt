@@ -13,7 +13,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.storage.LevelResource
-import vito.cobblebrain.config.ClientConfigHandler.clientConfig
+import vito.cobblebrain.config.SyncedConfig
 import vito.cobblebrain.social.PokemonQuery
 import java.nio.file.Files
 import java.nio.file.Path
@@ -62,10 +62,13 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
     val blockUnder = level.getBlockState(pos.below()).block.descriptionId
 
     val timeLabel = when (timeOfDay) {
-        in 0..4000 -> "amanhecer"
-        in 4001..8000 -> "manhã"
-        in 8001..12000 -> "meio-dia"
-        in 12001..16000 -> "anoitecer"
+        in 0..1000 -> "amanhecer"
+        in 1001..5000 -> "manhã"
+        in 5001..7000 -> "perto do meio-dia"
+        in 7001..10000 -> "tarde"
+        in 10001..12000 -> "final da tarde"
+        in 12001..13000 -> "pôr do sol"
+        in 13001..18000 -> "noite"
         else -> "madrugada"
     }
 
@@ -98,14 +101,19 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         player.boundingBox.inflate(8.0)
     )
 
+    val radius = 8.5
+
     val nearbyPokemon = level.getEntitiesOfClass(
         PokemonEntity::class.java,
-        player.boundingBox.inflate(15.0) // raio médio
+        player.boundingBox.inflate(radius)
     )
-        // exclui o time do jogador
         .filter { entity ->
             val ownerUuid = entity.pokemon.getOwnerUUID()
-            ownerUuid == null || ownerUuid != player.uuid
+            val isNotOwned = ownerUuid == null || ownerUuid != player.uuid
+
+            val distance = entity.distanceTo(player)
+
+            isNotOwned && distance <= radius
         }
         .map { entity ->
             val poke = entity.pokemon
@@ -121,16 +129,19 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         }
         .ifEmpty { "nenhum" }
 
+
     val nearbyPokemonEntities = level.getEntitiesOfClass(
         PokemonEntity::class.java,
-        player.boundingBox.inflate(15.0) // raio médio
+        player.boundingBox.inflate(radius)
     )
-        // exclui o time do jogador
         .filter { entity ->
             val ownerUuid = entity.pokemon.getOwnerUUID()
-            ownerUuid == null || ownerUuid != player.uuid
-        }
+            val isNotOwned = ownerUuid == null || ownerUuid != player.uuid
 
+            val distance = entity.distanceTo(player)
+
+            isNotOwned && distance <= radius
+        }
 
     val nearbyItems = if (nearbyItemsList.isNotEmpty()) {
         nearbyItemsList
@@ -268,9 +279,9 @@ object MemoryStore {
                 while (targetArray.size() > maxMemories) targetArray.remove(0)
             }
 
-            //if (marker == "@@" && clientConfig.maxLongMemory > 0) {
-                //while (targetArray.size() > clientConfig.maxLongMemory) targetArray.remove(0)
-            //}
+            if (marker == "@@" && SyncedConfig.maxLongMemory > 0) {
+                while (targetArray.size() > SyncedConfig.maxLongMemory) targetArray.remove(0)
+            }
 
 
             Files.writeString(f, gson.toJson(root))
@@ -295,18 +306,18 @@ object MemoryStore {
         val shortTerm = obj.getAsJsonArray("short_term")?.map { it.asString } ?: emptyList()
         val longTerm = obj.getAsJsonArray("long_term")?.map { it.asString } ?: emptyList()
 
-        //val shortLimited = if (maxMemories > 0) shortTerm.takeLast(maxMemories) else shortTerm
-        //val longLimited = if (clientConfig.maxLongMemory > 0) longTerm.takeLast(clientConfig.maxLongMemory) else longTerm
+        val shortLimited = if (maxMemories > 0) shortTerm.takeLast(maxMemories) else shortTerm
+        val longLimited = if (SyncedConfig.maxLongMemory > 0) longTerm.takeLast(SyncedConfig.maxLongMemory) else longTerm
 
-        //val result = mutableListOf<String>()
-        //if (shortLimited.isNotEmpty()) {
-            //result.add("SHORT-TERM MEMORIES")
-            //result.addAll(shortLimited)
-        //}
-        //if (longLimited.isNotEmpty()) {
-            //result.add("IMPORTANT / CHARACTERISTIC MEMORIES")
-            //result.addAll(longLimited)
-        //}
+        val result = mutableListOf<String>()
+        if (shortLimited.isNotEmpty()) {
+            result.add("SHORT-TERM MEMORIES")
+            result.addAll(shortLimited)
+        }
+        if (longLimited.isNotEmpty()) {
+            result.add("IMPORTANT / CHARACTERISTIC MEMORIES")
+            result.addAll(longLimited)
+        }
 
         return arrayListOf()
     }

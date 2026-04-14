@@ -75,7 +75,29 @@ object CobblebrainConfigScreen {
         }
     }
 
+    private fun <T> getConfigValue(
+        synced: T,
+        local: T
+    ): T {
+        val mc = Minecraft.getInstance()
+        val isInWorld = mc.player != null
+
+        return if (isInWorld && SyncedConfig.received) synced else local
+    }
+
     fun create(parent: Screen?): Screen {
+        var useDefaultOutput = true
+        var outputDialogue = true
+        var outputActions = true
+        var outputFriendship = true
+        var outputMemories = false
+        var outputApril1 = false
+        var outputQuests = true
+        var outputPokemonLanguage = false
+        var needsPokemonTranslator = false
+        var maxLongMemory = 3
+        var maxShortMemory = 2
+
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
             .setTitle(Component.literal("Cobblebrain Config"))
@@ -115,6 +137,14 @@ object CobblebrainConfigScreen {
         ).setDefaultValue("http://127.0.0.1:4315")
             .setSaveConsumer { value -> clientConfig.apiBaseUrl = value }
             .setTooltip(Component.literal("The base URL of the API endpoint. \nExamples include \n- OpenRouter: https://openrouter.ai/api\n- Google AI Studio: https://generativelanguage.googleapis.com\n- Or a local LM Studio server."))
+            .build()
+
+        val useChatEndpointEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Use Chat Endpoint").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.useChatEndpoint
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> clientConfig.useChatEndpoint = value }
+            .setTooltip(Component.literal("Automatically includes '/v1/chat/completions' in the ApiBaseUrl address.\nDisable it if you are having trouble accessing your AI API"))
             .build()
 
         val localApiProviderEntry = entryBuilder.startStrField(
@@ -197,18 +227,18 @@ object CobblebrainConfigScreen {
             .build()
 
         val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Use Default Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.useDefaultOutput
+            Component.literal("[Recommended] Use Default Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            SyncedConfig.useDefaultOutput
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> clientConfig.useDefaultOutput = value }
+            .setSaveConsumer { value -> useDefaultOutput = value }
             .setTooltip(Component.literal("Uses the recommended and updated output_format of the mod version. \nOnly disable it if you want to apply your own output_format, \nWhich is not recommended."))
             .build()
 
         val selectedLanguageEntry = entryBuilder.startStrField(
             Component.literal("Selected Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            config.selectedLanguage
+            clientConfig.selectedLanguage
         ).setDefaultValue("English")
-            .setSaveConsumer { value -> config.selectedLanguage = value }
+            .setSaveConsumer { value -> clientConfig.selectedLanguage = value }
             .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
             .build()
 
@@ -230,12 +260,15 @@ object CobblebrainConfigScreen {
 
         // ========================= GAME AND INTERACTIONS =========================
 
-        val pokemonTalkEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Pokémon Talk").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            config.pokemonTalk
-        ).setDefaultValue(true)
-            .setSaveConsumer { value -> config.pokemonTalk = value }
-            .setTooltip(Component.literal("Toggles whether Pokémon can talk or listen. \nThis acts as a simple on/off switch for dialogue."))
+        val needsPokemonTranslatorEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Needs Pokémon Translator").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.needsPokemonTranslator,
+                config.needsPokemonTranslator
+            )
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> needsPokemonTranslator = value }
+            .setTooltip(Component.literal("When active, Pokémon speak normally if the player has the Exp Share equipped on themselves.\nIf not equiped, the Pokémon speak like animals.\nThis setting takes priority over 'outputDialogue' and 'outputCanonLanguage'"))
             .build()
 
         val allowPokemonPVPEntry = entryBuilder.startBooleanToggle(
@@ -351,28 +384,34 @@ object CobblebrainConfigScreen {
             .build()
 
         val onlyNearbyChatEntry = entryBuilder.startBooleanToggle(
-            Component.literal("[EXPERIMENTAL] Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Only Nearby Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.onlyNearbyChat
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.onlyNearbyChat = value }
-            .setTooltip(Component.literal("EXPERIMENTAL: Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
+            .setTooltip(Component.literal("Restricts listening to nearby players only. \nWorks only if listenToChat is enabled."))
             .build()
 
-        //val maxShortMemoryEntry = entryBuilder.startIntField(
-        //    Component.literal("Max Short Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-        //    clientConfig.maxShortMemory
-        //).setDefaultValue(5)
-        //    .setSaveConsumer { value -> clientConfig.maxShortMemory = value }
-        //    .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. \nControls how much recent context is stored."))
-        //    .build()
+        val maxShortMemoryEntry = entryBuilder.startIntField(
+            Component.literal("Max Short Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.maxShortMemory,
+                config.maxShortMemory
+            )
+        ).setDefaultValue(2)
+            .setSaveConsumer { value -> maxShortMemory = value }
+            .setTooltip(Component.literal("Maximum short-term memory size per Pokémon. \nControls how much recent context is stored."))
+            .build()
 
-        //val maxLongMemoryEntry = entryBuilder.startIntField(
-        //    Component.literal("Max Long Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-        //    clientConfig.maxLongMemory
-        //).setDefaultValue(5)
-        //    .setSaveConsumer { value -> clientConfig.maxLongMemory = value }
-        //    .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. \nControls how much persistent context is stored."))
-        //    .build()
+        val maxLongMemoryEntry = entryBuilder.startIntField(
+            Component.literal("Max Long Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.maxLongMemory,
+                config.maxLongMemory
+            )
+        ).setDefaultValue(3)
+            .setSaveConsumer { value -> maxLongMemory = value }
+            .setTooltip(Component.literal("Maximum long-term memory size per Pokémon. \nControls how much persistent context is stored."))
+            .build()
 
         val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
             Component.literal("Decrease Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
@@ -465,7 +504,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val outputFormatEntry = object : AbstractConfigListEntry<Unit>(
-            Component.literal("Output Format").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Custom Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             false
         ) {
             override fun getValue(): Unit? = null
@@ -489,7 +528,7 @@ object CobblebrainConfigScreen {
                 guiGraphics.drawString(font, fieldName, x, y, 0xFFFFFF, true)
                 guiGraphics.drawString(
                     font,
-                    "Only editable via /cobblebrain or config/cobblebrain.json5",
+                    "Only editable via config/cobblebrain.json5",
                     x + 10,
                     y + font.lineHeight + 4,
                     0xAAAAAA,
@@ -498,40 +537,131 @@ object CobblebrainConfigScreen {
             }
         }
 
+        val outputDialogueEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Dialogue").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputDialogue,
+                config.outputDialogue
+            )
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> outputDialogue = value }
+            .setTooltip(Component.literal("If true, Add the DIALOGUE system to the AI system instruction.\nMaking it active in the game"))
+            .build()
+
+        val outputActionsEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Actions").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputActions,
+                config.outputActions
+            )
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> outputActions = value }
+            .setTooltip(Component.literal("If true, Add the ACTIONS system to the AI system instruction.\nMaking it active in the game"))
+            .build()
+
+        val outputFriendshipEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputFriendship,
+                config.outputFriendship
+            )
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> outputFriendship = value }
+            .setTooltip(Component.literal("If true, Add the FRIENDSHIP system to the AI system instruction.\nMaking it active in the game"))
+            .build()
+
+        val outputWorldContextEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output World Context").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.outputWorldContext
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> config.outputWorldContext = value }
+            .setTooltip(Component.literal("If true, Add the WORLD CONTEXT system to the AI system instruction (player status included).\nMaking it active in the game"))
+            .build()
+
+        val outputMobsContextEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Mobs Context").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.outputMobsContext
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> config.outputMobsContext = value }
+            .setTooltip(Component.literal("If true, Add the MOBS CONTEXT system to the AI system instruction (wild pokemon not included).\nMaking it active in the game"))
+            .build()
+
+        val outputQuestsEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Quests").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputQuests,
+                config.outputQuests
+            )
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> outputQuests = value }
+            .setTooltip(Component.literal("If true, Add the QUESTS system to the AI system instruction.\nMaking it active in the game"))
+            .build()
+
+        // the fun one
+        val outputApril1Entry = entryBuilder.startBooleanToggle(
+            Component.literal("Output April Fools Actions").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputApril1,
+                config.outputApril1
+            )
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> outputApril1 = value }
+            .setTooltip(Component.literal("If true, Add the 1st APRIL ACTIONS system to the AI system instruction.\nMaking it active in the game"))
+            .build()
+
+        val outputPokemonLanguageEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Pokemon Language").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputPokemonLanguage,
+                config.outputPokemonLanguage
+            )
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> outputPokemonLanguage = value }
+            .setTooltip(Component.literal("If true, Pokémon speaks according to its vocal structure instead of real talking.\nAutomatically deactivates outputDialogue when in use"))
+            .build()
+
+        val outputMemoriesEntry = entryBuilder.startBooleanToggle(
+            Component.literal("[OUTDATED] Output Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputMemories,
+                config.outputMemories
+            )
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> outputMemories = value }
+            .setTooltip(Component.literal("If true, Add the MEMORIES system to the AI system instruction.\nMaking it active in the game"))
+            .build()
+
         category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
+        category.entries.add(useChatEndpointEntry)
         category.entries.add(localApiProviderEntry)
         category.entries.add(temperatureEntry)
         category.entries.add(aiProviderEntry)
         category.entries.add(reasoningEffortEntry)
         category.entries.add(requestTimeoutEntry)
         category.entries.add(debugLoggingEntry)
-        category.entries.add(useDefaultOutputEntry)
         category.entries.add(apiKeyEntry)
         category.entries.add(keyRotationTriggerEntry)
         category.entries.add(aiModelEntry)
         category.entries.add(modelRotationTriggerEntry)
         category.entries.add(keyRotationEntry)
         category.entries.add(modelRotationEntry)
-        category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(selectedLanguageEntry)
+        category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
+        category.entries.add(needsPokemonTranslatorEntry)
+        category.entries.add(listenToChatEntry)
+        category.entries.add(dialogueInChatEntry)
+        category.entries.add(chatbubblesEntry)
+        category.entries.add(spontaneousDialogueChanceEntry)
+        category.entries.add(wildPokemonTalkChanceEntry)
+        category.entries.add(wildQuestChanceEntry)
         category.entries.add(lowTokenModeEntry)
         category.entries.add(scheduleRaidEntry)
         category.entries.add(characteristicsEntry)
-        category.entries.add(listenToChatEntry)
-        category.entries.add(dialogueInChatEntry)
-        category.entries.add(onlyNearbyChatEntry)
-        category.entries.add(chatbubblesEntry)
-        category.entries.add(pokemonTalkEntry)
         category.entries.add(allowPokemonPVPEntry)
         category.entries.add(allowPokemonPVEEntry)
         category.entries.add(dialogueOnDamageEntry)
         category.entries.add(dialogueOnBattleEntry)
-        category.entries.add(spontaneousDialogueChanceEntry)
-        category.entries.add(wildPokemonTalkChanceEntry)
-        category.entries.add(wildQuestChanceEntry)
-        //category.entries.add(maxShortMemoryEntry)
-        //category.entries.add(maxLongMemoryEntry)
         category.entries.add(decreaseFriendshipEntry)
         category.entries.add(increaseFriendshipEntry)
         category.entries.add(showFriendshipEntry)
@@ -539,10 +669,37 @@ object CobblebrainConfigScreen {
         category.entries.add(instructEntry)
         category.entries.add(makeSpacer(10))
         category.entries.add(outputFormatEntry)
-
+        category.entries.add(makeSubtitleEntry("DEFAULT OUTPUT SYSTEMS (SERVER)", 0xFFFF00))
+        category.entries.add(useDefaultOutputEntry)
+        category.entries.add(outputDialogueEntry)
+        category.entries.add(outputActionsEntry)
+        category.entries.add(outputFriendshipEntry)
+        category.entries.add(outputWorldContextEntry)
+        category.entries.add(outputMobsContextEntry)
+        category.entries.add(outputQuestsEntry)
+        category.entries.add(outputApril1Entry)
+        category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
+        category.entries.add(outputPokemonLanguageEntry)
+        category.entries.add(outputMemoriesEntry)
+        category.entries.add(maxLongMemoryEntry)
+        category.entries.add(maxShortMemoryEntry)
+        category.entries.add(onlyNearbyChatEntry)
         builder.setSavingRunnable {
             ConfigHandler.save()
             ClientConfigHandler.save()
+            SyncedConfig.updateLocal(
+                useDefaultOutput,
+                outputDialogue,
+                outputActions,
+                outputFriendship,
+                outputMemories,
+                outputApril1,
+                outputQuests,
+                outputPokemonLanguage,
+                needsPokemonTranslator,
+                maxLongMemory,
+                maxShortMemory
+            )
         }
 
         return builder.build()

@@ -2,11 +2,8 @@ package vito.cobblebrain
 
 import vito.cobblebrain.social.DebugPartyCommand
 import net.minecraft.server.level.ServerPlayer
+import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.IEventBus
-import vito.cobblebrain.client.CobblebrainClientHandlerNeoForge
-import vito.cobblebrain.client.social.CobblebrainWorldSave
-import vito.cobblebrain.client.social.CobblebrainWorldSave.giveCobblebrainGuide
-import vito.cobblebrain.client.social.MobBridge
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.mixin.MobAccessor
 import vito.cobblebrain.social.ConfigCommands
@@ -20,11 +17,16 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.server.ServerStartedEvent
 import net.neoforged.neoforge.event.server.ServerStoppingEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
+import vito.cobblebrain.client.CobblebrainClientRuntimeNeoForge
+import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge.onClientSetup
 import vito.cobblebrain.sensors.CommandTickHandlerNeoForge
-import vito.cobblebrain.server.CobblebrainServerHandlerNeoForge
+import vito.cobblebrain.server.CobblebrainPayloadRegistrarNeoForge
+import vito.cobblebrain.social.CobblebrainWorldSave
+import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.social.DialogueSystemNeoForge
+import vito.cobblebrain.social.MobBridge
 import vito.cobblebrain.social.WorldEventsSystemNeoForge
 import java.io.File
 
@@ -32,13 +34,13 @@ import java.io.File
 class CobblebrainNeoForge(modEventBus: IEventBus) {
     init {
         println("o mod cobblebrain carregou (NeoForge)")
-        modEventBus.addListener(CobblebrainServerHandlerNeoForge::registerPayloads)
-
-        if (FMLEnvironment.dist.isClient) {
-            modEventBus.addListener(CobbleBrainModClientNeoForge::onRegisterKeybinds)
-            modEventBus.addListener(CobblebrainClientHandlerNeoForge::registerPayloads)
+        modEventBus.addListener(CobblebrainPayloadRegistrarNeoForge::register)
+        if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.addListener(::onClientSetup)
         }
+        ClientConfigHandler.load()
+        ClientOnlySetup.register(modEventBus)
+        CobblebrainClientRuntimeNeoForge.init()
 
         // ===== MOB BRIDGE =====
         MobBridge.addGoal = { mob, priority, goal ->
@@ -58,7 +60,6 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
 
         // ===== SISTEMAS =====
         DialogueSystemNeoForge.register()
-        CobbleBrainModClientNeoForge.init()
         WorldEventsSystemNeoForge.register()
         CommandTickHandlerNeoForge.registerTickHandler()
 
@@ -101,6 +102,7 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
         val server = player.server
 
         DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
+        CobblebrainNetworkingNeoForge.sendConfig(player)
 
         if (!CobblebrainWorldSave.hasReceivedGuide(player)) {
             giveCobblebrainGuide(player)

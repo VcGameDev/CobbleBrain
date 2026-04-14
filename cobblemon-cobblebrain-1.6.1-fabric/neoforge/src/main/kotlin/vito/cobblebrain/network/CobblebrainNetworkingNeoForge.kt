@@ -9,6 +9,7 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory
 import net.neoforged.neoforge.network.PacketDistributor
 import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.config.CobblebrainConfigScreen
+import vito.cobblebrain.config.ConfigHandler
 
 object CobblebrainNetworkingNeoForge {
 
@@ -36,6 +37,28 @@ object CobblebrainNetworkingNeoForge {
         PacketDistributor.sendToServer(
             CobblebrainPayloads.AIResponsePayload(response)
         )
+    }
+
+    fun sendConfig(player: ServerPlayer) {
+        val cfg = ConfigHandler.config
+
+        val payload = CobblebrainPayloads.SyncConfigPayload(
+            cfg.useDefaultOutput,
+            cfg.outputDialogue,
+            cfg.outputActions,
+            cfg.outputFriendship,
+            cfg.outputMemories,
+            cfg.outputApril1,
+            cfg.outputQuests,
+            cfg.outputPokemonLanguage,
+            cfg.needsPokemonTranslator,
+            cfg.maxLongMemory,
+            cfg.maxShortMemory
+        )
+
+        PacketDistributor.sendToPlayer(player, payload)
+
+        println("CONFIG SENT TO CLIENT")
     }
 
     fun onClientSetup(event: FMLClientSetupEvent) {
