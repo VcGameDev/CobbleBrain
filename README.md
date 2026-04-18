@@ -2,7 +2,7 @@
 
 CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions more lively and responsive.
 
-![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
@@ -111,9 +111,9 @@ WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO 
    - 7b–8b models → balanced, deeper responses.
    - 12b+ models → complex, detailed dialogues, requiring significant RAM and GPU.
 4. Prefer quantized versions (q4, q5, q8) to reduce resource usage.
-5. Start the LM Studio server; it will show a local API address (e.g., `http://localhost:port`).
+5. Start the LM Studio server; it will show a local API address (e.g., `http://127.0.0.1:1234`).
 6. Open the Config menu and set:
-   - `apiBaseUrl`: local server address (Example: `http://localhost:1234`)
+   - `apiBaseUrl`: local server address (Example: `http://127.0.0.1:1234`)
    - `aiModel`: ID or name of the model running in the server
    - `localApiProvider`: `"lmstudio"`
 
@@ -164,7 +164,7 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `selectedLanguage`             | String | Language used by the AI to generate responses.                                                                                     |
 | `dialogueInChat`               | Boolean | Shows generated dialogue in the chat.                                                                                              |
 | `chatbubbles`                  | Boolean | Enables visual chat bubbles above entities.                                                                                        |
-| `pokemonTalk`                  | Boolean | Global toggle for Pokémon dialogue and listening.                                                                                  |
+| `needsPokemonTranslator` | Boolean | When enabled, Pokémon speak normally if the player has the Exp Share equipped. Otherwise, they speak like animals. Overrides `outputDialogue` and `outputCanonLanguage`. |
 | `allowPokemonPVP`              | Boolean | Allows Pokémon to attack other players’ Pokémon.                                                                                   |
 | `allowPokemonPVE`              | Boolean | Allows Pokémon to attack mobs (excluding certain exceptions).                                                                      |
 | `scheduleRaids`                | Boolean | Enables raid events when karma conditions are met.                                                                                 |
@@ -181,8 +181,17 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `increaseFriendship`           | Boolean | Allows dialogue to increase friendship levels.                                                                                     |
 | `showFriendship`               | Boolean | Displays friendship changes in chat.                                                                                               |
 | `instruct`                     | List of Strings | Global prompt defining how the AI behaves, thinks, and responds. Each entry contributes to shaping dialogue style and personality. |
-| `outputFormat`                 | String | System instructions for dialogue output format. Not recommended to modify.                                                         |
-
+| `custom output (outputFormat)`                 | String | Custom System instructions for dialogue. To use it, disable usDefaultOutput, not recommended.                                                         |
+| `useDefaultOutput`       | Boolean | Uses the recommended output format for the current mod version. Disabling allows custom `outputFormat`, but is not recommended. |
+| `outputDialogue`         | Boolean | Enables the DIALOGUE system in AI instructions, allowing characters to speak in-game. |
+| `outputActions`          | Boolean | Enables the ACTIONS system in AI instructions, allowing characters to perform actions. |
+| `outputFriendship`       | Boolean | Enables the FRIENDSHIP system in AI instructions, affecting relationship mechanics. |
+| `outputWorldContext`     | Boolean | Enables the WORLD CONTEXT system, including player status and environmental awareness. |
+| `outputMobsContext`      | Boolean | Enables the MOBS CONTEXT system (excluding wild Pokémon), providing nearby entity awareness. |
+| `outputQuests`           | Boolean | Enables the QUESTS system, allowing AI to reference and interact with quest data. |
+| `outputApril1`           | Boolean | Enables special April Fools ACTIONS system for humorous or experimental behavior. |
+| `outputPokemonLanguage`  | Boolean | Makes Pokémon speak using their natural vocal patterns instead of human language. Disables `outputDialogue` when active. |
+| `outputMemories`         | Boolean | (Outdated) Enables the MEMORIES system in AI instructions. |
 ---
 
 ## Pokémon Actions
