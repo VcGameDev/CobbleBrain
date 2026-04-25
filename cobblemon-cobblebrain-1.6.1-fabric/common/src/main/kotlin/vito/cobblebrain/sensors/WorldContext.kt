@@ -319,6 +319,6 @@ object MemoryStore {
             result.addAll(longLimited)
         }
 
-        return arrayListOf()
+        return result
     }
 }

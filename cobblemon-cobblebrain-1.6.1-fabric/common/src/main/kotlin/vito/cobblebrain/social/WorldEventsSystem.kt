@@ -4,6 +4,7 @@ import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.minecraft.ChatFormatting
+import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
@@ -377,5 +378,52 @@ object WorldEventsSystem {
             karma <= -30 -> RaidDifficulty.HARD
             else -> null
         }
+    }
+
+    fun spawnPokemon(
+        world: ServerLevel,
+        speciesName: String,
+        x: Int,
+        y: Int,
+        z: Int
+    ): PokemonEntity? {
+
+        val properties = PokemonProperties()
+
+        val species = PokemonSpecies.getByName(speciesName.lowercase()) ?: return null
+        properties.species = species.resourceIdentifier.toString()
+
+        // nível simples (pode ajustar depois)
+        properties.level = Random.nextInt(10, 40)
+
+        val pokemon = try {
+            properties.createEntity(world)
+        } catch (e: Exception) {
+            println("[SPAWN ERROR] Failed to create entity for $speciesName")
+            e.printStackTrace()
+            return null
+        }
+
+        pokemon.moveTo(
+            x.toDouble(),
+            y.toDouble(),
+            z.toDouble(),
+            Random.nextFloat() * 360f,
+            0f
+        )
+
+        pokemon.finalizeSpawn(
+            world,
+            world.getCurrentDifficultyAt(BlockPos(x, y, z)),
+            MobSpawnType.EVENT,
+            null
+        )
+
+        // comportamento leve (não agressivo igual raid)
+        pokemon.setPersistenceRequired()
+
+        world.addFreshEntity(pokemon)
+
+        return pokemon
     }
 }

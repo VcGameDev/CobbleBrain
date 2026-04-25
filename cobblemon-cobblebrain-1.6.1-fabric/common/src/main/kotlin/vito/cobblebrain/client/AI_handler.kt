@@ -147,28 +147,16 @@ class AIHandler {
         """
 
         const val QUEST = """
-        QUEST FORMAT
-        - Create a quest ONLY when receiving:
-          IMPORTANT: <PokemonName> has started an <QuestType> quest!
-        - Then generate dialogue where the wild Pokémon asks for help
-        
-        - While active, ALWAYS include ONE line starting with %:
-          %CONTINUE → ongoing or insufficient interaction to end
-          %POSITIVE_END → positive outcome
-          %NEGATIVE_END → negative outcome
-          %LEAVE_END → Pokémon leaves the mission
-        
-        - Delivery/Hunt:
-          End ONLY on QUEST_COMPLETED, then choose ending (except LEAVE_END)
-        - Advice:
-          You decide when it ends based on personality and if the problem was solved
-        
-        - After the marker, add a summary:
-          summary format: &<text>
-          - why the quest started
-          - key events
-          - Pokémon’s opinion on progress
-          - max 6 sentences
+        QUEST SYSTEM:
+        - Quests can be STORY (main narrative) or SECONDARY (wild/random).
+        - If a quest starts, generate natural dialogue where the Pokémon asks for help.
+        - if the actual quest is an ADVICE quest, ALWAYS end response with a score: +1 to +3 or -1 to -3. NEVER use 0.
+        Format for advice quests: #SCORE: <score>
+        - Points reflect how well the player's advice or interaction helped the Pokémon's problem.
+        - You only make dialogue and make points for ADVICE quests. The game will send [QUEST COMPLETED] or [QUEST FAILED] to let you know if the quest is completed or failed.
+        QUEST SUMMARY FORMAT:
+          At the end of the response add a summary starting with &:
+          &<short summary of current interaction and Pokémon's feelings>
         """
 
         const val RESUME = """

@@ -6,6 +6,7 @@ import java.io.FileReader
 import java.io.FileWriter
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import net.minecraft.ChatFormatting
@@ -21,6 +22,8 @@ import net.minecraft.world.entity.ai.goal.Goal
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.WrittenBookContent
+import net.minecraft.world.level.levelgen.Heightmap
+import kotlin.random.Random
 
 object MobBridge {
     var addGoal: ((Mob, Int, Goal) -> Unit)? = null
@@ -68,9 +71,10 @@ object CobblebrainWorldSave {
         val player: ServerPlayer,
         val type: String,
         var active: Boolean,
-        val itemName: String? = null,
+        val target: String? = null,
         val amount: Int? = null,
-        val questSummary: String? = null
+        val questSummary: String? = null,
+        val storyId: String? = null
     )
 
     private lateinit var saveFile: File
@@ -92,7 +96,8 @@ object CobblebrainWorldSave {
                 add("karma", JsonObject())
                 add("kill_count", JsonObject())
                 add("quests", JsonObject().apply {
-                    add("active", JsonArray())
+                    add("active_story", JsonObject()) // Single story quest slot
+                    add("active_secondary", JsonArray()) // Multiple secondary quests allowed? Or just one? User said "2 tipos", implies one of each.
                     add("completed", JsonArray())
                     add("abandoned", JsonArray())
                 })
@@ -153,6 +158,23 @@ object CobblebrainWorldSave {
 
     val followers = mutableMapOf<String, Triple<PokemonEntity, ServerPlayer, FollowPlayerGoal>>()
 
+    private fun ensureQuestsInitialized() {
+        val quests = data.getAsJsonObject("quests") ?: JsonObject().also { data.add("quests", it) }
+        
+        if (!quests.has("active_story") || !quests.get("active_story").isJsonObject) {
+            quests.add("active_story", JsonObject())
+        }
+        if (!quests.has("active_secondary") || !quests.get("active_secondary").isJsonArray) {
+            quests.add("active_secondary", JsonArray())
+        }
+        if (!quests.has("completed") || !quests.get("completed").isJsonArray) {
+            quests.add("completed", JsonArray())
+        }
+        if (!quests.has("abandoned") || !quests.get("abandoned").isJsonArray) {
+            quests.add("abandoned", JsonArray())
+        }
+    }
+
     private fun startFollowingPlayer(giver: PokemonEntity, player: ServerPlayer) {
         // Se já estiver seguindo, não adiciona outro
         if (followers.containsKey(giver.uuid.toString())) return
@@ -167,7 +189,8 @@ object CobblebrainWorldSave {
         followers[giver.uuid.toString()] = Triple(giver, player, goal)
     }
 
-    fun createBattleQuest(player: ServerPlayer, giver: PokemonEntity): Quest {
+    fun createBattleQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
+        ensureQuestsInitialized()
         val targetSpecies = battleSpecies.random()
 
         val questObj = JsonObject().apply {
@@ -178,25 +201,37 @@ object CobblebrainWorldSave {
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
             addProperty("questSummary", "This is a Battle quest!")
+            addProperty("storyId", storyId ?: "generic")
             giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
+
+            // novos campos
+            addProperty("startTime", System.currentTimeMillis())
+            addProperty("spawned", false)
+            addProperty("distanceWalked", 0.0)
+            addProperty("requiredDistance", 800.0 + (Random.nextInt(801))) // Distância base 800 + sorteio 0-800
         }
 
-        data.getAsJsonObject("quests").getAsJsonArray("active").add(questObj)
+        val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
+        if (listName == "active_story") {
+            data.getAsJsonObject("quests").add(listName, questObj)
+        } else {
+            data.getAsJsonObject("quests").getAsJsonArray(listName).add(questObj)
+        }
         save()
 
-        val quest = Quest(player, "BATTLE", true)
+        val quest = Quest(player, "BATTLE", true, storyId = storyId)
         quests.add(quest)
 
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
         println("IMPORTANT: $giverName asks you to defeat a $targetSpecies in battle!")
 
-        // Ativa comportamento de seguir o jogador
         startFollowingPlayer(giver, player)
 
         return quest
     }
 
-    fun createItemQuest(player: ServerPlayer, giver: PokemonEntity): Quest {
+    fun createItemQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
+        ensureQuestsInitialized()
         val items = listOf("sweet_berries", "apple", "coal", "copper_ingot")
         val target = items.random()
         val amount = (1..10).random()
@@ -210,13 +245,19 @@ object CobblebrainWorldSave {
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
             addProperty("questSummary", "This is a Item quest!")
-            startFollowingPlayer(giver, player)
+            addProperty("storyId", storyId ?: "generic")
+            giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
         }
 
-        data.getAsJsonObject("quests").getAsJsonArray("active").add(questObj)
+        val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
+        if (listName == "active_story") {
+            data.getAsJsonObject("quests").add(listName, questObj)
+        } else {
+            data.getAsJsonObject("quests").getAsJsonArray(listName).add(questObj)
+        }
         save()
 
-        val quest = Quest(player, "ITEM", true, target, amount)
+        val quest = Quest(player, "ITEM", true, target = target, amount = amount, storyId = storyId)
         quests.add(quest)
 
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
@@ -225,48 +266,170 @@ object CobblebrainWorldSave {
         return quest
     }
 
-    fun createAdviceQuest(player: ServerPlayer, giver: PokemonEntity) {
+    fun createAdviceQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null) {
+        ensureQuestsInitialized()
+        val issues = listOf("loneliness", "hunger", "fear of humans", "seeking strength", "lost friend", "confused")
+        val selectedIssue = issues.random()
+
         val questObj = JsonObject().apply {
             addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
             addProperty("type", "ADVICE")
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
-            addProperty("questSummary", "This is a Advice quest!")
+            addProperty("questSummary", "Wants advice about $selectedIssue")
+            addProperty("storyId", storyId ?: "generic")
+            addProperty("issue", selectedIssue)
+            addProperty("points", 0) // Start with 0 points
             giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
         }
 
-        data.getAsJsonObject("quests").getAsJsonArray("active").add(questObj)
+        val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
+        if (listName == "active_story") {
+            data.getAsJsonObject("quests").add(listName, questObj)
+        } else {
+            data.getAsJsonObject("quests").getAsJsonArray(listName).add(questObj)
+        }
         save()
 
-        val quest = Quest(player, "ADVICE", true)
+        val quest = Quest(player, "ADVICE", true, storyId = storyId)
         quests.add(quest)
 
         val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
-        println("IMPORTANT: $giverName has started an ADVICE quest! It wants to talk to the player.")
+        println("IMPORTANT: $giverName has started an ADVICE quest about $selectedIssue!")
         startFollowingPlayer(giver, player)
     }
 
+    fun createLocationQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
+        ensureQuestsInitialized()
+        val level = player.level()
+        val rand = java.util.Random()
+
+        val targetX = player.blockX + rand.nextInt(800) - 400
+        val targetZ = player.blockZ + rand.nextInt(800) - 400
+        val targetY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, targetX, targetZ)
+
+        val questObj = JsonObject().apply {
+            addProperty("ownerUuid", player.uuid.toString())
+            addProperty("giverUuid", giver.uuid.toString())
+            addProperty("type", "LOCATION")
+            addProperty("targetX", targetX)
+            addProperty("targetY", targetY)
+            addProperty("targetZ", targetZ)
+            addProperty("status", "IN_PROGRESS")
+            addProperty("giverSpecies", giver.pokemon.species.name)
+            addProperty("questSummary", "Go to the marked location")
+            addProperty("storyId", storyId ?: "generic")
+        }
+
+        val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
+        if (listName == "active_story") {
+            data.getAsJsonObject("quests").add(listName, questObj)
+        } else {
+            data.getAsJsonObject("quests").getAsJsonArray(listName).add(questObj)
+        }
+        save()
+
+        val quest = Quest(player, "LOCATION", true, storyId = storyId)
+        quests.add(quest)
+
+        println("IMPORTANT: Go to coordinates: $targetX $targetY $targetZ")
+
+        startFollowingPlayer(giver, player)
+
+        return quest
+    }
+
+    fun createTreasureQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
+        ensureQuestsInitialized()
+        val level = player.level()
+        val rand = java.util.Random()
+
+        val targetX = player.blockX + rand.nextInt(800) - 400
+        val targetZ = player.blockZ + rand.nextInt(800) - 400
+        val targetY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, targetX, targetZ)
+
+        val containerType = listOf("CHEST", "INFECTED_BLOCK", "SUSPICIOUS_GRAVEL").random()
+
+        val questObj = JsonObject().apply {
+            addProperty("ownerUuid", player.uuid.toString())
+            addProperty("giverUuid", giver.uuid.toString())
+            addProperty("type", "TREASURE")
+            addProperty("targetX", targetX)
+            addProperty("targetY", targetY)
+            addProperty("targetZ", targetZ)
+            addProperty("containerType", containerType)
+            addProperty("status", "IN_PROGRESS")
+            addProperty("giverSpecies", giver.pokemon.species.name)
+            addProperty("questSummary", "Find the hidden treasure")
+            addProperty("storyId", storyId ?: "generic")
+        }
+
+        val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
+        if (listName == "active_story") {
+            data.getAsJsonObject("quests").add(listName, questObj)
+        } else {
+            data.getAsJsonObject("quests").getAsJsonArray(listName).add(questObj)
+        }
+        save()
+
+        val quest = Quest(player, "TREASURE", true, storyId = storyId)
+        quests.add(quest)
+
+        println("IMPORTANT: A treasure is hidden somewhere...")
+
+        startFollowingPlayer(giver, player)
+
+        return quest
+    }
+
     fun findQuest(giverUuid: String, type: String, status: String? = null): JsonObject? {
-        val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active")
-        return activeArray.firstOrNull {
+        val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active_secondary")
+        val storyObj = data.getAsJsonObject("quests").getAsJsonObject("active_story")
+        
+        val list = mutableListOf<JsonObject>()
+        if (storyObj.size() > 0) list.add(storyObj)
+        activeArray.forEach { list.add(it.asJsonObject) }
+        
+        return list.firstOrNull {
             val obj = it.asJsonObject
             obj.get("giverUuid").asString == giverUuid &&
                     obj.get("type").asString == type &&
                     (status == null || obj.get("status").asString == status)
-        }?.asJsonObject
+        }
+    }
+
+    fun getActiveItemQuest(player: ServerPlayer): JsonObject? {
+        return getActiveQuests(player).firstOrNull { it.get("type").asString == "ITEM" }
+    }
+
+    fun getStoryQuest(player: ServerPlayer): JsonObject? {
+        val quests = data.getAsJsonObject("quests") ?: return null
+        val story = quests.get("active_story")
+        if (story != null && story.isJsonObject && !story.asJsonObject.asMap().isEmpty()) {
+            val sObj = story.asJsonObject
+            if (sObj.get("ownerUuid")?.asString == player.uuid.toString()) {
+                return sObj
+            }
+        }
+        return null
+    }
+
+    fun getSecondaryQuests(player: ServerPlayer): List<JsonObject> {
+        val quests = data.getAsJsonObject("quests") ?: return emptyList()
+        val secondary = quests.getAsJsonArray("active_secondary") ?: return emptyList()
+        return secondary.map { it.asJsonObject }.filter { it.get("ownerUuid")?.asString == player.uuid.toString() }
+    }
+
+    fun getActiveQuests(player: ServerPlayer): List<JsonObject> {
+        val result = mutableListOf<JsonObject>()
+        getStoryQuest(player)?.let { result.add(it) }
+        result.addAll(getSecondaryQuests(player))
+        return result
     }
 
     fun getActiveQuest(player: ServerPlayer): JsonObject? {
-        val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active")
-
-        return activeArray
-            .map { it.asJsonObject }
-            .asReversed()
-            .firstOrNull {
-                it.get("status").asString == "IN_PROGRESS" &&
-                        it.get("ownerUuid")?.asString == player.uuid.toString()
-            }
+        return getStoryQuest(player) ?: getSecondaryQuests(player).lastOrNull()
     }
 
     fun getGiverNameFromQuest(quest: JsonObject): String {
@@ -288,30 +451,49 @@ object CobblebrainWorldSave {
     fun moveQuest(ownerUuid: String, giverUuid: String, type: String, newStatus: String) {
         println("[DEBUG] moveQuest called with giverUuid=$giverUuid, type=$type, newStatus=$newStatus")
 
-        val questsObj = data.getAsJsonObject("quests")
-        val activeArray = questsObj.getAsJsonArray("active")
-        val completedArray = questsObj.getAsJsonArray("completed")
-        val abandonedArray = questsObj.getAsJsonArray("abandoned")
+        val questsObj = data.getAsJsonObject("quests") ?: return
+        val storyObj = questsObj.getAsJsonObject("active_story") ?: JsonObject()
+        val secondaryArray = questsObj.getAsJsonArray("active_secondary") ?: JsonArray()
+        val completedArray = questsObj.getAsJsonArray("completed") ?: JsonArray()
+        val abandonedArray = questsObj.getAsJsonArray("abandoned") ?: JsonArray()
 
-        val questElement = activeArray.firstOrNull {
-            val obj = it.asJsonObject
-            obj.get("giverUuid").asString == giverUuid &&
-                    obj.get("type").asString == type &&
-                    obj.get("ownerUuid").asString == ownerUuid
+        var questObj: JsonObject?
+        var foundInStory = false
+        var foundElement: JsonElement? = null
+
+        // Check story
+        if (!storyObj.asMap().isEmpty() && 
+            storyObj.get("giverUuid")?.asString == giverUuid &&
+            storyObj.get("type").asString == type &&
+            storyObj.get("ownerUuid").asString == ownerUuid) {
+            questObj = storyObj
+            foundInStory = true
+        } else {
+            // Check secondary
+            foundElement = secondaryArray.firstOrNull {
+                val obj = it.asJsonObject
+                obj.get("giverUuid").asString == giverUuid &&
+                        obj.get("type").asString == type &&
+                        obj.get("ownerUuid").asString == ownerUuid
+            }
+            questObj = foundElement?.asJsonObject
         }
 
-        if (questElement == null) {
+        if (questObj == null) {
             println("[DEBUG] No active quest found to move")
             return
         }
 
-        val questObj = questElement.asJsonObject
         println("[DEBUG] Quest found: $questObj")
 
         questObj.addProperty("status", newStatus)
 
         // remove da lista de ativos
-        activeArray.remove(questElement)
+        if (foundInStory) {
+            questsObj.add("active_story", JsonObject())
+        } else {
+            secondaryArray.remove(foundElement)
+        }
         println("[DEBUG] Quest removida de active")
 
         // adiciona na lista correta
@@ -371,7 +553,8 @@ object CobblebrainWorldSave {
     // Debug: imprime estado atual das quests
     fun debugQuests() {
         val questsObj = data.getAsJsonObject("quests")
-        println("Active quests: ${questsObj.getAsJsonArray("active")}")
+        println("Active story quest: ${questsObj.getAsJsonObject("active_story")}")
+        println("Active secondary quests: ${questsObj.getAsJsonArray("active_secondary")}")
         println("Completed quests: ${questsObj.getAsJsonArray("completed")}")
         println("Abandoned quests: ${questsObj.getAsJsonArray("abandoned")}")
         println("Karma: ${data.getAsJsonObject("karma")}")
