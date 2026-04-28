@@ -104,4 +104,19 @@ object CobblebrainPayloads {
 
         override fun type() = TYPE
     }
+
+    data class QuestSyncPayload(val questsJson: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "sync_quests")
+            val TYPE = CustomPacketPayload.Type<QuestSyncPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, QuestSyncPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.questsJson) },
+                    { buf -> QuestSyncPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
 }

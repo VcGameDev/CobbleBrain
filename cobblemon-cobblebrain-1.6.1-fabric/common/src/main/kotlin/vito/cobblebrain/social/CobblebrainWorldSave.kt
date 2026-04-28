@@ -209,6 +209,9 @@ object CobblebrainWorldSave {
             addProperty("spawned", false)
             addProperty("distanceWalked", 0.0)
             addProperty("requiredDistance", 800.0 + (Random.nextInt(801))) // Distância base 800 + sorteio 0-800
+            
+            val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
+            addProperty("giverName", giverName)
         }
 
         val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
@@ -247,6 +250,9 @@ object CobblebrainWorldSave {
             addProperty("questSummary", "This is a Item quest!")
             addProperty("storyId", storyId ?: "generic")
             giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
+            
+            val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
+            addProperty("giverName", giverName)
         }
 
         val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
@@ -268,7 +274,22 @@ object CobblebrainWorldSave {
 
     fun createAdviceQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null) {
         ensureQuestsInitialized()
-        val issues = listOf("loneliness", "hunger", "fear of humans", "seeking strength", "lost friend", "confused")
+        val issues = listOf(
+            "loneliness", "hunger", "fear of humans", "need for strength", "lost friend", "confusion",
+            "boredom", "fear of evolving", "trust issues", "lack of confidence", "rivalry",
+            "homesickness", "grief", "jealousy", "anxiety", "curiosity", "wanderlust", "insecurity",
+            "social isolation", "desire for adventure", "fear of failure", "regret", "pride",
+            "curiosity about humans", "laziness", "overthinking", "fear of battle", "perfectionism",
+            "procrastination", "guilt", "envy", "feeling of inadequacy", "impatience", "stubbornness",
+            "pessimism", "mood swings", "nightmares", "lack of motivation", "fear of the unknown",
+            "obsession with power", "distrust of trainers", "feeling like a burden", "desire to be unique",
+            "fear of rejection", "nostalgia", "curiosity about evolution", "fear of the dark",
+            "need for validation", "struggle with discipline", "desire for freedom", "attachment issues",
+            "territory dispute", "finding shelter", "dietary choices", "noisy environment",
+            "uncomfortable nest", "lack of exercise", "extreme heat", "extreme cold", "dehydration",
+            "bad hygiene", "fear of storms", "noisy neighbors", "clumsiness", "lack of sleep", "identity crisis", 
+            "purpose of life", "nostalgia"
+        )
         val selectedIssue = issues.random()
 
         val questObj = JsonObject().apply {
@@ -282,6 +303,9 @@ object CobblebrainWorldSave {
             addProperty("issue", selectedIssue)
             addProperty("points", 0) // Start with 0 points
             giver.pokemon.nickname?.string?.let { addProperty("giverNickname", it) }
+            
+            val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
+            addProperty("giverName", giverName)
         }
 
         val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"

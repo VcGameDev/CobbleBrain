@@ -38,5 +38,13 @@ object CobblebrainClientHandlerFabric {
                 println("[CobbleBrain] Synced config received from server")
             }
         }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.QuestSyncPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                CobblebrainClientCommon.onQuestsSynced(payload.questsJson)
+            }
+        }
     }
 }

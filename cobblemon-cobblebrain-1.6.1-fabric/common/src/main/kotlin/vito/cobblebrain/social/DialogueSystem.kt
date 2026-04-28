@@ -266,6 +266,8 @@ object DialogueSystem {
         if (server.tickCount % 40 == 0) {
             validateItemQuests(server)
             for (player in server.playerList.players) {
+                syncQuests?.invoke(player)
+                
                 val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
                 for (quest in activeQuests) {
                     val type = quest.get("type").asString
@@ -279,6 +281,7 @@ object DialogueSystem {
 
     // bridge de networking (Fabric vai implementar)
     var sendToPlayer: ((ServerPlayer, String) -> Unit)? = null
+    var syncQuests: ((ServerPlayer) -> Unit)? = null
     var onSendPromptClient: (() -> Unit)? = null
 
     fun onBattleStarted(event: BattleStartedEvent) {
@@ -884,6 +887,8 @@ object DialogueSystem {
             val collected = nearbyItems
                 .filter { BuiltInRegistries.ITEM.getKey(it.item.item).path == target }
                 .sumOf { it.item.count }
+            
+            questObj.addProperty("collected", collected)
 
             if (collected >= amount) {
                 var remaining = amount

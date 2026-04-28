@@ -67,6 +67,11 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.SyncConfigPayload.CODEC
         )
 
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.QuestSyncPayload.TYPE,
+            CobblebrainPayloads.QuestSyncPayload.CODEC
+        )
+
         PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.ActionPayload.TYPE,
             CobblebrainPayloads.ActionPayload.CODEC

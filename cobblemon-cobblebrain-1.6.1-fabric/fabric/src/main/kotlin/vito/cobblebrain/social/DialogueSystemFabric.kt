@@ -49,6 +49,10 @@ object DialogueSystemFabric {
             )
         }
 
+        DialogueSystem.syncQuests = { player ->
+            vito.cobblebrain.network.CobblebrainNetworkingFabric.sendQuests(player)
+        }
+
         // Battle start
         CobblemonEvents.BATTLE_STARTED_POST.subscribe { event ->
             DialogueSystem.onBattleStarted(event)

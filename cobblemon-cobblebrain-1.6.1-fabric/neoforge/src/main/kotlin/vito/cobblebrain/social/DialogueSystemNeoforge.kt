@@ -21,6 +21,10 @@ class DialogueSystemNeoForge {
                 CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
             }
 
+            DialogueSystem.syncQuests = { player ->
+                CobblebrainNetworkingNeoForge.sendQuests(player)
+            }
+
             CobblemonEvents.BATTLE_STARTED_POST.subscribe {
                 DialogueSystem.onBattleStarted(it)
             }

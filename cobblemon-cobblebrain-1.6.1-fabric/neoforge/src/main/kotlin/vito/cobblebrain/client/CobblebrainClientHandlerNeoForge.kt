@@ -14,4 +14,8 @@ object CobblebrainClientHandlers {
         SyncedConfig.apply(payload)
         println("CONFIG RECEBIDA DO SERVER")
     }
+
+    fun onQuestSync(payload: CobblebrainPayloads.QuestSyncPayload) {
+        CobblebrainClientCommon.onQuestsSynced(payload.questsJson)
+    }
 }

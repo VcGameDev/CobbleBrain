@@ -28,4 +28,15 @@ object CobblebrainNetworkingFabric {
 
         ServerPlayNetworking.send(player, payload)
     }
+
+    fun sendQuests(player: ServerPlayer) {
+        val quests = vito.cobblebrain.social.CobblebrainWorldSave.getActiveQuests(player)
+        val array = com.google.gson.JsonArray()
+        quests.forEach { array.add(it) }
+
+        ServerPlayNetworking.send(
+            player,
+            CobblebrainPayloads.QuestSyncPayload(array.toString())
+        )
+    }
 }

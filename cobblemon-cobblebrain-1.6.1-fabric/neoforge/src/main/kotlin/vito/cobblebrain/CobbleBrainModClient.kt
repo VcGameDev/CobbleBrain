@@ -76,5 +76,88 @@ object CobbleBrainModClientNeoForge {
             val guiGraphics = event.guiGraphics
             guiGraphics.fill(0, 0, width, height, color)
         }
+
+        // QUEST HUD
+        val questsJson = vito.cobblebrain.client.CobblebrainClientCommon.currentQuestsJson
+        if (questsJson == "[]") return
+
+        try {
+            val questsArray = com.google.gson.JsonParser.parseString(questsJson).asJsonArray
+            if (questsArray.size() == 0) return
+
+            val guiGraphics = event.guiGraphics
+            val screenWidth = client.window.guiScaledWidth
+            val x = screenWidth - 150
+            var y = 10
+
+            for (i in 0 until minOf(questsArray.size(), 2)) {
+                val quest = questsArray[i].asJsonObject
+                val type = quest.get("type")?.asString ?: continue
+                val status = quest.get("status")?.asString ?: "IN_PROGRESS"
+                if (status != "IN_PROGRESS") continue
+
+                val giverName = quest.get("giverName")?.asString ?: "someone"
+
+                // Background Box (Glass effect) - Reduzido em 20%
+                guiGraphics.fill(x, y, x + 144, y + 36, 0xAA000000.toInt()) 
+                guiGraphics.fill(x, y, x + 2, y + 36, 0xFF55FF55.toInt()) // Border
+
+                val title = when(type) {
+                    "BATTLE" -> "Battle Mission"
+                    "ITEM" -> "Item Delivery"
+                    "ADVICE" -> "Advice Needed"
+                    else -> "Quest"
+                }
+                guiGraphics.drawString(client.font, title, x + 8, y + 4, 0xFFFFCC00.toInt())
+
+                var progress = 0f
+                var progressText = ""
+
+                when(type) {
+                    "BATTLE" -> {
+                        val target = quest.get("targetSpecies")?.asString ?: "Target"
+                        val walked = quest.get("distanceWalked")?.asFloat ?: 0f
+                        val required = quest.get("requiredDistance")?.asFloat ?: 1000f
+                        progress = (walked / required).coerceIn(0f, 1f)
+                        progressText = "Defeat $target in a Pokémon battle"
+                    }
+                    "ITEM" -> {
+                        val target = quest.get("target")?.asString ?: "Item"
+                        val collected = quest.get("collected")?.asInt ?: 0
+                        val amount = quest.get("amount")?.asInt ?: 1
+                        progress = (collected.toFloat() / amount.toFloat()).coerceIn(0f, 1f)
+                        progressText = "Drop $amount $target to $giverName ($collected/$amount)"
+                    }
+                    "ADVICE" -> {
+                        val points = quest.get("points")?.asInt ?: 0
+                        progress = ((points + 5) / 10f).coerceIn(0f, 1f)
+                        progressText = "Help $giverName with their $issue: talk points: ($points/5)"
+                    }
+                }
+
+                // Texto menor para caber na HUD reduzida
+                guiGraphics.pose().pushPose()
+                guiGraphics.pose().translate((x + 8).toDouble(), (y + 16).toDouble(), 0.0)
+                guiGraphics.pose().scale(0.85f, 0.85f, 1f)
+                guiGraphics.drawString(client.font, progressText, 0, 0, 0xFFDDDDDD.toInt(), false)
+                guiGraphics.pose().popPose()
+
+                // Bar - Reduzida
+                val barWidth = 128
+                guiGraphics.fill(x + 8, y + 28, x + 8 + barWidth, y + 32, 0x44FFFFFF.toInt()) 
+                guiGraphics.fill(x + 8, y + 28, x + 8 + (barWidth * progress).toInt(), y + 32, 0xFF55FF55.toInt())
+
+                val percent = (progress * 100).toInt()
+                guiGraphics.pose().pushPose()
+                guiGraphics.pose().translate((x + 115).toDouble(), (y + 4).toDouble(), 0.0)
+                guiGraphics.pose().scale(0.8f, 0.8f, 1f)
+                guiGraphics.drawString(client.font, "$percent%", 0, 0, 0xAAFFFFFF.toInt(), false)
+                guiGraphics.pose().popPose()
+
+                y += 40
+            }
+        } catch (e: Exception) {
+            // Skip errors
+        }
     }
 }

@@ -9,6 +9,13 @@ object CobblebrainClientCommon {
     // Fabric/NeoForge vão injetar isso
     var sendToServer: ((String) -> Unit)? = null
 
+    // HUD Quests
+    var currentQuestsJson: String = "[]"
+
+    fun onQuestsSynced(json: String) {
+        currentQuestsJson = json
+    }
+
     fun onPromptReceived(prompt: String) {
         if (prompt == "OPEN_CONFIG_SCREEN") {
             openConfig()

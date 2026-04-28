@@ -61,6 +61,17 @@ object CobblebrainNetworkingNeoForge {
         println("CONFIG SENT TO CLIENT")
     }
 
+    fun sendQuests(player: ServerPlayer) {
+        val quests = vito.cobblebrain.social.CobblebrainWorldSave.getActiveQuests(player)
+        val array = com.google.gson.JsonArray()
+        quests.forEach { array.add(it) }
+
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.QuestSyncPayload(array.toString())
+        )
+    }
+
     fun onClientSetup(event: FMLClientSetupEvent) {
         event.enqueueWork {
 

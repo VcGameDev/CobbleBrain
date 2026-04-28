@@ -32,6 +32,15 @@ object CobblebrainPayloadRegistrarNeoForge {
             }
         }
 
+        registrar.playToClient(
+            CobblebrainPayloads.QuestSyncPayload.TYPE,
+            CobblebrainPayloads.QuestSyncPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onQuestSync(payload)
+            }
+        }
+
         // =========================
         // CLIENT → SERVER
         // =========================

@@ -69,7 +69,9 @@ class AIHandler {
         private val TEMPERATURE get() = clientConfig.temperature
         private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
         private val REASONING get() = clientConfig.reasoningEffort.trim().lowercase()
-        private val DEBUG get() = clientConfig.debugLogging
+        private val DEBUG get(
+
+        ) = clientConfig.debugLogging
         private val TIMEOUT_SECONDS get() = clientConfig.requestTimeoutSeconds
         private val USER_LANGUAGE get() = clientConfig.selectedLanguage
         const val HEADER = """
