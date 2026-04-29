@@ -1633,9 +1633,9 @@ object DialogueSystem {
             ConversationMemory.save(player.uuid, resumeText)
         }
 
-        // 3. Detecta #CATCH: Name% para captura garantizada
-        if (content.contains("#CATCH")) {
-            val nameMatch = Regex("""#CATCH:\s*([^|%\n]+)""").find(content)
+        // 3. Detecta !CATCH: Name para captura garantizada
+        if (content.contains("!CATCH")) {
+            val nameMatch = Regex("""!CATCH:\s*([^|%\n]+)""").find(content)
             val pokemonName = nameMatch?.groupValues?.get(1)?.trim() ?: ""
             
             val level = player.serverLevel()
