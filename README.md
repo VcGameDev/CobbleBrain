@@ -272,7 +272,7 @@ Advanced users can still edit the generated configuration files in the `/config`
 
 <details>
   <summary>Can I play with a free model?</summary>
-  Yes, many providers offer free models, but with usage limits. I recommend Deepseek V3.2 from Player2 (Default in the mod)
+  Yes, many providers offer free models, but with usage limits. I recommend using models from Player2 (Default in the mod). Test them to find the one that has the better cost/intelligence ratio for your gameplay.
 </details>
 
 <details>
