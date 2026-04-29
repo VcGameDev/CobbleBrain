@@ -98,6 +98,7 @@ object CobbleBrainModClient : ClientModInitializer {
                         "BATTLE" -> "Battle Mission"
                         "ITEM" -> "Item Delivery"
                         "ADVICE" -> "Advice Needed"
+                        "TREASURE" -> "Treasure Hunt"
                         else -> "Quest"
                     }
                     guiGraphics.drawString(client.font, title, x + 8, y + 4, 0xFFFFCC00.toInt())
@@ -122,8 +123,36 @@ object CobbleBrainModClient : ClientModInitializer {
                         }
                         "ADVICE" -> {
                             val points = quest.get("points")?.asInt ?: 0
+                            val issue = quest.get("issue")?.asString ?: "problem"
                             progress = ((points + 5) / 10f).coerceIn(0f, 1f)
                             progressText = "Help $giverName with their $issue: talk points: ($points/5)"
+                        }
+                        "TREASURE", "LOCATION" -> {
+                            val tx = quest.get("targetX").asDouble
+                            val tz = quest.get("targetZ").asDouble
+                            val player = client.player
+                            if (player != null) {
+                                val dx = tx - player.x
+                                val dz = tz - player.z
+                                val dist = kotlin.math.sqrt(dx * dx + dz * dz)
+                                
+                                // Cálculo da seta de direção
+                                val angle = (kotlin.math.atan2(dz, dx) * (180 / kotlin.math.PI)).toFloat() - 90f
+                                val relativeAngle = (angle - player.yRot + 180) % 360 - 180
+                                val arrow = when {
+                                    relativeAngle > -22.5 && relativeAngle <= 22.5 -> "↑"
+                                    relativeAngle > 22.5 && relativeAngle <= 67.5 -> "↗"
+                                    relativeAngle > 67.5 && relativeAngle <= 112.5 -> "→"
+                                    relativeAngle > 112.5 && relativeAngle <= 157.5 -> "↘"
+                                    relativeAngle > 157.5 || relativeAngle <= -157.5 -> "↓"
+                                    relativeAngle > -157.5 && relativeAngle <= -112.5 -> "↙"
+                                    relativeAngle > -112.5 && relativeAngle <= -67.5 -> "←"
+                                    else -> "↖"
+                                }
+                                
+                                progress = (1.0f - (dist.toFloat() / 400f)).coerceIn(0f, 1f)
+                                progressText = "Target: ${dist.toInt()}m $arrow"
+                            }
                         }
                     }
 
@@ -136,7 +165,7 @@ object CobbleBrainModClient : ClientModInitializer {
 
                     // Bar - Reduzida
                     val barWidth = 128
-                    guiGraphics.fill(x + 8, y + 28, x + 8 + barWidth, y + 32, 0x44FFFFFF.toInt()) 
+                    guiGraphics.fill(x + 8, y + 28, x + 8 + barWidth, y + 32, 0x44FFFFFF)
                     guiGraphics.fill(x + 8, y + 28, x + 8 + (barWidth * progress).toInt(), y + 32, 0xFF55FF55.toInt())
 
                     val percent = (progress * 100).toInt()

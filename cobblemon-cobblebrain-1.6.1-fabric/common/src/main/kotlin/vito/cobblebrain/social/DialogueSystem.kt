@@ -38,6 +38,8 @@ import net.minecraft.world.phys.Vec3
 import vito.cobblebrain.social.CobblebrainWorldSave.adjustKarma
 import vito.cobblebrain.social.CobblebrainWorldSave.adjustKillCount
 import vito.cobblebrain.config.ConfigHandler.config
+import net.minecraft.core.BlockPos
+import net.minecraft.world.level.block.Blocks
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
@@ -273,6 +275,8 @@ object DialogueSystem {
                     val type = quest.get("type").asString
                     if (type == "BATTLE") {
                         handleBattleQuestTick(player, quest)
+                    } else if (type == "TREASURE") {
+                        handleTreasureQuestTick(player, quest)
                     }
                 }
             }
@@ -1022,6 +1026,66 @@ object DialogueSystem {
         }
     }
 
+    fun handleTreasureQuestTick(player: ServerPlayer, quest: JsonObject) {
+        val tx = quest.get("targetX").asInt
+        val ty = quest.get("targetY").asInt
+        val tz = quest.get("targetZ").asInt
+        
+        val pos = BlockPos(tx, ty, tz)
+        val distance = player.blockPosition().distManhattan(pos)
+
+        // 1. Efeito visual: Círculo de partículas na superfície quando perto
+        if (distance < 30) {
+            val level = player.serverLevel()
+            // Desenha um círculo de partículas a cada 2 ticks para poupar performance
+            if (player.tickCount % 2 == 0) {
+                val radius = 4.0
+                for (i in 0 until 8) {
+                    val angle = i * Math.PI * 2 / 8
+                    val px = tx + 0.5 + kotlin.math.cos(angle) * radius
+                    val pz = tz + 0.5 + kotlin.math.sin(angle) * radius
+                    // Pega a altura do chão naquele ponto das partículas
+                    val py = level.getHeight(Heightmap.Types.MOTION_BLOCKING, px.toInt(), pz.toInt()).toDouble()
+                    
+                    level.sendParticles(
+                        ParticleTypes.HAPPY_VILLAGER,
+                        px, py + 0.2, pz,
+                        1, 0.0, 0.1, 0.0, 0.02
+                    )
+                }
+            }
+            
+            val scanned = quest.get("scanned")?.asBoolean ?: false
+            if (!scanned && distance < 15) {
+                quest.addProperty("scanned", true)
+                CobblebrainWorldSave.save()
+                player.sendSystemMessage(Component.literal("You sense something hidden nearby...").withStyle(ChatFormatting.AQUA))
+            }
+        }
+
+        // 2. Verifica conclusão (se o jogador ABRIR o barril)
+        if (distance <= 4.5) {
+            val level = player.serverLevel()
+            val state = level.getBlockState(pos)
+            
+            // Verifica se o bloco é um barril e se está no estado OPEN
+            val isOpen = state.block == Blocks.BARREL && state.getValue(net.minecraft.world.level.block.BarrelBlock.OPEN)
+
+            if (isOpen) {
+                val giverUuid = quest.get("giverUuid").asString
+                val giverName = CobblebrainWorldSave.getGiverNameFromQuest(quest)
+
+                player.sendSystemMessage(
+                    Component.literal("Treasure Found! $giverName is happy you found it!")
+                        .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
+                )
+
+                CobblebrainWorldSave.moveQuest(player.uuid.toString(), giverUuid, "TREASURE", "COMPLETED")
+                DialogueSystem.pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
+            }
+        }
+    }
+
     fun handleAdviceQuestResponse(player: ServerPlayer, giver: PokemonEntity?, response: String) {
         val quests = CobblebrainWorldSave.getActiveQuests(player)
         val quest = quests.firstOrNull { it.get("type").asString == "ADVICE" } ?: return
@@ -1378,7 +1442,7 @@ object DialogueSystem {
 
                     // Se não há missão ativa
                     if (!hasActiveQuest && Random.nextDouble() <= config.wildQuestChance) {
-                        val roll = Random.nextInt(3) // 0 = Advice, 1 = Item, 2 = Battle
+                        val roll = Random.nextInt(4) // 0 = Advice, 1 = Item, 2 = Battle, 3 = Treasure
                         when (roll) {
                             0 -> {
                                 CobblebrainWorldSave.createAdviceQuest(player, wildEntity)
@@ -1413,6 +1477,16 @@ object DialogueSystem {
                                 player.sendSystemMessage(
                                     Component.literal(
                                         "${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an BATTLE quest!"
+                                    ).withStyle(ChatFormatting.YELLOW)
+                                )
+                            }
+                            
+                            3 -> {
+                                CobblebrainWorldSave.createTreasureQuest(player, wildEntity)
+                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has hidden a treasure! It wants the player to find the barrel!")
+                                player.sendSystemMessage(
+                                    Component.literal(
+                                        "${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started a TREASURE quest!"
                                     ).withStyle(ChatFormatting.YELLOW)
                                 )
                             }
@@ -1559,7 +1633,38 @@ object DialogueSystem {
             ConversationMemory.save(player.uuid, resumeText)
         }
 
-        // 3. Detecta ações (#)
+        // 3. Detecta !CATCH: Name para captura garantizada
+        if (content.contains("!CATCH")) {
+            val nameMatch = Regex("""!CATCH:\s*([^|%\n]+)""").find(content)
+            val pokemonName = nameMatch?.groupValues?.get(1)?.trim() ?: ""
+            
+            val level = player.serverLevel()
+            val pokemon = if (pokemonName.isNotEmpty()) {
+                level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(16.0)) {
+                    it.displayName?.string?.contains(pokemonName, ignoreCase = true) == true ||
+                    it.pokemon.species.name.contains(pokemonName, ignoreCase = true)
+                }.minByOrNull { it.distanceTo(player) }
+            } else {
+                level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(10.0))
+                    .minByOrNull { it.distanceTo(player) }
+            }
+
+            pokemon?.let {
+                it.addTag("cobblebrain:guaranteed_${player.uuid}")
+                
+                // Feedback Visual: Nome fica VERDE
+                val originalName = it.displayName?.string
+                it.customName = Component.literal(originalName).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
+                it.isCustomNameVisible = true
+                
+                player.sendSystemMessage(
+                    Component.literal("The Pokémon $originalName seems convinced to join you!")
+                        .withStyle(ChatFormatting.GREEN, ChatFormatting.ITALIC)
+                )
+            }
+        }
+
+        // 4. Detecta ações (#)
         commandLines.forEach { line ->
             val cmd = parseCommand(line)
             if (cmd != null) {

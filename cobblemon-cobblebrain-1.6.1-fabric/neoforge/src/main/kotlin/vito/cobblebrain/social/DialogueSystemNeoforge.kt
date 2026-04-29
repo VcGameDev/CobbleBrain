@@ -11,6 +11,9 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.ServerChatEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
+import vito.cobblebrain.config.SyncedConfig
+import com.cobblemon.mod.common.api.events.pokeball.PokemonCatchRateEvent
+import com.cobblemon.mod.common.battles.BattleRegistry
 
 class DialogueSystemNeoForge {
     companion object {
@@ -39,6 +42,22 @@ class DialogueSystemNeoForge {
 
             CobblemonEvents.BATTLE_VICTORY.subscribe {
                 DialogueSystem.onBattleVictory(it)
+            }
+
+            CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
+                val player = event.thrower as? ServerPlayer ?: return@subscribe
+                val target = event.pokemonEntity
+                val playerUuid = player.uuid.toString()
+                
+                // Bloqueia se o jogador estiver em batalha ou o sistema estiver desligado
+                val inBattle = BattleRegistry.getBattleByParticipatingPlayerId(player.uuid) != null
+                if (inBattle || !SyncedConfig.outputGuaranteedCatch) return@subscribe 
+
+                if (target.tags.contains("cobblebrain:guaranteed_$playerUuid")) {
+                    event.catchRate = 1000.0f
+                    target.removeTag("cobblebrain:guaranteed_$playerUuid")
+                    println("[CobbleBrain] Guaranteed capture triggered for $playerUuid (NeoForge)")
+                }
             }
         }
     }

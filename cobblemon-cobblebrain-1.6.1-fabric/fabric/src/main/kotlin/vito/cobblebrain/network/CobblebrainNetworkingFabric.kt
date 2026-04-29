@@ -22,6 +22,7 @@ object CobblebrainNetworkingFabric {
             config.outputQuests,
             config.outputPokemonLanguage,
             config.needsPokemonTranslator,
+            config.outputGuaranteedCatch,
             config.maxLongMemory,
             config.maxShortMemory
         )

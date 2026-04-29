@@ -27,6 +27,8 @@ object SyncedConfig {
         private set
     var needsPokemonTranslator = false
         private set
+    var outputGuaranteedCatch = true
+        private set
     var maxLongMemory = 3
         private set
     var maxShortMemory = 2
@@ -42,6 +44,7 @@ object SyncedConfig {
         outputQuests = payload.outputQuests
         outputPokemonLanguage = payload.outputPokemonLanguage
         needsPokemonTranslator = payload.needsPokemonTranslator
+        outputGuaranteedCatch = payload.outputGuaranteedCatch
         maxLongMemory = payload.maxLongMemory
         maxShortMemory = payload.maxShortMemory
         received = true
@@ -62,6 +65,7 @@ object SyncedConfig {
         outputQuests: Boolean,
         outputPokemonLanguage: Boolean,
         needsPokemonTranslator: Boolean,
+        outputGuaranteedCatch: Boolean,
         maxLongMemory: Int,
         maxShortMemory: Int
     ) {
@@ -79,6 +83,7 @@ object SyncedConfig {
         this.outputQuests = outputQuests
         this.outputPokemonLanguage = outputPokemonLanguage
         this.needsPokemonTranslator = needsPokemonTranslator
+        this.outputGuaranteedCatch = outputGuaranteedCatch
         this.maxLongMemory = maxLongMemory
         this.maxShortMemory = maxShortMemory
 
@@ -93,6 +98,7 @@ object SyncedConfig {
         cfg.outputQuests = outputQuests
         cfg.outputPokemonLanguage = outputPokemonLanguage
         cfg.needsPokemonTranslator = needsPokemonTranslator
+        cfg.outputGuaranteedCatch = outputGuaranteedCatch
         cfg.maxLongMemory = maxLongMemory
         cfg.maxShortMemory = maxShortMemory
 

@@ -139,6 +139,15 @@ class AIHandler {
         - If no action is needed, ALWAYS use idle.
         """
 
+        const val CATCH = """
+        GUARANTEED CATCH FORMAT
+        - Format: !CATCH: <PokemonName>
+        - Use this ONLY if a Wild Pokémon decide to let the player capture it without a fight.
+        - This guarantees the player's next Pokéball throw will succeed in the Overworld.
+        - Only use this after a very convincing, friendly, or helpful interaction.
+        - DO NOT use this in every conversation; it should be a rare and special reward.
+        """
+
         const val APRIL1 = """
         - April1 mode is active: extra actions allowed (follow ACTION FORMAT):
           fire type: fireball machine | nuke
@@ -229,6 +238,7 @@ class AIHandler {
         april1: Boolean,
         canonDialogue: Boolean,
         needsTranslator: Boolean,
+        guaranteedCatch: Boolean,
         //worldContext: Boolean,
         //mobsContext: Boolean,
         //lastContext: Boolean,
@@ -246,6 +256,11 @@ class AIHandler {
         if (friendship) sections += FRIENDSHIP
         if (memories) sections += MEMORY
         if (actions) sections += ACTION
+        
+        if (guaranteedCatch && dialogue) {
+            sections += CATCH
+        }
+        
         if (april1) sections += APRIL1
         if (quests) sections += QUEST
 
@@ -269,6 +284,7 @@ class AIHandler {
             april1 = SyncedConfig.outputApril1,
             canonDialogue = SyncedConfig.outputPokemonLanguage,
             needsTranslator = SyncedConfig.needsPokemonTranslator,
+            guaranteedCatch = SyncedConfig.outputGuaranteedCatch,
             //worldContext = clientConfig.outputWorldContext,
             //mobsContext = clientConfig.outputMobsContext,
             //lastContext = clientConfig.outputLastContext,

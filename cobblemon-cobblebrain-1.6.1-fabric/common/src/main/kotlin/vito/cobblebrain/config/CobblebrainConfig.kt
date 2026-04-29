@@ -38,4 +38,5 @@ data class CobblebrainConfig(
     var outputApril1: Boolean = false,
     var outputPokemonLanguage: Boolean = false,
     var needsPokemonTranslator: Boolean = false,
+    var outputGuaranteedCatch: Boolean = true,
 )

@@ -95,6 +95,7 @@ object CobblebrainConfigScreen {
         var outputQuests = true
         var outputPokemonLanguage = false
         var needsPokemonTranslator = false
+        var outputGuaranteedCatch = true
         var maxLongMemory = 3
         var maxShortMemory = 2
 
@@ -578,6 +579,17 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("If true, Add the WORLD CONTEXT system to the AI system instruction (player status included).\nMaking it active in the game"))
             .build()
 
+        val outputGuaranteedCatchEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Output Guaranteed Catch").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.outputGuaranteedCatch,
+                config.outputGuaranteedCatch
+            )
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> outputGuaranteedCatch = value }
+            .setTooltip(Component.literal("If true, Add the GUARANTEED CATCH system to the AI system instruction.\nThis allows wild Pokémon to be convinced to join the player."))
+            .build()
+
         val outputMobsContextEntry = entryBuilder.startBooleanToggle(
             Component.literal("Output Mobs Context").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.outputMobsContext
@@ -675,6 +687,7 @@ object CobblebrainConfigScreen {
         category.entries.add(outputActionsEntry)
         category.entries.add(outputFriendshipEntry)
         category.entries.add(outputWorldContextEntry)
+        category.entries.add(outputGuaranteedCatchEntry)
         category.entries.add(outputMobsContextEntry)
         category.entries.add(outputQuestsEntry)
         category.entries.add(outputApril1Entry)
@@ -697,6 +710,7 @@ object CobblebrainConfigScreen {
                 outputQuests,
                 outputPokemonLanguage,
                 needsPokemonTranslator,
+                outputGuaranteedCatch,
                 maxLongMemory,
                 maxShortMemory
             )

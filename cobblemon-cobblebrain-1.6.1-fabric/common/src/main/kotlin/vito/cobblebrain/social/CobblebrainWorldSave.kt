@@ -23,6 +23,9 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.WrittenBookContent
 import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.core.BlockPos
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.entity.BarrelBlockEntity
 import kotlin.random.Random
 
 object MobBridge {
@@ -366,14 +369,53 @@ object CobblebrainWorldSave {
 
     fun createTreasureQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
         ensureQuestsInitialized()
-        val level = player.level()
+        val level = player.serverLevel()
         val rand = java.util.Random()
 
+        // 1. Sorteia local e profundidade
         val targetX = player.blockX + rand.nextInt(800) - 400
         val targetZ = player.blockZ + rand.nextInt(800) - 400
-        val targetY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, targetX, targetZ)
+        val surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, targetX, targetZ)
+        
+        val depth = rand.nextInt(11) // 0 a 10 blocos de profundidade
+        val targetY = surfaceY - depth
+        val barrelPos = BlockPos(targetX, targetY, targetZ)
 
-        val containerType = listOf("CHEST", "INFECTED_BLOCK", "SUSPICIOUS_GRAVEL").random()
+        // 2. Coloca o barril e itens
+        level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), 3)
+        val barrelEntity = level.getBlockEntity(barrelPos) as? BarrelBlockEntity
+        if (barrelEntity != null) {
+            val lootItems = listOf(
+                Items.STICK, Items.APPLE, Items.WHEAT_SEEDS, Items.OAK_SAPLING, 
+                Items.SWEET_BERRIES, Items.COAL, Items.FLINT, Items.BONE
+            )
+            // Adiciona 3 a 6 itens aleatórios
+            val itemCount = rand.nextInt(4) + 3
+            for (i in 0 until itemCount) {
+                val slot = rand.nextInt(barrelEntity.containerSize)
+                val stack = ItemStack(lootItems.random(), rand.nextInt(3) + 1)
+                barrelEntity.setItem(slot, stack)
+            }
+        }
+
+        // 3. Gera 9 pontos falsos para o brilho (perto do original)
+        val glowPoints = JsonArray()
+        // Adiciona o ponto real primeiro
+        val realPoint = JsonObject().apply {
+            addProperty("x", targetX); addProperty("y", targetY); addProperty("z", targetZ)
+            addProperty("real", true)
+        }
+        glowPoints.add(realPoint)
+
+        for (i in 0 until 9) {
+            val fakeX = targetX + rand.nextInt(11) - 5
+            val fakeZ = targetZ + rand.nextInt(11) - 5
+            val fakeY = targetY + rand.nextInt(5) - 2
+            glowPoints.add(JsonObject().apply {
+                addProperty("x", fakeX); addProperty("y", fakeY); addProperty("z", fakeZ)
+                addProperty("real", false)
+            })
+        }
 
         val questObj = JsonObject().apply {
             addProperty("ownerUuid", player.uuid.toString())
@@ -382,11 +424,14 @@ object CobblebrainWorldSave {
             addProperty("targetX", targetX)
             addProperty("targetY", targetY)
             addProperty("targetZ", targetZ)
-            addProperty("containerType", containerType)
+            add("glowPoints", glowPoints)
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
-            addProperty("questSummary", "Find the hidden treasure")
+            addProperty("questSummary", "Find the hidden barrel near ($targetX, $targetZ)")
             addProperty("storyId", storyId ?: "generic")
+            
+            val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
+            addProperty("giverName", giverName)
         }
 
         val listName = if (storyId != null && storyId != "generic") "active_story" else "active_secondary"
@@ -400,8 +445,7 @@ object CobblebrainWorldSave {
         val quest = Quest(player, "TREASURE", true, storyId = storyId)
         quests.add(quest)
 
-        println("IMPORTANT: A treasure is hidden somewhere...")
-
+        println("IMPORTANT: A treasure is hidden at $targetX $targetY $targetZ")
         startFollowingPlayer(giver, player)
 
         return quest

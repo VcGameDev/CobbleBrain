@@ -115,7 +115,8 @@ class ConfigBuilder<T> private constructor(
             "\"keyRotation\"" to "\n// Enables API key rotation when errors occur. Useful for handling invalid or expired keys.",
             "\"modelRotation\"" to "\n// Enables model rotation when errors occur. Useful for fallback to alternative models.",
             "\"keyRotationTrigger\"" to "\n// List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys.",
-            "\"modelRotationTrigger\"" to "\n// List of HTTP status codes that trigger model rotation. Defines error conditions for switching models."
+            "\"modelRotationTrigger\"" to "\n// List of HTTP status codes that trigger model rotation. Defines error conditions for switching models.",
+            "\"outputGuaranteedCatch\"" to "\n// If true, adds the GUARANTEED CATCH system to the AI instructions, allowing wild Pokémon to be convinced to be caught."
         )
 
         comments.forEach { (field, comment) ->
