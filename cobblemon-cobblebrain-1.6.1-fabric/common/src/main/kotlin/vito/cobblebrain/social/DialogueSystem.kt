@@ -40,6 +40,7 @@ import vito.cobblebrain.social.CobblebrainWorldSave.adjustKillCount
 import vito.cobblebrain.config.ConfigHandler.config
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.entity.BarrelBlockEntity
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
@@ -1633,15 +1634,15 @@ object DialogueSystem {
             ConversationMemory.save(player.uuid, resumeText)
         }
 
-        // 3. Detecta !CATCH: Name para captura garantizada
-        if (content.contains("!CATCH")) {
-            val nameMatch = Regex("""!CATCH:\s*([^|%\n]+)""").find(content)
+        // 3. Detecta #CATCH: Name% para captura garantizada
+        if (content.contains("#CATCH")) {
+            val nameMatch = Regex("""#CATCH:\s*([^|%\n]+)""").find(content)
             val pokemonName = nameMatch?.groupValues?.get(1)?.trim() ?: ""
             
             val level = player.serverLevel()
             val pokemon = if (pokemonName.isNotEmpty()) {
                 level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(16.0)) {
-                    it.displayName?.string?.contains(pokemonName, ignoreCase = true) == true ||
+                    it.displayName.string.contains(pokemonName, ignoreCase = true) ||
                     it.pokemon.species.name.contains(pokemonName, ignoreCase = true)
                 }.minByOrNull { it.distanceTo(player) }
             } else {
@@ -1653,7 +1654,7 @@ object DialogueSystem {
                 it.addTag("cobblebrain:guaranteed_${player.uuid}")
                 
                 // Feedback Visual: Nome fica VERDE
-                val originalName = it.displayName?.string
+                val originalName = it.displayName.string
                 it.customName = Component.literal(originalName).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
                 it.isCustomNameVisible = true
                 
