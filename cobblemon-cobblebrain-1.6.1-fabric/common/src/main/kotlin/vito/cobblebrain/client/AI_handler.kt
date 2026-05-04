@@ -588,8 +588,38 @@ class AIHandler {
         return formatted
     }
 
+    fun generateSessionSummary(contextData: String) {
+        val systemOverride = "You are an RPG narrator. Summarize the following events of this session in 2 or 3 short sentences. Focus on the player's interactions with Pokémon, quests, and main events. Do NOT output dialogue or formatting. Start your response EXACTLY with [SUMMARY_RESPONSE]."
+        val prompt = "Recent Events & Active Quests:\n$contextData"
+        
+        val responseText = try {
+            when {
+                apiBase.contains("generativelanguage.googleapis.com") -> {
+                    callGoogleGemma(prompt, systemOverride)
+                }
+                isLocalApi(apiBase) -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+                else -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+            }
+        } catch (e: Exception) {
+            "[SUMMARY_RESPONSE] Failed to generate summary due to API error: ${e.message}"
+        }
 
-    private fun callOpenAISchema(prompt: String): String {
+        val formatted = if (responseText.isBlank() || responseText.startsWith("Error")) {
+            "[SUMMARY_RESPONSE] Failed to generate summary: ${extractErrorMessage(responseText)}"
+        } else {
+            responseText.replace("\\n", "\n").replace("\n", " ").replace("\\", "")
+        }
+
+        // Envia de volta para o servidor processar
+        CobblebrainClientCommon.sendToServer?.invoke(formatted)
+    }
+
+
+    private fun callOpenAISchema(prompt: String, systemOverride: String? = null): String {
         log("===== OPENAI REQUEST =====")
         log("Local Provider: ${clientConfig.localApiProvider}")
         log("ApiBaseUrl: ${clientConfig.apiBaseUrl}")
@@ -598,7 +628,7 @@ class AIHandler {
         log("\n--- PROMPT ---")
         log(prompt)
 
-        val jsonBody = buildOpenAIJson(prompt)
+        val jsonBody = buildOpenAIJson(prompt, systemOverride)
 
         log("\n--- REQUEST JSON ---")
         log(jsonBody.lines().joinToString("\n") { "│ $it" })
@@ -691,8 +721,13 @@ class AIHandler {
     //isOpenRouter(apiBase) || isLMStudio(apiBase)
 
 
-    private fun buildOpenAIJson(prompt: String): String {
-        val tempHistory = historico + Mensagem("user", prompt)
+    private fun buildOpenAIJson(prompt: String, systemOverride: String? = null): String {
+        // Se tem override (é um resumo), não envia o histórico de conversas para economizar tokens e evitar confusão.
+        val tempHistory = if (systemOverride != null) {
+            listOf(Mensagem("user", prompt))
+        } else {
+            historico + Mensagem("user", prompt)
+        }
 
         val messages = tempHistory.joinToString(",") {
             """{ "role": "${it.role}", "content": "${escape(it.text)}" }"""
@@ -734,6 +769,8 @@ class AIHandler {
             clientConfig.outputFormat
         }
 
+        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
+
         return if (
             clientConfig.localApiProvider.equals("player2", ignoreCase = true) &&
             isLocalAddress(clientConfig.apiBaseUrl)
@@ -741,7 +778,7 @@ class AIHandler {
             """
         {
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + outputFormatToUse)}" },
+            { "role": "system", "content": "${escape(systemContent)}" },
             $messages
           ]$extraJson
         }
@@ -751,7 +788,7 @@ class AIHandler {
         {
           "model": "${modelRotator.current()}",
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + outputFormatToUse)}" },
+            { "role": "system", "content": "${escape(systemContent)}" },
             $messages
           ]$extraJson
         }
@@ -793,7 +830,7 @@ class AIHandler {
     }
 
     // ================= GOOGLE GEMMA / GEMINI =================
-    private fun callGoogleGemma(prompt: String): String {
+    private fun callGoogleGemma(prompt: String, systemOverride: String? = null): String {
 
         val currentModel = modelRotator.current()
         val currentKey = apiKeyRotator.current()
@@ -818,21 +855,33 @@ class AIHandler {
             clientConfig.outputFormat
         }
 
-        val requestBody = mapOf(
-            "contents" to listOf(
-                mapOf(
-                    "role" to "user",
-                    "parts" to listOf(
-                        mapOf("text" to escape(INSTRUCTS + outputFormatToUse))
-                    )
-                ),
-                mapOf(
-                    "role" to "user",
-                    "parts" to listOf(
-                        mapOf("text" to escape(prompt))
-                    )
+        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
+
+        val contents = if (systemOverride != null) {
+            listOf(
+                mapOf("role" to "user", "parts" to listOf(mapOf("text" to escape(systemContent)))),
+                mapOf("role" to "user", "parts" to listOf(mapOf("text" to escape(prompt))))
+            )
+        } else {
+            // Google Gemma normally receives system rules as user messages first
+            val tempHistory = historico + Mensagem("user", prompt)
+            val mappedHistory = mutableListOf<Map<String, Any>>()
+            
+            mappedHistory.add(
+                mapOf("role" to "user", "parts" to listOf(mapOf("text" to escape(systemContent))))
+            )
+            
+            tempHistory.forEach { m ->
+                val role = if (m.role == "assistant") "model" else "user"
+                mappedHistory.add(
+                    mapOf("role" to role, "parts" to listOf(mapOf("text" to escape(m.text))))
                 )
-            ),
+            }
+            mappedHistory
+        }
+
+        val requestBody = mapOf(
+            "contents" to contents,
             "generationConfig" to mapOf(
                 "temperature" to TEMPERATURE
             )

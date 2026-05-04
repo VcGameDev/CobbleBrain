@@ -98,6 +98,7 @@ object CobblebrainWorldSave {
                 add("received_guide", JsonArray())
                 add("karma", JsonObject())
                 add("kill_count", JsonObject())
+                add("last_session_summary", JsonObject())
                 add("quests", JsonObject().apply {
                     add("active_story", JsonObject()) // Single story quest slot
                     add("active_secondary", JsonArray()) // Multiple secondary quests allowed? Or just one? User said "2 tipos", implies one of each.
@@ -109,11 +110,38 @@ object CobblebrainWorldSave {
         }
     }
 
-    fun hasReceivedGuide(player: ServerPlayer): Boolean {
-        val array = data.getAsJsonArray("received_guide")
-        return array.any { it.asString == player.uuid.toString() }
+    fun setSessionSummary(playerUuid: String, summary: String) {
+        val summaries = data.getAsJsonObject("last_session_summary") ?: JsonObject().also { data.add("last_session_summary", it) }
+        summaries.addProperty(playerUuid, summary)
+        save()
     }
+
+    fun getSessionSummary(playerUuid: String): String? {
+        val summaries = data.getAsJsonObject("last_session_summary") ?: return null
+        return summaries.get(playerUuid)?.asString
+    }
+
+    fun clearSessionSummary(playerUuid: String) {
+        val summaries = data.getAsJsonObject("last_session_summary") ?: return
+        if (summaries.has(playerUuid)) {
+            summaries.remove(playerUuid)
+            save()
+        }
+    }
+
+    private fun ensureGuideArray() {
+        if (!data.has("received_guide")) {
+            data.add("received_guide", JsonArray())
+        }
+    }
+
+    fun hasReceivedGuide(player: ServerPlayer): Boolean {
+        ensureGuideArray()
+        return data.getAsJsonArray("received_guide").any { it.asString == player.uuid.toString() }
+    }
+
     fun markGuideReceived(player: ServerPlayer) {
+        ensureGuideArray()
         val array = data.getAsJsonArray("received_guide")
         array.add(player.uuid.toString())
         save()

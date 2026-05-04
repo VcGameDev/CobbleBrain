@@ -46,5 +46,13 @@ object CobblebrainClientHandlerFabric {
                 CobblebrainClientCommon.onQuestsSynced(payload.questsJson)
             }
         }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.SummaryPromptPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData)
+            }
+        }
     }
 }

@@ -52,6 +52,13 @@ object DialogueSystemFabric {
             )
         }
 
+        DialogueSystem.sendToPlayerSummary = { player, contextData ->
+            ServerPlayNetworking.send(
+                player,
+                CobblebrainPayloads.SummaryPromptPayload(contextData)
+            )
+        }
+
         DialogueSystem.syncQuests = { player ->
             vito.cobblebrain.network.CobblebrainNetworkingFabric.sendQuests(player)
         }

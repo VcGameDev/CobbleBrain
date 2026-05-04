@@ -29,5 +29,13 @@ object CobblebrainServerHandlerFabric {
                 CobblebrainServerHandler.processIaResponse(player.server, player, payload.content)
             }
         }
+
+        // Requisição de Resumo (Tecla L)
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestSummaryPayload.TYPE) { _, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                vito.cobblebrain.social.DialogueSystem.triggerSessionSummary(player)
+            }
+        }
     }
 }

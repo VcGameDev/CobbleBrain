@@ -11,6 +11,14 @@ object CobblebrainNetworkingFabric {
             CobblebrainPayloads.PromptPayload(prompt)
         )
     }
+
+    fun sendSummaryToPlayer(player: ServerPlayer, contextData: String) {
+        ServerPlayNetworking.send(
+            player,
+            CobblebrainPayloads.SummaryPromptPayload(contextData)
+        )
+    }
+
     fun sendConfig(player: ServerPlayer) {
         val payload = CobblebrainPayloads.SyncConfigPayload(
             config.useDefaultOutput,

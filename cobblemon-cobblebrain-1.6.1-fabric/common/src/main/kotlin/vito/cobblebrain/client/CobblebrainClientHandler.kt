@@ -30,4 +30,8 @@ object CobblebrainClientCommon {
             null
         }
     }
+
+    fun onSummaryPromptReceived(contextData: String) {
+        AIClientHandler.sendSummaryPrompt(contextData)
+    }
 }

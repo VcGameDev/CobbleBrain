@@ -37,12 +37,23 @@ object CobbleBrainModClient : ClientModInitializer {
             "category.cobblebrain"
         )
 
-        // keybind
+        val requestSummaryKey = KeyMapping(
+            "key.cobblebrain.request_summary",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_L,
+            "category.cobblebrain"
+        )
+
+        // keybinds
         KeyBindingHelper.registerKeyBinding(openConfig)
+        KeyBindingHelper.registerKeyBinding(requestSummaryKey)
 
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             while (openConfig.consumeClick()) {
                 CobblebrainClientCommon.openConfig()
+            }
+            while (requestSummaryKey.consumeClick()) {
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(vito.cobblebrain.network.CobblebrainPayloads.RequestSummaryPayload)
             }
         }
 
@@ -71,7 +82,7 @@ object CobbleBrainModClient : ClientModInitializer {
             }
 
             // QUEST HUD
-            val questsJson = vito.cobblebrain.client.CobblebrainClientCommon.currentQuestsJson
+            val questsJson = CobblebrainClientCommon.currentQuestsJson
             if (questsJson == "[]") return@register
 
             try {
@@ -177,6 +188,14 @@ object CobbleBrainModClient : ClientModInitializer {
 
                     y += 40
                 }
+
+                // SAVE SUMMARY HINT
+                val hint = "/cobblebrain saveContext to save your story"
+                guiGraphics.pose().pushPose()
+                guiGraphics.pose().translate((x + 8).toDouble(), y.toDouble(), 0.0)
+                guiGraphics.pose().scale(0.75f, 0.75f, 1f)
+                guiGraphics.drawString(client.font, hint, 0, 0, 0xAAFFFF55.toInt(), false)
+                guiGraphics.pose().popPose()
             } catch (e: Exception) {
                 // Skip errors
             }

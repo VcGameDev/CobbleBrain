@@ -23,6 +23,12 @@ object CobbleBrainModClientNeoForge {
         "key.categories.cobblebrain"
     )
 
+    private val REQUEST_SUMMARY = KeyMapping(
+        "key.cobblebrain.request_summary",
+        GLFW.GLFW_KEY_L,
+        "key.categories.cobblebrain"
+    )
+
     fun init() {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
@@ -41,6 +47,7 @@ object CobbleBrainModClientNeoForge {
     // registra keybind
     fun onRegisterKeybinds(event: RegisterKeyMappingsEvent) {
         event.register(OPEN_CONFIG)
+        event.register(REQUEST_SUMMARY)
     }
 
     // tick
@@ -48,11 +55,15 @@ object CobbleBrainModClientNeoForge {
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
         }
+        while (REQUEST_SUMMARY.consumeClick()) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(vito.cobblebrain.network.CobblebrainPayloads.RequestSummaryPayload)
+        }
     }
 
     // HUD
     @SubscribeEvent
     fun onHudRender(event: RenderGuiEvent.Post) {
+        val guiGraphics = event.guiGraphics
         val client = Minecraft.getInstance()
         val player = client.player ?: return
 
@@ -73,19 +84,17 @@ object CobbleBrainModClientNeoForge {
             val pulse = ((sin(time / 20.0) + 1) / 2.0 * (maxAlpha - minAlpha) + minAlpha).toInt()
             val color = (pulse shl 24) or 0x3A0066
 
-            val guiGraphics = event.guiGraphics
             guiGraphics.fill(0, 0, width, height, color)
         }
 
         // QUEST HUD
-        val questsJson = vito.cobblebrain.client.CobblebrainClientCommon.currentQuestsJson
+        val questsJson = CobblebrainClientCommon.currentQuestsJson
         if (questsJson == "[]") return
 
         try {
             val questsArray = com.google.gson.JsonParser.parseString(questsJson).asJsonArray
             if (questsArray.size() == 0) return
 
-            val guiGraphics = event.guiGraphics
             val screenWidth = client.window.guiScaledWidth
             val x = screenWidth - 150
             var y = 10
@@ -173,7 +182,7 @@ object CobbleBrainModClientNeoForge {
 
                 // Bar - Reduzida
                 val barWidth = 128
-                guiGraphics.fill(x + 8, y + 28, x + 8 + barWidth, y + 32, 0x44FFFFFF.toInt()) 
+                guiGraphics.fill(x + 8, y + 28, x + 8 + barWidth, y + 32, 0x44FFFFFF)
                 guiGraphics.fill(x + 8, y + 28, x + 8 + (barWidth * progress).toInt(), y + 32, 0xFF55FF55.toInt())
 
                 val percent = (progress * 100).toInt()
@@ -185,6 +194,15 @@ object CobbleBrainModClientNeoForge {
 
                 y += 40
             }
+
+            // SAVE SUMMARY HINT
+            val hint = "/cobblebrain saveContext to save your story"
+            val guiGraphics = event.guiGraphics
+            guiGraphics.pose().pushPose()
+            guiGraphics.pose().translate((x + 8).toDouble(), y.toDouble(), 0.0)
+            guiGraphics.pose().scale(0.75f, 0.75f, 1f)
+            guiGraphics.drawString(client.font, hint, 0, 0, 0xAAFFFF55.toInt(), false)
+            guiGraphics.pose().popPose()
         } catch (e: Exception) {
             // Skip errors
         }

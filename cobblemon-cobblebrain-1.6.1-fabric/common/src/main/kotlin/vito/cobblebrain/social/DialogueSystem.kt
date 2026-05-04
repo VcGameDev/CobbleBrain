@@ -103,7 +103,8 @@ object DialogueSystem {
         val player: ServerPlayer,
         val text: String,
         val sendAtTick: Long,
-        val speaker: Pokemon? = null
+        val speaker: Pokemon? = null,
+        val pitchMod: Float = 0f
     )
 
     // Estado social para manter o olhar
@@ -553,7 +554,6 @@ object DialogueSystem {
                         val regex = Regex("!Error \\d{3}!")
 
                         val component = if (regex.containsMatchIn(text)) {
-                            // Mensagem inteira em vermelho
                             Component.literal(text).withStyle { style ->
                                 style.withColor(ChatFormatting.RED)
                             }
@@ -569,11 +569,9 @@ object DialogueSystem {
                     // tenta resolver o falante pelo apelido OU pela espécie
                     val ativos = PokemonQuery.findActivePokemon(msg.player)
 
-                    // usa a função/variável que você já tem no collectWorldContext
                     val wildEntities = collectWorldContext(msg.player).nearbyPokemonEntities
                     val wilds = wildEntities.map { it.pokemon }
 
-                    // junta os dois conjuntos
                     val participantes = ativos + wilds
 
                     participantes.forEach { poke ->
@@ -593,7 +591,7 @@ object DialogueSystem {
                     speaker?.let { pokemon ->
                         val entity = pokemon.entity
                         val basePitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
-                        expressPokemon(pokemon, basePitch)
+                        expressPokemon(pokemon, basePitch + msg.pitchMod)
 
                         if (entity != null && config.chatbubbles) {
                             val bubbleText = msg.text.substringAfter(":").trim()
@@ -1081,7 +1079,7 @@ object DialogueSystem {
                 )
 
                 CobblebrainWorldSave.moveQuest(player.uuid.toString(), giverUuid, "TREASURE", "COMPLETED")
-                DialogueSystem.pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
+                pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
             }
         }
     }
@@ -1324,9 +1322,14 @@ object DialogueSystem {
 
         println(pokemon)
 
-        // aplica variação pequena em torno do pitch base
-        val variedPitch = (basePitch + (Random.nextFloat() * 0.05f - 0.10f))
-            .coerceIn(0.5f, 1.5f)
+        // a variação aleatória agora segue a direção do sentimento
+        val randomOffset = when {
+            basePitch > 1.0f -> Random.nextFloat() * 0.15f        // sempre mais agudo se feliz
+            basePitch < 1.0f -> -(Random.nextFloat() * 0.15f)     // sempre mais grave se triste
+            else -> Random.nextFloat() * 0.10f - 0.05f            // centralizado se neutro
+        }
+
+        val variedPitch = (basePitch + randomOffset).coerceIn(0.6f, 1.4f)
 
         // toca o cry com pitch variado
         playPokemonCry(pokemon, variedPitch)
@@ -1336,21 +1339,36 @@ object DialogueSystem {
             entity.jumpFromGround()
         }
 
-        // partículas de acordo com o pitch base (não variado)
-        val particleType = if (basePitch >= 1.0f) ParticleTypes.HEART else ParticleTypes.ANGRY_VILLAGER
-        level.sendParticles(
-            particleType,
-            entity.x, entity.y + entity.bbHeight / 2.0, entity.z,
-            6,
-            0.25, 0.35, 0.25,
-            0.0
-        )
+        // partículas apenas se houver mudança emocional (pitch != 1.0)
+        val particleType = when {
+            basePitch > 1.0f -> ParticleTypes.HEART
+            basePitch < 1.0f -> ParticleTypes.ANGRY_VILLAGER
+            else -> null
+        }
+
+        if (particleType != null) {
+            level.sendParticles(
+                particleType,
+                entity.x, entity.y + entity.bbHeight / 2.0, entity.z,
+                6,
+                0.25, 0.35, 0.25,
+                0.0
+            )
+        }
     }
 
     fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
         val context = collectWorldContext(player)
 
         return buildString {
+            // Injeta resumo da última sessão se existir
+            val sessionSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
+            if (sessionSummary != null) {
+                appendLine("[LAST SESSION RECAP]")
+                appendLine(sessionSummary)
+                appendLine()
+            }
+
             appendLine(moreText)
             appendLine()
             
@@ -1572,6 +1590,38 @@ object DialogueSystem {
         val last = lastResponseContent[player.uuid]
         if (content.isBlank() || content == last) return
 
+        // Intercepta se for a resposta do resumo
+        if (content.startsWith("[SUMMARY_RESPONSE]")) {
+            val summary = content.replace("[SUMMARY_RESPONSE]", "").trim()
+            
+            // Se houver erro na geração, apenas avisa o jogador e não salva
+            if (summary.startsWith("Failed", ignoreCase = true) || summary.startsWith("Error", ignoreCase = true)) {
+                player.sendSystemMessage(Component.literal("Summary Error: ").withStyle(ChatFormatting.RED)
+                    .append(Component.literal(summary).withStyle(ChatFormatting.GRAY)))
+                return
+            }
+
+            CobblebrainWorldSave.setSessionSummary(player.uuid.toString(), summary)
+            player.sendSystemMessage(Component.literal("Session summary saved! Use /cobblebrain summary to view.").withStyle(ChatFormatting.GREEN))
+            return
+        }
+
+        // Se chegamos aqui, é uma resposta normal (diálogo).
+        // Se houver um resumo, mostramos o aviso antes de apagar
+        val currentSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
+        if (currentSummary != null) {
+            player.sendSystemMessage(Component.literal("\n"))
+            player.sendSystemMessage(
+                Component.literal("Previously in your world... ")
+                    .withStyle(ChatFormatting.GOLD)
+                    .append(Component.literal("(The previous session summary was applied to this conversation)").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC))
+            )
+            player.sendSystemMessage(Component.literal("\n"))
+            
+            // Apagamos o resumo da última sessão pois a IA já o "consumiu" no prompt.
+            CobblebrainWorldSave.clearSessionSummary(player.uuid.toString())
+        }
+
         // Linhas para chat (falas + friendship), excluindo memórias
         val allLines = content.split("|")
             .map { it.trim() }
@@ -1720,23 +1770,56 @@ object DialogueSystem {
         // ADVICE score tracking
         handleAdviceQuestResponse(player, null, content)
 
-        // Monta todas as falas do novo diálogo
-        val novasMensagens = falas.mapIndexed { i, line ->
+        // Monta todas as falas do novo diálogo e associa o pitchMod
+        val novasMensagens = mutableListOf<ScheduledMessage>()
+        
+        falas.forEachIndexed { i, line ->
             val speakerName = line.substringBefore(":").trim()
             val speaker = PokemonQuery.findActivePokemon(player)
-                .firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) }
+                .firstOrNull { it.species.name.equals(speakerName, ignoreCase = true) || it.nickname?.string?.equals(speakerName, ignoreCase = true) == true }
 
-            ScheduledMessage(
+            var mod = 0f
+            val lineIndexInAll = allLines.indexOf(line)
+            if (lineIndexInAll != -1 && lineIndexInAll + 1 < allLines.size) {
+                val nextLine = allLines[lineIndexInAll + 1]
+                val match = Regex("""friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*([+-])\s*(-?\d+)""", RegexOption.IGNORE_CASE).find(nextLine)
+                if (match != null) {
+                    val targetName = match.groupValues[1].trim()
+                    if (targetName.equals(speakerName, ignoreCase = true)) {
+                        val sinal = match.groupValues[3]
+                        val valor = match.groupValues[4].toFloat()
+                        // 1 ponto = 0.03 de pitch (limite de +/- 0.18)
+                        mod = (if (sinal == "-") -valor else valor) * 0.03f
+                        mod = mod.coerceIn(-0.18f, 0.18f)
+                    }
+                }
+            }
+
+            novasMensagens.add(ScheduledMessage(
                 player = player,
                 text = line,
                 sendAtTick = if (i == 0) startTick else startTick + (i * 100),
-                speaker = speaker
-            )
+                speaker = speaker,
+                pitchMod = mod
+            ))
         }
 
         // Substitui qualquer diálogo anterior por este novo conjunto
         scheduledMessages[player.uuid] = novasMensagens.toMutableList()
-        println("[SCHEDULE] ${player.name.string} -> ${novasMensagens.size} mensagens")
+        println("[SCHEDULE] ${player.name.string} -> ${novasMensagens.size} mensagens com modulação emocional")
 
     }
+
+    fun triggerSessionSummary(player: ServerPlayer) {
+        player.sendSystemMessage(Component.literal("Saving session context... Please wait.").withStyle(ChatFormatting.YELLOW))
+
+        val nearbyPokemon = currentServer?.playerList?.players?.flatMap { PokemonQuery.findActivePokemon(it) }
+            ?.filter { (it.entity?.distanceTo(player) ?: 1000.0f) < 32f } ?: emptyList()
+
+        val contextData = buildPrompt(player, nearbyPokemon, "[SESSION SUMMARY REQUEST]")
+        
+        sendToPlayerSummary?.invoke(player, contextData)
+    }
+
+    var sendToPlayerSummary: ((ServerPlayer, String) -> Unit)? = null
 }

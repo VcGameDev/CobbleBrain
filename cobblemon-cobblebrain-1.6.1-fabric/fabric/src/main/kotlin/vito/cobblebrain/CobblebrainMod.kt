@@ -72,6 +72,11 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.QuestSyncPayload.CODEC
         )
 
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.SummaryPromptPayload.TYPE,
+            CobblebrainPayloads.SummaryPromptPayload.CODEC
+        )
+
         PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.ActionPayload.TYPE,
             CobblebrainPayloads.ActionPayload.CODEC
@@ -80,6 +85,11 @@ object CobblebrainMod : ModInitializer {
         PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.AIResponsePayload.TYPE,
             CobblebrainPayloads.AIResponsePayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.RequestSummaryPayload.TYPE,
+            CobblebrainPayloads.RequestSummaryPayload.CODEC
         )
 
         // registra handlers de networking

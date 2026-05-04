@@ -18,4 +18,9 @@ object CobblebrainClientHandlers {
     fun onQuestSync(payload: CobblebrainPayloads.QuestSyncPayload) {
         CobblebrainClientCommon.onQuestsSynced(payload.questsJson)
     }
+
+    fun onSummaryPrompt(payload: CobblebrainPayloads.SummaryPromptPayload) {
+        CobblebrainClientRuntimeNeoForge.markResponseReceived()
+        CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData)
+    }
 }

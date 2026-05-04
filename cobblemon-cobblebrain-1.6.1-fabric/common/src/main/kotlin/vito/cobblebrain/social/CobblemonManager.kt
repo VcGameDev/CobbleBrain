@@ -61,11 +61,11 @@ object PokemonTalkCommand {
                             val prompt = DialogueSystem.buildPrompt(player, ativos, "\n\n$conteudo")
                             //player.sendSystemMessage(Component.literal("4 - prompt gerado: ${prompt.take(50)}"))
 
-                            if (DialogueSystem.sendToPlayer == null) {
+                            //if (DialogueSystem.sendToPlayer == null) {
                                 //player.sendSystemMessage(Component.literal("5 - SEND É NULL"))
-                            } else {
+                            //} else {
                                 //player.sendSystemMessage(Component.literal("5 - SEND NÃO É NULL"))
-                            }
+                            //}
 
                             DialogueSystem.sendToPlayer?.invoke(player, prompt)
 
@@ -309,6 +309,39 @@ object ConfigCommands {
                                     1
                                 }
                         )
+                )
+                .then(
+                    Commands.literal("summary")
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            val summary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
+                            
+                            if (summary != null) {
+                                player.sendSystemMessage(
+                                    Component.literal("\nPREVIOUS SESSION SUMMARY:\n")
+                                        .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
+                                )
+                                player.sendSystemMessage(
+                                    Component.literal(summary)
+                                        .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
+                                )
+                                player.sendSystemMessage(Component.literal("\n"))
+                            } else {
+                                player.sendSystemMessage(
+                                    Component.literal("No session summary found.")
+                                        .withStyle(ChatFormatting.RED)
+                                )
+                            }
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("saveContext")
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            DialogueSystem.triggerSessionSummary(player)
+                            1
+                        }
                 )
         )
     }

@@ -36,6 +36,21 @@ object CobblebrainPayloads {
         override fun type() = TYPE
     }
 
+    data class SummaryPromptPayload(val contextData: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "summary_prompt")
+            val TYPE = CustomPacketPayload.Type<SummaryPromptPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, SummaryPromptPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.contextData) },
+                    { buf -> SummaryPromptPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
     data class SyncConfigPayload(
         val useDefaultOutput: Boolean,
         val outputDialogue: Boolean,
@@ -119,6 +134,16 @@ object CobblebrainPayloads {
                     { buf -> QuestSyncPayload(buf.readUtf()) }
                 )
         }
+
+        override fun type() = TYPE
+    }
+
+    object RequestSummaryPayload : CustomPacketPayload {
+        val ID = ResourceLocation("cobblebrain", "request_summary")
+        val TYPE = CustomPacketPayload.Type<RequestSummaryPayload>(ID)
+
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestSummaryPayload> =
+            StreamCodec.unit(RequestSummaryPayload)
 
         override fun type() = TYPE
     }

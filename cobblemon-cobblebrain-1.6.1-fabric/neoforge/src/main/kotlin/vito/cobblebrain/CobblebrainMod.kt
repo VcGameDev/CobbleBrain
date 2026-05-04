@@ -68,6 +68,13 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
             CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
         }
 
+        DialogueSystem.sendToPlayerSummary = { player, contextData ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
+                player,
+                vito.cobblebrain.network.CobblebrainPayloads.SummaryPromptPayload(contextData)
+            )
+        }
+
         // ===== CONFIG =====
         ConfigHandler.load()
 
