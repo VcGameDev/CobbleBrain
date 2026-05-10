@@ -52,23 +52,6 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.atan2
 
-object ConversationMemory {
-    private val memory = mutableMapOf<UUID, MutableList<String>>()
-
-    fun save(playerId: UUID, text: String) {
-        val list = memory.getOrPut(playerId) { mutableListOf() }
-        list.add(text)
-
-        if (list.size > 3) {
-            list.removeAt(0)
-        }
-    }
-
-    fun get(playerId: UUID): List<String> {
-        return memory[playerId] ?: emptyList()
-    }
-}
-
 object PlayerTopicState {
     private val topics = mutableMapOf<UUID, String>()
 
@@ -1412,13 +1395,6 @@ object DialogueSystem {
             }
             appendLine()
 
-            val interactions = ConversationMemory.get(player.uuid)
-
-            if (interactions.isNotEmpty()) {
-                appendLine("[LAST INTERACTIONS]")
-                interactions.forEach { appendLine("- $it") }
-                appendLine()
-            }
             // Environment
             if (config.outputWorldContext)
                 appendLine("Biome: ${context.biome}")
@@ -1519,7 +1495,7 @@ object DialogueSystem {
 
             pokemons.forEach { p ->
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
-                appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | Type(s): ${p.types.joinToString { it.name }} | Gender: ${p.gender} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
+                appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | Type(s): ${p.types.joinToString { it.name }} | Gender: ${p.gender} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Fullness: ${p.currentFullness}/${p.getMaxFullness()} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
 
                 // Adiciona características se houver
                 val nameToCheck = p.nickname?.string ?: p.species.name
@@ -1671,17 +1647,6 @@ object DialogueSystem {
             CobblebrainWorldSave.save()}
         }
 
-        //2.5. Detecta resume summary
-        resumeLines.forEach { line ->
-            val resumeText = line
-                .substringAfter("!RESUME")
-                .removePrefix(":")
-                .trim()
-
-            if (resumeText.isBlank()) return@forEach
-
-            ConversationMemory.save(player.uuid, resumeText)
-        }
 
         // 3. Detecta !CATCH: Name para captura garantizada
         if (content.contains("!CATCH")) {

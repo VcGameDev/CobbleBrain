@@ -19,6 +19,12 @@ object CobblebrainClientHandlerFabric {
             )
         }
 
+        CobblebrainClientCommon.callTeamAction = { action ->
+            ClientPlayNetworking.send(
+                CobblebrainPayloads.ActionPayload(action)
+            )
+        }
+
         // SERVER → CLIENT
         ClientPlayNetworking.registerGlobalReceiver(
             CobblebrainPayloads.PromptPayload.TYPE

@@ -1,10 +1,19 @@
 package vito.cobblebrain.network
 
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.server.level.ServerPlayer
 import vito.cobblebrain.config.ConfigHandler.config
 
 object CobblebrainNetworkingFabric {
+    fun debug(player: ServerPlayer?, msg: String) {
+        if (player != null) {
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("[DEBUG] $msg"))
+        } else {
+            println("[DEBUG] $msg")
+        }
+    }
+
     fun sendToPlayer(player: ServerPlayer, prompt: String) {
         ServerPlayNetworking.send(
             player,
@@ -17,6 +26,10 @@ object CobblebrainNetworkingFabric {
             player,
             CobblebrainPayloads.SummaryPromptPayload(contextData)
         )
+    }
+
+    fun sendActionToServer(action: String) {
+        ClientPlayNetworking.send(CobblebrainPayloads.ActionPayload(action))
     }
 
     fun sendConfig(player: ServerPlayer) {

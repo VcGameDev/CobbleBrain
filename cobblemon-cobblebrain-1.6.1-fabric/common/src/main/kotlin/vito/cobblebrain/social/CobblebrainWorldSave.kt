@@ -426,25 +426,6 @@ object CobblebrainWorldSave {
             }
         }
 
-        // 3. Gera 9 pontos falsos para o brilho (perto do original)
-        val glowPoints = JsonArray()
-        // Adiciona o ponto real primeiro
-        val realPoint = JsonObject().apply {
-            addProperty("x", targetX); addProperty("y", targetY); addProperty("z", targetZ)
-            addProperty("real", true)
-        }
-        glowPoints.add(realPoint)
-
-        for (i in 0 until 9) {
-            val fakeX = targetX + rand.nextInt(11) - 5
-            val fakeZ = targetZ + rand.nextInt(11) - 5
-            val fakeY = targetY + rand.nextInt(5) - 2
-            glowPoints.add(JsonObject().apply {
-                addProperty("x", fakeX); addProperty("y", fakeY); addProperty("z", fakeZ)
-                addProperty("real", false)
-            })
-        }
-
         val questObj = JsonObject().apply {
             addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
@@ -452,7 +433,6 @@ object CobblebrainWorldSave {
             addProperty("targetX", targetX)
             addProperty("targetY", targetY)
             addProperty("targetZ", targetZ)
-            add("glowPoints", glowPoints)
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
             addProperty("questSummary", "Find the hidden barrel near ($targetX, $targetZ)")

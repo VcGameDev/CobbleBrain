@@ -10,6 +10,7 @@ import net.minecraft.client.KeyMapping
 import net.minecraft.world.effect.MobEffects
 import org.lwjgl.glfw.GLFW
 import vito.cobblebrain.client.CobblebrainClientCommon
+import vito.cobblebrain.client.HudSystem
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfigScreen
 import vito.cobblebrain.config.SyncedConfig
@@ -23,10 +24,29 @@ object CobbleBrainModClientNeoForge {
         "key.categories.cobblebrain"
     )
 
-    private val REQUEST_SUMMARY = KeyMapping(
-        "key.cobblebrain.request_summary",
-        GLFW.GLFW_KEY_L,
-        "key.categories.cobblebrain"
+
+    private val CMD_UP = KeyMapping(
+        "key.cobblebrain.cmd_up",
+        GLFW.GLFW_KEY_B,
+        "category.cobblebrain"
+    )
+
+    private val CMD_DOWN = KeyMapping(
+        "key.cobblebrain.cmd_down",
+        GLFW.GLFW_KEY_V,
+        "category.cobblebrain"
+    )
+
+    private val CMD_EXECUTE = KeyMapping(
+        "key.cobblebrain.cmd_execute",
+        GLFW.GLFW_KEY_Z,
+        "category.cobblebrain"
+    )
+
+    private val CMD_TOGGLE = KeyMapping(
+        "key.cobblebrain.cmd_toggle",
+        GLFW.GLFW_KEY_N,
+        "category.cobblebrain"
     )
 
     fun init() {
@@ -42,12 +62,21 @@ object CobbleBrainModClientNeoForge {
 
         NeoForge.EVENT_BUS.addListener(::onClientTick)
         NeoForge.EVENT_BUS.register(this)
+
+        // Referências para a HUD dinâmica
+        CobblebrainClientCommon.keyUp = CMD_UP
+        CobblebrainClientCommon.keyDown = CMD_DOWN
+        CobblebrainClientCommon.keyExecute = CMD_EXECUTE
+        CobblebrainClientCommon.keyToggle = CMD_TOGGLE
     }
 
     // registra keybind
     fun onRegisterKeybinds(event: RegisterKeyMappingsEvent) {
         event.register(OPEN_CONFIG)
-        event.register(REQUEST_SUMMARY)
+        event.register(CMD_UP)
+        event.register(CMD_DOWN)
+        event.register(CMD_EXECUTE)
+        event.register(CMD_TOGGLE)
     }
 
     // tick
@@ -55,8 +84,17 @@ object CobbleBrainModClientNeoForge {
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
         }
-        while (REQUEST_SUMMARY.consumeClick()) {
-            net.neoforged.neoforge.network.PacketDistributor.sendToServer(vito.cobblebrain.network.CobblebrainPayloads.RequestSummaryPayload)
+        while (CMD_UP.consumeClick()) {
+            HudSystem.navigateUp()
+        }
+        while (CMD_DOWN.consumeClick()) {
+            HudSystem.navigateDown()
+        }
+        while (CMD_EXECUTE.consumeClick()) {
+            HudSystem.executeAction()
+        }
+        while (CMD_TOGGLE.consumeClick()) {
+            HudSystem.toggleVisibility()
         }
     }
 
@@ -66,6 +104,9 @@ object CobbleBrainModClientNeoForge {
         val guiGraphics = event.guiGraphics
         val client = Minecraft.getInstance()
         val player = client.player ?: return
+
+        // Converte DeltaTracker para Float se necessário
+        val delta = event.partialTick.gameTimeDeltaTicks
 
         val invis = player.hasEffect(MobEffects.INVISIBILITY)
         val jump = player.hasEffect(MobEffects.JUMP)
@@ -87,124 +128,7 @@ object CobbleBrainModClientNeoForge {
             guiGraphics.fill(0, 0, width, height, color)
         }
 
-        // QUEST HUD
-        val questsJson = CobblebrainClientCommon.currentQuestsJson
-        if (questsJson == "[]") return
-
-        try {
-            val questsArray = com.google.gson.JsonParser.parseString(questsJson).asJsonArray
-            if (questsArray.size() == 0) return
-
-            val screenWidth = client.window.guiScaledWidth
-            val x = screenWidth - 150
-            var y = 10
-
-            for (i in 0 until minOf(questsArray.size(), 2)) {
-                val quest = questsArray[i].asJsonObject
-                val type = quest.get("type")?.asString ?: continue
-                val status = quest.get("status")?.asString ?: "IN_PROGRESS"
-                if (status != "IN_PROGRESS") continue
-
-                val giverName = quest.get("giverName")?.asString ?: "someone"
-
-                // Background Box (Glass effect) - Reduzido em 20%
-                guiGraphics.fill(x, y, x + 144, y + 36, 0xAA000000.toInt()) 
-                guiGraphics.fill(x, y, x + 2, y + 36, 0xFF55FF55.toInt()) // Border
-
-                val title = when(type) {
-                    "BATTLE" -> "Battle Mission"
-                    "ITEM" -> "Item Delivery"
-                    "ADVICE" -> "Advice Needed"
-                    "TREASURE" -> "Treasure Hunt"
-                    else -> "Quest"
-                }
-                guiGraphics.drawString(client.font, title, x + 8, y + 4, 0xFFFFCC00.toInt())
-
-                var progress = 0f
-                var progressText = ""
-
-                when(type) {
-                    "BATTLE" -> {
-                        val target = quest.get("targetSpecies")?.asString ?: "Target"
-                        val walked = quest.get("distanceWalked")?.asFloat ?: 0f
-                        val required = quest.get("requiredDistance")?.asFloat ?: 1000f
-                        progress = (walked / required).coerceIn(0f, 1f)
-                        progressText = "Defeat $target in a Pokémon battle"
-                    }
-                    "ITEM" -> {
-                        val target = quest.get("target")?.asString ?: "Item"
-                        val collected = quest.get("collected")?.asInt ?: 0
-                        val amount = quest.get("amount")?.asInt ?: 1
-                        progress = (collected.toFloat() / amount.toFloat()).coerceIn(0f, 1f)
-                        progressText = "Drop $amount $target to $giverName ($collected/$amount)"
-                    }
-                    "ADVICE" -> {
-                        val points = quest.get("points")?.asInt ?: 0
-                        val issue = quest.get("issue")?.asString ?: "problem"
-                        progress = ((points + 5) / 10f).coerceIn(0f, 1f)
-                        progressText = "Help $giverName with their $issue: talk points: ($points/5)"
-                    }
-                    "TREASURE", "LOCATION" -> {
-                        val tx = quest.get("targetX").asDouble
-                        val tz = quest.get("targetZ").asDouble
-                        val player = client.player
-                        if (player != null) {
-                            val dx = tx - player.x
-                            val dz = tz - player.z
-                            val dist = kotlin.math.sqrt(dx * dx + dz * dz)
-                            
-                            // Cálculo da seta de direção
-                            val angle = (kotlin.math.atan2(dz, dx) * (180 / kotlin.math.PI)).toFloat() - 90f
-                            val relativeAngle = (angle - player.yRot + 180) % 360 - 180
-                            val arrow = when {
-                                relativeAngle > -22.5 && relativeAngle <= 22.5 -> "↑"
-                                relativeAngle > 22.5 && relativeAngle <= 67.5 -> "↗"
-                                relativeAngle > 67.5 && relativeAngle <= 112.5 -> "→"
-                                relativeAngle > 112.5 && relativeAngle <= 157.5 -> "↘"
-                                relativeAngle > 157.5 || relativeAngle <= -157.5 -> "↓"
-                                relativeAngle > -157.5 && relativeAngle <= -112.5 -> "↙"
-                                relativeAngle > -112.5 && relativeAngle <= -67.5 -> "←"
-                                else -> "↖"
-                            }
-                            
-                            progress = (1.0f - (dist.toFloat() / 400f)).coerceIn(0f, 1f)
-                            progressText = "Target: ${dist.toInt()}m $arrow"
-                        }
-                    }
-                }
-
-                // Texto menor para caber na HUD reduzida
-                guiGraphics.pose().pushPose()
-                guiGraphics.pose().translate((x + 8).toDouble(), (y + 16).toDouble(), 0.0)
-                guiGraphics.pose().scale(0.85f, 0.85f, 1f)
-                guiGraphics.drawString(client.font, progressText, 0, 0, 0xFFDDDDDD.toInt(), false)
-                guiGraphics.pose().popPose()
-
-                // Bar - Reduzida
-                val barWidth = 128
-                guiGraphics.fill(x + 8, y + 28, x + 8 + barWidth, y + 32, 0x44FFFFFF)
-                guiGraphics.fill(x + 8, y + 28, x + 8 + (barWidth * progress).toInt(), y + 32, 0xFF55FF55.toInt())
-
-                val percent = (progress * 100).toInt()
-                guiGraphics.pose().pushPose()
-                guiGraphics.pose().translate((x + 115).toDouble(), (y + 4).toDouble(), 0.0)
-                guiGraphics.pose().scale(0.8f, 0.8f, 1f)
-                guiGraphics.drawString(client.font, "$percent%", 0, 0, 0xAAFFFFFF.toInt(), false)
-                guiGraphics.pose().popPose()
-
-                y += 40
-            }
-
-            // SAVE SUMMARY HINT
-            val hint = "/cobblebrain saveContext to save your story"
-            val guiGraphics = event.guiGraphics
-            guiGraphics.pose().pushPose()
-            guiGraphics.pose().translate((x + 8).toDouble(), y.toDouble(), 0.0)
-            guiGraphics.pose().scale(0.75f, 0.75f, 1f)
-            guiGraphics.drawString(client.font, hint, 0, 0, 0xAAFFFF55.toInt(), false)
-            guiGraphics.pose().popPose()
-        } catch (e: Exception) {
-            // Skip errors
-        }
+        // HUD SYSTEM
+        HudSystem.render(guiGraphics, delta)
     }
 }

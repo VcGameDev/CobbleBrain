@@ -46,6 +46,20 @@ class ModelRotator(private val models: List<String>) {
     fun next() { index = (index + 1) % models.size }
 }
 
+object ConversationMemory {
+    private val memory = mutableListOf<String>()
+
+    fun save(text: String) {
+        memory.add(text)
+        val max = clientConfig.maxInteractionSaves
+        while (memory.size > max) {
+            memory.removeAt(0)
+        }
+    }
+
+    fun get(): List<String> = memory
+}
+
 class AIHandler {
     companion object {
         private val sessionLogFile: Path by lazy {
@@ -541,19 +555,32 @@ class AIHandler {
     fun respostaNormal(prompt: String): String {
         println("respostaNormal activated")
 
+        // Injeta LAST INTERACTIONS no prompt vindo do servidor
+        val interactions = ConversationMemory.get()
+        val finalPrompt = if (interactions.isNotEmpty()) {
+            buildString {
+                appendLine("[LAST INTERACTIONS]")
+                interactions.forEach { appendLine("- $it") }
+                appendLine()
+                append(prompt)
+            }
+        } else {
+            prompt
+        }
+
         val responseText = try {
             when {
                 apiBase.contains("generativelanguage.googleapis.com") -> {
-                    callGoogleGemma(prompt)
+                    callGoogleGemma(finalPrompt)
                 }
 
                 isLocalApi(apiBase) -> {
                     println("Using local provider: ${clientConfig.localApiProvider}")
-                    callOpenAISchema(prompt)
+                    callOpenAISchema(finalPrompt)
                 }
 
                 else -> {
-                    callOpenAISchema(prompt)
+                    callOpenAISchema(finalPrompt)
                 }
             }
         } catch (e: Exception) {
@@ -581,9 +608,19 @@ class AIHandler {
         historico.add(Mensagem("assistant", responseText))
         limitarHistorico()
 
-        println("[COMMON] Sending response to server")
-
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
+
+        // Processa !RESUME para a memória local
+        formatted.split("|").forEach { line ->
+            if (line.trim().startsWith("!RESUME", ignoreCase = true)) {
+                val resumeText = line.substringAfter("!RESUME")
+                    .removePrefix(":")
+                    .trim()
+                if (resumeText.isNotBlank()) {
+                    ConversationMemory.save(resumeText)
+                }
+            }
+        }
 
         return formatted
     }
@@ -628,6 +665,7 @@ class AIHandler {
         log("\n--- PROMPT ---")
         log(prompt)
 
+        // Nota: buildOpenAIJson já usa o prompt final com as interações injetadas
         val jsonBody = buildOpenAIJson(prompt, systemOverride)
 
         log("\n--- REQUEST JSON ---")

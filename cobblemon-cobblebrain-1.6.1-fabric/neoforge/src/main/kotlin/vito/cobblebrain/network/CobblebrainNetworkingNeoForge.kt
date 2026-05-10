@@ -29,13 +29,25 @@ object CobblebrainNetworkingNeoForge {
             player,
             CobblebrainPayloads.PromptPayload(prompt)
         )
+    }
 
+    fun sendSummaryToPlayer(player: ServerPlayer, contextData: String) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.SummaryPromptPayload(contextData)
+        )
     }
 
     // CLIENT → SERVER
     fun sendToServer(response: String) {
         PacketDistributor.sendToServer(
             CobblebrainPayloads.AIResponsePayload(response)
+        )
+    }
+
+    fun sendActionToServer(action: String) {
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.ActionPayload(action)
         )
     }
 
@@ -52,6 +64,7 @@ object CobblebrainNetworkingNeoForge {
             cfg.outputQuests,
             cfg.outputPokemonLanguage,
             cfg.needsPokemonTranslator,
+            cfg.outputGuaranteedCatch,
             cfg.maxLongMemory,
             cfg.maxShortMemory
         )

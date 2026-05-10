@@ -606,6 +606,23 @@ object CommandTickHandler {
                         pokemon.navigation.moveTo(foodItem, 1.0)
                         if (pokemon.distanceTo(foodItem) < 2.0f && bite <= 0) {
                             val stack = foodItem.item
+                            val id = BuiltInRegistries.ITEM.getKey(stack.item)
+                            val p = pokemon.pokemon
+
+                            // Verifica se é uma Berry do Cobblemon (Namespace E nome)
+                            val isBerry = id.namespace == "cobblemon" && (id.path.contains("berry") || id.path.contains("berries"))
+
+                            // Failsafe: Se estiver cheio e NÃO for uma berry, não come
+                            if (p.currentFullness >= p.getMaxFullness() && !isBerry) {
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} is full, it will only eat berries for now! (${p.currentFullness}/${p.getMaxFullness()})",
+                                    ChatFormatting.RED
+                                )
+                                biteCooldown[pokemonId] = 100 // Evita spam
+                                return@forEach
+                            }
+
                             val foodComponent = stack.get(DataComponents.FOOD)
 
                             stack.item.eatingSound?.let { sound ->
@@ -618,12 +635,14 @@ object CommandTickHandler {
                                     1.0f
                                 )
                             }
+
                             if (foodComponent != null) {
                                 val tier = determineFoodTier(stack.item)
                                 applyFoodEffects(pokemon, foodComponent, tier, stack.item)
                             } else if (id.namespace == "cobblemon") {
                                 applyCobblemonBerryEffects(pokemon, stack)
                             }
+
                             stack.shrink(1)
                             if (stack.isEmpty) {
                                 foodItem.discard()
@@ -1361,7 +1380,10 @@ fun applyFoodEffects(
     item: Item
 ): Boolean {
 
-    val baseValue = foodComponent.nutrition() + foodComponent.saturation()
+    // Failsafe: garante um valor base mínimo de 0.5 se a comida não tiver nutrição/saturação
+    val rawValue = foodComponent.nutrition().toFloat() + foodComponent.saturation()
+    val baseValue = rawValue.coerceAtLeast(0.5f)
+
     val bonus = hasTypeBonus(pokemon, item)
 
     // comidas vanilla
@@ -1371,6 +1393,11 @@ fun applyFoodEffects(
             var healAmount = baseValue * 0.8f
             if (bonus) healAmount *= 1.2f
             pokemon.heal(healAmount)
+
+            // Atribui saciedade proporcional
+            val p = pokemon.pokemon
+            val gain = (baseValue).toInt()
+            p.currentFullness = (p.currentFullness + gain).coerceAtMost(p.getMaxFullness())
         }
 
         FoodTier.UNCOMMON -> {
@@ -1380,6 +1407,11 @@ fun applyFoodEffects(
 
             increaseFriendship(pokemon, if (bonus) 4 else 2)
             givePokemonExp(pokemon, (baseValue * 0.7).toInt())
+
+            // Atribui saciedade proporcional (maior)
+            val p = pokemon.pokemon
+            val gain = (baseValue * 2).toInt()
+            p.currentFullness = (p.currentFullness + gain).coerceAtMost(p.getMaxFullness())
         }
 
         FoodTier.RARE -> {
@@ -1395,6 +1427,9 @@ fun applyFoodEffects(
                     1
                 )
             )
+
+            // Enche a saciedade completamente
+            pokemon.pokemon.currentFullness = pokemon.pokemon.getMaxFullness()
         }
     }
 

@@ -243,6 +243,14 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
             .build()
 
+        val maxInteractionSavesEntry = entryBuilder.startIntField(
+            Component.literal("Max Interaction Saves").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.maxInteractionSaves
+        ).setDefaultValue(8)
+            .setSaveConsumer { value -> clientConfig.maxInteractionSaves = value }
+            .setTooltip(Component.literal("Maximum number of recent interactions to include in the context. \nHelps maintain conversation continuity."))
+            .build()
+
         val dialogueInChatEntry = entryBuilder.startBooleanToggle(
             Component.literal("Dialogue In Chat").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.dialogueInChat
@@ -659,6 +667,7 @@ object CobblebrainConfigScreen {
         category.entries.add(keyRotationEntry)
         category.entries.add(modelRotationEntry)
         category.entries.add(selectedLanguageEntry)
+        category.entries.add(maxInteractionSavesEntry)
         category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(needsPokemonTranslatorEntry)
         category.entries.add(listenToChatEntry)
