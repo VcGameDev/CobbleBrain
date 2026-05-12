@@ -13,6 +13,7 @@ object HudSystem {
     private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF", "EAT", "COOK", "GROW", "REPAIR", "SHIFT")
     private var selectedActionIndex = 0
     private var isVisible = true
+    private val cooldowns = mutableMapOf<String, Long>()
 
     fun toggleVisibility() {
         isVisible = !isVisible
@@ -41,7 +42,7 @@ object HudSystem {
     private fun renderQuestHud(guiGraphics: GuiGraphics, client: Minecraft) {
         val questsJson = CobblebrainClientCommon.currentQuestsJson
         val screenWidth = client.window.guiScaledWidth
-        val x = screenWidth - 150
+        val x = screenWidth - 140 // Adjusted for increased width (120 -> 140)
         var y = 10
 
         if (questsJson == "[]" || questsJson.isBlank()) {
@@ -60,19 +61,24 @@ object HudSystem {
 
             for (i in 0 until minOf(activeQuests.size, 2)) {
                 val quest = activeQuests[i].asJsonObject
-                renderSingleQuest(guiGraphics, client, quest, x, y)
-                y += 40
+                val type = quest.get("type")?.asString ?: "generic"
+                val isLarge = type == "ADVICE" || type == "ITEM"
+                val currentHeight = if (isLarge) 34 else 24 // Even more compressed (38/28 -> 34/24)
+                
+                renderSingleQuest(guiGraphics, client, quest, x, y, currentHeight)
+                y += currentHeight + 4
             }
 
         } catch (e: Exception) {}
     }
 
-    private fun renderSingleQuest(guiGraphics: GuiGraphics, client: Minecraft, quest: com.google.gson.JsonObject, x: Int, y: Int) {
+    private fun renderSingleQuest(guiGraphics: GuiGraphics, client: Minecraft, quest: com.google.gson.JsonObject, x: Int, y: Int, boxHeight: Int) {
         val type = quest.get("type")?.asString ?: return
         val giverName = quest.get("giverName")?.asString ?: "someone"
 
-        guiGraphics.fill(x, y, x + 144, y + 36, 0xAA000000.toInt()) 
-        guiGraphics.fill(x, y, x + 2, y + 36, 0xFF55FF55.toInt())
+        // Background box (increased width to 130)
+        guiGraphics.fill(x, y, x + 130, y + boxHeight, 0xAA000000.toInt()) 
+        guiGraphics.fill(x, y, x + 2, y + boxHeight, 0xFF55FF55.toInt())
 
         val title = when(type) {
             "BATTLE" -> "Battle Mission"
@@ -81,7 +87,11 @@ object HudSystem {
             "TREASURE" -> "Treasure Hunt"
             else -> "Quest"
         }
-        guiGraphics.drawString(client.font, title, x + 8, y + 4, 0xFFFFCC00.toInt())
+        guiGraphics.pose().pushPose()
+        guiGraphics.pose().translate((x + 6).toDouble(), (y + 3).toDouble(), 0.0)
+        guiGraphics.pose().scale(0.95f, 0.95f, 1f) // Increased title scale
+        guiGraphics.drawString(client.font, title, 0, 0, 0xFFFFCC00.toInt())
+        guiGraphics.pose().popPose()
 
         var progress = 0f
         var progressText = ""
@@ -135,20 +145,32 @@ object HudSystem {
             }
         }
         guiGraphics.pose().pushPose()
-        guiGraphics.pose().translate((x + 8).toDouble(), (y + 16).toDouble(), 0.0)
-        guiGraphics.pose().scale(0.85f, 0.85f, 1f)
-        guiGraphics.drawString(client.font, progressText, 0, 0, 0xFFDDDDDD.toInt(), false)
+        guiGraphics.pose().translate((x + 6).toDouble(), (y + 12).toDouble(), 0.0)
+        guiGraphics.pose().scale(0.66f, 0.66f, 1f)
+        
+        // Split text with increased width (120 units approx)
+        val maxWidth = (120 / 0.66f).toInt()
+        val wrappedLines = client.font.split(net.minecraft.network.chat.Component.literal(progressText), maxWidth)
+        
+        var lineY = 0
+        val lineLimit = if (boxHeight > 30) 2 else 1
+        for (line in wrappedLines.take(lineLimit)) {
+            guiGraphics.drawString(client.font, line, 0, lineY, 0xFFDDDDDD.toInt(), false)
+            lineY += 10
+        }
+        
         guiGraphics.pose().popPose()
 
-        val barWidth = 128
-        guiGraphics.fill(x + 8, y + 28, x + 8 + barWidth, y + 32, 0x44FFFFFF.toInt())
-        guiGraphics.fill(x + 8, y + 28, x + 8 + (barWidth * progress).toInt(), y + 32, 0xFF55FF55.toInt())
+        val barWidth = 118
+        val barY = y + boxHeight - 5 // Even closer to bottom
+        guiGraphics.fill(x + 6, barY, x + 6 + barWidth, barY + 2, 0x44FFFFFF.toInt())
+        guiGraphics.fill(x + 6, barY, x + 6 + (barWidth * progress).toInt(), barY + 2, 0xFF55FF55.toInt())
 
         val percent = (progress * 100).toInt()
         guiGraphics.pose().pushPose()
-        guiGraphics.pose().translate((x + 115).toDouble(), (y + 4).toDouble(), 0.0)
-        guiGraphics.pose().scale(0.8f, 0.8f, 1f)
-        guiGraphics.drawString(client.font, "$percent%", 0, 0, 0xAAFFFFFF.toInt(), false)
+        guiGraphics.pose().translate((x + 108).toDouble(), (y + 3).toDouble(), 0.0)
+        guiGraphics.pose().scale(0.75f, 0.75f, 1f)
+        guiGraphics.drawString(client.font, "$percent%", 0, 0, 0xFFFFFFFF.toInt())
         guiGraphics.pose().popPose()
     }
 
@@ -177,23 +199,40 @@ object HudSystem {
             val isSelected = index == selectedActionIndex
             val itemY = y + (index * itemHeight)
             val cmdColor = getCommandColor(cmd)
+            val remaining = getCooldownRemaining(cmd)
             
             guiGraphics.pose().pushPose()
             guiGraphics.pose().translate((x + 2).toDouble(), (itemY + 2).toDouble(), 0.0)
-            guiGraphics.pose().scale(0.7f, 0.7f, 1f) // Texto 30% menor
+            guiGraphics.pose().scale(0.7f, 0.7f, 1f)
 
             if (isSelected) {
                 val time = client.level?.gameTime ?: 0L
                 val pulse = (sin(time.toDouble() / 4.0) * 20 + 50).toInt()
-                // O fundo de seleção precisa ser desenhado antes do texto, mas fora do push/pop de escala para não distorcer o retângulo
                 guiGraphics.pose().popPose()
-                guiGraphics.fill(x, itemY, x + menuWidth, itemY + itemHeight - 1, (pulse shl 24) or 0x5555FF)
+                
+                // Se estiver em cooldown, pulsa em Vermelho, senão em Azul
+                val pulseColor = if (remaining > 0) 0xFF5555 else 0x5555FF
+                guiGraphics.fill(x, itemY, x + menuWidth, itemY + itemHeight - 1, (pulse shl 24) or pulseColor)
+                
                 guiGraphics.pose().pushPose()
                 guiGraphics.pose().translate((x + 2).toDouble(), (itemY + 2).toDouble(), 0.0)
                 guiGraphics.pose().scale(0.7f, 0.7f, 1f)
-                guiGraphics.drawString(client.font, "> $cmd", 0, 0, 0xFFFFFFFF.toInt())
+
+                if (remaining > 0) {
+                    val timerText = formatTime(remaining)
+                    val timerWidth = client.font.width(timerText)
+                    guiGraphics.drawString(client.font, timerText, -timerWidth - 4, 0, 0xFFFF5555.toInt())
+                    guiGraphics.drawString(client.font, "> $cmd", 0, 0, 0xFFAAAAAA.toInt()) // Cinza em cooldown
+                } else {
+                    guiGraphics.drawString(client.font, "> $cmd", 0, 0, 0xFFFFFFFF.toInt())
+                }
             } else {
-                guiGraphics.drawString(client.font, "  $cmd", 0, 0, cmdColor)
+                if (remaining > 0) {
+                    val timerText = formatTime(remaining)
+                    val timerWidth = client.font.width(timerText)
+                    guiGraphics.drawString(client.font, timerText, -timerWidth - 4, 0, 0xFFFF5555.toInt())
+                }
+                guiGraphics.drawString(client.font, "  $cmd", 0, 0, if (remaining > 0) 0x66AAAAAA.toInt() else cmdColor)
             }
             guiGraphics.pose().popPose()
         }
@@ -248,10 +287,40 @@ object HudSystem {
     }
 
     fun executeAction() {
-        val action = commands[selectedActionIndex].lowercase()
-        // Formato especial: #ALL:action
+        val cmd = commands[selectedActionIndex].uppercase()
+        
+        // Bloqueia se estiver em cooldown
+        if (getCooldownRemaining(cmd) > 0) {
+            return
+        }
+
+        val action = cmd.lowercase()
         CobblebrainClientCommon.callTeamAction?.invoke("#ALL:$action")
         playConfirmSound(Minecraft.getInstance())
+
+        // Inicia cooldown
+        val duration = when(cmd) {
+            "BUFF" -> 150000L // 2:30 (150s)
+            "REPAIR" -> 300000L // 5:00 (300s)
+            "SHIFT" -> 240000L // 4:00 (240s)
+            else -> 0L
+        }
+        if (duration > 0) {
+            cooldowns[cmd] = System.currentTimeMillis() + duration
+        }
+    }
+
+    private fun getCooldownRemaining(cmd: String): Long {
+        val endTime = cooldowns[cmd.uppercase()] ?: return 0L
+        val remaining = endTime - System.currentTimeMillis()
+        return if (remaining > 0) remaining else 0L
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format("%01d:%02d", minutes, seconds)
     }
 
     private fun playSelectSound(client: Minecraft) {
@@ -262,5 +331,13 @@ object HudSystem {
     private fun playConfirmSound(client: Minecraft) {
         client.level?.playSound(client.player, client.player!!.blockPosition(), 
             SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.MASTER, 0.5f, 1.0f)
+    }
+
+    fun updateCooldowns(buff: Long, repair: Long, shift: Long, debuff: Long) {
+        val now = System.currentTimeMillis()
+        if (buff > 0) cooldowns["BUFF"] = now + buff
+        if (repair > 0) cooldowns["REPAIR"] = now + repair
+        if (shift > 0) cooldowns["SHIFT"] = now + shift
+        if (debuff > 0) cooldowns["DEBUFF"] = now + debuff
     }
 }

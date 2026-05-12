@@ -23,4 +23,13 @@ object CobblebrainClientHandlers {
         CobblebrainClientRuntimeNeoForge.markResponseReceived()
         CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData)
     }
+
+    fun onCooldownSync(payload: CobblebrainPayloads.SyncCooldownsPayload) {
+        CobblebrainClientCommon.onCooldownsSynced(
+            payload.buffRemaining,
+            payload.repairRemaining,
+            payload.shiftRemaining,
+            payload.debuffRemaining
+        )
+    }
 }

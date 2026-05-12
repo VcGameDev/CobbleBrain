@@ -60,5 +60,18 @@ object CobblebrainClientHandlerFabric {
                 CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData)
             }
         }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.SyncCooldownsPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                CobblebrainClientCommon.onCooldownsSynced(
+                    payload.buffRemaining,
+                    payload.repairRemaining,
+                    payload.shiftRemaining,
+                    payload.debuffRemaining
+                )
+            }
+        }
     }
 }

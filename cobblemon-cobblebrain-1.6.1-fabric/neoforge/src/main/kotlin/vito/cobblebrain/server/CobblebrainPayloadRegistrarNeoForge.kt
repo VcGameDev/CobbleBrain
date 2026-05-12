@@ -50,6 +50,15 @@ object CobblebrainPayloadRegistrarNeoForge {
             }
         }
 
+        registrar.playToClient(
+            CobblebrainPayloads.SyncCooldownsPayload.TYPE,
+            CobblebrainPayloads.SyncCooldownsPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onCooldownSync(payload)
+            }
+        }
+
         // =========================
         // CLIENT → SERVER
         // =========================

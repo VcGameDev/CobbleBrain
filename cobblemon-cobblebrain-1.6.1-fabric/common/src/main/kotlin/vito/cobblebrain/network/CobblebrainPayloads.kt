@@ -147,4 +147,36 @@ object CobblebrainPayloads {
 
         override fun type() = TYPE
     }
+
+    data class SyncCooldownsPayload(
+        val buffRemaining: Long,
+        val repairRemaining: Long,
+        val shiftRemaining: Long,
+        val debuffRemaining: Long
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "sync_cooldowns")
+            val TYPE = CustomPacketPayload.Type<SyncCooldownsPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, SyncCooldownsPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeLong(payload.buffRemaining)
+                        buf.writeLong(payload.repairRemaining)
+                        buf.writeLong(payload.shiftRemaining)
+                        buf.writeLong(payload.debuffRemaining)
+                    },
+                    { buf ->
+                        SyncCooldownsPayload(
+                            buf.readLong(),
+                            buf.readLong(),
+                            buf.readLong(),
+                            buf.readLong()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
 }

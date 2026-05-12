@@ -85,6 +85,13 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+        )
+    }
+
     fun onClientSetup(event: FMLClientSetupEvent) {
         event.enqueueWork {
 

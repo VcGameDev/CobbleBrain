@@ -43,4 +43,8 @@ object CobblebrainClientCommon {
     fun onSummaryPromptReceived(contextData: String) {
         AIClientHandler.sendSummaryPrompt(contextData)
     }
+
+    fun onCooldownsSynced(buff: Long, repair: Long, shift: Long, debuff: Long) {
+        HudSystem.updateCooldowns(buff, repair, shift, debuff)
+    }
 }

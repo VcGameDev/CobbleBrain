@@ -47,6 +47,40 @@ object CobblebrainConfigScreen {
         }
     }
 
+    fun makeDescriptionEntry(text: String, color: Int = 0xAAAAAA, height: Int = 20): AbstractConfigListEntry<Unit> {
+        return object : AbstractConfigListEntry<Unit>(
+            Component.literal(text).withStyle(
+                Style.EMPTY.withColor(TextColor.fromRgb(color))
+            ),
+            false
+        ) {
+            override fun getValue(): Unit? = null
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+            override fun children(): MutableList<GuiEventListener> = mutableListOf()
+            override fun narratables(): MutableList<NarratableEntry> = mutableListOf()
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+                val font = Minecraft.getInstance().font
+                val textWidth = font.width(fieldName)
+                val centerX = x + (listWidth / 2) - (textWidth / 2)
+                guiGraphics.drawString(font, fieldName, centerX, y + (itemHeight / 2 - font.lineHeight / 2), color, false)
+            }
+
+            override fun getItemHeight(): Int = height
+        }
+    }
+
     fun makeSpacer(height: Int = 8): AbstractConfigListEntry<Unit> {
         return object : AbstractConfigListEntry<Unit>(
             Component.empty(),
@@ -699,8 +733,10 @@ object CobblebrainConfigScreen {
         category.entries.add(outputGuaranteedCatchEntry)
         category.entries.add(outputMobsContextEntry)
         category.entries.add(outputQuestsEntry)
-        category.entries.add(outputApril1Entry)
         category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
+        category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
+        category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
+        category.entries.add(outputApril1Entry)
         category.entries.add(outputPokemonLanguageEntry)
         category.entries.add(outputMemoriesEntry)
         category.entries.add(maxLongMemoryEntry)

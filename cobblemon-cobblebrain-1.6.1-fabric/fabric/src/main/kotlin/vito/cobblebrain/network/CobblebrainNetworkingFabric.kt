@@ -61,4 +61,11 @@ object CobblebrainNetworkingFabric {
             CobblebrainPayloads.QuestSyncPayload(array.toString())
         )
     }
+
+    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long) {
+        ServerPlayNetworking.send(
+            player,
+            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+        )
+    }
 }

@@ -56,6 +56,10 @@ object CobblebrainMod : ModInitializer {
         println("o mod cobblebrain carregou")
         CommandTickHandlerFabric.registerTickHandler()
 
+        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d ->
+            CobblebrainNetworkingFabric.sendCooldowns(player, b, r, s, d)
+        }
+
         // registra o tipo de payload PROMPT (server → client)
         PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.PromptPayload.TYPE,
@@ -75,6 +79,11 @@ object CobblebrainMod : ModInitializer {
         PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.SummaryPromptPayload.TYPE,
             CobblebrainPayloads.SummaryPromptPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.SyncCooldownsPayload.TYPE,
+            CobblebrainPayloads.SyncCooldownsPayload.CODEC
         )
 
         PayloadTypeRegistry.playC2S().register(
@@ -117,6 +126,9 @@ object CobblebrainMod : ModInitializer {
             val player = handler.player
             CobblebrainNetworkingFabric.sendConfig(player)
             DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
+
+            // Sync cooldowns for player
+            vito.cobblebrain.sensors.PokemonCommands.syncCooldowns(player)
 
             if (!CobblebrainWorldSave.hasReceivedGuide(player)) {
                 giveCobblebrainGuide(player)

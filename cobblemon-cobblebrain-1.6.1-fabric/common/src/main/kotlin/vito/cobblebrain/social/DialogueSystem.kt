@@ -98,6 +98,32 @@ object DialogueSystem {
     // guarda o último momento em que cada jogador disparou a lógica
     private val lastPrompt: MutableMap<UUID, Long> = ConcurrentHashMap()
 
+    private fun giveQuestXp(player: ServerPlayer, quest: JsonObject, battleTargetLevel: Int = 0) {
+        val type = quest.get("type")?.asString ?: return
+        val xp = when (type) {
+            "ITEM" -> {
+                val amount = quest.get("amount")?.asInt ?: 1
+                amount * 2
+            }
+            "BATTLE" -> {
+                val level = if (battleTargetLevel > 0) battleTargetLevel else 20
+                (level * 10).coerceAtMost(300)
+            }
+            "TREASURE" -> {
+                val dist = quest.get("requiredDistance")?.asDouble ?: 1000.0
+                (dist / 10.0).toInt()
+            }
+            "ADVICE" -> 150
+            else -> 50
+        }
+        
+        player.giveExperiencePoints(xp)
+        player.sendSystemMessage(
+            Component.literal("You gained $xp XP for completing the quest!")
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC)
+        )
+    }
+
     // guarda o pitch atual de cada Pokémon ativo
     private val pokemonPitchMap = mutableMapOf<UUID, Float>()
 
@@ -318,7 +344,11 @@ object DialogueSystem {
     fun onPokemonSent(event: PokemonSentEvent) {
         val pokemon = event.pokemon
         val ownerId = pokemon.getOwnerUUID() ?: return
+        val ownerPlayer = pokemon.getOwnerPlayer() ?: return
 
+        // Sync cooldowns for player
+        vito.cobblebrain.sensors.PokemonCommands.syncCooldowns(ownerPlayer)
+        
         val battle = BattleRegistry.getBattleByParticipatingPlayerId(ownerId)
         if (battle != null && config.dialogueOnBattle) {
             val ownerPlayer = pokemon.getOwnerPlayer() ?: return
@@ -430,7 +460,9 @@ object DialogueSystem {
                             sendToPlayer?.invoke(player, prompt)
 
                             adjustKarma(player, giverName, 2)
-                            maybeGiveReward(player, giverName)
+                            giveReward(player, giverName)
+                            val targetLevel = loser.pokemonList.firstOrNull()?.originalPokemon?.level ?: 0
+                            giveQuestXp(player, activeQuest, targetLevel)
 
                             sent = true
                         }
@@ -452,6 +484,8 @@ object DialogueSystem {
 
             } else {
                 // Derrota
+                // Sync cooldowns for player
+                vito.cobblebrain.sensors.PokemonCommands.syncCooldowns(player)
                 val ativos = PokemonQuery.findActivePokemon(player)
 
                 val prompt = buildPrompt(
@@ -731,50 +765,103 @@ object DialogueSystem {
         return (playerHealth + playerArmor) <= (giverHealth + giverDamage * 1.2)
     }
 
-    fun maybeGiveReward(player: ServerPlayer, giverName: String) {
-        val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma")
+    fun giveReward(player: ServerPlayer, giverName: String, isAdvice: Boolean = false) {
+        val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma") ?: JsonObject().also { CobblebrainWorldSave.data.add("karma", it) }
         val playerKey = player.uuid.toString()
 
-        val current = if (karmaRoot.has(playerKey)) {
+        var effectiveKarma = if (karmaRoot.has(playerKey)) {
             karmaRoot.getAsJsonObject(playerKey).get(giverName)?.asInt ?: 0
         } else 0
-
-        val minKarma = 3
-        val maxKarma = 10
-        val baseChance = 0.25f
-
-        val chance = when {
-            current >= maxKarma -> 1.0f
-            current >= minKarma ->
-                baseChance + ((current - minKarma).toFloat() / (maxKarma - minKarma)) * (1.0f - baseChance)
-            else -> 0f
+        
+        // Nerf para missões de Advice
+        if (isAdvice) {
+            effectiveKarma -= 4
         }
 
-        if (player.server.overworld().random.nextFloat() < chance) {
-            val possibleRewards = listOf(
-                ItemStack(Items.SWEET_BERRIES, 9),
-                ItemStack(CobblemonItems.EXPERIENCE_CANDY_S, 3),
-                ItemStack(CobblemonItems.EXPERIENCE_CANDY_M, 2),
-                ItemStack(CobblemonItems.REVIVE, 1),
-                ItemStack(CobblemonItems.FRIEND_BALL, 4),
-                ItemStack(CobblemonItems.RELIC_COIN_SACK, 1)
-            )
-            val rewardItem = possibleRewards.random(player.server.overworld().random as Random)
-
-            val count = rewardItem.count
-            val itemNameComponent = rewardItem.hoverName.copy()
-
-            if (!player.inventory.add(rewardItem)) {
-                player.drop(rewardItem, false)
+        val random = player.server.overworld().random
+        val roll = random.nextFloat() * 100f
+        
+        // Determina o tier sorteado baseado no karma desbloqueado e nos pesos
+        val selectedTier = when {
+            effectiveKarma >= 12 -> when {
+                roll < 5 -> 3   // EPIC (5%)
+                roll < 20 -> 2  // RARE (15%)
+                roll < 50 -> 1  // UNCOMMON (30%)
+                else -> 0       // COMMON (50%)
             }
+            effectiveKarma >= 7 -> when {
+                roll < 10 -> 2  // RARE (10%)
+                roll < 40 -> 1  // UNCOMMON (30%)
+                else -> 0       // COMMON (60%)
+            }
+            effectiveKarma >= 3 -> when {
+                roll < 30 -> 1  // UNCOMMON (30%)
+                else -> 0       // COMMON (70%)
+            }
+            else -> 0 // Sempre COMMON
+        }
 
-            player.sendSystemMessage(
-                Component.literal("$giverName gave you ")
-                    .append(itemNameComponent)
-                    .append(" x$count as a gift!")
-                    .withStyle(ChatFormatting.GREEN)
+        val rewardItem = when (selectedTier) {
+            3 -> { // EPIC
+                val subRoll = random.nextFloat() * 100f
+                if (subRoll < 30) { // 30% de 5% = 1.5% de chance total
+                    ItemStack(CobblemonItems.MASTER_BALL, 1)
+                } else {
+                    listOf(
+                        ItemStack(CobblemonItems.EXPERIENCE_CANDY_L, 1),
+                        ItemStack(CobblemonItems.RARE_CANDY, Random.nextInt(1, 3)),
+                        ItemStack(Items.GOLD_INGOT, Random.nextInt(3, 7))
+                    ).random()
+                }
+            }
+            2 -> listOf( // RARE
+                ItemStack(CobblemonItems.ULTRA_BALL, Random.nextInt(2, 6)),
+                ItemStack(CobblemonItems.EXPERIENCE_CANDY_M, Random.nextInt(1, 4)),
+                ItemStack(CobblemonItems.RELIC_COIN_SACK, 1),
+                ItemStack(Items.GOLDEN_APPLE, 1)
+            ).random()
+            1 -> listOf( // UNCOMMON
+                ItemStack(CobblemonItems.GREAT_BALL, Random.nextInt(3, 7)),
+                ItemStack(CobblemonItems.EXPERIENCE_CANDY_S, Random.nextInt(2, 6)),
+                ItemStack(CobblemonItems.REVIVE, Random.nextInt(1, 3)),
+                ItemStack(Items.IRON_INGOT, Random.nextInt(2, 5))
+            ).random()
+            else -> listOf( // COMMON
+                ItemStack(Items.SWEET_BERRIES, Random.nextInt(8, 17)),
+                ItemStack(CobblemonItems.POKE_BALL, Random.nextInt(4, 9)),
+                ItemStack(Items.APPLE, Random.nextInt(3, 8)),
+                ItemStack(Items.WHEAT, Random.nextInt(6, 13))
+            ).random()
+        }
+
+        val count = rewardItem.count
+        val itemNameComponent = rewardItem.hoverName.copy()
+        val isMasterBall = rewardItem.item == CobblemonItems.MASTER_BALL
+
+        // Som épico se for Master Ball
+        if (isMasterBall) {
+            player.playNotifySound(
+                SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,
+                SoundSource.MASTER,
+                1.0f,
+                1.0f
             )
         }
+
+        if (!player.inventory.add(rewardItem)) {
+            player.drop(rewardItem, false)
+        }
+
+        val messageColor = if (isMasterBall) ChatFormatting.GOLD else ChatFormatting.AQUA
+
+        player.sendSystemMessage(
+            Component.literal("")
+                .append(Component.literal(giverName).withStyle(messageColor))
+                .append(Component.literal(" gave you a gift: ").withStyle(messageColor))
+                .append(Component.literal("x$count ").withStyle(messageColor))
+                .append(itemNameComponent.withStyle(messageColor).withStyle { it.withBold(isMasterBall) })
+                .append(Component.literal("!").withStyle(messageColor))
+        )
     }
 
     fun validateQuestGiversOnPlayerJoin(server: MinecraftServer, player: ServerPlayer) {
@@ -932,11 +1019,9 @@ object DialogueSystem {
                 )
                 pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
                 
-                val karma = CobblebrainWorldSave.data.getAsJsonObject("karma")
-                val current = karma.get(giverName)?.asInt ?: 0
-                karma.addProperty(giverName, current + 1)
-                CobblebrainWorldSave.save()
-                maybeGiveReward(player, giverName)
+                adjustKarma(player, giverName, 2)
+                giveReward(player, giverName)
+                giveQuestXp(player, questObj)
 
                 val prompt = buildPrompt(
                     player,
@@ -1062,6 +1147,9 @@ object DialogueSystem {
                 )
 
                 CobblebrainWorldSave.moveQuest(player.uuid.toString(), giverUuid, "TREASURE", "COMPLETED")
+                adjustKarma(player, giverName, 3) // Ganha 3 de karma por achar tesouro
+                giveReward(player, giverName)
+                giveQuestXp(player, quest)
                 pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
             }
         }
@@ -1107,7 +1195,8 @@ object DialogueSystem {
                     "COMPLETED"
                 )
                 adjustKarma(player, giverName, 5)
-                maybeGiveReward(player, giverName)
+                giveReward(player, giverName, isAdvice = true)
+                giveQuestXp(player, quest)
                 pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
             } else if (newPoints <= -5) {
                 player.sendSystemMessage(
@@ -1370,7 +1459,8 @@ object DialogueSystem {
                         "ITEM" -> "Goal: Collect ${q.get("amount").asInt}x ${q.get("target").asString}"
                         "ADVICE" -> {
                             val points = q.get("points")?.asInt ?: 0
-                            "Goal: Help with advice | Progress: $points/5 | MANDATORY: Use #SCORE: +X or #SCORE: -X"
+                            val issue = q.get("issue")?.asString ?: "their problem"
+                            "Goal: Help with advice about '$issue' | Progress: $points/5 | MANDATORY: Use #SCORE: +X or #SCORE: -X to reward/punish the player's advice"
                         }
                         "LOCATION", "TREASURE" -> {
                             val tx = q.get("targetX").asInt
@@ -1440,10 +1530,14 @@ object DialogueSystem {
                         when (roll) {
                             0 -> {
                                 CobblebrainWorldSave.createAdviceQuest(player, wildEntity)
-                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest! It wants to talk with the player or their Pokémon team!")
+                                val secondaryQuests = CobblebrainWorldSave.getSecondaryQuests(player)
+                                val adviceQuest = secondaryQuests.last()
+                                val issue = adviceQuest.get("issue")?.asString ?: "something"
+                                
+                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest about $issue! It wants to talk with the player or their Pokémon team about this specific topic!")
                                 player.sendSystemMessage(
                                     Component.literal(
-                                        "${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest!"
+                                        "${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started an ADVICE quest about $issue!"
                                     ).withStyle(ChatFormatting.YELLOW)
                                 )
                             }

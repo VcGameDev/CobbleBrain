@@ -94,19 +94,25 @@ object CobblebrainWorldSave {
         if (saveFile.exists()) {
             data = JsonParser.parseReader(FileReader(saveFile)).asJsonObject
         } else {
-            data = JsonObject().apply {
-                add("received_guide", JsonArray())
-                add("karma", JsonObject())
-                add("kill_count", JsonObject())
-                add("last_session_summary", JsonObject())
-                add("quests", JsonObject().apply {
-                    add("active_story", JsonObject()) // Single story quest slot
-                    add("active_secondary", JsonArray()) // Multiple secondary quests allowed? Or just one? User said "2 tipos", implies one of each.
-                    add("completed", JsonArray())
-                    add("abandoned", JsonArray())
-                })
-            }
-            save()
+            data = JsonObject()
+        }
+        checkDataStructure()
+        save()
+    }
+
+    private fun checkDataStructure() {
+        if (!data.has("received_guide")) data.add("received_guide", JsonArray())
+        if (!data.has("karma")) data.add("karma", JsonObject())
+        if (!data.has("kill_count")) data.add("kill_count", JsonObject())
+        if (!data.has("last_session_summary")) data.add("last_session_summary", JsonObject())
+        if (!data.has("player_cooldowns")) data.add("player_cooldowns", JsonObject())
+        if (!data.has("quests")) {
+            data.add("quests", JsonObject().apply {
+                add("active_story", JsonObject())
+                add("active_secondary", JsonArray())
+                add("completed", JsonArray())
+                add("abandoned", JsonArray())
+            })
         }
     }
 
@@ -127,6 +133,19 @@ object CobblebrainWorldSave {
             summaries.remove(playerUuid)
             save()
         }
+    }
+
+    fun setPlayerCooldown(playerUuid: String, key: String, timestamp: Long) {
+        val cooldownsRoot = data.getAsJsonObject("player_cooldowns") ?: JsonObject().also { data.add("player_cooldowns", it) }
+        val playerObj = cooldownsRoot.getAsJsonObject(playerUuid) ?: JsonObject().also { cooldownsRoot.add(playerUuid, it) }
+        playerObj.addProperty(key, timestamp)
+        save()
+    }
+
+    fun getPlayerCooldown(playerUuid: String, key: String): Long {
+        val cooldownsRoot = data.getAsJsonObject("player_cooldowns") ?: return 0L
+        val playerObj = cooldownsRoot.getAsJsonObject(playerUuid) ?: return 0L
+        return playerObj.get(key)?.asLong ?: 0L
     }
 
     private fun ensureGuideArray() {
@@ -266,9 +285,22 @@ object CobblebrainWorldSave {
 
     fun createItemQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
         ensureQuestsInitialized()
-        val items = listOf("sweet_berries", "apple", "coal", "copper_ingot")
+        val items = listOf(
+            "leather", "bone", "stick", "bread", "sugar", "apple", "sweet_berries",
+            "red_apricorn", "blue_apricorn", "yellow_apricorn", "green_apricorn", 
+            "white_apricorn", "black_apricorn", "pink_apricorn",
+            "oran_berry", "pecha_berry", "leppa_berry", "cheri_berry", 
+            "rawst_berry", "aspear_berry", "persim_berry", "lum_berry", "sitrus_berry",
+            "coal", "copper_ingot", "iron_ingot", "gold_ingot"
+        )
         val target = items.random()
-        val amount = (1..10).random()
+        val baseAmount = (3..10).random()
+
+        val amount = when {
+            target == "stick" -> baseAmount * 10
+            target in listOf("leather", "bone", "coal", "bread", "sugar", "apple", "sweet_berries") || target.endsWith("_berry") -> baseAmount * 2
+            else -> baseAmount
+        }
 
         val questObj = JsonObject().apply {
             addProperty("ownerUuid", player.uuid.toString())
@@ -306,20 +338,24 @@ object CobblebrainWorldSave {
     fun createAdviceQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null) {
         ensureQuestsInitialized()
         val issues = listOf(
-            "loneliness", "hunger", "fear of humans", "need for strength", "lost friend", "confusion",
-            "boredom", "fear of evolving", "trust issues", "lack of confidence", "rivalry",
-            "homesickness", "grief", "jealousy", "anxiety", "curiosity", "wanderlust", "insecurity",
-            "social isolation", "desire for adventure", "fear of failure", "regret", "pride",
-            "curiosity about humans", "laziness", "overthinking", "fear of battle", "perfectionism",
-            "procrastination", "guilt", "envy", "feeling of inadequacy", "impatience", "stubbornness",
-            "pessimism", "mood swings", "nightmares", "lack of motivation", "fear of the unknown",
-            "obsession with power", "distrust of trainers", "feeling like a burden", "desire to be unique",
-            "fear of rejection", "nostalgia", "curiosity about evolution", "fear of the dark",
-            "need for validation", "struggle with discipline", "desire for freedom", "attachment issues",
-            "territory dispute", "finding shelter", "dietary choices", "noisy environment",
-            "uncomfortable nest", "lack of exercise", "extreme heat", "extreme cold", "dehydration",
-            "bad hygiene", "fear of storms", "noisy neighbors", "clumsiness", "lack of sleep", "identity crisis", 
-            "purpose of life", "nostalgia"
+            // --- pratical problems (survival) ---
+            "hunger", "need for strength", "rivalry", "laziness", "procrastination", 
+            "obsession with power", "struggle with discipline", "territory dispute", 
+            "finding shelter", "noisy environment", "uncomfortable nest", 
+            "lack of exercise", "extreme heat", "extreme cold", "dehydration", 
+            "fear of storms", "noisy neighbors", "clumsiness", "lack of sleep", "fear of the dark",
+            "choice of food", "combat techniques", "choice of where to live", "conflict with other pokemons",
+            "fear of battle", "fear of humans",
+
+            // --- sentimental problems ---
+            "loneliness", "lost friend", "confusion", "boredom", 
+            "fear of evolving", "lack of confidence", "homesickness",
+            "curiosity", "wanderlust", "insecurity", 
+            "desire for adventure", "fear of failure", "regret", "curiosity about humans", 
+            "overthinking", "perfectionism", "guilt",
+            "impatience", "stubbornness", "nightmares", "fear of the unknown", 
+            "distrust of trainers", "desire to be unique", "curiosity about evolution", 
+            "desire for freedom", "purpose of life"
         )
         val selectedIssue = issues.random()
 
@@ -620,8 +656,27 @@ object CobblebrainWorldSave {
 
         val current = playerObj.get(species)?.asInt ?: 0
         val newValue = current + delta
-
         playerObj.addProperty(species, newValue)
+
+        // Mensagens de desbloqueio de Tier
+        val thresholds = mapOf(
+            3 to "UNCOMMON",
+            7 to "RARE",
+            12 to "EPIC"
+        )
+
+        for ((limit, tier) in thresholds) {
+            if (current < limit && newValue >= limit) {
+                player.sendSystemMessage(
+                    Component.literal("The Pokémon ")
+                        .append(Component.literal(species).withStyle(ChatFormatting.YELLOW))
+                        .append(Component.literal(" appreciate your help! Now you can receive ").withStyle(ChatFormatting.WHITE))
+                        .append(Component.literal(tier).withStyle(if (tier == "EPIC") ChatFormatting.LIGHT_PURPLE else if (tier == "RARE") ChatFormatting.GOLD else ChatFormatting.AQUA))
+                        .append(Component.literal(" items!").withStyle(ChatFormatting.WHITE))
+                )
+            }
+        }
+
         println("[DEBUG] Karma atualizado: $species = $newValue para ${player.name.string}")
         save()
     }
