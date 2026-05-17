@@ -84,7 +84,7 @@ object HudSystem {
             "BATTLE" -> "Battle Mission"
             "ITEM" -> "Item Delivery"
             "ADVICE" -> "Advice Needed"
-            "TREASURE" -> "Treasure Hunt"
+            "TREASURE" -> "Lost Item Search"
             else -> "Quest"
         }
         guiGraphics.pose().pushPose()

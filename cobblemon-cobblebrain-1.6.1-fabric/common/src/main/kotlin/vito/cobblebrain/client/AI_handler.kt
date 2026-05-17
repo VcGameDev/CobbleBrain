@@ -157,7 +157,7 @@ class AIHandler {
         GUARANTEED CATCH FORMAT
         - Format: !CATCH: <PokemonName>
         - Use this ONLY if a Wild Pokémon decide to let the player capture it without a fight.
-        - This guarantees the player's next Pokéball throw will succeed in the Overworld.
+        - This guarantees the player's next Pokéball throw will succeed.
         - Only use this after a very convincing, friendly, or helpful interaction.
         - DO NOT use this in every conversation; it should be a rare and special reward.
         """

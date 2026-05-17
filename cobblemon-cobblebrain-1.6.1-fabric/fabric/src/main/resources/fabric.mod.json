@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "cobblebrain",
-  "version": "Fabric-1.2.0",
+  "version": "Fabric-1.3.1",
   "name": "CobbleBrain",
   "description": "a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons",
   "icon": "cobblebrain_icon.png",
@@ -29,9 +29,9 @@
         "value": "vito.cobblebrain.CobblebrainMod"
       }
     ],
-      "modmenu": [
-        "vito.cobblebrain.config.ConfigModMenu"
-      ]
+    "modmenu": [
+      "vito.cobblebrain.config.ConfigModMenu"
+    ]
   },
   "depends": {
     "java": ">=21",

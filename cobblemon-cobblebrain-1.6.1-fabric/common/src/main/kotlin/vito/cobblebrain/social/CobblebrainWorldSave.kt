@@ -239,6 +239,28 @@ object CobblebrainWorldSave {
         followers[giver.uuid.toString()] = Triple(giver, player, goal)
     }
 
+    fun getSecondaryQuestsForAll(): JsonArray {
+        ensureQuestsInitialized()
+        val all = JsonArray()
+        val questsObj = data.getAsJsonObject("quests")
+        
+        // Add secondary
+        val secondary = questsObj.getAsJsonArray("active_secondary")
+        secondary.forEach { all.add(it) }
+        
+        // Add story if exists
+        val story = questsObj.get("active_story")
+        if (story != null && story.isJsonObject && story.asJsonObject.size() > 0) {
+            all.add(story)
+        }
+        
+        return all
+    }
+
+    fun failQuest(playerUuid: String, giverUuid: String, type: String) {
+        moveQuest(playerUuid, giverUuid, type, "FAILED")
+    }
+
     fun createBattleQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
         ensureQuestsInitialized()
         val targetSpecies = battleSpecies.random()
@@ -731,10 +753,11 @@ object CobblebrainWorldSave {
                 .append(clickablePage("Talk to Pokemon", 4)).append("\n")
                 .append(clickablePage("Actions", 5)).append("\n")
                 .append(clickablePage("Quests", 11)).append("\n")
-                .append(clickablePage("Karma", 15)).append("\n")
-                .append(clickablePage("Raids", 17)).append("\n")
-                .append(clickablePage("Custom Settings", 18)).append("\n")
-                .append(clickablePage("Developer’s Notes", 20)).append("\n"),
+                .append(clickablePage("Karma", 16)).append("\n")
+                .append(clickablePage("Raids", 18)).append("\n")
+                .append(clickablePage("Other Mechanics", 19)).append("\n")
+                .append(clickablePage("Custom Settings", 20)).append("\n")
+                .append(clickablePage("Developer’s Notes", 22)).append("\n"),
 
             // PAGE 2 - SETUP
             Component.literal("")
@@ -848,20 +871,25 @@ object CobblebrainWorldSave {
                 .append("during spontaneous dialogue.\n\n")
                 .append("Default chance is 40%.\n")
                 .append("You can change this in settings.\n\n")
-                .append("There are currently 3 types of quests."),
+                .append("There are currently 4 types of quests."),
 
             Component.literal("")
                 .append(Component.literal("QUEST TYPES\n\n").withStyle(ChatFormatting.BOLD))
                 .append("ITEM QUEST\n")
-                .append("Bring specific items to the Pokemon.\n\n")
+                .append("Drop specific items to the Pokemon.\n\n")
                 .append("BATTLE QUEST\n")
-                .append("Defeat a target in Pokemon battle.\n")
+                .append("Defeat the target in a Pokemon battle.\n")
                 .append("Killing outside battle does not count.\n\n"),
 
             Component.literal("")
                 .append("ADVICE QUEST\n")
-                .append("Give advice and make Pokemon happy.\n")
+                .append("Give some advice to make the Pokemon happy.\n")
                 .append("Multiple solutions are possible."),
+
+            Component.literal("")
+                .append("LOST ITEM SEARCH\n")
+                .append("find the lost Pokemon item barrel\n" +
+                        "you must dig it up and open it to complete the mission\n"),
 
             Component.literal("")
                 .append(Component.literal("QUEST REWARDS\n\n").withStyle(ChatFormatting.BOLD))
@@ -887,8 +915,8 @@ object CobblebrainWorldSave {
                 .append("-Karma:\n")
                 .append(" °Defeat or kill Pokémon\n")
                 .append(" °Annoy Pokémon in quests\n\n")
-                .append("High Karma ( > 2 ) may gives gifts.\n")
-                .append("Low Karma ( < -7 ) may trigger raids."),
+                .append("Better karma = Better rewards in quests.\n")
+                .append("karma under -6 may trigger raids."),
 
             Component.literal("")
                 .append(Component.literal("RAID DETAILS\n\n").withStyle(ChatFormatting.BOLD))
@@ -901,13 +929,15 @@ object CobblebrainWorldSave {
                 .append("or defeat all pokémon."),
 
             Component.literal("")
+                .append(Component.literal("OTHER MECHANICS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Guaranteed catch: convince the Pokémon to be caught and get a 100% chance of capture on the next throw.\n\n")
+                .append("Food effect: When using the EAT command, certain foods give effects and XP to Pokémon."),
+
+            Component.literal("")
                 .append(Component.literal("CUSTOM SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Access settings in Mods menu or pressing Y.\n")
-                .append("Recommended settings to change:\n\n")
-                .append("SelectedLanguage:\n")
-                .append("Choose dialogue language.\n\n")
-                .append("Characteristics:\n")
-                .append("Define personality per Pokemon."),
+                .append("Access the mod settings by pressing Y.\n")
+                .append("Hover your mouse over the options to see what they do!\n\n")
+                .append("Recommended settings: Selected Language, Instruct, and Characteristics."),
 
             Component.literal("")
                 .append(Component.literal("PROMPTS AND BEHAVIOR\n\n").withStyle(ChatFormatting.BOLD))

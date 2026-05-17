@@ -188,24 +188,25 @@ object FoodExperienceSource : ExperienceSource
 
 object CommandTickHandler {
     fun processActiveCommands(server: MinecraftServer) {
-        val level = server.overworld() as ServerLevel
-
-        handleNukeSystem(level)
-        handleImaginaryTechnique(level)
-        handlePsychicStand(level)
-        handleFinalJudgment(level)
-        handleSSStyle(level)
+        server.allLevels.forEach { level ->
+            handleNukeSystem(level)
+            handleImaginaryTechnique(level)
+            handlePsychicStand(level)
+            handleFinalJudgment(level)
+            handleSSStyle(level)
+        }
 
         val toRemove = mutableListOf<UUID>()
 
         activeFireballs.forEach { id ->
-            val entity = level.getEntity(id)
+            val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(id) }
 
             if (entity !is SmallFireball || !entity.isAlive) {
                 toRemove.add(id)
                 return@forEach
             }
 
+            val level = entity.level() as ServerLevel
             val velocity = entity.deltaMovement.length()
 
             // detecta colisão com entidade
@@ -243,10 +244,11 @@ object CommandTickHandler {
         toRemove.forEach { activeFireballs.remove(it) }
 
         CommandState.activeCommands.forEach { (pokemonId, action) ->
-            val pokemon = level.getEntity(pokemonId) as? Mob ?: return@forEach
+            val pokemon = server.allLevels.firstNotNullOfOrNull { it.getEntity(pokemonId) as? Mob } ?: return@forEach
+            val level = pokemon.level() as ServerLevel
             val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon ?: return@forEach
             val ownerUUID = cobblemonPokemon.getOwnerUUID() ?: return@forEach
-            val owner = level.server.playerList.getPlayer(ownerUUID) ?: return@forEach
+            val owner = server.playerList.getPlayer(ownerUUID) ?: return@forEach
 
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
@@ -1423,6 +1425,10 @@ fun applyCobblemonBerryEffects(pokemon: PokemonEntity, stack: ItemStack) {
 
 
     }
+
+    // Berries e comidas do Cobblemon restauram a saciedade
+    val p = pokemon.pokemon
+    p.currentFullness = (p.currentFullness + 1).coerceAtMost(p.getMaxFullness())
 }
 
 fun applyFoodEffects(

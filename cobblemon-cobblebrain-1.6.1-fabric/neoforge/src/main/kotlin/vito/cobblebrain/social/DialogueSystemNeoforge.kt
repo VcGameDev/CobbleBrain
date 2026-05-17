@@ -13,7 +13,6 @@ import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
 import vito.cobblebrain.config.SyncedConfig
 import com.cobblemon.mod.common.api.events.pokeball.PokemonCatchRateEvent
-import com.cobblemon.mod.common.battles.BattleRegistry
 
 class DialogueSystemNeoForge {
     companion object {
@@ -45,18 +44,15 @@ class DialogueSystemNeoForge {
             }
 
             CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
-                val player = event.thrower as? ServerPlayer ?: return@subscribe
+                val thrower = event.thrower
+                val player = thrower as? ServerPlayer ?: return@subscribe
                 val target = event.pokemonEntity
                 val playerUuid = player.uuid.toString()
                 
-                // Bloqueia se o jogador estiver em batalha ou o sistema estiver desligado
-                val inBattle = BattleRegistry.getBattleByParticipatingPlayerId(player.uuid) != null
-                if (inBattle || !SyncedConfig.outputGuaranteedCatch) return@subscribe 
+                if (!SyncedConfig.outputGuaranteedCatch) return@subscribe
 
                 if (target.tags.contains("cobblebrain:guaranteed_$playerUuid")) {
-                    event.catchRate = 1000.0f
-                    target.removeTag("cobblebrain:guaranteed_$playerUuid")
-                    println("[CobbleBrain] Guaranteed capture triggered for $playerUuid (NeoForge)")
+                    event.catchRate = 9999.0f
                 }
             }
         }
@@ -66,7 +62,6 @@ class DialogueSystemNeoForge {
     fun onJoin(event: PlayerEvent.PlayerLoggedInEvent) {
         val player = event.entity as? ServerPlayer ?: return
         DialogueSystem.onPlayerJoin(player)
-        println("JOIN EVENT DISPAROU")
     }
 
     @SubscribeEvent
@@ -99,5 +94,11 @@ class DialogueSystemNeoForge {
     @SubscribeEvent
     fun onTick(event: ServerTickEvent.Post) {
         DialogueSystem.onServerTick(event.server)
+    }
+
+    @SubscribeEvent
+    fun onBlockBreak(event: net.neoforged.neoforge.event.level.BlockEvent.BreakEvent) {
+        val player = event.player as? ServerPlayer ?: return
+        DialogueSystem.onBlockBreak(player, event.pos, event.state)
     }
 }

@@ -8,7 +8,6 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
-import com.cobblemon.mod.common.battles.BattleRegistry
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.config.SyncedConfig
@@ -44,7 +43,7 @@ object DialogueSystemFabric {
             DialogueSystem.onServerTick(server)
         }
 
-        // conecta networking
+        // connects to network
         DialogueSystem.sendToPlayer = { player, prompt ->
             ServerPlayNetworking.send(
                 player,
@@ -75,18 +74,15 @@ object DialogueSystemFabric {
 
         // Capture
         CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
-            val player = event.thrower as? ServerPlayer ?: return@subscribe
+            val thrower = event.thrower
+            val player = thrower as? ServerPlayer ?: return@subscribe
             val target = event.pokemonEntity
             val playerUuid = player.uuid.toString()
             
-            // Bloqueia se o jogador estiver em batalha ou o sistema estiver desligado
-            val inBattle = BattleRegistry.getBattleByParticipatingPlayerId(player.uuid) != null
-            if (inBattle || !SyncedConfig.outputGuaranteedCatch) return@subscribe
+            if (!SyncedConfig.outputGuaranteedCatch) return@subscribe
 
             if (target.tags.contains("cobblebrain:guaranteed_$playerUuid")) {
-                event.catchRate = 1000.0f
-                target.removeTag("cobblebrain:guaranteed_$playerUuid")
-                println("[CobbleBrain] Guaranteed capture triggered for $playerUuid")
+                event.catchRate = 9999.0f
             }
         }
 
@@ -106,6 +102,13 @@ object DialogueSystemFabric {
             val killer = source.entity as? ServerPlayer ?: return@register
 
             DialogueSystem.onPokemonDeath(entity, killer)
+        }
+
+        // Block break (for treasure quests)
+        net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register { level, player, pos, state, blockEntity ->
+            if (player is ServerPlayer) {
+                DialogueSystem.onBlockBreak(player, pos, state)
+            }
         }
     }
 }

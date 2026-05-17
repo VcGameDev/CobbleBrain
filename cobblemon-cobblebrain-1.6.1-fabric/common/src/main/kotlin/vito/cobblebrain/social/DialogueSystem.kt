@@ -79,7 +79,12 @@ object PlayerConversationState {
 object DialogueSystem {
     val justSentMessage: MutableMap<UUID, Boolean> = ConcurrentHashMap()
     private val lastResponseContent = mutableMapOf<UUID, String>()
-    private val pendingAiInstructions = mutableMapOf<UUID, MutableList<String>>()
+    private val pendingBarrelRemovals = mutableMapOf<net.minecraft.core.GlobalPos, Long>() // Pos -> Tick que foi marcado
+    private val pendingQuestNote = mutableMapOf<UUID, String>()
+    private val isWaitingForQuestResponse = mutableMapOf<UUID, Boolean>()
+    private val pendingInterruption = mutableMapOf<UUID, Boolean>()
+    private val questResponseTimeout = mutableMapOf<UUID, Long>() // Player -> Tick limite
+
     val scheduledMessages: MutableMap<UUID, MutableList<ScheduledMessage>> = ConcurrentHashMap()
 
     data class ScheduledMessage(
@@ -135,6 +140,10 @@ object DialogueSystem {
 
 
     fun onPlayerJoin(player: ServerPlayer) {
+        // Limpa estados de espera de missão ao entrar
+        isWaitingForQuestResponse[player.uuid] = false
+        pendingInterruption[player.uuid] = false
+
         player.sendSystemMessage(
             Component.literal("Welcome to Cobblebrain!\n")
                 .withStyle(ChatFormatting.YELLOW)
@@ -275,19 +284,50 @@ object DialogueSystem {
             }
         }
 
+        // Cleanup used barrels
+        val it = pendingBarrelRemovals.iterator()
+        while (it.hasNext()) {
+            val entry = it.next()
+            val pos = entry.key
+            val targetTick = entry.value
+            
+            if (server.tickCount >= targetTick) {
+                val level = server.getLevel(pos.dimension()) ?: server.overworld()
+                val blockPos = pos.pos()
+                level.setBlock(blockPos, Blocks.AIR.defaultBlockState(), 3)
+                // Partículas de fumaça para o sumiço
+                level.sendParticles(
+                    ParticleTypes.LARGE_SMOKE,
+                    blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5,
+                    10, 0.2, 0.2, 0.2, 0.05
+                )
+                it.remove()
+            }
+        }
+
+        for (player in server.playerList.players) {
+            val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
+            for (quest in activeQuests) {
+                handleQuestTick(player, quest)
+            }
+        }
+
         if (server.tickCount % 40 == 0) {
             validateItemQuests(server)
             for (player in server.playerList.players) {
                 syncQuests?.invoke(player)
-                
-                val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
-                for (quest in activeQuests) {
-                    val type = quest.get("type").asString
-                    if (type == "BATTLE") {
-                        handleBattleQuestTick(player, quest)
-                    } else if (type == "TREASURE") {
-                        handleTreasureQuestTick(player, quest)
-                    }
+            }
+        }
+
+        // Cleanup stale quest response states (30s timeout)
+        val currentTick = server.tickCount.toLong()
+        val playersWaiting = isWaitingForQuestResponse.keys.toList()
+        for (playerUuid in playersWaiting) {
+            if (isWaitingForQuestResponse[playerUuid] == true) {
+                val timeout = questResponseTimeout[playerUuid] ?: 0L
+                if (currentTick >= timeout) {
+                    isWaitingForQuestResponse[playerUuid] = false
+                    pendingInterruption[playerUuid] = false
                 }
             }
         }
@@ -449,7 +489,6 @@ object DialogueSystem {
                                 )
                             }
                             
-                            pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
 
                             val prompt = buildPrompt(
                                 player,
@@ -457,6 +496,8 @@ object DialogueSystem {
                                 "IMPORTANT: The player defeated the $targetSpecies! $giverName thanks him and reacts to the victory."
                             )
 
+                            isWaitingForQuestResponse[player.uuid] = true
+                            questResponseTimeout[player.uuid] = player.server.tickCount.toLong() + 600 // 30s
                             sendToPlayer?.invoke(player, prompt)
 
                             adjustKarma(player, giverName, 2)
@@ -533,7 +574,22 @@ object DialogueSystem {
     //}
     //}
 
-    fun onPlayerChat(player: ServerPlayer, text: String) {
+    fun onPlayerChat(player: ServerPlayer, text: String): Boolean {
+        if (isWaitingForQuestResponse[player.uuid] == true) {
+            if (pendingInterruption[player.uuid] != true) {
+                player.sendSystemMessage(
+                    Component.literal("Wait! The Pokémon is about to say something about the mission. Send the message again if you want to interrupt it anyway.")
+                        .withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC)
+                )
+                pendingInterruption[player.uuid] = true
+                return false
+            }
+        }
+
+        // Reset states if message goes through
+        isWaitingForQuestResponse[player.uuid] = false
+        pendingInterruption[player.uuid] = false
+
         scheduledMessages[player.uuid]?.clear()
         justSentMessage[player.uuid] = true
         val ativos = PokemonQuery.findActivePokemon(player)
@@ -541,6 +597,7 @@ object DialogueSystem {
 
         // envia prompt para o cliente processar
         sendToPlayer?.invoke(player, prompt)
+        return true
     }
 
 
@@ -865,7 +922,6 @@ object DialogueSystem {
     }
 
     fun validateQuestGiversOnPlayerJoin(server: MinecraftServer, player: ServerPlayer) {
-        val level = server.overworld()
         val data = CobblebrainWorldSave.data
         if (!data.has("quests")) return
 
@@ -877,6 +933,7 @@ object DialogueSystem {
 
         val playerChunk = player.chunkPosition()
         val radius = 3
+        val playerLevel = player.serverLevel()
 
         // Validate secondary quests
         val secondaryArray = questsRoot.getAsJsonArray("active_secondary")
@@ -889,13 +946,13 @@ object DialogueSystem {
                 if (questObj.get("ownerUuid").asString != player.uuid.toString()) continue
 
                 val giverUuid = try { UUID.fromString(questObj.get("giverUuid").asString) } catch (e: Exception) { continue }
-                val giverEntity = level.getEntity(giverUuid)
+                val giverEntity = server.allLevels.firstNotNullOfOrNull { it.getEntity(giverUuid) }
 
-                if (giverEntity is PokemonEntity) {
+                if (giverEntity is PokemonEntity && giverEntity.level() == playerLevel) {
                     val giverChunk = giverEntity.chunkPosition()
                     val dx = giverChunk.x - playerChunk.x
                     val dz = giverChunk.z - playerChunk.z
-                    if (kotlin.math.abs(dx) <= radius && kotlin.math.abs(dz) <= radius && level.hasChunk(giverChunk.x, giverChunk.z)) {
+                    if (kotlin.math.abs(dx) <= radius && kotlin.math.abs(dz) <= radius && playerLevel.hasChunk(giverChunk.x, giverChunk.z)) {
                         val giverName = giverEntity.pokemon.nickname?.string ?: giverEntity.pokemon.species.resourceIdentifier.path
                         player.sendSystemMessage(Component.literal("The quest from $giverName is still active!").withStyle(ChatFormatting.GREEN))
                         continue
@@ -914,7 +971,7 @@ object DialogueSystem {
         if (storyObj != null && storyObj.has("status") && storyObj.get("status").asString == "IN_PROGRESS" &&
             storyObj.has("ownerUuid") && storyObj.get("ownerUuid").asString == player.uuid.toString()) {
             val giverUuid = try { UUID.fromString(storyObj.get("giverUuid").asString) } catch (e: Exception) { null }
-            val giverEntity = giverUuid?.let { level.getEntity(it) }
+            val giverEntity = giverUuid?.let { id -> server.allLevels.firstNotNullOfOrNull { it.getEntity(id) } }
             if (giverEntity !is PokemonEntity) {
                 storyObj.addProperty("status", "ENF")
                 abandonedArray.add(storyObj)
@@ -927,8 +984,6 @@ object DialogueSystem {
     }
 
     fun validateItemQuests(server: MinecraftServer) {
-        val level = server.overworld()
-
         val questsObj = CobblebrainWorldSave.data.getAsJsonObject("quests") ?: return
         val storyObj = questsObj.getAsJsonObject("active_story") ?: JsonObject()
         val secondaryArray = questsObj.getAsJsonArray("active_secondary") ?: JsonArray()
@@ -948,7 +1003,8 @@ object DialogueSystem {
             val target = questObj.get("target").asString
             val amount = questObj.get("amount").asInt
 
-            val giverEntity = level.getEntity(giverUuid) as? PokemonEntity ?: return@forEach
+            val giverEntity = server.allLevels.firstNotNullOfOrNull { it.getEntity(giverUuid) } as? PokemonEntity ?: return@forEach
+            val level = giverEntity.level() as ServerLevel
             val player = server.playerList.getPlayer(ownerUuid) ?: return@forEach
 
             val nearbyItems = level.getEntitiesOfClass(
@@ -1017,7 +1073,6 @@ object DialogueSystem {
                     Component.literal("Quest Success! You delivered the $target to $giverName.")
                         .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
                 )
-                pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
                 
                 adjustKarma(player, giverName, 2)
                 giveReward(player, giverName)
@@ -1028,8 +1083,19 @@ object DialogueSystem {
                     PokemonQuery.findActivePokemon(player),
                     "IMPORTANT: Mission concluded! $giverName thanks the player for bringing the $amount $target(s)!"
                 )
+                isWaitingForQuestResponse[player.uuid] = true
+                questResponseTimeout[player.uuid] = level.server.tickCount.toLong() + 600
                 sendToPlayer?.invoke(player, prompt)
             }
+        }
+    }
+
+    fun handleQuestTick(player: ServerPlayer, quest: JsonObject) {
+        val type = quest.get("type").asString
+        if (type == "BATTLE") {
+            handleBattleQuestTick(player, quest)
+        } else if (type == "TREASURE") {
+            handleTreasureQuestTick(player, quest)
         }
     }
 
@@ -1126,6 +1192,7 @@ object DialogueSystem {
                 quest.addProperty("scanned", true)
                 CobblebrainWorldSave.save()
                 player.sendSystemMessage(Component.literal("You sense something hidden nearby...").withStyle(ChatFormatting.AQUA))
+                player.sendSystemMessage(Component.literal("Dig in the highlighted area to find the barrel and OPEN it to complete the mission!").withStyle(ChatFormatting.AQUA))
             }
         }
 
@@ -1141,6 +1208,26 @@ object DialogueSystem {
                 val giverUuid = quest.get("giverUuid").asString
                 val giverName = CobblebrainWorldSave.getGiverNameFromQuest(quest)
 
+                // Get items from barrel
+                val itemsList = mutableListOf<String>()
+                val barrelEntity = level.getBlockEntity(pos) as? net.minecraft.world.level.block.entity.BarrelBlockEntity
+                if (barrelEntity != null) {
+                    for (i in 0 until barrelEntity.containerSize) {
+                        val stack = barrelEntity.getItem(i)
+                        if (!stack.isEmpty) {
+                            val itemName = stack.item.descriptionId.split(".").last().replace("_", " ")
+                            itemsList.add("${stack.count}x $itemName")
+                        }
+                    }
+                }
+                val itemsStr = if (itemsList.isEmpty()) "nothing (it was empty!)" else itemsList.joinToString(", ")
+                
+                val ativos = PokemonQuery.findActivePokemon(player)
+                val prompt = buildPrompt(player, ativos, "IMPORTANT: The player has successfully found the item storage! Inside, they found: $itemsStr. Talk about the items found and thank the player!")
+                isWaitingForQuestResponse[player.uuid] = true
+                questResponseTimeout[player.uuid] = level.server.tickCount.toLong() + 600
+                sendToPlayer?.invoke(player, prompt)
+
                 player.sendSystemMessage(
                     Component.literal("Treasure Found! $giverName is happy you found it!")
                         .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
@@ -1148,9 +1235,77 @@ object DialogueSystem {
 
                 CobblebrainWorldSave.moveQuest(player.uuid.toString(), giverUuid, "TREASURE", "COMPLETED")
                 adjustKarma(player, giverName, 3) // Ganha 3 de karma por achar tesouro
-                giveReward(player, giverName)
                 giveQuestXp(player, quest)
-                pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
+                
+                // Marca para sumir daqui a 1 tick (praticamente instantâneo)
+                pendingBarrelRemovals[net.minecraft.core.GlobalPos.of(level.dimension(), pos)] = level.server.tickCount.toLong() + 1
+            }
+        }
+    }
+
+    fun onBlockBreak(player: ServerPlayer, pos: BlockPos, state: net.minecraft.world.level.block.state.BlockState) {
+        val level = player.serverLevel()
+
+        // Se for um barril sendo destruído
+        if (state.block == Blocks.BARREL) {
+            val allSecondary = CobblebrainWorldSave.getSecondaryQuestsForAll()
+
+            // Filtra as missões que estavam naquele bloco
+            val affectedQuests = mutableListOf<JsonObject>()
+            for (i in 0 until allSecondary.size()) {
+                val q = allSecondary.get(i).asJsonObject
+                if (q.get("type").asString == "TREASURE" && q.get("status").asString == "IN_PROGRESS") {
+                    val tx = q.get("targetX").asInt
+                    val ty = q.get("targetY").asInt
+                    val tz = q.get("targetZ").asInt
+                    if (pos.x == tx && pos.y == ty && pos.z == tz) {
+                        affectedQuests.add(q)
+                    }
+                }
+            }
+
+            affectedQuests.forEach { q ->
+                val ownerUuid = q.get("ownerUuid").asString
+                val giverUuid = q.get("giverUuid").asString
+                val giverName = CobblebrainWorldSave.getGiverNameFromQuest(q)
+
+                if (player.uuid.toString() == ownerUuid) {
+                    // O dono quebrou o próprio tesouro!
+                    adjustKarma(player, giverName, -3)
+                    
+                    val ativos = PokemonQuery.findActivePokemon(player)
+                    val prompt = buildPrompt(player, ativos, "IMPORTANT: The player has DESTROYED the item storage that was part of the quest! The pokemon is very upset! React to this destruction!")
+                    isWaitingForQuestResponse[player.uuid] = true
+                    questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
+                    sendToPlayer?.invoke(player, prompt)
+                    
+                    CobblebrainWorldSave.failQuest(ownerUuid, giverUuid, "TREASURE")
+
+                    player.sendSystemMessage(
+                        Component.literal("Quest Failed! You destroyed the item storage.")
+                            .withStyle(ChatFormatting.RED)
+                    )
+                } else {
+                    // Outro player quebrou
+                    val owner = player.server.playerList.getPlayer(UUID.fromString(ownerUuid))
+                    if (owner != null) {
+                        val ativos = PokemonQuery.findActivePokemon(owner)
+                        val prompt = buildPrompt(owner, ativos, "IMPORTANT: Someone else (not the player) has destroyed or stolen the item storage from the quest! React with shock and tell the player about it!")
+                        isWaitingForQuestResponse[owner.uuid] = true
+                        questResponseTimeout[owner.uuid] = owner.server?.tickCount?.toLong()?.plus(600) ?: 0L
+                        sendToPlayer?.invoke(owner, prompt)
+                        
+                        CobblebrainWorldSave.failQuest(ownerUuid, giverUuid, "TREASURE")
+
+                        owner.sendSystemMessage(
+                            Component.literal("Quest Failed! Someone else destroyed or stole the items.")
+                                .withStyle(ChatFormatting.RED)
+                        )
+                    } else {
+                        // Se o dono estiver offline, apenas falha a missão no arquivo
+                        CobblebrainWorldSave.failQuest(ownerUuid, giverUuid, "TREASURE")
+                    }
+                }
             }
         }
     }
@@ -1197,7 +1352,15 @@ object DialogueSystem {
                 adjustKarma(player, giverName, 5)
                 giveReward(player, giverName, isAdvice = true)
                 giveQuestXp(player, quest)
-                pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST COMPLETED]")
+                val ativos = PokemonQuery.findActivePokemon(player)
+                val prompt = buildPrompt(
+                    player,
+                    ativos,
+                    "IMPORTANT: Advice Quest Success! $giverName is very happy with the player's advice! Conclude the topic and thank the player!"
+                )
+                isWaitingForQuestResponse[player.uuid] = true
+                questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
+                sendToPlayer?.invoke(player, prompt)
             } else if (newPoints <= -5) {
                 player.sendSystemMessage(
                     Component.literal("Quest Failed! $giverName was offended or ignored your advice.")
@@ -1210,11 +1373,76 @@ object DialogueSystem {
                     "ABANDONED"
                 )
                 adjustKarma(player, giverName, -5)
-                pendingAiInstructions.getOrPut(player.uuid) { mutableListOf() }.add("[QUEST FAILED]")
+                val ativos = PokemonQuery.findActivePokemon(player)
+                val prompt = buildPrompt(
+                    player,
+                    ativos,
+                    "IMPORTANT: Advice Quest Failed! $giverName was offended or ignored the advice! React to this failure with frustration or disappointment!"
+                )
+                isWaitingForQuestResponse[player.uuid] = true
+                questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
+                sendToPlayer?.invoke(player, prompt)
             }
             
             CobblebrainWorldSave.save()
         }
+    }
+
+    fun abandonQuest(player: ServerPlayer) {
+        val secondaryQuests = CobblebrainWorldSave.getSecondaryQuests(player)
+        if (secondaryQuests.isEmpty()) {
+            player.sendSystemMessage(
+                Component.literal("You don't have any active secondary quest to abandon.")
+                    .withStyle(ChatFormatting.RED)
+            )
+            return
+        }
+
+        val quest = secondaryQuests.last()
+        val giverUuid = quest.get("giverUuid").asString
+        val type = quest.get("type").asString
+        val giverName = CobblebrainWorldSave.getGiverNameFromQuest(quest)
+
+        // 1. Remove follower if any
+        val iterator = CobblebrainWorldSave.followers.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val triple = entry.value
+            val pokemon = triple.first
+            val questOwner = triple.second
+            val goal = triple.third
+
+            if (questOwner.uuid == player.uuid && pokemon.uuid.toString() == giverUuid) {
+                MobBridge.removeGoal?.invoke(pokemon, goal)
+                pokemon.navigation.stop()
+                iterator.remove()
+                println("[DEBUG] Follower removed for abandoned quest: $giverName")
+            }
+        }
+
+        // 2. Move to abandoned in world save
+        CobblebrainWorldSave.moveQuest(player.uuid.toString(), giverUuid, type, "ABANDONED")
+        
+        // 3. Set Pending Note for next prompt
+        pendingQuestNote[player.uuid] = "The player recently ABANDONED a quest from $giverName."
+
+        player.sendSystemMessage(
+            Component.literal("Quest from $giverName Abandoned.")
+                .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD)
+        )
+
+        // 4. Trigger AI Reaction
+        val ativos = PokemonQuery.findActivePokemon(player)
+        val prompt = buildPrompt(
+            player,
+            ativos,
+            "IMPORTANT: The player has just ABANDONED the quest given by $giverName!"
+        )
+        isWaitingForQuestResponse[player.uuid] = true
+        questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
+        sendToPlayer?.invoke(player, prompt)
+        
+        syncQuests?.invoke(player)
     }
 
     // reaplica o olhar todos os ticks enquanto durar o foco
@@ -1443,6 +1671,14 @@ object DialogueSystem {
 
             appendLine(moreText)
             appendLine()
+
+            // Injeta nota pendente (ex: abandono de quest) se houver
+            val questNote = pendingQuestNote.remove(player.uuid)
+            if (questNote != null) {
+                appendLine("[IMPORTANT NOTE]")
+                appendLine(questNote)
+                appendLine()
+            }
             
             // Quests
             val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
@@ -1475,14 +1711,6 @@ object DialogueSystem {
                 }
             }
 
-            // Pending Instructions
-            pendingAiInstructions[player.uuid]?.let { instructions ->
-                if (instructions.isNotEmpty()) {
-                    appendLine("\n[SYSTEM INSTRUCTIONS]")
-                    instructions.forEach { appendLine("- $it") }
-                    instructions.clear()
-                }
-            }
             appendLine()
 
             // Environment
@@ -1571,10 +1799,10 @@ object DialogueSystem {
                             
                             3 -> {
                                 CobblebrainWorldSave.createTreasureQuest(player, wildEntity)
-                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has hidden a treasure! It wants the player to find the barrel!")
+                                appendLine("IMPORTANT: ${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has lost its item storage, found a hidden stash, or heard rumors of items hidden by another Pokémon! It wants the player to find the barrel containing these items!")
                                 player.sendSystemMessage(
                                     Component.literal(
-                                        "${giver.nickname?.string ?: giver.species.resourceIdentifier.path} has started a TREASURE quest!"
+                                        "${giver.nickname?.string ?: giver.species.resourceIdentifier.path} needs help finding LOST ITEMS!"
                                     ).withStyle(ChatFormatting.YELLOW)
                                 )
                             }
@@ -1591,7 +1819,7 @@ object DialogueSystem {
                 val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
                 appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | Type(s): ${p.types.joinToString { it.name }} | Gender: ${p.gender} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Fullness: ${p.currentFullness}/${p.getMaxFullness()} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
 
-                // Adiciona características se houver
+                // Adiciona características se houverF
                 val nameToCheck = p.nickname?.string ?: p.species.name
                 config.characteristics.forEach { entry ->
                     val parts = entry.split(":")
@@ -1659,6 +1887,10 @@ object DialogueSystem {
     fun checkIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
         val last = lastResponseContent[player.uuid]
         if (content.isBlank() || content == last) return
+
+        // Clear quest waiting states when response arrives
+        isWaitingForQuestResponse[player.uuid] = false
+        pendingInterruption[player.uuid] = false
 
         // Intercepta se for a resposta do resumo
         if (content.startsWith("[SUMMARY_RESPONSE]")) {
