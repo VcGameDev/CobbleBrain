@@ -2,7 +2,7 @@
 
 CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions more lively and responsive.
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MPL_2.0-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
@@ -147,51 +147,55 @@ Advanced users can still edit the generated configuration files in the `/config`
 
 | Variable                       | Type | Description                                                                                                                        |
 |--------------------------------|------|------------------------------------------------------------------------------------------------------------------------------------|
-| `apiKey`                       | List of Strings | API key used for authentication with the AI system. Can be a Bearer token or a Google API key depending on the provider.           |
-| `keyRotation`                  | Boolean | Enables API key rotation when errors occur. Useful for handling invalid or expired keys.                                           |
-| `keyRotationTrigger`           | List[Int] | List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys.                                  |
-| `apiBaseUrl`                   | String | Base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local server such as LM Studio or Player2.       |
-| `localApiProvider`             | String | Used when `apiBaseUrl` is local. Helps adapt requests for the correct provider. Supported: `player2`, `lmstudio`                   |
-| `aiModel`                      | List of Strings | Names of the AI models to use. Multiple models can be provided for fallback/rotation.                                              |
-| `modelRotation`                | Boolean | Enables model rotation when errors occur, allowing fallback to alternative models.                                                 |
-| `modelRotationTrigger`         | List[Int] | List of HTTP status codes that trigger model rotation.                                                                             |
-| `temperature`                  | Double | Controls response randomness. Range: 0.0 (deterministic) to 1.0 (creative). Default ~0.7.                                          |
-| `aiProvider`                   | String | Provider hint used for routing in OpenRouter. Ignored for other providers.                                                         |
-| `reasoningEffort`              | String | Defines reasoning level for supported models. Options: `high`, `medium`, `low`, `auto`, `none`                                     |
-| `requestTimeoutSeconds`        | Long | Request timeout in seconds. Local models may require higher values.                                                                |
-| `debugLogging`                 | Boolean | Enables debug logging. Logs are stored in `cobblebrain-ai/logs`                                                                    |
-| `useDefaultOutput`             | Boolean | Enables the recommended and updated output_format of the mod version.                                                              |
-| `selectedLanguage`             | String | Language used by the AI to generate responses.                                                                                     |
-| `dialogueInChat`               | Boolean | Shows generated dialogue in the chat.                                                                                              |
-| `chatbubbles`                  | Boolean | Enables visual chat bubbles above entities.                                                                                        |
-| `needsPokemonTranslator` | Boolean | When enabled, Pokémon speak normally if the player has the Exp Share equipped. Otherwise, they speak like animals. Overrides `outputDialogue` and `outputCanonLanguage`. |
-| `allowPokemonPVP`              | Boolean | Allows Pokémon to attack other players’ Pokémon.                                                                                   |
-| `allowPokemonPVE`              | Boolean | Allows Pokémon to attack mobs (excluding certain exceptions).                                                                      |
-| `scheduleRaids`                | Boolean | Enables raid events when karma conditions are met.                                                                                 |
-| `characteristics`              | List of Strings | Custom traits for specific Pokémon. Format: `<pokemonName>: <text>`                                                                |
-| `lowTokenMode`                 | Boolean | Reduces world/context data sent to AI, lowering cost and improving performance.                                                    |
-| `dialogueOnDamage`             | Boolean | Triggers dialogue when entities take damage.                                                                                       |
-| `dialogueOnBattle`             | Boolean | Enables dialogue during battle events.                                                                                             |
-| `wildPokemonTalkChance`        | Double | Chance for wild Pokémon to participate in ongoing dialogue.                                                                        |
-| `wildQuestChance`              | Double | Chance for wild Pokémon to generate quests during interaction.                                                                     |
-| `spontaneousDialogueChance`    | Double | Chance for Pokémon to initiate dialogue spontaneously.                                                                             |
-| `listenToChat`                 | Boolean | Enables AI to interpret normal player chat messages.                                                                               |
-| `EXPERIMENTAL: onlyNearbyChat` | Boolean | Restricts chat listening to nearby players. Requires `listenToChat = true`                                                         |
-| `decreaseFriendship`           | Boolean | Allows dialogue to decrease friendship levels.                                                                                     |
-| `increaseFriendship`           | Boolean | Allows dialogue to increase friendship levels.                                                                                     |
-| `showFriendship`               | Boolean | Displays friendship changes in chat.                                                                                               |
-| `instruct`                     | List of Strings | Global prompt defining how the AI behaves, thinks, and responds. Each entry contributes to shaping dialogue style and personality. |
-| `custom output (outputFormat)`                 | String | Custom System instructions for dialogue. To use it, disable usDefaultOutput, not recommended.                                                         |
-| `useDefaultOutput`       | Boolean | Uses the recommended output format for the current mod version. Disabling allows custom `outputFormat`, but is not recommended. |
-| `outputDialogue`         | Boolean | Enables the DIALOGUE system in AI instructions, allowing characters to speak in-game. |
-| `outputActions`          | Boolean | Enables the ACTIONS system in AI instructions, allowing characters to perform actions. |
-| `outputFriendship`       | Boolean | Enables the FRIENDSHIP system in AI instructions, affecting relationship mechanics. |
-| `outputWorldContext`     | Boolean | Enables the WORLD CONTEXT system, including player status and environmental awareness. |
-| `outputMobsContext`      | Boolean | Enables the MOBS CONTEXT system (excluding wild Pokémon), providing nearby entity awareness. |
-| `outputQuests`           | Boolean | Enables the QUESTS system, allowing AI to reference and interact with quest data. |
-| `outputApril1`           | Boolean | Enables special April Fools ACTIONS system for humorous or experimental behavior. |
-| `outputPokemonLanguage`  | Boolean | Makes Pokémon speak using their natural vocal patterns instead of human language. Disables `outputDialogue` when active. |
-| `outputMemories`         | Boolean | (Outdated) Enables the MEMORIES system in AI instructions. |
+| `apiKey` | List of Strings | The API key used for authentication with the AI system. It can be a Bearer token or a Google API key depending on the provider. |
+| `useChatEndpoint` | Boolean | Automatically includes '/v1/chat/completions' in the ApiBaseUrl address. Disable it if you are having trouble accessing your AI API |
+| `keyRotation` | Boolean | Enables API key rotation when errors occur. Useful for handling invalid or expired keys. |
+| `keyRotationTrigger` | List[Int] | List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys. |
+| `apiBaseUrl` | String | The base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local LM Studio server. |
+| `localApiProvider` | String | If apiBaseUrl is a local address (127.0.0.1), The system uses the provider name to adapt messages for the correct provider. Officially supported providers: player2, lmstudio |
+| `aiModel` | List of Strings | The names of the AI models to use. Examples are gemini-2.5-flash, gemma-3-12b-it |
+| `modelRotation` | Boolean | Enables model rotation when errors occur. Useful for fallback to alternative models. |
+| `modelRotationTrigger` | List[Int] | List of HTTP status codes that trigger model rotation. Defines error conditions for switching models. |
+| `temperature` | Double | Controls response randomness. |
+| `OpenRouter Hint (aiProvider)` | String | A provider hint used for routing in OpenRouter. This is ignored when using other provider. |
+| `reasoningEffort` | String | Defines the reasoning effort level for supported models. Options include high, medium, low, auto, or none. |
+| `requestTimeoutSeconds` | Long | Defines the request timeout in seconds. Local models may require longer values. |
+| `debugLogging` | Boolean | Enables debug logging for troubleshooting. Logs are stored in the cobblebrain-ai/logs directory. |
+| `Recent Memories Limit (maxInteractionSaves)` | Integer | The max number of recent memories the AI/Pokémon can create. Higher values improve conversation flow but use more tokens or time to generate responses. |
+| `useDefaultOutput` | Boolean | Uses the recommended and updated OUTPUT FORMAT of the mod version. Only disable it if you want to apply your own CUSTOM OUTPUT, Which is not recommended. |
+| `selectedLanguage` | String | The language the AI uses for responses. Determines dialogue output language. |
+| `dialogueInChat` | Boolean | Shows generated dialogue directly in the chat. This makes Pokémon conversations visible to players. |
+| `chatbubbles` | Boolean | Enables chat bubbles above characters. Dialogue will appear visually instead of only in text chat. |
+| `Needs Pokémon Translator (needsPokemonTranslator)` | Boolean | When active, Pokémon speak normally if the player has the Exp Share equipped on themselves. If not equiped, the Pokémon speak like animals. This setting takes priority over 'outputDialogue' and 'outputCanonLanguage' |
+| `allowPokemonPVP` | Boolean | Allows Pokémon to attack other players’ Pokémon. Disabling prevents player-versus-player battles. |
+| `allowPokemonPVE` | Boolean | Allows Pokémon to attack mobs in the world. Exceptions include tamed mobs and non-aggressive tagged mobs. |
+| `scheduleRaids` | Boolean | Determines if raids can be created in the world. Raids can happen when your karma with a species falls below -11 |
+| `characteristics` | List of Strings | list to define characteristics of a specific Pokémon for the AI. Format: <pokemonName>: <text> |
+| `lowTokenMode` | Boolean | Reduces world information sent to the AI. This helps conserve tokens and lower usage costs. |
+| `dialogueOnDamage` | Boolean | Makes Pokémon speak when someone is hurt. Dialogue is triggered by damage events. |
+| `dialogueOnBattle` | Boolean | Makes Pokémon speak during battle events. Dialogue reflects combat situations. |
+| `wildPokemonTalkChance` | Double | Sets the chance of wild pokemon to participate in dialogue, not generate new ones. Wild Pokémon may speak randomly during ongoing dialogues. |
+| `wildQuestChance` | Double | Set the chance for a Pokémon to start a quest when you have a dialogue with wild Pokémon. The quests can be of the type BATTLE, ITEM, or ADVICE. |
+| `spontaneousDialogueChance` | Double | Sets the chance of spontaneous dialogue. Pokémon may speak randomly during idle moments. |
+| `listenToChat` | Boolean | Enables listening to regular player chat. If disabled, the AI ignores non-command messages. |
+| `Only Nearby Chat (onlyNearbyChat)` | Boolean | Restricts listening to nearby players only. Works only if listenToChat is enabled. |
+| `maxShortMemory` | Integer `[OUTDATED]` | Maximum short-term memory size per Pokémon. Controls how much recent context is stored. |
+| `maxLongMemory` | Integer `[OUTDATED]` | Maximum long-term memory size per Pokémon. Controls how much persistent context is stored. |
+| `decreaseFriendship` | Boolean | Dialogue can decrease friendship with players. Used for negative interactions. |
+| `increaseFriendship` | Boolean | Dialogue can increase friendship with players. Used for positive interactions. |
+| `showFriendship` | Boolean | Displays friendship values in chat. Players can see relationship changes. |
+| `instruct` | List of Strings | The Instructs as a whole works as a global prompt. Defines how the AI or Pokemon behave, think and responds. Each instruct (item on the list) shapes how the response is sent. |
+| `Custom Output (outputFormat)` | String | Only editable via config/cobblebrain.json5 |
+| `Enable Dialogue (outputDialogue)` | Boolean | Enables the Pokémon to generate natural language dialogue, Allowing them to dialogue with the player. |
+| `Enable Actions (outputActions)` | Boolean | Enables Pokémon to perform specialized actions based on the situation or the player command, such as cooking food, growing berries, or eating items. |
+| `Enable Friendship (outputFriendship)` | Boolean | Enables the AI to manage and update friendship levels based on your interactions, influencing the Pokémon's loyalty and behavior. |
+| `Enable World Context (outputWorldContext)` | Boolean | Provides the AI with information about the current environment (like time of day, biome, player status and etc...) for more contextual responses. |
+| `Enable Guaranteed Catch (outputGuaranteedCatch)` | Boolean | Enables the possibility of wild Pokémon to be convinced via dialogue to join you, with a 100% capture rate in the next Poké Ball throw. |
+| `Enable Mobs Context (outputMobsContext)` | Boolean | Gives the AI awareness of nearby non-Pokémon entities, allowing it to react to the presence of other mobs in the area. |
+| `Enable Quests (outputQuests)` | Boolean | Enables the automated quest system, allowing Pokémon to offer tasks and rewards to the player. |
+| `Enable April Fools Actions (outputApril1)` | Boolean | Activates special 'April Fools' actions (e.g nuke, imaginary technique). Most of the actions are destructive so be careful! |
+| `Enable Pokémon Language (outputPokemonLanguage)` | Boolean | Makes Pokémon speak using their iconic vocalizations (e.g., 'Pika Pika') instead of human speech. Automatically deactivates outputDialogue when in use. |
+| `[OUTDATED] Enable Memories (outputMemories)` | Boolean | Allows the AI to store and recall past interactions. Note: This system is currently outdated and may be unstable. |
 ---
 
 ## Pokémon Actions
@@ -334,7 +338,7 @@ Advanced users can still edit the generated configuration files in the `/config`
 ---
 
 ## License
-This project is licensed under the **MIT License**. See [LICENSE](./LICENSE).
+This project is licensed under the **MPL 2.0 License**. See [LICENSE](./LICENSE).
 
 ---
 
