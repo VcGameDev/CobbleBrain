@@ -17,20 +17,62 @@ object CobblebrainServerHandler {
         val command: PokemonCommand? = parseCommand(action)
         if (command != null) {
             val ativos: List<Pokemon> = PokemonQuery.findActivePokemon(player)
-            val pokemon = ativos.find { poke ->
-                poke.nickname?.string.equals(command.pokemonName, ignoreCase = true) ||
-                        poke.species.name.equals(command.pokemonName, ignoreCase = true) ||
-                        poke.species.resourceIdentifier.path.equals(command.pokemonName, ignoreCase = true)
-            }
+            
+            if (command.pokemonName.equals("ALL", ignoreCase = true)) {
+                // Aplica para TODOS os pokémons ativos
+                ativos.forEach { poke ->
+                    poke.entity?.let { entity ->
+                        CommandState.activeCommands[entity.uuid] = command.action
+                    }
+                }
+                
+                val (typeInfo, explanation) = when(command.action.uppercase()) {
+                    "COOK" -> "(FIRE)" to "Can cook food and smelt ores. 5% chance of item turning into charcoal."
+                    "GROW" -> "(PLANT)" to "Grows tree saplings and crops."
+                    "REPAIR" -> "(METAL)" to "Repairs tools and weapons up to a certain durability threshold."
+                    "SHIFT" -> "(GHOST)" to "Player becomes invisible, gains increased speed and jump height, but suffers from high weakness."
+                    "ATTACK" -> "" to "Pokémon attacks any mob close to it; it will stop after killing the target."
+                    "PROTECT" -> "" to "Pokémon targets hostile mobs nearest to the player; if none are found, it follows the player."
+                    "EAT" -> "" to "Pokémon eat any edible item dropped on the ground. Some foods and berries may grant temporary effects."
+                    "BUFF" -> "" to "Pokémon grants the player a positive status effect based on its type."
+                    "DEBUFF ENEMY" -> "" to "Pokémon applies a negative status effect to nearby mobs based on its primary type."
+                    "SIT" -> "" to "Pokémon stays fixed in place, ignoring other actions."
+                    "IDLE" -> "" to "Pokémon cancels all active commands and returns to normal behavior."
+                    else -> "" to "Executing command."
+                }
+                
+                val actionName = command.action.uppercase()
+                val actionColor = when(actionName) {
+                    "COOK" -> net.minecraft.ChatFormatting.GOLD
+                    "GROW" -> net.minecraft.ChatFormatting.GREEN
+                    "REPAIR" -> net.minecraft.ChatFormatting.DARK_GRAY
+                    "SHIFT" -> net.minecraft.ChatFormatting.DARK_PURPLE
+                    else -> net.minecraft.ChatFormatting.WHITE
+                }
 
-            pokemon?.entity?.let { entity ->
-                CommandState.activeCommands[entity.uuid] = command.action
-                player.sendSystemMessage(Component.literal("Comando '${command.action}' aplicado ao ${command.pokemonName}"))
+                val message = Component.literal("All Pokémon -> ")
+                    .withStyle(net.minecraft.ChatFormatting.WHITE)
+                    .append(Component.literal("$actionName $typeInfo".trim()).withStyle(net.minecraft.ChatFormatting.BOLD).withStyle(actionColor))
+                    .append(Component.literal(": $explanation").withStyle(net.minecraft.ChatFormatting.GRAY))
 
-                // envia prompt de volta usando Common
-                DialogueSystem.sendToPlayer?.let { it(player, "${command.pokemonName}: executando ${command.action}") }
-            } ?: run {
-                player.sendSystemMessage(Component.literal("Não encontrei Pokémon ativo chamado ${command.pokemonName}"))
+                player.sendSystemMessage(message)
+            } else {
+                // Original behavior: search by specific name
+                val pokemon = ativos.find { poke ->
+                    poke.nickname?.string.equals(command.pokemonName, ignoreCase = true) ||
+                            poke.species.name.equals(command.pokemonName, ignoreCase = true) ||
+                            poke.species.resourceIdentifier.path.equals(command.pokemonName, ignoreCase = true)
+                }
+
+                pokemon?.entity?.let { entity ->
+                    CommandState.activeCommands[entity.uuid] = command.action
+                    player.sendSystemMessage(Component.literal("Command '${command.action}' applied to ${command.pokemonName}."))
+
+                    // Send prompt back (make AI talk) only for individual commands
+                    DialogueSystem.sendToPlayer?.let { it(player, "${command.pokemonName}: executing ${command.action}") }
+                } ?: run {
+                    player.sendSystemMessage(Component.literal("Could not find active Pokémon named ${command.pokemonName}."))
+                }
             }
         }
     }

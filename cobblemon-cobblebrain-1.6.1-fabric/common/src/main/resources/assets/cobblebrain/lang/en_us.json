@@ -1,0 +1,9 @@
+{
+  "category.cobblebrain": "CobbleBrain",
+  "key.categories.cobblebrain": "CobbleBrain Controls",
+  "key.cobblebrain.open_config": "Open Settings",
+  "key.cobblebrain.cmd_up": "Select Previous Action",
+  "key.cobblebrain.cmd_down": "Select Next Action",
+  "key.cobblebrain.cmd_execute": "Use Action",
+  "key.cobblebrain.cmd_toggle": "Toggle Action HUD"
+}

@@ -1,0 +1,9 @@
+{
+  "category.cobblebrain": "CobbleBrain",
+  "key.categories.cobblebrain": "Controles CobbleBrain",
+  "key.cobblebrain.open_config": "Abrir Menu de Configuração",
+  "key.cobblebrain.cmd_up": "Selecionar Ação Acima",
+  "key.cobblebrain.cmd_down": "Selecionar Ação Abaixo",
+  "key.cobblebrain.cmd_execute": "Usar Ação",
+  "key.cobblebrain.cmd_toggle": "Mostrar/Esconder HUD de Ação"
+}

@@ -36,6 +36,21 @@ object CobblebrainPayloads {
         override fun type() = TYPE
     }
 
+    data class SummaryPromptPayload(val contextData: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "summary_prompt")
+            val TYPE = CustomPacketPayload.Type<SummaryPromptPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, SummaryPromptPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.contextData) },
+                    { buf -> SummaryPromptPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
     data class SyncConfigPayload(
         val useDefaultOutput: Boolean,
         val outputDialogue: Boolean,
@@ -46,6 +61,7 @@ object CobblebrainPayloads {
         val outputQuests: Boolean,
         val outputPokemonLanguage: Boolean,
         val needsPokemonTranslator: Boolean,
+        val outputGuaranteedCatch: Boolean,
         val maxLongMemory: Int,
         val maxShortMemory: Int
     ) : CustomPacketPayload {
@@ -66,11 +82,13 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.outputQuests)
                         buf.writeBoolean(payload.outputPokemonLanguage)
                         buf.writeBoolean(payload.needsPokemonTranslator)
+                        buf.writeBoolean(payload.outputGuaranteedCatch)
                         buf.writeInt(payload.maxLongMemory)
                         buf.writeInt(payload.maxShortMemory)
                     },
                     { buf ->
                         SyncConfigPayload(
+                            buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
@@ -99,6 +117,63 @@ object CobblebrainPayloads {
                 StreamCodec.of(
                     { buf, payload -> buf.writeUtf(payload.action) },
                     { buf -> ActionPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    data class QuestSyncPayload(val questsJson: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "sync_quests")
+            val TYPE = CustomPacketPayload.Type<QuestSyncPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, QuestSyncPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.questsJson) },
+                    { buf -> QuestSyncPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    object RequestSummaryPayload : CustomPacketPayload {
+        val ID = ResourceLocation("cobblebrain", "request_summary")
+        val TYPE = CustomPacketPayload.Type<RequestSummaryPayload>(ID)
+
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestSummaryPayload> =
+            StreamCodec.unit(RequestSummaryPayload)
+
+        override fun type() = TYPE
+    }
+
+    data class SyncCooldownsPayload(
+        val buffRemaining: Long,
+        val repairRemaining: Long,
+        val shiftRemaining: Long,
+        val debuffRemaining: Long
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "sync_cooldowns")
+            val TYPE = CustomPacketPayload.Type<SyncCooldownsPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, SyncCooldownsPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeLong(payload.buffRemaining)
+                        buf.writeLong(payload.repairRemaining)
+                        buf.writeLong(payload.shiftRemaining)
+                        buf.writeLong(payload.debuffRemaining)
+                    },
+                    { buf ->
+                        SyncCooldownsPayload(
+                            buf.readLong(),
+                            buf.readLong(),
+                            buf.readLong(),
+                            buf.readLong()
+                        )
+                    }
                 )
         }
 

@@ -17,6 +17,7 @@ data class CobblebrainClientConfig(
     var requestTimeoutSeconds: Long = 60,
     var debugLogging: Boolean = false,
     var selectedLanguage: String = "English",
+    var maxInteractionSaves: Int = 8,
 
     // ================= DIALOGUE & UI SETTINGS =================
 

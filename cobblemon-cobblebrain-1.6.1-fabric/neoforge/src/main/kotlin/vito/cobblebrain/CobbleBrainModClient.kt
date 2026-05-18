@@ -10,6 +10,7 @@ import net.minecraft.client.KeyMapping
 import net.minecraft.world.effect.MobEffects
 import org.lwjgl.glfw.GLFW
 import vito.cobblebrain.client.CobblebrainClientCommon
+import vito.cobblebrain.client.HudSystem
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfigScreen
 import vito.cobblebrain.config.SyncedConfig
@@ -21,6 +22,31 @@ object CobbleBrainModClientNeoForge {
         "key.cobblebrain.open_config",
         GLFW.GLFW_KEY_Y,
         "key.categories.cobblebrain"
+    )
+
+
+    private val CMD_UP = KeyMapping(
+        "key.cobblebrain.cmd_up",
+        GLFW.GLFW_KEY_B,
+        "category.cobblebrain"
+    )
+
+    private val CMD_DOWN = KeyMapping(
+        "key.cobblebrain.cmd_down",
+        GLFW.GLFW_KEY_V,
+        "category.cobblebrain"
+    )
+
+    private val CMD_EXECUTE = KeyMapping(
+        "key.cobblebrain.cmd_execute",
+        GLFW.GLFW_KEY_Z,
+        "category.cobblebrain"
+    )
+
+    private val CMD_TOGGLE = KeyMapping(
+        "key.cobblebrain.cmd_toggle",
+        GLFW.GLFW_KEY_N,
+        "category.cobblebrain"
     )
 
     fun init() {
@@ -36,11 +62,21 @@ object CobbleBrainModClientNeoForge {
 
         NeoForge.EVENT_BUS.addListener(::onClientTick)
         NeoForge.EVENT_BUS.register(this)
+
+        // Referências para a HUD dinâmica
+        CobblebrainClientCommon.keyUp = CMD_UP
+        CobblebrainClientCommon.keyDown = CMD_DOWN
+        CobblebrainClientCommon.keyExecute = CMD_EXECUTE
+        CobblebrainClientCommon.keyToggle = CMD_TOGGLE
     }
 
     // registra keybind
     fun onRegisterKeybinds(event: RegisterKeyMappingsEvent) {
         event.register(OPEN_CONFIG)
+        event.register(CMD_UP)
+        event.register(CMD_DOWN)
+        event.register(CMD_EXECUTE)
+        event.register(CMD_TOGGLE)
     }
 
     // tick
@@ -48,13 +84,29 @@ object CobbleBrainModClientNeoForge {
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
         }
+        while (CMD_UP.consumeClick()) {
+            HudSystem.navigateUp()
+        }
+        while (CMD_DOWN.consumeClick()) {
+            HudSystem.navigateDown()
+        }
+        while (CMD_EXECUTE.consumeClick()) {
+            HudSystem.executeAction()
+        }
+        while (CMD_TOGGLE.consumeClick()) {
+            HudSystem.toggleVisibility()
+        }
     }
 
     // HUD
     @SubscribeEvent
     fun onHudRender(event: RenderGuiEvent.Post) {
+        val guiGraphics = event.guiGraphics
         val client = Minecraft.getInstance()
         val player = client.player ?: return
+
+        // Converte DeltaTracker para Float se necessário
+        val delta = event.partialTick.gameTimeDeltaTicks
 
         val invis = player.hasEffect(MobEffects.INVISIBILITY)
         val jump = player.hasEffect(MobEffects.JUMP)
@@ -73,8 +125,10 @@ object CobbleBrainModClientNeoForge {
             val pulse = ((sin(time / 20.0) + 1) / 2.0 * (maxAlpha - minAlpha) + minAlpha).toInt()
             val color = (pulse shl 24) or 0x3A0066
 
-            val guiGraphics = event.guiGraphics
             guiGraphics.fill(0, 0, width, height, color)
         }
+
+        // HUD SYSTEM
+        HudSystem.render(guiGraphics, delta)
     }
 }

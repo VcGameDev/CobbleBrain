@@ -51,28 +51,36 @@ object PokemonTalkCommand {
                             //player.sendSystemMessage(Component.literal("1 - comando executou"))
 
                             // limpa fila
-                            DialogueSystem.scheduledMessages[player.uuid]?.clear()
+                            //DialogueSystem.scheduledMessages[player.uuid]?.clear()
 
                             //player.sendSystemMessage(Component.literal("2 - limpou mensagens"))
 
-                            val ativos = PokemonQuery.findActivePokemon(player)
+                            //val ativos = PokemonQuery.findActivePokemon(player)
                             //player.sendSystemMessage(Component.literal("3 - ativos size: ${ativos.size}"))
 
-                            val prompt = DialogueSystem.buildPrompt(player, ativos, "\n\n$conteudo")
+                            //val prompt = DialogueSystem.buildPrompt(player, ativos, "\n\n$conteudo")
                             //player.sendSystemMessage(Component.literal("4 - prompt gerado: ${prompt.take(50)}"))
 
-                            if (DialogueSystem.sendToPlayer == null) {
+                            //if (DialogueSystem.sendToPlayer == null) {
                                 //player.sendSystemMessage(Component.literal("5 - SEND É NULL"))
-                            } else {
+                            //} else {
                                 //player.sendSystemMessage(Component.literal("5 - SEND NÃO É NULL"))
-                            }
+                            //}
 
-                            DialogueSystem.sendToPlayer?.invoke(player, prompt)
+                            //DialogueSystem.sendToPlayer?.invoke(player, prompt)
 
                             //player.sendSystemMessage(Component.literal("6 - passou do send"))
 
-                            // eco
-                            player.sendSystemMessage(Component.literal("${player.name.string}: $conteudo"))
+                            // Chamada unificada: cuida da trava de missão, contexto narrativo e envio para IA
+                            val success = DialogueSystem.onPlayerChat(
+                                player, 
+                                "The player (owner of the pokemon team) said to the pokemons: $conteudo"
+                            )
+
+                            // Mostra o que você escreveu apenas se a mensagem passou pela trava
+                            if (success) {
+                                player.sendSystemMessage(Component.literal("${player.name.string}: $conteudo"))
+                            }
 
                             1
                         }
@@ -261,6 +269,14 @@ object ConfigCommands {
                             1
                         }
                 )
+                .then(
+                    Commands.literal("quitQuest")
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            DialogueSystem.abandonQuest(player)
+                            1
+                        }
+                )
 
                 .then(
                     Commands.literal("AddInstruct")
@@ -309,6 +325,39 @@ object ConfigCommands {
                                     1
                                 }
                         )
+                )
+                .then(
+                    Commands.literal("summary")
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            val summary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
+                            
+                            if (summary != null) {
+                                player.sendSystemMessage(
+                                    Component.literal("\nPREVIOUS SESSION SUMMARY:\n")
+                                        .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
+                                )
+                                player.sendSystemMessage(
+                                    Component.literal(summary)
+                                        .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
+                                )
+                                player.sendSystemMessage(Component.literal("\n"))
+                            } else {
+                                player.sendSystemMessage(
+                                    Component.literal("No session summary found.")
+                                        .withStyle(ChatFormatting.RED)
+                                )
+                            }
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("saveContext")
+                        .executes { ctx ->
+                            val player = ctx.source.playerOrException
+                            DialogueSystem.triggerSessionSummary(player)
+                            1
+                        }
                 )
         )
     }

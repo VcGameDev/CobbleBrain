@@ -14,4 +14,22 @@ object CobblebrainClientHandlers {
         SyncedConfig.apply(payload)
         println("CONFIG RECEBIDA DO SERVER")
     }
+
+    fun onQuestSync(payload: CobblebrainPayloads.QuestSyncPayload) {
+        CobblebrainClientCommon.onQuestsSynced(payload.questsJson)
+    }
+
+    fun onSummaryPrompt(payload: CobblebrainPayloads.SummaryPromptPayload) {
+        CobblebrainClientRuntimeNeoForge.markResponseReceived()
+        CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData)
+    }
+
+    fun onCooldownSync(payload: CobblebrainPayloads.SyncCooldownsPayload) {
+        CobblebrainClientCommon.onCooldownsSynced(
+            payload.buffRemaining,
+            payload.repairRemaining,
+            payload.shiftRemaining,
+            payload.debuffRemaining
+        )
+    }
 }

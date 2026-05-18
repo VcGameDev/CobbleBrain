@@ -15,5 +15,16 @@ object AIClientHandler {
             }
         }
     }
+
+    fun sendSummaryPrompt(contextData: String): CompletableFuture<Unit> {
+        return CompletableFuture.supplyAsync {
+            try {
+                val handler = createHandler()
+                handler.generateSessionSummary(contextData)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 }
 

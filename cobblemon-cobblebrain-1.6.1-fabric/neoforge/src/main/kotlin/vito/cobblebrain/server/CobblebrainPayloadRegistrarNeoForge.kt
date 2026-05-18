@@ -32,6 +32,33 @@ object CobblebrainPayloadRegistrarNeoForge {
             }
         }
 
+        registrar.playToClient(
+            CobblebrainPayloads.QuestSyncPayload.TYPE,
+            CobblebrainPayloads.QuestSyncPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onQuestSync(payload)
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.SummaryPromptPayload.TYPE,
+            CobblebrainPayloads.SummaryPromptPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onSummaryPrompt(payload)
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.SyncCooldownsPayload.TYPE,
+            CobblebrainPayloads.SyncCooldownsPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onCooldownSync(payload)
+            }
+        }
+
         // =========================
         // CLIENT → SERVER
         // =========================
@@ -55,6 +82,17 @@ object CobblebrainPayloadRegistrarNeoForge {
 
             context.enqueueWork {
                 CobblebrainServerHandlers.onAIResponse(player, payload)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.RequestSummaryPayload.TYPE,
+            CobblebrainPayloads.RequestSummaryPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+
+            context.enqueueWork {
+                vito.cobblebrain.social.DialogueSystem.triggerSessionSummary(player)
             }
         }
     }

@@ -4,6 +4,7 @@ import com.cobblemon.mod.common.api.pokemon.experience.ExperienceSource
 import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.minecraft.ChatFormatting
+import vito.cobblebrain.social.CobblebrainWorldSave
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Holder
 import net.minecraft.core.component.DataComponents
@@ -124,7 +125,27 @@ val biteCooldown = mutableMapOf<UUID, Int>()
 val eatIdleTimer = mutableMapOf<UUID, Int>()
 val cookCooldown = mutableMapOf<UUID, Int>()
 val growCooldowns = mutableMapOf<UUID, Int>()
-val repairCooldowns: MutableMap<UUID, Long> = mutableMapOf()
+
+object PokemonCommands {
+    var sendCooldowns: ((ServerPlayer, Long, Long, Long, Long) -> Unit)? = null
+
+    fun syncCooldowns(player: ServerPlayer) {
+        val now = System.currentTimeMillis()
+        val pUuid = player.uuid.toString()
+
+        val buffCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "BuffCD")
+        val repairCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "RepairCD")
+        val shiftCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "ShiftCD")
+        val debuffCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "DebuffCD")
+
+        val bRem = if (buffCD > now) buffCD - now else 0L
+        val rRem = if (repairCD > now) repairCD - now else 0L
+        val sRem = if (shiftCD > now) shiftCD - now else 0L
+        val dRem = if (debuffCD > now) debuffCD - now else 0L
+
+        sendCooldowns?.invoke(player, bRem, rRem, sRem, dRem)
+    }
+}
 
 // 1 april
 val fireballCooldown = mutableMapOf<UUID, Int>()
@@ -167,25 +188,25 @@ object FoodExperienceSource : ExperienceSource
 
 object CommandTickHandler {
     fun processActiveCommands(server: MinecraftServer) {
-        val level = server.overworld() as ServerLevel
-        val debuffCooldowns = mutableMapOf<UUID, Int>()
-
-        handleNukeSystem(level)
-        handleImaginaryTechnique(level)
-        handlePsychicStand(level)
-        handleFinalJudgment(level)
-        handleSSStyle(level)
+        server.allLevels.forEach { level ->
+            handleNukeSystem(level)
+            handleImaginaryTechnique(level)
+            handlePsychicStand(level)
+            handleFinalJudgment(level)
+            handleSSStyle(level)
+        }
 
         val toRemove = mutableListOf<UUID>()
 
         activeFireballs.forEach { id ->
-            val entity = level.getEntity(id)
+            val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(id) }
 
             if (entity !is SmallFireball || !entity.isAlive) {
                 toRemove.add(id)
                 return@forEach
             }
 
+            val level = entity.level() as ServerLevel
             val velocity = entity.deltaMovement.length()
 
             // detecta colisão com entidade
@@ -223,10 +244,11 @@ object CommandTickHandler {
         toRemove.forEach { activeFireballs.remove(it) }
 
         CommandState.activeCommands.forEach { (pokemonId, action) ->
-            val pokemon = level.getEntity(pokemonId) as? Mob ?: return@forEach
+            val pokemon = server.allLevels.firstNotNullOfOrNull { it.getEntity(pokemonId) as? Mob } ?: return@forEach
+            val level = pokemon.level() as ServerLevel
             val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon ?: return@forEach
             val ownerUUID = cobblemonPokemon.getOwnerUUID() ?: return@forEach
-            val owner = level.server.playerList.getPlayer(ownerUUID) ?: return@forEach
+            val owner = server.playerList.getPlayer(ownerUUID) ?: return@forEach
 
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
@@ -606,6 +628,23 @@ object CommandTickHandler {
                         pokemon.navigation.moveTo(foodItem, 1.0)
                         if (pokemon.distanceTo(foodItem) < 2.0f && bite <= 0) {
                             val stack = foodItem.item
+                            val id = BuiltInRegistries.ITEM.getKey(stack.item)
+                            val p = pokemon.pokemon
+
+                            // Verifica se é uma Berry do Cobblemon (Namespace E nome)
+                            val isBerry = id.namespace == "cobblemon" && (id.path.contains("berry") || id.path.contains("berries"))
+
+                            // Failsafe: Se estiver cheio e NÃO for uma berry, não come
+                            if (p.currentFullness >= p.getMaxFullness() && !isBerry) {
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} is full, it will only eat berries for now! (${p.currentFullness}/${p.getMaxFullness()})",
+                                    ChatFormatting.RED
+                                )
+                                biteCooldown[pokemonId] = 100 // Evita spam
+                                return@forEach
+                            }
+
                             val foodComponent = stack.get(DataComponents.FOOD)
 
                             stack.item.eatingSound?.let { sound ->
@@ -618,12 +657,14 @@ object CommandTickHandler {
                                     1.0f
                                 )
                             }
+
                             if (foodComponent != null) {
                                 val tier = determineFoodTier(stack.item)
                                 applyFoodEffects(pokemon, foodComponent, tier, stack.item)
                             } else if (id.namespace == "cobblemon") {
                                 applyCobblemonBerryEffects(pokemon, stack)
                             }
+
                             stack.shrink(1)
                             if (stack.isEmpty) {
                                 foodItem.discard()
@@ -683,14 +724,12 @@ object CommandTickHandler {
                         }
                     }
 
-                    val cd = debuffCooldowns.getOrDefault(pokemonId, 0)
+                    val now = System.currentTimeMillis()
+                    val lastDebuffEnd = CobblebrainWorldSave.getPlayerCooldown(owner.uuid.toString(), "DebuffCD")
+                    val debuffDuration = 60000L
 
-                    if (cd > 0) {
-                        sendMessage(
-                            owner, "${pokemon.displayName?.string} is recharging DEBUFF.",
-                            ChatFormatting.RED
-                        )
-                        debuffCooldowns[pokemonId] = maxOf(0, cd - 1)
+                    // Permitir janela de 2 segundos para o resto da equipe
+                    if (now < lastDebuffEnd && (lastDebuffEnd - now) < (debuffDuration - 2000)) {
                         CommandState.activeCommands[pokemonId] = "idle"
                         return@forEach
                     }
@@ -751,7 +790,8 @@ object CommandTickHandler {
                         )
 
                         // aplica cooldown de 1 minuto
-                        debuffCooldowns[pokemonId] = 1200
+                        CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "DebuffCD", now + 60000)
+                        PokemonCommands.syncCooldowns(owner)
 
                         // volta para idle
                         exitAttackMode(pokemon)
@@ -759,9 +799,22 @@ object CommandTickHandler {
                     }
                 }
 
-
                 "buff" -> {
                     val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
+                    val pokemonId = pokemon.uuid
+
+                    val now = System.currentTimeMillis()
+                    val lastBuffEnd = CobblebrainWorldSave.getPlayerCooldown(owner.uuid.toString(), "BuffCD")
+                    val buffDuration = 150000L
+
+                    // Permitir janela de 2 segundos para o resto da equipe
+                    if (now < lastBuffEnd && (lastBuffEnd - now) < (buffDuration - 2000)) {
+                        if (announcedStates[pokemonId] == "buff") {
+                            sendMessage(owner, "${pokemon.displayName?.string} is recharging BUFF...", ChatFormatting.GOLD)
+                        }
+                        CommandState.activeCommands[pokemonId] = "idle"
+                        return@forEach
+                    }
 
                     val effectHolder: Holder<MobEffect> = when (primaryType.lowercase()) {
                         "grass" -> MobEffects.REGENERATION
@@ -788,6 +841,9 @@ object CommandTickHandler {
                     val effectName = BuiltInRegistries.MOB_EFFECT.getKey(effectHolder.value())?.path?.uppercase()
 
                     owner.addEffect(MobEffectInstance(effectHolder, 600, 1)) // 30 segundos
+                    CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "BuffCD", now + 150000) // 2:30 = 150s
+                    PokemonCommands.syncCooldowns(owner)
+                    
                     sendMessage(owner, "${pokemon.displayName?.string} gave you $effectName", ChatFormatting.GREEN)
                     CommandState.activeCommands[pokemonId] = "idle"
                 }
@@ -805,22 +861,12 @@ object CommandTickHandler {
 
                     when (primaryType.lowercase()) {
                         "steel" -> {
-                            val now = level.gameTime
-                            val lastRepair = repairCooldowns[pokemonId] // null if never repaired
+                            val now = System.currentTimeMillis()
+                            val lastRepairEnd = CobblebrainWorldSave.getPlayerCooldown(owner.uuid.toString(), "RepairCD")
+                            val repairDuration = 300000L
 
-                            val ownerId = pokemon.ownerUUID
-                            val owner: ServerPlayer? = level.server.playerList.getPlayer(ownerId!!)
-                            if (announcedStates[pokemonId] != "repair") {
-                                sendMessage(
-                                    owner,
-                                    "${pokemon.displayName?.string} is attempting to REPAIR tools.",
-                                    ChatFormatting.YELLOW
-                                )
-                                announcedStates[pokemonId] = "repair"
-                            }
-
-                            // cooldown of 5 minutes (6000 ticks)
-                            if (lastRepair != null && now - lastRepair < 6000) {
+                            // Janela de carência de 2s
+                            if (now < lastRepairEnd && (lastRepairEnd - now) < (repairDuration - 2000)) {
                                 if (CommandState.activeCommands[pokemonId] == "repair") {
                                     sendMessage(
                                         owner,
@@ -832,6 +878,15 @@ object CommandTickHandler {
                                 return@forEach
                             }
 
+                            if (announcedStates[pokemonId] != "repair") {
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} is attempting to REPAIR tools.",
+                                    ChatFormatting.YELLOW
+                                )
+                                announcedStates[pokemonId] = "repair"
+                            }
+
                             val range = 3.0
                             val items =
                                 level.getEntitiesOfClass(ItemEntity::class.java, pokemon.boundingBox.inflate(range))
@@ -840,7 +895,8 @@ object CommandTickHandler {
                             if (target != null) {
                                 val stack = target.item
                                 stack.damageValue = (stack.damageValue - 60).coerceAtLeast(0)
-                                repairCooldowns[pokemonId] = now // record repair time
+                                CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "RepairCD", now + 300000) // 5 min
+                                PokemonCommands.syncCooldowns(owner)
 
                                 pokemon.swing(InteractionHand.MAIN_HAND)
                                 level.playSound(
@@ -872,6 +928,19 @@ object CommandTickHandler {
 
                     when (primaryType.lowercase()) {
                         "ghost" -> {
+                            val now = System.currentTimeMillis()
+                            val lastShiftEnd = CobblebrainWorldSave.getPlayerCooldown(owner.uuid.toString(), "ShiftCD")
+                            val shiftDuration = 240000L
+
+                            // Janela de carência de 2s
+                            if (now < lastShiftEnd && (lastShiftEnd - now) < (shiftDuration - 2000)) { // 4:00 cooldown
+                                if (announcedStates[pokemonId] == "shift") {
+                                    sendMessage(owner, "${pokemon.displayName?.string} is recharging SHIFT...", ChatFormatting.GOLD)
+                                }
+                                CommandState.activeCommands[pokemonId] = "idle"
+                                return@forEach
+                            }
+
                             val invis = owner.hasEffect(MobEffects.INVISIBILITY)
                             val jump = owner.hasEffect(MobEffects.JUMP)
                             val slowFall = owner.hasEffect(MobEffects.SLOW_FALLING)
@@ -889,14 +958,18 @@ object CommandTickHandler {
                                 )
                             }
 
-                            // aplica/renova os efeitos
-                            owner.addEffect(MobEffectInstance(MobEffects.INVISIBILITY, 20 * 3, 0))
-                            owner.addEffect(MobEffectInstance(MobEffects.JUMP, 20 * 3, 2))
-                            owner.addEffect(MobEffectInstance(MobEffects.SLOW_FALLING, 20 * 3, 0))
-                            owner.addEffect(MobEffectInstance(MobEffects.WEAKNESS, 20 * 3, 2))
-                            owner.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, 20 * 3, 2))
+                            // aplica/renova os efeitos (1 MINUTO)
+                            val duration = 1200 
+                            owner.addEffect(MobEffectInstance(MobEffects.INVISIBILITY, duration, 0))
+                            owner.addEffect(MobEffectInstance(MobEffects.JUMP, duration, 2))
+                            owner.addEffect(MobEffectInstance(MobEffects.SLOW_FALLING, duration, 0))
+                            owner.addEffect(MobEffectInstance(MobEffects.WEAKNESS, duration, 2))
+                            owner.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, duration, 2))
 
                             pokemon.swing(InteractionHand.MAIN_HAND)
+                            CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "ShiftCD", now + 240000) // 4:00 = 240s
+                            PokemonCommands.syncCooldowns(owner)
+
                             if (announcedStates[pokemonId] != "shift") {
                                 sendMessage(
                                     owner,
@@ -905,7 +978,7 @@ object CommandTickHandler {
                                 )
                                 announcedStates[pokemonId] = "shift"
                             }
-
+                            CommandState.activeCommands[pokemonId] = "idle"
                         }
                     }
                 }
@@ -1352,6 +1425,10 @@ fun applyCobblemonBerryEffects(pokemon: PokemonEntity, stack: ItemStack) {
 
 
     }
+
+    // Berries e comidas do Cobblemon restauram a saciedade
+    val p = pokemon.pokemon
+    p.currentFullness = (p.currentFullness + 1).coerceAtMost(p.getMaxFullness())
 }
 
 fun applyFoodEffects(
@@ -1361,7 +1438,10 @@ fun applyFoodEffects(
     item: Item
 ): Boolean {
 
-    val baseValue = foodComponent.nutrition() + foodComponent.saturation()
+    // Failsafe: garante um valor base mínimo de 0.5 se a comida não tiver nutrição/saturação
+    val rawValue = foodComponent.nutrition().toFloat() + foodComponent.saturation()
+    val baseValue = rawValue.coerceAtLeast(0.5f)
+
     val bonus = hasTypeBonus(pokemon, item)
 
     // comidas vanilla
@@ -1371,6 +1451,11 @@ fun applyFoodEffects(
             var healAmount = baseValue * 0.8f
             if (bonus) healAmount *= 1.2f
             pokemon.heal(healAmount)
+
+            // Atribui saciedade proporcional
+            val p = pokemon.pokemon
+            val gain = (baseValue).toInt()
+            p.currentFullness = (p.currentFullness + gain).coerceAtMost(p.getMaxFullness())
         }
 
         FoodTier.UNCOMMON -> {
@@ -1380,6 +1465,11 @@ fun applyFoodEffects(
 
             increaseFriendship(pokemon, if (bonus) 4 else 2)
             givePokemonExp(pokemon, (baseValue * 0.7).toInt())
+
+            // Atribui saciedade proporcional (maior)
+            val p = pokemon.pokemon
+            val gain = (baseValue * 2).toInt()
+            p.currentFullness = (p.currentFullness + gain).coerceAtMost(p.getMaxFullness())
         }
 
         FoodTier.RARE -> {
@@ -1395,6 +1485,9 @@ fun applyFoodEffects(
                     1
                 )
             )
+
+            // Enche a saciedade completamente
+            pokemon.pokemon.currentFullness = pokemon.pokemon.getMaxFullness()
         }
     }
 

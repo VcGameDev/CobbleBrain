@@ -35,6 +35,11 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
     init {
         println("o mod cobblebrain carregou (NeoForge)")
         modEventBus.addListener(CobblebrainPayloadRegistrarNeoForge::register)
+
+        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d ->
+            CobblebrainNetworkingNeoForge.sendCooldowns(player, b, r, s, d)
+        }
+
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.addListener(::onClientSetup)
         }
@@ -66,6 +71,13 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
         // ===== NETWORKING HOOK =====
         DialogueSystem.sendToPlayer = { player, prompt ->
             CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
+        }
+
+        DialogueSystem.sendToPlayerSummary = { player, contextData ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
+                player,
+                vito.cobblebrain.network.CobblebrainPayloads.SummaryPromptPayload(contextData)
+            )
         }
 
         // ===== CONFIG =====
@@ -103,6 +115,9 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
 
         DialogueSystem.validateQuestGiversOnPlayerJoin(server, player)
         CobblebrainNetworkingNeoForge.sendConfig(player)
+
+        // Sync cooldowns for player
+        vito.cobblebrain.sensors.PokemonCommands.syncCooldowns(player)
 
         if (!CobblebrainWorldSave.hasReceivedGuide(player)) {
             giveCobblebrainGuide(player)

@@ -29,13 +29,25 @@ object CobblebrainNetworkingNeoForge {
             player,
             CobblebrainPayloads.PromptPayload(prompt)
         )
+    }
 
+    fun sendSummaryToPlayer(player: ServerPlayer, contextData: String) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.SummaryPromptPayload(contextData)
+        )
     }
 
     // CLIENT → SERVER
     fun sendToServer(response: String) {
         PacketDistributor.sendToServer(
             CobblebrainPayloads.AIResponsePayload(response)
+        )
+    }
+
+    fun sendActionToServer(action: String) {
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.ActionPayload(action)
         )
     }
 
@@ -52,6 +64,7 @@ object CobblebrainNetworkingNeoForge {
             cfg.outputQuests,
             cfg.outputPokemonLanguage,
             cfg.needsPokemonTranslator,
+            cfg.outputGuaranteedCatch,
             cfg.maxLongMemory,
             cfg.maxShortMemory
         )
@@ -59,6 +72,24 @@ object CobblebrainNetworkingNeoForge {
         PacketDistributor.sendToPlayer(player, payload)
 
         println("CONFIG SENT TO CLIENT")
+    }
+
+    fun sendQuests(player: ServerPlayer) {
+        val quests = vito.cobblebrain.social.CobblebrainWorldSave.getActiveQuests(player)
+        val array = com.google.gson.JsonArray()
+        quests.forEach { array.add(it) }
+
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.QuestSyncPayload(array.toString())
+        )
+    }
+
+    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+        )
     }
 
     fun onClientSetup(event: FMLClientSetupEvent) {

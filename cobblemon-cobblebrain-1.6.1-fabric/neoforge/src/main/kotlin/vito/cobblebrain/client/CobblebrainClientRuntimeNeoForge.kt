@@ -22,6 +22,10 @@ object CobblebrainClientRuntimeNeoForge {
             CobblebrainNetworkingNeoForge.sendToServer(response)
         }
 
+        CobblebrainClientCommon.callTeamAction = { action ->
+            CobblebrainNetworkingNeoForge.sendActionToServer(action)
+        }
+
         // registra tick
         NeoForge.EVENT_BUS.register(this)
     }

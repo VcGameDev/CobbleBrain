@@ -46,6 +46,20 @@ class ModelRotator(private val models: List<String>) {
     fun next() { index = (index + 1) % models.size }
 }
 
+object ConversationMemory {
+    private val memory = mutableListOf<String>()
+
+    fun save(text: String) {
+        memory.add(text)
+        val max = clientConfig.maxInteractionSaves
+        while (memory.size > max) {
+            memory.removeAt(0)
+        }
+    }
+
+    fun get(): List<String> = memory
+}
+
 class AIHandler {
     companion object {
         private val sessionLogFile: Path by lazy {
@@ -69,7 +83,9 @@ class AIHandler {
         private val TEMPERATURE get() = clientConfig.temperature
         private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
         private val REASONING get() = clientConfig.reasoningEffort.trim().lowercase()
-        private val DEBUG get() = clientConfig.debugLogging
+        private val DEBUG get(
+
+        ) = clientConfig.debugLogging
         private val TIMEOUT_SECONDS get() = clientConfig.requestTimeoutSeconds
         private val USER_LANGUAGE get() = clientConfig.selectedLanguage
         const val HEADER = """
@@ -137,6 +153,15 @@ class AIHandler {
         - If no action is needed, ALWAYS use idle.
         """
 
+        const val CATCH = """
+        GUARANTEED CATCH FORMAT
+        - Format: !CATCH: <PokemonName>
+        - Use this ONLY if a Wild Pokémon decide to let the player capture it without a fight.
+        - This guarantees the player's next Pokéball throw will succeed.
+        - Only use this after a very convincing, friendly, or helpful interaction.
+        - DO NOT use this in every conversation; it should be a rare and special reward.
+        """
+
         const val APRIL1 = """
         - April1 mode is active: extra actions allowed (follow ACTION FORMAT):
           fire type: fireball machine | nuke
@@ -147,28 +172,16 @@ class AIHandler {
         """
 
         const val QUEST = """
-        QUEST FORMAT
-        - Create a quest ONLY when receiving:
-          IMPORTANT: <PokemonName> has started an <QuestType> quest!
-        - Then generate dialogue where the wild Pokémon asks for help
-        
-        - While active, ALWAYS include ONE line starting with %:
-          %CONTINUE → ongoing or insufficient interaction to end
-          %POSITIVE_END → positive outcome
-          %NEGATIVE_END → negative outcome
-          %LEAVE_END → Pokémon leaves the mission
-        
-        - Delivery/Hunt:
-          End ONLY on QUEST_COMPLETED, then choose ending (except LEAVE_END)
-        - Advice:
-          You decide when it ends based on personality and if the problem was solved
-        
-        - After the marker, add a summary:
-          summary format: &<text>
-          - why the quest started
-          - key events
-          - Pokémon’s opinion on progress
-          - max 6 sentences
+        QUEST SYSTEM:
+        - Quests can be STORY (main narrative) or SECONDARY (wild/random).
+        - If a quest starts, generate natural dialogue where the Pokémon asks for help.
+        - if the actual quest is an ADVICE quest, ALWAYS end response with a score: +1 to +3 or -1 to -3. NEVER use 0.
+        Format for advice quests: #SCORE: <score>
+        - Points reflect how well the player's advice or interaction helped the Pokémon's problem.
+        - You only make dialogue and make points for ADVICE quests. The game will send [QUEST COMPLETED] or [QUEST FAILED] to let you know if the quest is completed or failed.
+        QUEST SUMMARY FORMAT:
+          At the end of the response add a summary starting with &:
+          &<short summary of current interaction and Pokémon's feelings>
         """
 
         const val RESUME = """
@@ -239,6 +252,7 @@ class AIHandler {
         april1: Boolean,
         canonDialogue: Boolean,
         needsTranslator: Boolean,
+        guaranteedCatch: Boolean,
         //worldContext: Boolean,
         //mobsContext: Boolean,
         //lastContext: Boolean,
@@ -256,6 +270,11 @@ class AIHandler {
         if (friendship) sections += FRIENDSHIP
         if (memories) sections += MEMORY
         if (actions) sections += ACTION
+        
+        if (guaranteedCatch && dialogue) {
+            sections += CATCH
+        }
+        
         if (april1) sections += APRIL1
         if (quests) sections += QUEST
 
@@ -279,6 +298,7 @@ class AIHandler {
             april1 = SyncedConfig.outputApril1,
             canonDialogue = SyncedConfig.outputPokemonLanguage,
             needsTranslator = SyncedConfig.needsPokemonTranslator,
+            guaranteedCatch = SyncedConfig.outputGuaranteedCatch,
             //worldContext = clientConfig.outputWorldContext,
             //mobsContext = clientConfig.outputMobsContext,
             //lastContext = clientConfig.outputLastContext,
@@ -535,19 +555,32 @@ class AIHandler {
     fun respostaNormal(prompt: String): String {
         println("respostaNormal activated")
 
+        // Injeta LAST INTERACTIONS no prompt vindo do servidor
+        val interactions = ConversationMemory.get()
+        val finalPrompt = if (interactions.isNotEmpty()) {
+            buildString {
+                appendLine("[LAST INTERACTIONS]")
+                interactions.forEach { appendLine("- $it") }
+                appendLine()
+                append(prompt)
+            }
+        } else {
+            prompt
+        }
+
         val responseText = try {
             when {
                 apiBase.contains("generativelanguage.googleapis.com") -> {
-                    callGoogleGemma(prompt)
+                    callGoogleGemma(finalPrompt)
                 }
 
                 isLocalApi(apiBase) -> {
                     println("Using local provider: ${clientConfig.localApiProvider}")
-                    callOpenAISchema(prompt)
+                    callOpenAISchema(finalPrompt)
                 }
 
                 else -> {
-                    callOpenAISchema(prompt)
+                    callOpenAISchema(finalPrompt)
                 }
             }
         } catch (e: Exception) {
@@ -575,15 +608,55 @@ class AIHandler {
         historico.add(Mensagem("assistant", responseText))
         limitarHistorico()
 
-        println("[COMMON] Sending response to server")
-
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
+
+        // Processa !RESUME para a memória local
+        formatted.split("|").forEach { line ->
+            if (line.trim().startsWith("!RESUME", ignoreCase = true)) {
+                val resumeText = line.substringAfter("!RESUME")
+                    .removePrefix(":")
+                    .trim()
+                if (resumeText.isNotBlank()) {
+                    ConversationMemory.save(resumeText)
+                }
+            }
+        }
 
         return formatted
     }
 
+    fun generateSessionSummary(contextData: String) {
+        val systemOverride = "You are an RPG narrator. Summarize the following events of this session in 2 or 3 short sentences. Focus on the player's interactions with Pokémon, quests, and main events. Do NOT output dialogue or formatting. Start your response EXACTLY with [SUMMARY_RESPONSE]."
+        val prompt = "Recent Events & Active Quests:\n$contextData"
+        
+        val responseText = try {
+            when {
+                apiBase.contains("generativelanguage.googleapis.com") -> {
+                    callGoogleGemma(prompt, systemOverride)
+                }
+                isLocalApi(apiBase) -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+                else -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+            }
+        } catch (e: Exception) {
+            "[SUMMARY_RESPONSE] Failed to generate summary due to API error: ${e.message}"
+        }
 
-    private fun callOpenAISchema(prompt: String): String {
+        val formatted = if (responseText.isBlank() || responseText.startsWith("Error")) {
+            "[SUMMARY_RESPONSE] Failed to generate summary: ${extractErrorMessage(responseText)}"
+        } else {
+            responseText.replace("\\n", "\n").replace("\n", " ").replace("\\", "")
+        }
+
+        // Envia de volta para o servidor processar
+        CobblebrainClientCommon.sendToServer?.invoke(formatted)
+    }
+
+
+    private fun callOpenAISchema(prompt: String, systemOverride: String? = null): String {
         log("===== OPENAI REQUEST =====")
         log("Local Provider: ${clientConfig.localApiProvider}")
         log("ApiBaseUrl: ${clientConfig.apiBaseUrl}")
@@ -592,7 +665,8 @@ class AIHandler {
         log("\n--- PROMPT ---")
         log(prompt)
 
-        val jsonBody = buildOpenAIJson(prompt)
+        // Nota: buildOpenAIJson já usa o prompt final com as interações injetadas
+        val jsonBody = buildOpenAIJson(prompt, systemOverride)
 
         log("\n--- REQUEST JSON ---")
         log(jsonBody.lines().joinToString("\n") { "│ $it" })
@@ -685,8 +759,13 @@ class AIHandler {
     //isOpenRouter(apiBase) || isLMStudio(apiBase)
 
 
-    private fun buildOpenAIJson(prompt: String): String {
-        val tempHistory = historico + Mensagem("user", prompt)
+    private fun buildOpenAIJson(prompt: String, systemOverride: String? = null): String {
+        // Se tem override (é um resumo), não envia o histórico de conversas para economizar tokens e evitar confusão.
+        val tempHistory = if (systemOverride != null) {
+            listOf(Mensagem("user", prompt))
+        } else {
+            historico + Mensagem("user", prompt)
+        }
 
         val messages = tempHistory.joinToString(",") {
             """{ "role": "${it.role}", "content": "${escape(it.text)}" }"""
@@ -728,6 +807,8 @@ class AIHandler {
             clientConfig.outputFormat
         }
 
+        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
+
         return if (
             clientConfig.localApiProvider.equals("player2", ignoreCase = true) &&
             isLocalAddress(clientConfig.apiBaseUrl)
@@ -735,7 +816,7 @@ class AIHandler {
             """
         {
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + outputFormatToUse)}" },
+            { "role": "system", "content": "${escape(systemContent)}" },
             $messages
           ]$extraJson
         }
@@ -745,7 +826,7 @@ class AIHandler {
         {
           "model": "${modelRotator.current()}",
           "messages": [
-            { "role": "system", "content": "${escape(INSTRUCTS + outputFormatToUse)}" },
+            { "role": "system", "content": "${escape(systemContent)}" },
             $messages
           ]$extraJson
         }
@@ -787,7 +868,7 @@ class AIHandler {
     }
 
     // ================= GOOGLE GEMMA / GEMINI =================
-    private fun callGoogleGemma(prompt: String): String {
+    private fun callGoogleGemma(prompt: String, systemOverride: String? = null): String {
 
         val currentModel = modelRotator.current()
         val currentKey = apiKeyRotator.current()
@@ -812,21 +893,33 @@ class AIHandler {
             clientConfig.outputFormat
         }
 
-        val requestBody = mapOf(
-            "contents" to listOf(
-                mapOf(
-                    "role" to "user",
-                    "parts" to listOf(
-                        mapOf("text" to escape(INSTRUCTS + outputFormatToUse))
-                    )
-                ),
-                mapOf(
-                    "role" to "user",
-                    "parts" to listOf(
-                        mapOf("text" to escape(prompt))
-                    )
+        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
+
+        val contents = if (systemOverride != null) {
+            listOf(
+                mapOf("role" to "user", "parts" to listOf(mapOf("text" to escape(systemContent)))),
+                mapOf("role" to "user", "parts" to listOf(mapOf("text" to escape(prompt))))
+            )
+        } else {
+            // Google Gemma normally receives system rules as user messages first
+            val tempHistory = historico + Mensagem("user", prompt)
+            val mappedHistory = mutableListOf<Map<String, Any>>()
+            
+            mappedHistory.add(
+                mapOf("role" to "user", "parts" to listOf(mapOf("text" to escape(systemContent))))
+            )
+            
+            tempHistory.forEach { m ->
+                val role = if (m.role == "assistant") "model" else "user"
+                mappedHistory.add(
+                    mapOf("role" to role, "parts" to listOf(mapOf("text" to escape(m.text))))
                 )
-            ),
+            }
+            mappedHistory
+        }
+
+        val requestBody = mapOf(
+            "contents" to contents,
             "generationConfig" to mapOf(
                 "temperature" to TEMPERATURE
             )
