@@ -72,7 +72,23 @@ fun parseCommand(line: String): PokemonCommand? {
     if (parts.size < 2) return null
 
     val pokemonName = parts[0].trim()
-    val action = parts[1].trim().lowercase()
+    var action = parts[1].trim().lowercase()
+    
+    action = when (action) {
+        "a" -> "attack"
+        "e" -> "eat"
+        "b" -> "buff"
+        "d" -> "debuff enemy"
+        "s" -> "sit"
+        "p" -> "protect"
+        "i" -> "idle"
+        "c" -> "cook"
+        "r" -> "repair"
+        "g" -> "grow"
+        "h" -> "shift"
+        else -> action
+    }
+    
     println("$pokemonName action detected: $action")
 
     return PokemonCommand(pokemonName, action)

@@ -36,5 +36,13 @@ object CobblebrainServerHandlerFabric {
                 vito.cobblebrain.social.DialogueSystem.triggerSessionSummary(player)
             }
         }
+
+        // Recebimento de Nickname Preferido do jogador
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PlayerNicknamePayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                vito.cobblebrain.social.PlayerNicknameManager.set(player.uuid, payload.preferredName)
+            }
+        }
     }
 }

@@ -5,6 +5,7 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
 import net.neoforged.neoforge.common.NeoForge
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent
 import net.minecraft.client.Minecraft
 import net.minecraft.client.KeyMapping
 import net.minecraft.world.effect.MobEffects
@@ -96,6 +97,12 @@ object CobbleBrainModClientNeoForge {
         while (CMD_TOGGLE.consumeClick()) {
             HudSystem.toggleVisibility()
         }
+    }
+
+    @SubscribeEvent
+    fun onClientLogin(event: ClientPlayerNetworkEvent.LoggingIn) {
+        val name = ClientConfigHandler.clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
+        CobblebrainClientCommon.sendNicknameToServer?.invoke(name)
     }
 
     // HUD

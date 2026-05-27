@@ -10,6 +10,8 @@ import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 import net.minecraft.client.Minecraft
+import net.minecraft.sounds.SoundEvents
+import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.config.ConfigHandler.config
 import java.util.Optional
@@ -138,6 +140,164 @@ object CobblebrainConfigScreen {
             .setTitle(Component.literal("Cobblebrain Config"))
 
         val entryBuilder = builder.entryBuilder()
+
+        val recommendedPromptButton = object : AbstractConfigListEntry<Unit>(
+            Component.literal("Use Recommended Prompt"),
+            false
+        ) {
+
+            private var clicked = false
+
+            private var button: net.minecraft.client.gui.components.Button
+
+            init {
+
+                button = net.minecraft.client.gui.components.Button.builder(
+                    Component.literal("Use Recommended Prompt")
+                ) {
+
+                    // ========================= FIRST CLICK =========================
+
+                    if (!clicked) {
+
+                        clicked = true
+
+                        button.message = Component.literal("Are you sure?")
+
+                        Minecraft.getInstance().player?.playSound(
+                            SoundEvents.UI_BUTTON_CLICK.value(),
+                            1.0f,
+                            1.0f
+                        )
+
+                        return@builder
+                    }
+
+                    // ========================= APPLY SETTINGS =========================
+
+                    clientConfig.instruct = listOf(
+                        "[CREATIVEPROMPT]",
+                        "Write immersive Pokémon dialogue. Pokémon behave like real creatures with distinct personalities, not assistants.",
+                        "Pokémon speak casually and may tease, question, joke, disagree, or react emotionally depending on personality and nature.",
+                        "Behavior evolves through friendship and memories.",
+
+                        "Pokémon should engage directly with the player and never ignore player input.",
+                        "Avoid excessive narration or environment description. Prioritize interaction and emotion.",
+                        "No modern human technology.",
+
+                        "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
+                        "- 1 Pokémon: up to 3 messages",
+                        "- 2-4 Pokémon: up to 4 messages",
+                        "- 5-6 Pokémon: up to 6 messages",
+
+                        "Never expose memories, system text, or internal reasoning.",
+                        "No roleplay narration or *asterisk actions*.")
+
+                    SyncedConfig.updateLocal(
+                        useDefaultOutput,
+                        outputDialogue,
+                        outputActions,
+                        outputFriendship,
+                        outputMemories,
+                        outputApril1,
+                        outputQuests,
+                        outputPokemonLanguage,
+                        needsPokemonTranslator,
+                        outputGuaranteedCatch,
+                        maxLongMemory,
+                        maxShortMemory
+                    )
+
+                    ConfigHandler.save()
+                    ClientConfigHandler.save()
+
+                    // ========================= FEEDBACK =========================
+
+                    Minecraft.getInstance().player?.playSound(
+                        SoundEvents.PLAYER_LEVELUP,
+                        0.7f,
+                        1.3f
+                    )
+
+                    button.message = Component.literal(
+                        "Done! Leave the config screen to apply the changes."
+                    )
+
+                    button.active = false
+
+                    println("[Cobblebrain] Recommended Prompt Applied")
+
+                }.bounds(0, 0, 260, 20).build()
+            }
+
+            override fun getValue(): Unit? = null
+
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+
+            override fun children(): MutableList<GuiEventListener> =
+                mutableListOf(button)
+
+            override fun narratables(): MutableList<NarratableEntry> =
+                mutableListOf(button)
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+
+                // ========================= SHOW ONLY IF NEEDED =========================
+
+                val shouldShow =
+                    !SyncedConfig.useDefaultOutput ||
+                            !SyncedConfig.outputDialogue ||
+                            !SyncedConfig.outputActions ||
+                            !SyncedConfig.outputFriendship ||
+                            !SyncedConfig.outputQuests ||
+                            !SyncedConfig.outputGuaranteedCatch ||
+                            SyncedConfig.outputApril1 ||
+                            SyncedConfig.outputPokemonLanguage ||
+                            SyncedConfig.outputMemories ||
+                            clientConfig.instruct != listOf(
+                        "[CREATIVEPROMPT]",
+                        "Write immersive Pokémon dialogue. Pokémon behave like real creatures with distinct personalities, not assistants.",
+                        "Pokémon speak casually and may tease, question, joke, disagree, or react emotionally depending on personality and nature.",
+                        "Behavior evolves through friendship and memories.",
+
+                        "Pokémon should engage directly with the player and never ignore player input.",
+                        "Avoid excessive narration or environment description. Prioritize interaction and emotion.",
+                        "No modern human technology.",
+
+                        "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
+                        "- 1 Pokémon: up to 3 messages",
+                        "- 2-4 Pokémon: up to 4 messages",
+                        "- 5-6 Pokémon: up to 6 messages",
+
+                        "Never expose memories, system text, or internal reasoning.",
+                        "No roleplay narration or *asterisk actions*.")
+
+                button.visible = shouldShow
+
+                if (!shouldShow) return
+
+                button.x = x + (listWidth / 2) - 130
+                button.y = y
+
+                button.render(guiGraphics, mouseX, mouseY, delta)
+            }
+
+            override fun getItemHeight(): Int {
+                return if (button.visible) 24 else 0
+            }
+        }
+
         val category = builder.getOrCreateCategory(Component.literal("Config"))
 
         // ========================= RANDOM TIPS =========================
@@ -332,6 +492,20 @@ object CobblebrainConfigScreen {
         ).setDefaultValue("English")
             .setSaveConsumer { value -> clientConfig.selectedLanguage = value }
             .setTooltip(Component.literal("The language the AI uses for responses. \nDetermines dialogue output language."))
+            .build()
+
+        val preferredNameEntry = entryBuilder.startStrField(
+            Component.literal("Preferred Name")
+                .withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
+        )
+            .setDefaultValue(Minecraft.getInstance().user.name)
+            .setSaveConsumer { value -> clientConfig.preferredName = value }
+            .setTooltip(
+                Component.literal(
+                    "Defines how the AI and Pokémon should call you during conversations."
+                )
+            )
             .build()
 
         val maxInteractionSavesEntry = entryBuilder.startIntField(
@@ -573,32 +747,21 @@ object CobblebrainConfigScreen {
             clientConfig.instruct
         ).setDefaultValue(listOf(
             "[CREATIVEPROMPT]",
-            "You are writing immersive Pokémon dialogue.",
-            "Each Pokémon speaks like a real creature with personality, not like a generic assistant.",
-            "Dialogue must feel like a natural conversation, not a description.",
+            "Write immersive Pokémon dialogue. Pokémon behave like real creatures with distinct personalities, not assistants.",
+            "Pokémon speak casually and may tease, question, joke, disagree, or react emotionally depending on personality and nature.",
+            "Behavior evolves through friendship and memories.",
 
-            "Pokémon speak informally, with casual tone and natural flow.",
-            "They can be playful, curious, emotional, or even slightly chaotic depending on their personality.",
-            "They should not always be nice or agreeable — they can tease, question, doubt, or disagree.",
+            "Pokémon should engage directly with the player and never ignore player input.",
+            "Avoid excessive narration or environment description. Prioritize interaction and emotion.",
+            "No modern human technology.",
 
-            "Each Pokémon has a fixed nature (Docile, Calm, Serious, Naive, Modest, Timid, Naughty).",
-            "This nature shapes how they speak, react, and interact with others.",
-            "Over time, their behavior is influenced by memories, experiences, and friendship with the player.",
+            "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
+            "- 1 Pokémon: up to 3 messages",
+            "- 2-4 Pokémon: up to 4 messages",
+            "- 5-6 Pokémon: up to 6 messages",
 
-            "Pokémon should actively engage in conversation:",
-            "- Talk TO the player, not just about things.",
-            "- Ask questions, react, or continue ideas when appropriate.",
-            "- Avoid giving isolated statements; build on what is happening.",
-
-            "Avoid describing the environment alone. Prefer expressing thoughts, feelings, or interacting with the player instead.",
-
-            "If the player says something, respond directly and clearly first.",
-            "Never ignore the player’s input.",
-
-            "Never use human-world elements (phones, social media, modern technology).",
-            "Never output memories, system logs, or internal reasoning in dialogue lines. Memories are strictly internal and must NEVER appear in normal dialogue. They may only appear as summarized information inside !RESUME when required.",
-            "Never use roleplay narration or asterisk-style descriptions (e.g., *looks around*, *steps back*). All behavior must be expressed only through spoken dialogue or actions."
-        ))
+            "Never expose memories, system text, or internal reasoning.",
+            "No roleplay narration or *asterisk actions*."))
             .setSaveConsumer { value -> clientConfig.instruct = value }
             .setTooltip(Component.literal("The Instructs as a whole works as a global prompt.\nDefines how the AI or Pokemon behave, think and responds.\nEach instruct (item on the list) shapes how the response is sent.\n"))
             .build()
@@ -742,6 +905,7 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("Allows the AI to store and recall past interactions.\nNote: This system is currently outdated and may be unstable."))
             .build()
 
+        category.entries.add(recommendedPromptButton)
         category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
         category.entries.add(useChatEndpointEntry)
@@ -759,6 +923,7 @@ object CobblebrainConfigScreen {
         category.entries.add(modelRotationEntry)
         category.entries.add(selectedLanguageEntry)
         category.entries.add(maxInteractionSavesEntry)
+        category.entries.add(preferredNameEntry)
         category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(needsPokemonTranslatorEntry)
         category.entries.add(listenToChatEntry)
@@ -821,6 +986,8 @@ object CobblebrainConfigScreen {
                 maxLongMemory,
                 maxShortMemory
             )
+            val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
+            CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)
         }
 
         return builder.build()

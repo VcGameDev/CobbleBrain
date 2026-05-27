@@ -93,73 +93,65 @@ class AIHandler {
         Follow all rules strictly.
         """
 
-        const val DIALOGUE = """
+        val DIALOGUE get() = """
         DIALOGUE FORMAT
-        - Format: <PokemonName>: <message>
-        - Separate lines with | and repeat name every line
-        - 1–2 sentences max per line (unless explicitly overridden by [CREATIVEPROMPT] instructions)
-        - If 1 Pokémon active → max 4 lines total.
-        - If 2–5 Pokémon active → max 5 lines total.
-        - If 6 Pokémon active → max 6 lines total.
-        - Include wild Pokémon in dialogue if they are speaking.
+        - Pokémon and player fully understand each other
+        - Pokémon can speak normally and express complex thoughts
+        - format=name: text
+        - separator=|
+        - short dialogue only
+        - wild pokemon allowed
+        - response language=$USER_LANGUAGE
         """
 
         const val CANON_DIALOGUE = """
-        CANON DIALOGUE FORMAT
-        - Format: <PokemonName>: <natural vocal sound> (<emotion or intent>)
-        - Use creature-like sounds (e.g., "grrraah", "skreee", "rawrr"), NOT name repetition
-        - Sounds should reflect how the Pokémon would realistically vocalize
-        - Do NOT translate into human language
-        - Emotion or intent must be conveyed in a short parenthesis
-        - Separate lines with | and repeat name every line
-        - 1–2 short expressions per line (unless explicitly overridden by [CREATIVEPROMPT] instructions)
-        - If 1-2 Pokémon active → max 3 lines total.
-        - If 3–6 Pokémon active → max 4 lines total.
-        - Include wild Pokémon if they are speaking
+        DIALOGUE FORMAT
+        - the player cannot understand Pokémon language
+        - communication is limited to vocalizations and emotion
+        - format=name: sound(emotion/intent)
+        - ALWAYS include (emotion/intent) after vocalizations
+        - separator=|
+        - short creature sounds only
+        - wild pokemon allowed
+        - NEVER translate or explain sounds
         """
 
         const val FRIENDSHIP = """
         FRIENDSHIP FORMAT
-        - Each friendship line MUST follow this format:
-          Friendship <PokemonName>: <current_value> + <change>
-          Friendship <PokemonName>: <current_value> - <change>
-        - If AFFECT_FRIENDSHIP_PLUS = true → increase friendship (min +1, max +5).
-        - If AFFECT_FRIENDSHIP_MINUS = true → decrease friendship (min -1, max -5).
-        - If both true → decide based on positive or negative impact.
-        - A Pokémon's friendship doesn't change more than once in the same dialogue
-        - Wild Pokémon never change friendship
+        - %name:+/-1~5
+        - only delta value
+        - one change per pokemon
+        - wild pokemon never change
+        - respect PLUS/MINUS settings
         """
 
         const val MEMORY = """
         MEMORY FORMAT
-        - Format:
-          @<PokemonName>: <short memory>
-          @@<PokemonName>: <core memory>
-        - Use @ for short memory, @@ for core memory.
-        - Create memories in a Third-person narration from each Pokémon’s perspective of the situation.
-        - Short memories = fleeting perceptions; Core memories = impactful events.
-        - Generate only when meaningful, not every response.
-        - Do not include in dialogue
-        - Memories function as optional context, use only if it improves response
-        """
+        - @name:short memory
+        - @@name:core memory
+        - third-person pokemon perspective
+        - @=fleeting perception
+        - @@=important event
+        - generate only when meaningful
+"""
 
         const val ACTION = """
         ACTION FORMAT
-        - Format: #<PokemonName>: <action>
+        - Format: #<PokemonName>:<action_code>
+        - Action codes:
+          A (attack), E (eat), B (buff), D (debuff enemy), S (sit), P (protect), I (idle)
+          fire type: C (cook) | steel type: R (repair) | grass type: G (grow) | ghost type: H (shift)
+        - If no action is needed, ALWAYS use I.
         - Use one action per Pokémon at the end
-        - Allowed actions:
-          attack, eat, buff, debuff enemy, sit, protect, idle
-          fire type: cook | steel type: repair | grass type: grow | ghost type: shift
-        - If no action is needed, ALWAYS use idle.
         """
 
         const val CATCH = """
         GUARANTEED CATCH FORMAT
-        - Format: !CATCH: <PokemonName>
-        - Use this ONLY if a Wild Pokémon decide to let the player capture it without a fight.
-        - This guarantees the player's next Pokéball throw will succeed.
-        - Only use this after a very convincing, friendly, or helpful interaction.
-        - DO NOT use this in every conversation; it should be a rare and special reward.
+        - format=!name
+        - guarantees next catch
+        - wild pokemon only
+        - requires strong positive interaction
+        - rare
         """
 
         const val APRIL1 = """
@@ -172,41 +164,39 @@ class AIHandler {
         """
 
         const val QUEST = """
-        QUEST SYSTEM:
-        - Quests can be STORY (main narrative) or SECONDARY (wild/random).
-        - If a quest starts, generate natural dialogue where the Pokémon asks for help.
-        - if the actual quest is an ADVICE quest, ALWAYS end response with a score: +1 to +3 or -1 to -3. NEVER use 0.
-        Format for advice quests: #SCORE: <score>
-        - Points reflect how well the player's advice or interaction helped the Pokémon's problem.
-        - You only make dialogue and make points for ADVICE quests. The game will send [QUEST COMPLETED] or [QUEST FAILED] to let you know if the quest is completed or failed.
-        QUEST SUMMARY FORMAT:
-          At the end of the response add a summary starting with &:
-          &<short summary of current interaction and Pokémon's feelings>
+        QUEST SYSTEM
+        - types=STORY/SECONDARY/ADVICE
+        - quests start via natural pokemon dialogue
+        - ADVICE quests:
+          #SCORE:-3~3
+        - score reflects player help quality
+        - wait for [QUEST COMPLETED]/[QUEST FAILED]
+        - &=short quest summary EN
         """
 
         const val RESUME = """
         RESUME FORMAT
-        - At the end of the response, generate a short summary of the conversation.
-        - Use the format: !RESUME: <summary text>
-        - Describe what happened and the key emotions.
-        - If needed, suggest a natural evolution of the topic without forcing it.
-        - Maximum 6 sentences.
+        - =summary
+        - short recap + emotions
+        - natural continuation if needed
+        - max 6 sentences
+        - EN only
         """
 
         val GENERAL get() = """
         GENERAL RULES
-        1. Follow all formats exactly; no alternative separators.
-        2. Dialogue must respect sentence and line limits.
-        3. Use only Pokémon and the human player; no new characters.
-        4. Do not mix nickname and species; stay consistent.
-        5. Pokémon should not talk to themselves or express thoughts unless specified.
-        6. Follow the exact section order defined by the instruction blocks.
-        7. Integrate [CREATIVEPROMPT] without breaking format.
-        8. Use [LAST INTERACTIONS] for continuity; avoid repetition and evolve naturally.
-        9. Dialogue should respond to the current situation, using past memories only when relevant.
-        10. Pokémon should engage the player (feelings, continuation, occasional questions).
-        11. Environment influences behavior subtly; avoid constant description.    
-        12. Send the entire response in $USER_LANGUAGE
+        - strict format only
+        - keep section order
+        - pokemon + player only
+        - ONLY Pokémon in [ACTIVE POKEMON] or [NEARBY POKEMON] can speak
+        - unavailable Pokémon NEVER speak
+        - if [ACTIVE POKEMON] is empty, only nearby Pokémon may respond
+        - if no Pokémon can respond, output only: "no Pokémon heard what you said" in $USER_LANGUAGE
+        - consistent names
+        - no self-talk unless specified
+        - follow [CREATIVEPROMPT]
+        - use [LAST INTERACTIONS] naturally
+        - subtle environment usage
 """
     }
 
@@ -612,9 +602,16 @@ class AIHandler {
 
         // Processa !RESUME para a memória local
         formatted.split("|").forEach { line ->
-            if (line.trim().startsWith("!RESUME", ignoreCase = true)) {
-                val resumeText = line.substringAfter("!RESUME")
+            val trimmed = line.trim()
+            if (trimmed.startsWith("!RESUME", ignoreCase = true)) {
+                val resumeText = trimmed.substringAfter("!RESUME")
                     .removePrefix(":")
+                    .trim()
+                if (resumeText.isNotBlank()) {
+                    ConversationMemory.save(resumeText)
+                }
+            } else if (trimmed.startsWith("=")) {
+                val resumeText = trimmed.removePrefix("=")
                     .trim()
                 if (resumeText.isNotBlank()) {
                     ConversationMemory.save(resumeText)

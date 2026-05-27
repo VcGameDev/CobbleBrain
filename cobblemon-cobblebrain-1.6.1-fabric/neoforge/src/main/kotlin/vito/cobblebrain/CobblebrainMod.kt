@@ -1,6 +1,5 @@
 package vito.cobblebrain
 
-import vito.cobblebrain.social.DebugPartyCommand
 import net.minecraft.server.level.ServerPlayer
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.IEventBus
@@ -94,7 +93,6 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
     fun onRegisterCommands(event: RegisterCommandsEvent) {
         val dispatcher = event.dispatcher
 
-        DebugPartyCommand.register(dispatcher)
         PokemonTalkCommand.register(dispatcher)
         ConfigCommands.register(dispatcher)
     }

@@ -5,7 +5,6 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
-import vito.cobblebrain.social.DebugPartyCommand
 import java.io.File
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.social.CobblebrainWorldSave
@@ -101,12 +100,16 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.RequestSummaryPayload.CODEC
         )
 
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.PlayerNicknamePayload.TYPE,
+            CobblebrainPayloads.PlayerNicknamePayload.CODEC
+        )
+
         // registra handlers de networking
         vito.cobblebrain.server.CobblebrainServerHandlerFabric.register()
 
         // Aqui registramos o comando
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
-            DebugPartyCommand.register(dispatcher)
             PokemonTalkCommand.register(dispatcher)
             ConfigCommands.register(dispatcher)
         }

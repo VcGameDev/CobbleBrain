@@ -11,6 +11,7 @@ object CobblebrainClientCommon {
     // Fabric/NeoForge vão injetar isso
     var sendToServer: ((String) -> Unit)? = null
     var callTeamAction: ((String) -> Unit)? = null
+    var sendNicknameToServer: ((String) -> Unit)? = null
 
     // HUD Quests
     var currentQuestsJson: String = "[]"

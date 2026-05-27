@@ -4,6 +4,7 @@ data class CobblebrainConfig(
     // ================= RELATIONSHIP SETTINGS =================
     var decreaseFriendship: Boolean = false,
     var increaseFriendship: Boolean = true,
+    var maxFriendship: Int = 255,
     var showFriendship: Boolean = true,
 
     // ================= DIALOGUE & UI SETTINGS =================

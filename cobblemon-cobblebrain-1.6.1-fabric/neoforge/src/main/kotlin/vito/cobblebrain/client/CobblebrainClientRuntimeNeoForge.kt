@@ -4,6 +4,7 @@ import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.common.NeoForge
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
+import vito.cobblebrain.network.CobblebrainPayloads
 import vito.cobblebrain.social.DialogueSystem
 
 object CobblebrainClientRuntimeNeoForge {
@@ -24,6 +25,14 @@ object CobblebrainClientRuntimeNeoForge {
 
         CobblebrainClientCommon.callTeamAction = { action ->
             CobblebrainNetworkingNeoForge.sendActionToServer(action)
+        }
+
+        CobblebrainClientCommon.sendNicknameToServer = { nickname ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                    CobblebrainPayloads.PlayerNicknamePayload(nickname)
+                )
+            }
         }
 
         // registra tick

@@ -8,7 +8,6 @@ import com.mojang.brigadier.CommandDispatcher
 import net.minecraft.commands.Commands
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.google.gson.Gson
-import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
@@ -19,6 +18,13 @@ import vito.cobblebrain.config.ConfigHandler
 import java.io.File
 
 object PokemonQuery {
+
+    fun getAllPokemon(player: ServerPlayer): List<Pokemon> {
+        val storage = Cobblemon.storage
+            .getParty(player)
+
+        return storage.toList()
+    }
 
     // Retorna apenas os Pokémon vivos e invocados no mundo (fora da Pokébola)
     fun findActivePokemon(player: ServerPlayer): List<Pokemon> {
@@ -74,7 +80,7 @@ object PokemonTalkCommand {
                             // Chamada unificada: cuida da trava de missão, contexto narrativo e envio para IA
                             val success = DialogueSystem.onPlayerChat(
                                 player, 
-                                "The player (owner of the pokemon team) said to the pokemons: $conteudo"
+                                "${player.name.string} said: $conteudo"
                             )
 
                             // Mostra o que você escreveu apenas se a mensagem passou pela trava
@@ -85,22 +91,6 @@ object PokemonTalkCommand {
                             1
                         }
                 )
-        )
-    }
-}
-
-
-object DebugPartyCommand {
-    fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
-        dispatcher.register(
-            Commands.literal("debugparty")
-                .executes { ctx ->
-                    val player: ServerPlayer = ctx.source.playerOrException
-
-                    // Chama nossa função de debug passando o jogador
-                    debugParty(player)
-                    1
-                }
         )
     }
 }
@@ -117,20 +107,108 @@ object ConfigCommands {
                 .then(
                     Commands.literal("guide")
 
-                        // /cobblebrain karma
                         .executes { ctx ->
                             val player = ctx.source.playerOrException
 
                             val hasSpace = player.inventory.freeSlot != -1
 
                             if (hasSpace) {
+
                                 giveCobblebrainGuide(player)
+
+                                val color = ChatFormatting.AQUA
+
+                                player.sendSystemMessage(
+                                    Component.literal("=== Cobblebrain Commands ===")
+                                        .withStyle(color, ChatFormatting.BOLD)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/mpk <message> - Talk to nearby or active Pokémon.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain openConfig - Opens the Cobblebrain config screen.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain karma - Shows your karma with all Pokémon species.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain karma <species> - Shows karma with a specific Pokémon species.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain summary - Shows the previous session summary.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain saveContext - Saves the current session summary for the next login.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain quitQuest - Abandons the current active quest.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain stopQuestFollower - Stops Pokémon currently following you for quests.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain feedback <message> - Sends temporary AI correction feedback.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain instructFeedback <message> - Sends AI feedback and adds it to instruct.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain AddInstruct <message> - adds custom instructions to the AI.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
 
                                 ctx.source.sendSuccess(
                                     { Component.literal("Cobblebrain guide added to your inventory!") },
                                     false
                                 )
+
                             } else {
+
                                 ctx.source.sendFailure(
                                     Component.literal("Not enough inventory space!")
                                 )
@@ -295,38 +373,6 @@ object ConfigCommands {
                         )
                 )
                 .then(
-                    Commands.literal("SetOutputFormat")
-                        .then(
-                            Commands.argument("value", StringArgumentType.string())
-                                .executes { ctx ->
-                                    val value = StringArgumentType.getString(ctx, "value")
-                                    ClientConfigHandler.clientConfig.outputFormat = value
-                                    ConfigHandler.save()
-                                    ctx.source.sendSuccess(
-                                        { Component.literal("outputFormat set to $value") },
-                                        true
-                                    )
-                                    1
-                                }
-                        )
-                )
-                .then(
-                    Commands.literal("SetListenToChat")
-                        .then(
-                            Commands.argument("value", BoolArgumentType.bool())
-                                .executes { ctx ->
-                                    val value = BoolArgumentType.getBool(ctx, "value")
-                                    ConfigHandler.config.listenToChat = value
-                                    ConfigHandler.save()
-                                    ctx.source.sendSuccess(
-                                        { Component.literal("listenToChat set to $value") },
-                                        true
-                                    )
-                                    1
-                                }
-                        )
-                )
-                .then(
                     Commands.literal("summary")
                         .executes { ctx ->
                             val player = ctx.source.playerOrException
@@ -344,7 +390,7 @@ object ConfigCommands {
                                 player.sendSystemMessage(Component.literal("\n"))
                             } else {
                                 player.sendSystemMessage(
-                                    Component.literal("No session summary found.")
+                                    Component.literal("No session summary found. use /cobblebrain saveContext to generate one for the next time you enter the world!")
                                         .withStyle(ChatFormatting.RED)
                                 )
                             }
@@ -359,32 +405,76 @@ object ConfigCommands {
                             1
                         }
                 )
+
+                .then(
+                    Commands.literal("feedback")
+                        .then(
+                            Commands.argument("message", StringArgumentType.greedyString())
+                                .executes { ctx ->
+
+                                    val player = ctx.source.playerOrException
+
+                                    val feedback =
+                                        StringArgumentType.getString(
+                                            ctx,
+                                            "message"
+                                        )
+
+                                    DialogueSystem.addFeedback(
+                                        player,
+                                        feedback
+                                    )
+
+                                    player.sendSystemMessage(
+                                        Component.literal(
+                                            "AI feedback added for the next message."
+                                        ).withStyle(ChatFormatting.GREEN)
+                                    )
+
+                                    1
+                                }
+                        )
+                )
+
+                .then(
+                    Commands.literal("instructFeedback")
+                        .then(
+                            Commands.argument(
+                                "message",
+                                StringArgumentType.greedyString()
+                            )
+                                .executes { ctx ->
+
+                                    val player =
+                                        ctx.source.playerOrException
+
+                                    val feedback =
+                                        StringArgumentType.getString(
+                                            ctx,
+                                            "message"
+                                        )
+
+                                    // Feedback temporário
+                                    DialogueSystem.addFeedback(
+                                        player,
+                                        feedback
+                                    )
+
+                                    // Feedback + addInstruct
+                                    ClientConfigHandler.clientConfig.instruct += feedback
+
+                                    ConfigHandler.save()
+
+                                    player.sendSystemMessage(
+                                        Component.literal(
+                                            "Feedback sent to AI and added to instruct."
+                                        ).withStyle(ChatFormatting.GREEN)
+                                    )
+
+                                    1
+                                }
+                        )
+                )
         )
-    }
-}
-
-        // codigo de debug
-private fun debugParty(player: ServerPlayer) {
-    val party = Cobblemon.storage.getParty(player)
-
-    println("[DEBUG] PartyStore class: ${party.javaClass.name}")
-
-    // Itera pelos 6 slots da equipe
-    for (i in 0..5) {
-        val p = party.get(i) // pode ser null se o slot estiver vazio
-        if (p != null) {
-            val species = p.species.name
-            val hp = p.currentHealth
-            val maxHp = p.maxHealth
-            val isAlive = hp > 0
-            val isSummoned = p.entity != null // se tem entidade no mundo
-
-            println(
-                "[DEBUG] Slot $i: $species | HP=$hp/$maxHp | vivo=$isAlive | ativoNoMundo=$isSummoned"
-            )
-        } else
-            println(
-                "[DEBUG] Nenhum Pokemon encontrado..."
-            )
     }
 }

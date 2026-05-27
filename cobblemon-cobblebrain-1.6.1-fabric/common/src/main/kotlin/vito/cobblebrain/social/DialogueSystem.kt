@@ -41,6 +41,7 @@ import vito.cobblebrain.config.ConfigHandler.config
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
 import vito.cobblebrain.currentServer
+import com.cobblemon.mod.common.util.party
 import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
 import vito.cobblebrain.sensors.MemoryStore.savePokemonMemory
@@ -87,6 +88,14 @@ object DialogueSystem {
 
     val scheduledMessages: MutableMap<UUID, MutableList<ScheduledMessage>> = ConcurrentHashMap()
 
+    private val pokemonAliasMap =
+        mutableMapOf<UUID, MutableMap<String, UUID>>()
+    // playerUUID -> (alias -> pokemonUUID)
+
+    private val reversePokemonAliasMap =
+        mutableMapOf<UUID, MutableMap<UUID, String>>()
+    // playerUUID -> (pokemonUUID -> alias)
+
     data class ScheduledMessage(
         val player: ServerPlayer,
         val text: String,
@@ -94,6 +103,25 @@ object DialogueSystem {
         val speaker: Pokemon? = null,
         val pitchMod: Float = 0f
     )
+
+    data class TemporaryFeedback(
+        val text: String,
+        var remainingUses: Int = 3
+    )
+
+    private val temporaryFeedback =
+        mutableMapOf<UUID, MutableList<TemporaryFeedback>>()
+
+    fun addFeedback(
+        player: ServerPlayer,
+        feedback: String
+    ) {
+        temporaryFeedback
+            .getOrPut(player.uuid) { mutableListOf() }
+            .add(
+                TemporaryFeedback(feedback)
+            )
+    }
 
     // Estado social para manter o olhar
     private var currentSpeaker: Pokemon? = null
@@ -182,30 +210,71 @@ object DialogueSystem {
         if (!config.listenToChat) return
 
         if (config.onlyNearbyChat) {
+
             val nearbyPlayers = sender.server.playerList.players.filter {
                 it.distanceTo(sender) <= 15.0
             }
 
             if (nearbyPlayers.isEmpty()) {
-                sender.sendSystemMessage(Component.literal("Nenhum jogador próximo para ouvir sua fala."))
+                sender.sendSystemMessage(
+                    Component.literal("Nenhum jogador próximo para ouvir sua fala.")
+                )
                 return
             }
 
             nearbyPlayers.forEach { player ->
+
                 val conteudo = if (player == sender) {
-                    "The player (owner of the pokemon team) said to the pokemons: $rawContent"
+
+                    """
+            [CHAT MESSAGE]
+            ${sender.name.string} (OWNER OF THIS TEAM) said to their Pokémon team:
+            "$rawContent"
+            """.trimIndent()
+
                 } else {
-                    "${sender.name.string} said: $rawContent"
+
+                    """
+            [CHAT MESSAGE]
+            ${sender.name.string} (EXTERNAL PLAYER) said nearby:
+            "$rawContent"
+
+            IMPORTANT:
+            - The Pokémon team belongs to ${player.name.string}
+            - ${sender.name.string} is NOT the owner of this team
+            - Treat ${sender.name.string} as another nearby person
+            """.trimIndent()
                 }
+
                 onPlayerChat(player, conteudo)
             }
+
         } else {
+
             sender.server.playerList.players.forEach { player ->
+
                 val conteudo = if (player == sender) {
-                    "The player (owner of the pokemon team) said to the pokemons: $rawContent"
+
+                    """
+            [CHAT MESSAGE]
+            ${sender.name.string} (OWNER OF THIS TEAM) said to their Pokémon team:
+            "$rawContent"
+            """.trimIndent()
+
                 } else {
-                    "${sender.name.string} said: $rawContent"
+
+                    """
+            [CHAT MESSAGE]
+            ${sender.name.string} (EXTERNAL PLAYER) said nearby:
+            "$rawContent"
+
+            IMPORTANT:
+            - The Pokémon team belongs to ${player.name.string}
+            - ${sender.name.string} is NOT the owner of this team
+            - Treat ${sender.name.string} as another nearby person
+            """.trimIndent()
                 }
+
                 onPlayerChat(player, conteudo)
             }
         }
@@ -374,7 +443,7 @@ object DialogueSystem {
             val prompt = buildPrompt(
                 player,
                 pokemonsTime,
-                "IMPORTANT: I (the player) started a battle with my team[$meusNomes] against [$inimigosNomes]"
+                "IMPORTANT: ${player.name.string} started a battle with my team[$meusNomes] against [$inimigosNomes]"
             )
 
             sendToPlayer?.invoke(player, prompt)
@@ -436,7 +505,7 @@ object DialogueSystem {
             val prompt = buildPrompt(
                 player,
                 ativos,
-                "IMPORTANT: we run away from the battle"
+                "IMPORTANT: ${player.name.string} run away from the battle"
             )
 
             sendToPlayer?.invoke(player, prompt)
@@ -493,7 +562,7 @@ object DialogueSystem {
                             val prompt = buildPrompt(
                                 player,
                                 ativos,
-                                "IMPORTANT: The player defeated the $targetSpecies! $giverName thanks him and reacts to the victory."
+                                "IMPORTANT: ${player.name.string} defeated the $targetSpecies! $giverName thanks him and reacts to the victory."
                             )
 
                             isWaitingForQuestResponse[player.uuid] = true
@@ -517,7 +586,7 @@ object DialogueSystem {
                     val prompt = buildPrompt(
                         player,
                         ativos,
-                        "IMPORTANT: The player's team has just won a battle. The Pokémon react to the victory based on their personalities."
+                        "IMPORTANT: ${player.name.string} team has just won a battle. The Pokémon react to the victory based on their personalities."
                     )
 
                     sendToPlayer?.invoke(player, prompt)
@@ -532,7 +601,7 @@ object DialogueSystem {
                 val prompt = buildPrompt(
                     player,
                     ativos,
-                    "IMPORTANT: The player's team has lost the battle. Pokémon are exhausted or knocked out, and should only react if they are still able to act and have more than 0 HP. Any response should reflect defeat, fatigue, or frustration."
+                    "IMPORTANT: ${player.name.string} team has lost the battle. Pokémon are exhausted or knocked out, and should only react if they are still able to act and have more than 0 HP. Any response should reflect defeat, fatigue, or frustration."
                 )
 
                 sendToPlayer?.invoke(player, prompt)
@@ -613,7 +682,7 @@ object DialogueSystem {
             if (ready.isNotEmpty()) {
                 ready.forEach { msg ->
                     if (msg.text.startsWith("#") ||
-                        (!config.showFriendship && msg.text.startsWith("friendship", ignoreCase = true))
+                        (!config.showFriendship && (msg.text.startsWith("friendship", ignoreCase = true) || (msg.text.startsWith("%") && msg.text.contains(":"))))
                     ) {
                         return@forEach
                     }
@@ -627,7 +696,15 @@ object DialogueSystem {
                         // Regex para detectar "!Error 123!"
                         val regex = Regex("!Error \\d{3}!")
 
-                        val component = if (regex.containsMatchIn(text)) {
+                        val component = if (
+                            config.showFriendship &&
+                            text.startsWith("%") &&
+                            text.contains(":")
+                        ) {
+                            val name = text.substring(1).substringBefore(":").trim()
+                            val change = text.substringAfter(":").trim()
+                            Component.literal("Friendship $name: $change").withStyle(ChatFormatting.GREEN)
+                        } else if (regex.containsMatchIn(text)) {
                             Component.literal(text).withStyle { style ->
                                 style.withColor(ChatFormatting.RED)
                             }
@@ -654,11 +731,38 @@ object DialogueSystem {
 
                     val rawName = msg.text.substringBefore(":").trim()
 
-                    val speaker = msg.speaker ?: participantes.find { poke ->
-                        val nick = poke.nickname?.string
-                        nick?.equals(rawName, ignoreCase = true) == true ||
-                                poke.species.resourceIdentifier.path.equals(rawName, ignoreCase = true)
+                    val speaker = msg.speaker ?: run {
+
+                        val aliases =
+                            pokemonAliasMap[msg.player.uuid]
+                                ?: emptyMap()
+
+                        // MATCH EXATO
+                        var uuid = aliases[rawName]
+
+                        // MATCH IGNORANDO CASE
+                        if (uuid == null) {
+                            uuid = aliases.entries.firstOrNull {
+                                it.key.equals(rawName, ignoreCase = true)
+                            }?.value
+                        }
+
+                        // FALLBACK:
+                        // tenta remover #1/#2
+                        if (uuid == null) {
+                            val cleaned =
+                                rawName.substringBefore("#").trim()
+                            uuid = aliases.entries.firstOrNull {
+                                it.key.substringBefore("#")
+                                    .equals(cleaned, ignoreCase = true)
+                            }?.value
+                        }
+                        participantes.find { it.uuid == uuid }
                     }
+
+                    println("RAW NAME = $rawName")
+                    println("ALIASES = ${pokemonAliasMap[msg.player.uuid]}")
+                    println("SPEAKER = ${speaker?.species?.name}")
 
                     println("speaker resolvido = ${speaker?.nickname ?: speaker?.species?.resourceIdentifier?.path ?: "null"}")
 
@@ -1223,7 +1327,7 @@ object DialogueSystem {
                 val itemsStr = if (itemsList.isEmpty()) "nothing (it was empty!)" else itemsList.joinToString(", ")
                 
                 val ativos = PokemonQuery.findActivePokemon(player)
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: The player has successfully found the item storage! Inside, they found: $itemsStr. Talk about the items found and thank the player!")
+                val prompt = buildPrompt(player, ativos, "IMPORTANT: ${player.name.string} has successfully found the item storage! Inside, they found: $itemsStr. Talk about the items found and thank the player!")
                 isWaitingForQuestResponse[player.uuid] = true
                 questResponseTimeout[player.uuid] = level.server.tickCount.toLong() + 600
                 sendToPlayer?.invoke(player, prompt)
@@ -1244,8 +1348,6 @@ object DialogueSystem {
     }
 
     fun onBlockBreak(player: ServerPlayer, pos: BlockPos, state: net.minecraft.world.level.block.state.BlockState) {
-        val level = player.serverLevel()
-
         // Se for um barril sendo destruído
         if (state.block == Blocks.BARREL) {
             val allSecondary = CobblebrainWorldSave.getSecondaryQuestsForAll()
@@ -1274,7 +1376,7 @@ object DialogueSystem {
                     adjustKarma(player, giverName, -3)
                     
                     val ativos = PokemonQuery.findActivePokemon(player)
-                    val prompt = buildPrompt(player, ativos, "IMPORTANT: The player has DESTROYED the item storage that was part of the quest! The pokemon is very upset! React to this destruction!")
+                    val prompt = buildPrompt(player, ativos, "IMPORTANT: ${player.name.string} has DESTROYED the item storage that was part of the quest! The pokemon is very upset! React to this destruction!")
                     isWaitingForQuestResponse[player.uuid] = true
                     questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
                     sendToPlayer?.invoke(player, prompt)
@@ -1290,7 +1392,7 @@ object DialogueSystem {
                     val owner = player.server.playerList.getPlayer(UUID.fromString(ownerUuid))
                     if (owner != null) {
                         val ativos = PokemonQuery.findActivePokemon(owner)
-                        val prompt = buildPrompt(owner, ativos, "IMPORTANT: Someone else (not the player) has destroyed or stolen the item storage from the quest! React with shock and tell the player about it!")
+                        val prompt = buildPrompt(owner, ativos, "IMPORTANT: Someone else (not ${player.name.string}) has destroyed or stolen the item storage from the quest! React with shock and tell the player about it!")
                         isWaitingForQuestResponse[owner.uuid] = true
                         questResponseTimeout[owner.uuid] = owner.server?.tickCount?.toLong()?.plus(600) ?: 0L
                         sendToPlayer?.invoke(owner, prompt)
@@ -1436,7 +1538,7 @@ object DialogueSystem {
         val prompt = buildPrompt(
             player,
             ativos,
-            "IMPORTANT: The player has just ABANDONED the quest given by $giverName!"
+            "IMPORTANT: ${player.name.string} has just ABANDONED the quest given by $giverName!"
         )
         isWaitingForQuestResponse[player.uuid] = true
         questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
@@ -1657,10 +1759,119 @@ object DialogueSystem {
         }
     }
 
+    private fun generatePokemonAliases(
+        player: ServerPlayer,
+        pokemons: List<Pokemon>
+    ) {
+        val aliasMap = mutableMapOf<String, UUID>()
+        val reverseMap = mutableMapOf<UUID, String>()
+
+        val grouped = pokemons.groupBy {
+            it.nickname?.string?.trim()
+                ?.takeIf { name -> name.isNotBlank() }
+                ?: it.species.name
+        }
+
+        grouped.forEach { (baseName, list) ->
+
+            if (list.size == 1) {
+                val pokemon = list.first()
+
+                aliasMap[baseName] = pokemon.uuid
+                reverseMap[pokemon.uuid] = baseName
+            } else {
+
+                list.forEachIndexed { index, pokemon ->
+
+                    val alias = "$baseName#${index + 1}"
+
+                    aliasMap[alias] = pokemon.uuid
+                    reverseMap[pokemon.uuid] = alias
+                }
+            }
+        }
+
+        pokemonAliasMap[player.uuid] = aliasMap
+        reversePokemonAliasMap[player.uuid] = reverseMap
+    }
+
     fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
+        generatePokemonAliases(player, pokemons)
         val context = collectWorldContext(player)
 
+        // RESET MAPS
+        pokemonAliasMap[player.uuid] = mutableMapOf()
+        reversePokemonAliasMap[player.uuid] = mutableMapOf()
+
+        // TODOS OS POKÉMONS PARTICIPANTES
+        val allPokemon = pokemons + context.nearbyPokemonEntities.map { it.pokemon }
+
+        // CONTADORES GLOBAIS
+        val nameCounters = mutableMapOf<String, Int>()
+
+        allPokemon.forEach { pokemon ->
+
+            val baseName =
+                pokemon.nickname?.string?.takeIf { it.isNotBlank() }
+                    ?: pokemon.species.name
+
+            val current =
+                nameCounters.getOrDefault(baseName, 0) + 1
+
+            nameCounters[baseName] = current
+
+            val sameNameCount = allPokemon.count {
+
+                val otherBase =
+                    it.nickname?.string?.takeIf { n -> n.isNotBlank() }
+                        ?: it.species.name
+
+                otherBase == baseName
+            }
+
+            val displayName =
+                if (sameNameCount <= 1) {
+                    baseName
+                } else {
+                    "$baseName#$current"
+                }
+
+            pokemonAliasMap[player.uuid]
+                ?.put(displayName, pokemon.uuid)
+
+            reversePokemonAliasMap[player.uuid]
+                ?.put(pokemon.uuid, displayName)
+        }
+
+        val nearbyPlayers = player.server.playerList.players
+            .filter { it.distanceTo(player) <= 20 && it != player }
+
         return buildString {
+
+            temporaryFeedback[player.uuid]
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { feedbacks ->
+
+                    appendLine("[RECENT FEEDBACK]")
+
+                    feedbacks.forEach {
+                        appendLine("- ${it.text}")
+                    }
+
+                    appendLine()
+                }
+
+            appendLine("[PLAYER IDS]")
+            val ownerPreferred = PlayerNicknameManager.get(player.uuid, player.name.string)
+            appendLine("$ownerPreferred (${player.name.string}) [OWNER]")
+
+            nearbyPlayers.forEach { other ->
+                val otherPreferred = PlayerNicknameManager.get(other.uuid, other.name.string)
+                appendLine("$otherPreferred (${other.name.string})")
+            }
+
+            appendLine()
+
             // Injeta resumo da última sessão se existir
             val sessionSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
             if (sessionSummary != null) {
@@ -1713,32 +1924,75 @@ object DialogueSystem {
 
             appendLine()
 
+            fun String?.takeIfUseful(): String? {
+                val cleaned = this?.trim() ?: return null
+
+                return when (cleaned.lowercase()) {
+                    "", "null", "nenhum", "vazio", "false" -> null
+                    else -> cleaned
+                }
+            }
+
+            fun compactId(id: String?): String {
+                if (id == null) return "unknown"
+
+                return id
+                    .substringAfterLast(":")
+                    .substringAfterLast(".")
+            }
+
             // Environment
-            if (config.outputWorldContext)
-                appendLine("Biome: ${context.biome}")
+            if (config.outputWorldContext) {
+                appendLine("Biome: ${compactId(context.biome)}")
                 appendLine("Weather: ${context.weather}")
                 appendLine("Time: ${context.timeLabel}")
+            }
 
             if (!config.lowTokenMode && config.outputWorldContext) {
-                appendLine("Light: ${context.lightLevel}")
-                appendLine("Block under the player's feet: ${context.blockUnder}")
-                appendLine("Nearby special blocks: ${context.specialBlocks}")
+                //appendLine("Light: ${context.lightLevel}")
+                appendLine("Ground: ${compactId(context.blockUnder)}")
+
+                context.specialBlocks.takeIfUseful()?.let {
+                    appendLine("Special blocks: $it")
+                }
             }
 
             if (!config.lowTokenMode && config.outputMobsContext) {
-                appendLine("Nearby entities: ${context.nearbyEntities}")
-                appendLine("Nearby mobs: ${context.nearbyMobs}")
+
+                //if (context.nearbyEntities > 0) {
+                    //appendLine("Nearby entities: ${context.nearbyEntities}")
+                //}
+
+                context.nearbyMobs.takeIfUseful()?.let {
+                    appendLine("Nearby mobs: $it")
+                }
             }
 
-            appendLine("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
-            println("Nearby pokemons (not on the team): ${context.nearbyPokemon}")
+            if (context.nearbyPokemon.takeIfUseful() != null) {
+                appendLine("[NEARBY POKEMON]: ${context.nearbyPokemon}")
+                println("Nearby pokemon: ${context.nearbyPokemon}")
+            } else {
+                appendLine("[NEARBY POKEMON]")
+                appendLine("No nearby wild Pokémon are present, so none will participate in the dialogue.")
+            }
 
-            if (!config.lowTokenMode && config.outputWorldContext)
-                appendLine("Items on the ground: ${context.nearbyItems}")
+            if (!config.lowTokenMode && config.outputWorldContext) {
+                context.nearbyItems.takeIfUseful()?.let { items ->
+                    val compacted = items
+                        .split(",")
+                        .map { compactId(it.trim()) }
+                    appendLine("Ground items: ${compacted.joinToString(", ")}")
+                }
+            }
 
-            if (config.outputWorldContext)
+            if (config.outputWorldContext) {
                 appendLine("Player health: ${context.health}/${context.maxHealth}")
-                appendLine("Player's main hand: ${context.mainHand}")
+
+                context.mainHand.takeIfUseful()?.let {
+                    appendLine("Main hand: ${compactId(it)}")
+                }
+            }
+
             appendLine()
 
             if (config.wildPokemonTalkChance > 0.0
@@ -1813,34 +2067,133 @@ object DialogueSystem {
                 }
             }
 
-            appendLine("[Active pokemons]")
+            appendLine("[ACTIVE POKEMON]")
+            val nameCounters = mutableMapOf<String, Int>()
+            if (pokemons.isEmpty()) {
 
+                appendLine(
+                    "No party Pokémon are currently active, so none will participate in the dialogue."
+                )
+            }
             pokemons.forEach { p ->
-                val allMoves: List<String> = p.moveSet.getMoves().map { it.name }
-                appendLine("Nickname: ${p.nickname?.string} | Species: ${p.species.name} | Type(s): ${p.types.joinToString { it.name }} | Gender: ${p.gender} | UUID: ${p.uuid} | HP: ${p.currentHealth}/${p.maxHealth} | Lvl: ${p.level} | Fullness: ${p.currentFullness}/${p.getMaxFullness()} | Nature: ${p.effectiveNature.name} | Moveset: $allMoves | Friendship with player: ${p.friendship} | Fainted: ${p.isFainted()} | Is flying: ${p.entity?.isPokemonFlying} | Is player mounted: ${p.entity!!.passengers.any { it is ServerPlayer }}")
 
-                // Adiciona características se houverF
+                val allMoves = p.moveSet.getMoves().map { it.name }
+
+                // Base name (nickname or species)
+                val baseName =
+                    p.nickname?.string?.takeIf { it.isNotBlank() }
+                        ?: p.species.name
+
+                // Generates:
+                // Bulbasaur#1
+                // Bulbasaur#2
+                val currentCount = nameCounters.getOrDefault(baseName, 0) + 1
+                nameCounters[baseName] = currentCount
+
+                // Quantos possuem esse mesmo nome
+                val sameNameCount = pokemons.count {
+                    val otherBase =
+                        it.nickname?.string?.takeIf { name -> name.isNotBlank() }
+                            ?: it.species.name
+
+                    otherBase == baseName
+                }
+
+                // Só adiciona #1/#2 se houver duplicados
+                val displayName =
+                    if (sameNameCount <= 1) {
+                        baseName
+                    } else {
+                        "$baseName#$currentCount"
+                    }
+
+                // REGISTRA ALIAS -> UUID
+
+                reversePokemonAliasMap
+                    .getOrPut(player.uuid) { mutableMapOf() }[p.uuid] = displayName
+
+                pokemonAliasMap
+                    .getOrPut(player.uuid) { mutableMapOf() }[displayName] = p.uuid
+
+                val parts = mutableListOf<String>()
+
+                // Main identity
+                parts += "Name: $displayName"
+
+                if (p.nickname != null) {
+                    parts += "Species: ${p.species.name}"
+                }
+
+                parts += "Type: ${
+                    p.types.joinToString("/") { it.name }
+                }"
+
+                parts += "Gender: ${p.gender}"
+                if (p.currentHealth < p.maxHealth) {
+                    parts += "HP: ${p.currentHealth}/${p.maxHealth}"
+                }
+                parts += "Lvl: ${p.level}"
+                val fullnessPercent =
+                    ((p.currentFullness.toFloat() / p.getMaxFullness().toFloat()) * 100f)
+                        .toInt()
+
+                val hungerState = when {
+                    fullnessPercent < 10 -> "very hungry"
+                    fullnessPercent <= 30 -> "hungry"
+                    fullnessPercent <= 50 -> "normal"
+                    fullnessPercent <= 80 -> "satisfied"
+                    else -> "completely full"
+                }
+
+                parts += "Hunger: $hungerState ($fullnessPercent%)"
+                parts += "Nature: ${p.effectiveNature.name.path}"
+
+                if (allMoves.isNotEmpty()) {
+                    parts += "Moves: ${allMoves.joinToString(",")}"
+                }
+                val friendshipPercent =
+                    ((p.friendship.toFloat() / config.maxFriendship.toFloat()) * 100).toInt()
+
+                parts += "Friendship: $friendshipPercent%"
+
+                if (p.entity?.isPokemonFlying == true) {
+                    parts += "Flying"
+                }
+                if (p.entity?.passengers?.any { it is ServerPlayer } == true) {
+                    parts += "Mounted"
+                }
+
+                appendLine(parts.joinToString(" | "))
+
+                // Characteristics
                 val nameToCheck = p.nickname?.string ?: p.species.name
+
                 config.characteristics.forEach { entry ->
-                    val parts = entry.split(":")
-                    if (parts.size >= 2) {
-                        val charName = parts[0].trim()
-                        val charDesc = parts.drop(1).joinToString(":").trim()
+                    val split = entry.split(":")
+                    if (split.size >= 2) {
+
+                        val charName = split[0].trim()
+                        val charDesc = split.drop(1).joinToString(":").trim()
+
                         if (nameToCheck.equals(charName, ignoreCase = true)) {
-                            appendLine("Characteristics of $nameToCheck: $charDesc")
+                            appendLine("Characteristics: $charDesc")
                         }
                     }
                 }
-                val speciesName = p.species.name
 
-                if (player.stringUUID != null) {
-                    // Karma
+                // Karma
+                val speciesName = p.species.name
+                val playerUUID = player.stringUUID
+
+                if (playerUUID != null) {
                     val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma")
-                    if (karmaRoot.has(player.stringUUID)) {
-                        val playerKarma = karmaRoot.getAsJsonObject(player.stringUUID)
+
+                    if (karmaRoot.has(playerUUID)) {
+                        val playerKarma = karmaRoot.getAsJsonObject(playerUUID)
+
                         if (playerKarma.has(speciesName)) {
                             val karmaValue = playerKarma.get(speciesName).asInt
-                            appendLine("Karma of $speciesName for the player: $karmaValue")
+                            appendLine("Karma: $karmaValue")
                         }
                     }
 
@@ -1878,9 +2231,50 @@ object DialogueSystem {
                     }
                 }
             }
-            appendLine("Important variables:")
-            appendLine("AFFECT_FRIENDSHIP_PLUS: ${config.increaseFriendship}")
-            appendLine("AFFECT_FRIENDSHIP_MINUS: ${config.decreaseFriendship}")
+            appendLine("[UNAVAILABLE POKEMON]")
+
+            val activeUuids = pokemons.map { it.uuid }.toSet()
+
+            val allPartyPokemon =
+                PokemonQuery.getAllPokemon(player)
+
+            allPartyPokemon.forEach { p ->
+
+                // ignora ativos
+                if (p.uuid in activeUuids) {
+                    return@forEach
+                }
+
+                val name =
+                    p.nickname?.string
+                        ?: p.species.name
+
+                when {
+
+                    p.currentHealth <= 0 -> {
+                        appendLine(
+                            "$name is FAINTED, unable to talk or interact."
+                        )
+                    }
+
+                    else -> {
+                        appendLine(
+                            "$name is STORED, unable to talk or interact."
+                        )
+                    }
+                }
+            }
+
+            println("ALL PARTY:")
+            allPartyPokemon.forEach {
+                println("${it.species.name} hp=${it.currentHealth}")
+            }
+
+            println("ACTIVE UUIDS: $activeUuids")
+
+            appendLine("[FRIENDSHIP]")
+            appendLine("plus=${config.increaseFriendship}")
+            appendLine("minus=${config.decreaseFriendship}")
         }.trim()
     }
 
@@ -1933,9 +2327,10 @@ object DialogueSystem {
             it.startsWith("@") ||
                     it.startsWith("#") ||
                     it.startsWith("&") ||
-                    it.startsWith("%") ||
+                    it.startsWith("=") ||
                     it.startsWith("!RESUME") ||
-                    (!config.showFriendship && it.startsWith("friendship", ignoreCase = true))
+                    (it.startsWith("%") && !it.contains(":")) ||
+                    (!config.showFriendship && (it.startsWith("friendship", ignoreCase = true) || (it.startsWith("%") && it.contains(":"))))
         }
 
         val commandLines = allLines.filter { it.startsWith("#") }
@@ -1948,7 +2343,7 @@ object DialogueSystem {
 
         val resumeLines = content.split("|")
             .map { it.trim() }
-            .filter { it.startsWith("!RESUME", ignoreCase = true) }
+            .filter { it.startsWith("!RESUME", ignoreCase = true) || it.startsWith("=") }
 
         // 1. Salva as memórias no JSON
         memoryLines.forEach { line ->
@@ -1975,9 +2370,14 @@ object DialogueSystem {
 
 
         // 3. Detecta !CATCH: Name para captura garantizada
-        if (content.contains("!CATCH")) {
+        if (content.contains("!CATCH") || allLines.any { it.startsWith("!") && !it.startsWith("!RESUME") && !it.startsWith("!CATCH") }) {
             val nameMatch = Regex("""!CATCH:\s*([^|%\n]+)""").find(content)
-            val pokemonName = nameMatch?.groupValues?.get(1)?.trim() ?: ""
+            val pokemonName = if (nameMatch != null) {
+                nameMatch.groupValues[1].trim()
+            } else {
+                val catchLine = allLines.firstOrNull { it.startsWith("!") && !it.startsWith("!RESUME") && !it.startsWith("!CATCH") }
+                catchLine?.removePrefix("!")?.trim() ?: ""
+            }
             
             val level = player.serverLevel()
             val pokemon = if (pokemonName.isNotEmpty()) {
@@ -2026,14 +2426,15 @@ object DialogueSystem {
             """friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*([+-])\s*(-?\d+)""",
             RegexOption.IGNORE_CASE
         )
+        val newRegex = Regex(
+            """%\s*([\w\s.'♀♂-]+)\s*:\s*([+-])\s*(\d+)""",
+            RegexOption.IGNORE_CASE
+        )
         val matches = regex.findAll(content)
-        for (match in matches) {
-            val nomePokemon = match.groupValues[1]
-            //val atual = match.groupValues[2].toDouble()
-            val sinal = match.groupValues[3]
-            val incrementoValor = match.groupValues[4].toDouble()
-            val incremento = if (sinal == "-") -incrementoValor else incrementoValor
+        val newMatches = newRegex.findAll(content)
 
+        fun applyFriendship(nomePokemon: String, sinal: String, incrementoValor: Double) {
+            val incremento = if (sinal == "-") -incrementoValor else incrementoValor
             val alvo = ativos.firstOrNull { ativo ->
                 val nomeNormalizado = nomePokemon.trim()
                 val nickname = ativo.nickname?.string
@@ -2054,6 +2455,32 @@ object DialogueSystem {
             }
         }
 
+        for (match in matches) {
+            applyFriendship(match.groupValues[1], match.groupValues[3], match.groupValues[4].toDouble())
+        }
+        for (match in newMatches) {
+            applyFriendship(match.groupValues[1], match.groupValues[2], match.groupValues[3].toDouble())
+        }
+
+        // Consome feedback temporario apos resposta valida
+        temporaryFeedback[player.uuid]
+            ?.let { feedbacks ->
+
+                feedbacks.forEach {
+                    it.remainingUses--
+                }
+
+                feedbacks.removeIf {
+                    it.remainingUses <= 0
+                }
+
+                if (feedbacks.isEmpty()) {
+                    temporaryFeedback.remove(player.uuid)
+                }
+            }
+
+        lastResponseContent[player.uuid] = content
+
         // 5. Agenda mensagens para o jogador que falou
         lastResponseContent[player.uuid] = content
         val startTick = server.tickCount.toLong()
@@ -2073,12 +2500,17 @@ object DialogueSystem {
             val lineIndexInAll = allLines.indexOf(line)
             if (lineIndexInAll != -1 && lineIndexInAll + 1 < allLines.size) {
                 val nextLine = allLines[lineIndexInAll + 1]
-                val match = Regex("""friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*([+-])\s*(-?\d+)""", RegexOption.IGNORE_CASE).find(nextLine)
+                var match = Regex("""friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*([+-])\s*(-?\d+)""", RegexOption.IGNORE_CASE).find(nextLine)
+                var isNewFormat = false
+                if (match == null) {
+                    match = Regex("""%\s*([\w\s.'♀♂-]+)\s*:\s*([+-])\s*(\d+)""", RegexOption.IGNORE_CASE).find(nextLine)
+                    isNewFormat = true
+                }
                 if (match != null) {
                     val targetName = match.groupValues[1].trim()
                     if (targetName.equals(speakerName, ignoreCase = true)) {
-                        val sinal = match.groupValues[3]
-                        val valor = match.groupValues[4].toFloat()
+                        val sinal = if (isNewFormat) match.groupValues[2] else match.groupValues[3]
+                        val valor = (if (isNewFormat) match.groupValues[3] else match.groupValues[4]).toFloat()
                         // 1 ponto = 0.03 de pitch (limite de +/- 0.18)
                         mod = (if (sinal == "-") -valor else valor) * 0.03f
                         mod = mod.coerceIn(-0.18f, 0.18f)

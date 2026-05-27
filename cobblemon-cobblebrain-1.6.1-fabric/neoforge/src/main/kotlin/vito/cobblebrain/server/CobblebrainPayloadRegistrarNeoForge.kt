@@ -95,5 +95,16 @@ object CobblebrainPayloadRegistrarNeoForge {
                 vito.cobblebrain.social.DialogueSystem.triggerSessionSummary(player)
             }
         }
+
+        registrar.playToServer(
+            CobblebrainPayloads.PlayerNicknamePayload.TYPE,
+            CobblebrainPayloads.PlayerNicknamePayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+
+            context.enqueueWork {
+                vito.cobblebrain.social.PlayerNicknameManager.set(player.uuid, payload.preferredName)
+            }
+        }
     }
 }

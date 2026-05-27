@@ -25,6 +25,22 @@ object CobblebrainClientHandlerFabric {
             )
         }
 
+        CobblebrainClientCommon.sendNicknameToServer = { nickname ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(
+                    CobblebrainPayloads.PlayerNicknamePayload(nickname)
+                )
+            }
+        }
+
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register { handler, sender, client ->
+            client.execute {
+                val config = vito.cobblebrain.config.ClientConfigHandler.clientConfig
+                val nickname = config.preferredName.ifBlank { client.user.name }
+                CobblebrainClientCommon.sendNicknameToServer?.invoke(nickname)
+            }
+        }
+
         // SERVER → CLIENT
         ClientPlayNetworking.registerGlobalReceiver(
             CobblebrainPayloads.PromptPayload.TYPE

@@ -179,4 +179,19 @@ object CobblebrainPayloads {
 
         override fun type() = TYPE
     }
+
+    data class PlayerNicknamePayload(val preferredName: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "player_nickname")
+            val TYPE = CustomPacketPayload.Type<PlayerNicknamePayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, PlayerNicknamePayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.preferredName) },
+                    { buf -> PlayerNicknamePayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
 }
