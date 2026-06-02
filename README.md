@@ -2,7 +2,7 @@
 
 CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions more lively and responsive.
 
-![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3.2-blue.svg)
 ![License](https://img.shields.io/badge/license-MPL_2.0-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
@@ -186,6 +186,7 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `showFriendship` | Boolean | Displays friendship values in chat. Players can see relationship changes. |
 | `instruct` | List of Strings | The Instructs as a whole works as a global prompt. Defines how the AI or Pokemon behave, think and responds. Each instruct (item on the list) shapes how the response is sent. |
 | `Custom Output (outputFormat)` | String | Only editable via config/cobblebrain.json5 |
+| `Ignore hunger` | Boolean | Makes the AI ignore any information about the Pokémon's hunger. Adding a new rule to the AI's instructions |
 | `Enable Dialogue (outputDialogue)` | Boolean | Enables the Pokémon to generate natural language dialogue, Allowing them to dialogue with the player. |
 | `Enable Actions (outputActions)` | Boolean | Enables Pokémon to perform specialized actions based on the situation or the player command, such as cooking food, growing berries, or eating items. |
 | `Enable Friendship (outputFriendship)` | Boolean | Enables the AI to manage and update friendship levels based on your interactions, influencing the Pokémon's loyalty and behavior. |
