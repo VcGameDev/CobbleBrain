@@ -19,6 +19,7 @@ data class CobblebrainClientConfig(
     var selectedLanguage: String = "English",
     var maxInteractionSaves: Int = 8,
     var preferredName: String = "",
+    var ignoreHunger: Boolean = false,
 
     // ================= DIALOGUE & UI SETTINGS =================
 

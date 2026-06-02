@@ -2319,8 +2319,21 @@ object DialogueSystem {
         }
 
         // Linhas para chat (falas + friendship), excluindo memórias
+        val headerCleanupRegex = Regex(
+            """^\s*\[?\s*(DIALOGUE FORMAT|FRIENDSHIP FORMAT|MEMORY FORMAT|ACTION FORMAT|GUARANTEED CATCH FORMAT|RESUME FORMAT|QUEST SYSTEM|GENERAL RULES)\s*]?\s*:?\s*""",
+            RegexOption.IGNORE_CASE
+        )
+
         val allLines = content.split("|")
             .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+            // remove headers automaticos
+            .map { line ->
+
+                line.replace(headerCleanupRegex, "").trim()
+            }
+
             .filter { it.isNotEmpty() }
 
         val falas = allLines.filterNot {

@@ -81,6 +81,7 @@ class AIHandler {
             .filterNotNull()
             .joinToString("\n")
         private val TEMPERATURE get() = clientConfig.temperature
+        private val IGNORE_HUNGER get() = clientConfig.ignoreHunger
         private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
         private val REASONING get() = clientConfig.reasoningEffort.trim().lowercase()
         private val DEBUG get(
@@ -95,67 +96,67 @@ class AIHandler {
 
         val DIALOGUE get() = """
         DIALOGUE FORMAT
-        - Pokémon and player fully understand each other
-        - Pokémon can speak normally and express complex thoughts
-        - format=name: text
-        - separator=|
-        - short dialogue only
-        - wild pokemon allowed
-        - response language=$USER_LANGUAGE
+        Pokémon and player fully understand each other
+        Pokémon can speak normally and express complex thoughts
+        format=name: text
+        separator=|
+        short dialogue only
+        wild pokemon allowed
+        response language=$USER_LANGUAGE
         """
 
         const val CANON_DIALOGUE = """
         DIALOGUE FORMAT
-        - the player cannot understand Pokémon language
-        - communication is limited to vocalizations and emotion
-        - format=name: sound(emotion/intent)
-        - ALWAYS include (emotion/intent) after vocalizations
-        - separator=|
-        - short creature sounds only
-        - wild pokemon allowed
-        - NEVER translate or explain sounds
+        the player cannot understand Pokémon language
+        communication is limited to vocalizations and emotion
+        format=name: sound(emotion/intent)
+        ALWAYS include (emotion/intent) after vocalizations
+        separator=|
+        short creature sounds only
+        wild pokemon allowed
+        NEVER translate or explain sounds
         """
 
         const val FRIENDSHIP = """
         FRIENDSHIP FORMAT
-        - %name:+/-1~5
-        - only delta value
-        - one change per pokemon
-        - wild pokemon never change
-        - respect PLUS/MINUS settings
+        %name:+/-1~5
+        only delta value
+        one change per pokemon
+        wild pokemon never change
+        respect PLUS/MINUS settings
         """
 
         const val MEMORY = """
         MEMORY FORMAT
-        - @name:short memory
-        - @@name:core memory
-        - third-person pokemon perspective
-        - @=fleeting perception
-        - @@=important event
-        - generate only when meaningful
+        @name:short memory
+        @@name:core memory
+        third-person pokemon perspective
+        @=fleeting perception
+        @@=important event
+        generate only when meaningful
 """
 
         const val ACTION = """
         ACTION FORMAT
-        - Format: #<PokemonName>:<action_code>
-        - Action codes:
-          A (attack), E (eat), B (buff), D (debuff enemy), S (sit), P (protect), I (idle)
-          fire type: C (cook) | steel type: R (repair) | grass type: G (grow) | ghost type: H (shift)
-        - If no action is needed, ALWAYS use I.
-        - Use one action per Pokémon at the end
+        Format: #<PokemonName>:<action_code>
+        Action codes:
+        A (attack), E (eat), B (buff), D (debuff enemy), S (sit), P (protect), I (idle)
+        fire type: C (cook) | steel type: R (repair) | grass type: G (grow) | ghost type: H (shift)
+        If no action is needed, ALWAYS use I.
+        Use one action per Pokémon at the end
         """
 
         const val CATCH = """
         GUARANTEED CATCH FORMAT
-        - format=!name
-        - guarantees next catch
-        - wild pokemon only
-        - requires strong positive interaction
-        - rare
+        format=!name
+        guarantees next catch
+        wild pokemon only
+        requires strong positive interaction
+        rare
         """
 
         const val APRIL1 = """
-        - April1 mode is active: extra actions allowed (follow ACTION FORMAT):
+        April1 mode is active: extra actions allowed (follow ACTION FORMAT):
           fire type: fireball machine | nuke
           psychic type: psychic stand
           fairy type: imaginary technique
@@ -165,39 +166,46 @@ class AIHandler {
 
         const val QUEST = """
         QUEST SYSTEM
-        - types=STORY/SECONDARY/ADVICE
-        - quests start via natural pokemon dialogue
-        - ADVICE quests:
-          #SCORE:-3~3
-        - score reflects player help quality
-        - wait for [QUEST COMPLETED]/[QUEST FAILED]
-        - &=short quest summary EN
+        types=STORY/SECONDARY/ADVICE
+        quests start via natural pokemon dialogue
+        ADVICE quests:
+        #SCORE:-3~3
+        score reflects player help quality
+        wait for [QUEST COMPLETED]/[QUEST FAILED]
+        &=short quest summary EN
         """
 
         const val RESUME = """
         RESUME FORMAT
-        - =summary
-        - short recap + emotions
-        - natural continuation if needed
-        - max 6 sentences
-        - EN only
+        =summary
+        short recap + emotions
+        natural continuation if needed
+        max 6 sentences
+        EN only
         """
 
-        val GENERAL get() = """
-        GENERAL RULES
-        - strict format only
-        - keep section order
-        - pokemon + player only
-        - ONLY Pokémon in [ACTIVE POKEMON] or [NEARBY POKEMON] can speak
-        - unavailable Pokémon NEVER speak
-        - if [ACTIVE POKEMON] is empty, only nearby Pokémon may respond
-        - if no Pokémon can respond, output only: "no Pokémon heard what you said" in $USER_LANGUAGE
-        - consistent names
-        - no self-talk unless specified
-        - follow [CREATIVEPROMPT]
-        - use [LAST INTERACTIONS] naturally
-        - subtle environment usage
-"""
+        val GENERAL get() = buildString {
+            appendLine("GENERAL RULES")
+            appendLine("- strict format only")
+            appendLine("- keep section order")
+            appendLine("- pokemon + player only")
+            appendLine("- ONLY Pokémon in [ACTIVE POKEMON] or [NEARBY POKEMON] can speak")
+            appendLine("- unavailable Pokémon NEVER speak")
+            appendLine("- if [ACTIVE POKEMON] is empty, only nearby Pokémon may respond")
+            appendLine("- if no Pokémon can respond, output only: \"no Pokémon heard what you said\" in $USER_LANGUAGE")
+            appendLine("- consistent names")
+            appendLine("- no self-talk unless specified")
+            appendLine("- follow [CREATIVEPROMPT]")
+            appendLine("- use [LAST INTERACTIONS] naturally")
+            appendLine("- subtle environment usage")
+            appendLine("- nearby Pokémon do not know the player's name")
+            appendLine("- never speak or act for the player")
+            appendLine("- player IDs belong to players, not Pokémon")
+
+            if (IGNORE_HUNGER) {
+                appendLine("- ignore any hunger/fullness information and never mention hunger in dialogue")
+            }
+        }
     }
 
     private fun shouldUseNormalDialogue(): Boolean {
