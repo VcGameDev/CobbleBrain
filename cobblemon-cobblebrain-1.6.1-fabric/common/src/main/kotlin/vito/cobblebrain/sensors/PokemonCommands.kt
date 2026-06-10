@@ -6,6 +6,7 @@ import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.minecraft.ChatFormatting
 import vito.cobblebrain.social.CobblebrainWorldSave
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.core.Holder
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.particles.DustParticleOptions
@@ -14,13 +15,13 @@ import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.registries.Registries
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
-import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
+import net.minecraft.tags.StructureTags
+import net.minecraft.tags.TagKey
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.effect.MobEffect
 import net.minecraft.world.effect.MobEffectInstance
@@ -34,6 +35,7 @@ import net.minecraft.world.entity.TamableAnimal
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal
 import net.minecraft.world.entity.ai.goal.Goal
 import net.minecraft.world.entity.item.ItemEntity
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.entity.monster.Ghast
 import net.minecraft.world.entity.monster.Monster
 import net.minecraft.world.entity.projectile.SmallFireball
@@ -49,10 +51,13 @@ import net.minecraft.world.item.enchantment.Enchantments
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.CropBlock
 import net.minecraft.world.level.block.SaplingBlock
+import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.level.levelgen.structure.Structure
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import vito.cobblebrain.config.ConfigHandler.config
+import vito.cobblebrain.social.PingManager
 import java.util.UUID
 import kotlin.math.cos
 import kotlin.math.sin
@@ -62,6 +67,11 @@ import kotlin.math.sqrt
 data class PokemonCommand(
     val pokemonName: String,
     val action: String
+)
+
+data class FishingSpot(
+    val pos: BlockPos,
+    val deep: Boolean
 )
 
 
@@ -86,6 +96,10 @@ fun parseCommand(line: String): PokemonCommand? {
         "r" -> "repair"
         "g" -> "grow"
         "h" -> "shift"
+        "f" -> "fish"
+        "n" -> "nightmare"
+        "l" -> "light"
+        "sc" -> "scout"
         else -> action
     }
     
@@ -131,6 +145,8 @@ private fun exitAttackMode(pokemon: Mob) {
     pokemon.target = null
 }
 
+val pingMovementEnabled = mutableMapOf<UUID, Long>()
+
 // cooldown de ataque por Pokémon
 private val attackCooldowns: MutableMap<UUID, Int> = mutableMapOf()
 
@@ -141,6 +157,46 @@ val biteCooldown = mutableMapOf<UUID, Int>()
 val eatIdleTimer = mutableMapOf<UUID, Int>()
 val cookCooldown = mutableMapOf<UUID, Int>()
 val growCooldowns = mutableMapOf<UUID, Int>()
+
+val fishState = mutableMapOf<UUID, String>()
+val fishTimer = mutableMapOf<UUID, Int>()
+val fishTargetWater = mutableMapOf<UUID, BlockPos>()
+val fishLoot = mutableMapOf<UUID, ItemStack>()
+val fishDeepSpot = mutableMapOf<UUID, Boolean>()
+val fishMoveTimer = mutableMapOf<UUID, Int>()
+
+val nightmareDuration = mutableMapOf<UUID, Int>()
+val nightmareCooldown = mutableMapOf<UUID, Int>()
+val nightmareFearTimer = mutableMapOf<UUID, Int>()
+
+val lightBlocks = mutableMapOf<UUID, BlockPos>()
+
+val scoutState = mutableMapOf<UUID, String>()
+val scoutTargetPos = mutableMapOf<UUID, BlockPos>()
+val scoutScanTimer = mutableMapOf<UUID, Int>()
+val scoutGlowItems = mutableMapOf<UUID, Int>()
+val scoutHoverPos = mutableMapOf<UUID, BlockPos>()
+val scoutFoundStructure = mutableMapOf<UUID, Pair<String, BlockPos>>()
+val scoutSurfaceStructures = setOf(
+    StructureTags.VILLAGE,
+    StructureTags.SHIPWRECK,
+    StructureTags.OCEAN_RUIN,
+    StructureTags.ON_WOODLAND_EXPLORER_MAPS,
+    StructureTags.ON_OCEAN_EXPLORER_MAPS
+)
+val scoutStructures = listOf(
+    "Village" to StructureTags.VILLAGE,
+    "Shipwreck" to StructureTags.SHIPWRECK,
+    "Ocean Ruin" to StructureTags.OCEAN_RUIN,
+    "Woodland Mansion" to StructureTags.ON_WOODLAND_EXPLORER_MAPS,
+    "Ocean Monument" to StructureTags.ON_OCEAN_EXPLORER_MAPS
+)
+
+val teleportTargetPos =
+    mutableMapOf<UUID, BlockPos>()
+
+val teleportCooldown =
+    mutableMapOf<UUID, Int>()
 
 object PokemonCommands {
     var sendCooldowns: ((ServerPlayer, Long, Long, Long, Long) -> Unit)? = null
@@ -212,6 +268,94 @@ object CommandTickHandler {
             handleSSStyle(level)
         }
 
+        lightBlocks.keys
+            .toList()
+            .forEach { pokemonId ->
+
+                val exists =
+                    server.allLevels.any {
+                        it.getEntity(pokemonId) != null
+                    }
+
+                if (!exists) {
+
+                    val pos =
+                        lightBlocks.remove(pokemonId)
+
+                    if (pos != null) {
+
+                        server.allLevels.forEach { level ->
+
+                            if (
+                                level.getBlockState(pos).block ==
+                                Blocks.LIGHT
+                            ) {
+
+                                level.removeBlock(
+                                    pos,
+                                    false
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+        nightmareFearTimer.keys
+            .toList()
+            .forEach { uuid ->
+
+                val mob =
+                    server.allLevels
+                        .firstNotNullOfOrNull {
+                            it.getEntity(uuid)
+                        } as? Mob
+                        ?: run {
+
+                            nightmareFearTimer.remove(uuid)
+                            return@forEach
+                        }
+
+                val timer =
+                    nightmareFearTimer[uuid] ?: 0
+
+                if (timer <= 0) {
+
+                    nightmareFearTimer.remove(uuid)
+
+                } else {
+
+                    nightmareFearTimer[uuid] =
+                        timer - 1
+
+                    val nearestPlayer =
+                        server.playerList.players
+                            .minByOrNull {
+                                it.distanceTo(mob)
+                            }
+                            ?: return@forEach
+
+                    val dx =
+                        mob.x - nearestPlayer.x
+
+                    val dz =
+                        mob.z - nearestPlayer.z
+
+                    val len =
+                        sqrt(dx * dx + dz * dz)
+
+                    if (len > 0.01) {
+
+                        mob.navigation.moveTo(
+                            mob.x + (dx / len) * 8.0,
+                            mob.y,
+                            mob.z + (dz / len) * 8.0,
+                            1.2
+                        )
+                    }
+                }
+            }
+
         val toRemove = mutableListOf<UUID>()
 
         activeFireballs.forEach { id ->
@@ -272,6 +416,47 @@ object CommandTickHandler {
             val speed = 0.40 + (spd * 0.005)
 
             when (action) {
+                "goto_ping" -> {
+
+                    val ping =
+                        PingManager.getPing(
+                            owner.uuid
+                        ) ?: run {
+
+                            CommandState.activeCommands[
+                                pokemonId
+                            ] = "idle"
+
+                            return@forEach
+                        }
+
+                    suspendFollowGoal(
+                        pokemon
+                    )
+
+                    pokemon.navigation.moveTo(
+                        ping.pos.x + 0.5,
+                        ping.pos.y.toDouble(),
+                        ping.pos.z + 0.5,
+                        1.2
+                    )
+
+                    if (
+                        pokemon.distanceToSqr(
+                            ping.pos.x + 0.5,
+                            ping.pos.y + 0.5,
+                            ping.pos.z + 0.5
+                        ) < 4.0
+                    ) {
+
+                        pokemon.navigation.stop()
+
+                        CommandState.activeCommands[
+                            pokemonId
+                        ] = "idle"
+                    }
+                }
+
                 "grow" -> {
                     val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
                     val pokemonId = pokemon.uuid
@@ -866,9 +1051,11 @@ object CommandTickHandler {
 
                 "idle" -> {
                     exitAttackMode(pokemon)
+                    restoreFollowGoal(pokemon)
                     CommandState.activeTargets.remove(pokemonId)
                     announcedStates.remove(pokemonId)
                     chaseCooldown[pokemonId] = 0
+                    pokemon.isInvulnerable = false
                 }
 
                 "repair" -> {
@@ -998,6 +1185,764 @@ object CommandTickHandler {
                         }
                     }
                 }
+
+                "fish" -> {
+
+                    val primaryType =
+                        cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
+
+                    val pokemonId = pokemon.uuid
+
+                    when(primaryType.lowercase()) {
+
+                        "water" -> {
+
+                            if (announcedStates[pokemonId] != "fish") {
+
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} is looking for fish.",
+                                    ChatFormatting.AQUA
+                                )
+
+                                announcedStates[pokemonId] = "fish"
+                            }
+
+                            val state =
+                                fishState.getOrDefault(
+                                    pokemonId,
+                                    "search_water"
+                                )
+
+                            println(
+                                "${pokemon.displayName?.string} -> $state"
+                            )
+
+                            when(state) {
+
+                                "search_water" -> {
+
+                                    val spot =
+                                        findFishingSpot(
+                                            level,
+                                            pokemon.blockPosition(),
+                                            16
+                                        )
+
+                                    if (spot != null) {
+
+                                        fishTargetWater[pokemonId] =
+                                            spot.pos
+
+                                        fishDeepSpot[pokemonId] =
+                                            spot.deep
+
+                                        fishState[pokemonId] =
+                                            "go_water"
+
+                                    } else {
+
+                                        pokemon.navigation.moveTo(
+                                            owner,
+                                            1.0
+                                        )
+                                    }
+                                }
+
+                                "go_water" -> {
+                                    suspendFollowGoal(pokemon)
+
+                                    val water =
+                                        fishTargetWater[pokemonId]
+
+                                    if (water == null) {
+
+                                        fishState[pokemonId] =
+                                            "search_water"
+
+                                        return@forEach
+                                    }
+
+                                    pokemon.navigation.moveTo(
+                                        water.x + 0.5,
+                                        water.y.toDouble(),
+                                        water.z + 0.5,
+                                        1.0
+                                    )
+
+                                    val nearWater =
+                                        BlockPos.betweenClosed(
+                                            pokemon.blockPosition().offset(-1, -1, -1),
+                                            pokemon.blockPosition().offset(1, 1, 1)
+                                        ).any {
+                                            level.getBlockState(it)
+                                                .fluidState
+                                                .isSource
+                                        }
+
+                                    if (nearWater) {
+
+                                        fishTimer[pokemonId] =
+                                            140 + level.random.nextInt(41)
+
+                                        fishMoveTimer[pokemonId] = 0
+
+                                        fishState[pokemonId] =
+                                            "fishing"
+                                    }
+                                }
+
+                                "fishing" -> {
+
+                                    val timer =
+                                        fishTimer.getOrDefault(
+                                            pokemonId,
+                                            0
+                                        )
+
+                                    if (timer <= 0) {
+
+                                        fishLoot[pokemonId] =
+                                            generateFishingLoot(
+                                                level,
+                                                pokemon,
+                                                fishDeepSpot.getOrDefault(
+                                                    pokemonId,
+                                                    false
+                                                )
+                                            )
+
+                                        fishState[pokemonId] =
+                                            "return_owner"
+
+                                    } else {
+
+                                        fishTimer[pokemonId] =
+                                            timer - 1
+
+                                        suspendFollowGoal(pokemon)
+
+                                        val moveTimer =
+                                            fishMoveTimer.getOrDefault(
+                                                pokemonId,
+                                                0
+                                            )
+
+                                        if (moveTimer <= 0) {
+
+                                            val water =
+                                                fishTargetWater[pokemonId]
+
+                                            if (water != null) {
+
+                                                repeat(10) {
+
+                                                    val x =
+                                                        water.x +
+                                                                (level.random.nextDouble() - 0.5) * 4
+
+                                                    val z =
+                                                        water.z +
+                                                                (level.random.nextDouble() - 0.5) * 4
+
+                                                    val y =
+                                                        water.y.toDouble() -
+                                                                (1 + level.random.nextInt(3))
+
+                                                    val targetPos = BlockPos(
+                                                        x.toInt(),
+                                                        y.toInt(),
+                                                        z.toInt()
+                                                    )
+
+                                                    if (
+                                                        level.getBlockState(targetPos)
+                                                            .fluidState
+                                                            .isSource
+                                                    ) {
+
+                                                        pokemon.navigation.moveTo(
+                                                            x,
+                                                            y,
+                                                            z,
+                                                            0.6
+                                                        )
+
+                                                        fishMoveTimer[pokemonId] =
+                                                            8 + level.random.nextInt(5)
+
+                                                        return@repeat
+                                                    }
+                                                }
+                                            }
+
+                                        } else {
+
+                                            fishMoveTimer[pokemonId] =
+                                                moveTimer - 1
+                                        }
+
+                                        level.sendParticles(
+                                            ParticleTypes.SPLASH,
+                                            pokemon.x,
+                                            pokemon.y,
+                                            pokemon.z,
+                                            2,
+                                            0.2,
+                                            0.1,
+                                            0.2,
+                                            0.0
+                                        )
+                                    }
+                                }
+
+                                "return_owner" -> {
+
+                                    pokemon.navigation.moveTo(
+                                        owner,
+                                        1.0
+                                    )
+
+                                    if (
+                                        pokemon.distanceTo(owner)
+                                        < 3.0
+                                    ) {
+
+                                        val loot =
+                                            fishLoot[pokemonId]
+
+                                        playFishingLootSound(
+                                            level,
+                                            pokemon,
+                                            loot
+                                        )
+
+                                        if (
+                                            loot != null &&
+                                            !loot.isEmpty
+                                        ) {
+
+                                            val itemEntity = ItemEntity(
+                                                level,
+                                                pokemon.x,
+                                                pokemon.y + 0.5,
+                                                pokemon.z,
+                                                loot.copy()
+                                            )
+
+                                            level.addFreshEntity(itemEntity)
+                                        }
+
+                                        fishLoot.remove(pokemonId)
+                                        fishDeepSpot.remove(pokemonId)
+
+                                        fishState[pokemonId] =
+                                            "search_water"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                "nightmare" -> {
+
+                    val primaryType =
+                        cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
+
+                    if (primaryType.lowercase() != "dark") {
+
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} cannot use NIGHTMARE.",
+                            ChatFormatting.DARK_PURPLE
+                        )
+
+                        CommandState.activeCommands[pokemonId] = "idle"
+                        return@forEach
+                    }
+
+                    val cooldown =
+                        nightmareCooldown.getOrDefault(
+                            pokemonId,
+                            0
+                        )
+
+                    var duration =
+                        nightmareDuration.getOrDefault(
+                            pokemonId,
+                            0
+                        )
+
+                    // ativa a habilidade
+                    if (duration <= 0) {
+
+                        pokemon.isInvulnerable = true
+                        level.playSound(
+                            null,
+                            pokemon.blockPosition(),
+                            SoundEvents.ENDERMAN_STARE,
+                            SoundSource.HOSTILE,
+                            0.8f,
+                            1.4f
+                        )
+
+                        if (cooldown > 0) {
+
+                            sendMessage(
+                                owner,
+                                "${pokemon.displayName?.string} is recharging NIGHTMARE...",
+                                ChatFormatting.DARK_PURPLE
+                            )
+
+                            CommandState.activeCommands[pokemonId] =
+                                "idle"
+
+                            return@forEach
+                        }
+
+                        nightmareDuration[pokemonId] = 160
+                        nightmareCooldown[pokemonId] = 2400
+
+                        duration = 160
+
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} unleashed a NIGHTMARE FIELD.",
+                            ChatFormatting.DARK_PURPLE
+                        )
+                    }
+
+                    nightmareDuration[pokemonId] =
+                        duration - 1
+
+                    if (cooldown > 0) {
+
+                        nightmareCooldown[pokemonId] =
+                            cooldown - 1
+                    }
+
+                    spawnNightmareParticles(
+                        level,
+                        pokemon
+                    )
+
+                    applyNightmareAura(
+                        level,
+                        pokemon,
+                        owner
+                    )
+
+                    if (
+                        nightmareDuration.getOrDefault(
+                            pokemonId,
+                            0
+                        ) <= 0
+                    ) {
+
+                        announcedStates.remove(
+                            pokemonId
+                        )
+
+                        CommandState.activeCommands[pokemonId] =
+                            "idle"
+
+                        pokemon.isInvulnerable = false
+                    }
+                }
+
+                "light" -> {
+
+                    val primaryType =
+                        cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
+
+                    if (primaryType.lowercase() != "electric") {
+
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} cannot use LIGHT.",
+                            ChatFormatting.YELLOW
+                        )
+
+                        CommandState.activeCommands[pokemonId] = "idle"
+                        return@forEach
+                    }
+
+                    val currentPos =
+                        pokemon.blockPosition()
+
+                    val oldPos =
+                        lightBlocks[pokemonId]
+
+                    if (
+                        oldPos != null &&
+                        oldPos != currentPos
+                    ) {
+
+                        if (
+                            level.getBlockState(oldPos).block ==
+                            Blocks.LIGHT
+                        ) {
+
+                            level.removeBlock(
+                                oldPos,
+                                false
+                            )
+                        }
+                    }
+
+                    if (
+                        level.getBlockState(currentPos)
+                            .isAir
+                    ) {
+
+                        level.setBlockAndUpdate(
+                            currentPos,
+                            Blocks.LIGHT.defaultBlockState()
+                        )
+
+                        lightBlocks[pokemonId] =
+                            currentPos
+                    }
+
+                    level.sendParticles(
+                        ParticleTypes.ELECTRIC_SPARK,
+                        pokemon.x,
+                        pokemon.y + 0.5,
+                        pokemon.z,
+                        2,
+                        0.3,
+                        0.3,
+                        0.3,
+                        0.0
+                    )
+                }
+
+                "scout" -> {
+
+                    when (
+                        scoutState.getOrDefault(
+                            pokemonId,
+                            "takeoff"
+                        )
+                    ) {
+
+                        "takeoff" -> {
+
+                            if (
+                                handleScoutTakeoff(
+                                    pokemon,
+                                    owner
+                                )
+                            ) {
+
+                                scoutHoverPos[pokemonId] =
+                                    pokemon.blockPosition()
+
+                                scoutScanTimer[pokemonId] = 60
+
+                                scoutState[pokemonId] =
+                                    "scan"
+                            }
+                        }
+
+                        "scan" -> {
+
+                            suspendFollowGoal(pokemon)
+
+                            val hoverPos =
+                                scoutHoverPos[pokemonId]
+                                    ?: pokemon.blockPosition().also {
+                                        scoutHoverPos[pokemonId] = it
+                                    }
+
+                            pokemon.navigation.moveTo(
+                                hoverPos.x + 0.5,
+                                hoverPos.y.toDouble(),
+                                hoverPos.z + 0.5,
+                                1.0
+                            )
+
+                            val timer =
+                                scoutScanTimer.getOrDefault(
+                                    pokemonId,
+                                    0
+                                )
+
+                            if (timer <= 0) {
+
+                                handleScoutScan(
+                                    level,
+                                    pokemon
+                                )
+
+                                scoutHoverPos.remove(
+                                    pokemonId
+                                )
+
+                                scoutState[pokemonId] =
+                                    "return_owner"
+
+                            } else {
+
+                                scoutScanTimer[pokemonId] =
+                                    timer - 1
+
+                                level.sendParticles(
+                                    ParticleTypes.CLOUD,
+                                    pokemon.x,
+                                    pokemon.y,
+                                    pokemon.z,
+                                    1,
+                                    0.3,
+                                    0.1,
+                                    0.3,
+                                    0.0
+                                )
+                            }
+                        }
+
+                        "return_owner" -> {
+
+                            if (
+                                handleScoutReturn(
+                                    pokemon,
+                                    owner
+                                )
+                            ) {
+
+                                val structure =
+                                    scoutFoundStructure.remove(
+                                        pokemonId
+                                    )
+
+                                println("RETURN STRUCTURE: $structure")
+
+                                if (structure != null) {
+
+                                    val name =
+                                        structure.first
+
+                                    val pos =
+                                        structure.second
+
+                                    sendMessage(
+                                        owner,
+                                        "${pokemon.displayName?.string} spotted a $name at X:${pos.x} Y:${pos.y} Z:${pos.z}",
+                                        ChatFormatting.AQUA
+                                    )
+
+                                } else {
+
+                                    sendMessage(
+                                        owner,
+                                        "${pokemon.displayName?.string} found no notable structures.",
+                                        ChatFormatting.GRAY
+                                    )
+                                }
+
+                                sendMessage(
+                                    owner,
+                                    "${pokemon.displayName?.string} completed its reconnaissance.",
+                                    ChatFormatting.AQUA
+                                )
+
+                                scoutState.remove(pokemonId)
+                                scoutTargetPos.remove(pokemonId)
+                                scoutScanTimer.remove(pokemonId)
+
+                                CommandState.activeCommands[pokemonId] =
+                                    "idle"
+                            }
+                        }
+                    }
+                }
+
+                "teleport" -> {
+
+                    val ping =
+                        PingManager.getPing(
+                            owner.uuid
+                        ) ?: run {
+
+                            CommandState.activeCommands[
+                                pokemonId
+                            ] = "idle"
+
+                            return@forEach
+                        }
+
+                    val targetPos =
+                        ping.pos
+
+                    val cooldown =
+                        teleportCooldown.getOrDefault(
+                            pokemonId,
+                            0
+                        )
+
+                    println("TELEPORT ACTION")
+                    println("TARGET: ${teleportTargetPos[pokemonId]}")
+
+                    if (cooldown > 0) {
+
+                        teleportCooldown[pokemonId] =
+                            cooldown - 1
+
+                        if (
+                            announcedStates[pokemonId] ==
+                            "teleport"
+                        ) {
+
+                            sendMessage(
+                                owner,
+                                "${pokemon.displayName?.string} is recharging TELEPORT...",
+                                ChatFormatting.LIGHT_PURPLE
+                            )
+                        }
+
+                        CommandState.activeCommands[
+                            pokemonId
+                        ] = "idle"
+
+                        return@forEach
+                    }
+
+                    val teleportPos =
+                        when (ping.direction) {
+
+                            Direction.UP ->
+                                ping.pos.above()
+
+                            Direction.DOWN ->
+                                ping.pos.above()
+
+                            Direction.NORTH ->
+                                ping.pos.north()
+
+                            Direction.SOUTH ->
+                                ping.pos.south()
+
+                            Direction.EAST ->
+                                ping.pos.east()
+
+                            Direction.WEST ->
+                                ping.pos.west()
+                        }
+
+                    val feetFree =
+                        level.getBlockState(teleportPos)
+                            .getCollisionShape(
+                                level,
+                                teleportPos
+                            )
+                            .isEmpty
+
+                    val headFree =
+                        level.getBlockState(
+                            teleportPos.above()
+                        )
+                            .getCollisionShape(
+                                level,
+                                teleportPos.above()
+                            )
+                            .isEmpty
+
+                    if (
+                        !feetFree ||
+                        !headFree
+                    ) {
+
+                        sendMessage(
+                            owner,
+                            "Teleport destination is blocked.",
+                            ChatFormatting.RED
+                        )
+
+                        CommandState.activeCommands[
+                            pokemonId
+                        ] = "idle"
+
+                        return@forEach
+                    }
+
+                    repeat(50) {
+
+                        level.sendParticles(
+                            ParticleTypes.PORTAL,
+                            owner.x,
+                            owner.y + 1.0,
+                            owner.z,
+                            1,
+                            0.5,
+                            1.0,
+                            0.5,
+                            0.0
+                        )
+                    }
+
+                    level.playSound(
+                        null,
+                        owner.blockPosition(),
+                        SoundEvents.ENDERMAN_TELEPORT,
+                        SoundSource.PLAYERS,
+                        1.0f,
+                        0.8f
+                    )
+
+                    owner.teleportTo(
+                        level,
+                        teleportPos.x + 0.5,
+                        teleportPos.y.toDouble(),
+                        teleportPos.z + 0.5,
+                        owner.yRot,
+                        owner.xRot
+                    )
+
+                    repeat(50) {
+
+                        level.sendParticles(
+                            ParticleTypes.PORTAL,
+                            targetPos.x + 0.5,
+                            targetPos.y + 1.0,
+                            targetPos.z + 0.5,
+                            1,
+                            0.5,
+                            1.0,
+                            0.5,
+                            0.0
+                        )
+                    }
+
+                    level.playSound(
+                        null,
+                        targetPos,
+                        SoundEvents.ENDERMAN_TELEPORT,
+                        SoundSource.PLAYERS,
+                        1.0f,
+                        0.8f
+                    )
+
+                    teleportCooldown[
+                        pokemonId
+                    ] = 0 // 2 minutos
+
+                    teleportTargetPos.remove(
+                        pokemonId
+                    )
+
+                    CommandState.activeCommands[
+                        pokemonId
+                    ] = "idle"
+
+                    sendMessage(
+                        owner,
+                        "${pokemon.displayName?.string} teleported you.",
+                        ChatFormatting.LIGHT_PURPLE
+                    )
+                }
+
+                // APRIL FOOLS ACTIONS
 
                 "nuke" -> {
                     if (!config.outputApril1) return@forEach
@@ -1524,7 +2469,634 @@ fun applyFoodEffects(
     return bonus
 }
 
-// 1 april
+fun findFishingSpot(
+    level: ServerLevel,
+    center: BlockPos,
+    range: Int
+): FishingSpot? {
+
+    return BlockPos.betweenClosed(
+        center.offset(-range, -3, -range),
+        center.offset(range, 3, range)
+    )
+        .map { it.immutable() }
+        .mapNotNull { pos ->
+
+            if (
+                !level.getBlockState(pos)
+                    .fluidState
+                    .isSource
+            ) {
+                return@mapNotNull null
+            }
+
+            // profundidade
+            var depth = 0
+
+            for (i in 0..20) {
+
+                val check = pos.below(i)
+
+                if (
+                    !level.getBlockState(check)
+                        .fluidState
+                        .isSource
+                ) {
+                    break
+                }
+
+                depth++
+            }
+
+            // tier 1 exige profundidade mínima
+            if (depth < 3)
+                return@mapNotNull null
+
+            // água conectada
+            val visited = mutableSetOf<BlockPos>()
+            val queue = ArrayDeque<BlockPos>()
+
+            queue.add(pos)
+            visited.add(pos)
+
+            while (
+                queue.isNotEmpty() &&
+                visited.size < 20
+            ) {
+
+                val current =
+                    queue.removeFirst()
+
+                listOf(
+                    current.north(),
+                    current.south(),
+                    current.east(),
+                    current.west()
+                ).forEach { next ->
+
+                    if (
+                        next !in visited &&
+                        level.getBlockState(next)
+                            .fluidState
+                            .isSource
+                    ) {
+
+                        visited.add(next)
+                        queue.add(next)
+                    }
+                }
+            }
+
+            val connected = visited.size
+
+            // tier 1 exige pelo menos 9
+            if (connected < 9)
+                return@mapNotNull null
+
+            val deepSpot =
+                depth >= 5 &&
+                        connected >= 20
+
+            FishingSpot(
+                pos,
+                deepSpot
+            )
+        }
+        .minByOrNull {
+            it.pos.distManhattan(center)
+        }
+}
+
+private val fishLootTable = listOf(
+    Items.COD,
+    Items.SALMON,
+    Items.TROPICAL_FISH,
+    Items.PUFFERFISH
+)
+
+private val junkLootTable = listOf(
+    Items.STRING,
+    Items.BONE,
+    Items.STICK,
+    Items.LEATHER,
+    Items.LILY_PAD
+)
+
+private val treasureLootTable = listOf(
+    Items.NAME_TAG,
+    Items.SADDLE,
+    Items.NAUTILUS_SHELL
+)
+
+fun generateFishingLoot(
+    level: ServerLevel,
+    pokemon: PokemonEntity,
+    deepSpot: Boolean
+): ItemStack {
+
+    var rolls = 1
+
+    if (pokemon.pokemon.friendship >= 180)
+        rolls++
+
+    if (
+        pokemon.pokemon.currentFullness >=
+        pokemon.pokemon.getMaxFullness() * 0.8
+    )
+        rolls++
+
+    var bestItem = ItemStack(Items.COD)
+    var bestTier = 0
+
+    repeat(rolls) {
+
+        val roll = level.random.nextDouble()
+
+        val treasureChance =
+            if (deepSpot) 0.15
+            else 0.05
+
+        val junkChance = 0.10
+        val fishChance =
+            1.0 - treasureChance - junkChance
+
+        val tier: Int
+        val item: Item
+
+        when {
+
+            roll < fishChance -> {
+
+                tier = 1
+                item = fishLootTable.random()
+            }
+
+            roll < fishChance + junkChance -> {
+
+                tier = 2
+                item = junkLootTable.random()
+            }
+
+            else -> {
+
+                tier = 3
+
+                if (
+                    deepSpot &&
+                    level.random.nextFloat() < 0.35f
+                ) {
+
+                    if (tier > bestTier) {
+
+                        bestTier = tier
+                        bestItem =
+                            createEnchantedFishingBook(level)
+                    }
+
+                    return@repeat
+                }
+
+                item =
+                    treasureLootTable.random()
+            }
+        }
+
+        if (tier > bestTier) {
+
+            bestTier = tier
+            bestItem = ItemStack(item)
+        }
+    }
+
+    return bestItem
+}
+
+fun createEnchantedFishingBook(
+    level: ServerLevel
+): ItemStack {
+
+    val enchantRegistry =
+        level.registryAccess()
+            .registryOrThrow(
+                Registries.ENCHANTMENT
+            )
+
+    val book =
+        ItemStack(Items.ENCHANTED_BOOK)
+
+    val enchantments = listOf(
+        Enchantments.MENDING,
+        Enchantments.UNBREAKING,
+        Enchantments.FORTUNE,
+        Enchantments.LOOTING,
+        Enchantments.EFFICIENCY,
+        Enchantments.SHARPNESS,
+        Enchantments.PROTECTION,
+        Enchantments.FEATHER_FALLING,
+        Enchantments.POWER,
+        Enchantments.LUCK_OF_THE_SEA
+    )
+
+    val enchantment =
+        enchantments.random()
+
+    val levelRoll =
+        1 + level.random.nextInt(4)
+
+    book.enchant(
+        enchantRegistry.getHolderOrThrow(
+            enchantment
+        ),
+        levelRoll
+    )
+
+    return book
+}
+
+fun playFishingLootSound(
+    level: ServerLevel,
+    pokemon: Mob,
+    loot: ItemStack?
+) {
+
+    when (loot?.item) {
+        Items.NAME_TAG, Items.SADDLE, Items.NAUTILUS_SHELL, Items.ENCHANTED_BOOK -> {
+
+            level.playSound(
+                null,
+                pokemon.blockPosition(),
+                SoundEvents.PLAYER_LEVELUP,
+                SoundSource.NEUTRAL,
+                0.8f,
+                1.2f
+            )
+        }
+        else -> {
+
+            level.playSound(
+                null,
+                pokemon.blockPosition(),
+                SoundEvents.ITEM_FRAME_REMOVE_ITEM,
+                SoundSource.NEUTRAL,
+                1.0f,
+                0.8f
+            )
+        }
+    }
+}
+
+private fun suspendFollowGoal(pokemon: Mob) {
+    val getGoals = MobBridge.getGoals ?: return
+    val toDisable = getGoals(pokemon)
+        .filterIsInstance<FollowOwnerGoal>()
+
+    if (toDisable.isNotEmpty()) {
+        disabledGoals[pokemon.uuid] = toDisable
+
+        toDisable.forEach {
+            MobBridge.removeGoal?.invoke(
+                pokemon,
+                it
+            )
+        }
+    }
+}
+
+private fun restoreFollowGoal(
+    pokemon: Mob
+) {
+    disabledGoals.remove(
+        pokemon.uuid
+    )?.forEach { goal ->
+
+        MobBridge.addGoal?.invoke(
+            pokemon,
+            2,
+            goal
+        )
+    }
+}
+
+fun spawnNightmareParticles(
+    level: ServerLevel,
+    pokemon: PokemonEntity
+) {
+
+    val radius = 5.0
+
+    for (i in 0 until 20) {
+
+        val angle =
+            (Math.PI * 2.0 / 20.0) * i
+
+        val x =
+            pokemon.x +
+                    cos(angle) * radius
+
+        val z =
+            pokemon.z +
+                    sin(angle) * radius
+
+        level.sendParticles(
+            ParticleTypes.SOUL_FIRE_FLAME,
+            x,
+            pokemon.y + 0.2,
+            z,
+            1,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        )
+    }
+
+    repeat(4) {
+
+        level.sendParticles(
+            ParticleTypes.LARGE_SMOKE,
+            pokemon.x,
+            pokemon.y + 0.2,
+            pokemon.z,
+            1,
+            1.5,
+            0.3,
+            1.5,
+            0.0
+        )
+    }
+}
+
+fun applyNightmareAura(
+    level: ServerLevel,
+    pokemon: PokemonEntity,
+    owner: ServerPlayer
+) {
+
+    val radius = 5.0
+
+    val entities =
+        level.getEntitiesOfClass(
+            LivingEntity::class.java,
+            pokemon.boundingBox.inflate(radius)
+        ) {
+            it != pokemon &&
+                    isEnemy(pokemon, it)
+        }
+
+    entities.forEach { target ->
+
+        target.addEffect(
+            MobEffectInstance(
+                MobEffects.WEAKNESS,
+                60,
+                0
+            )
+        )
+
+        target.addEffect(
+            MobEffectInstance(
+                MobEffects.MOVEMENT_SLOWDOWN,
+                60,
+                0
+            )
+        )
+
+        target.addEffect(
+            MobEffectInstance(
+                MobEffects.CONFUSION,
+                60,
+                0
+            )
+        )
+
+        if (target is ServerPlayer) {
+
+            target.addEffect(
+                MobEffectInstance(
+                    MobEffects.DARKNESS,
+                    60,
+                    0
+                )
+            )
+        }
+
+        if (
+            target is Mob &&
+            nightmareFearTimer[target.uuid] == null &&
+            level.random.nextFloat() < 0.30f
+        ) {
+
+            nightmareFearTimer[target.uuid] = 100
+        }
+    }
+}
+
+fun handleScoutTakeoff(
+    pokemon: PokemonEntity,
+    owner: ServerPlayer
+): Boolean {
+
+    suspendFollowGoal(pokemon)
+
+    val pokemonId = pokemon.uuid
+
+    if (
+        !pokemon.level()
+            .canSeeSky(
+                owner.blockPosition()
+            )
+    ) {
+        return false
+    }
+
+    val target =
+        scoutTargetPos[pokemonId]
+            ?: owner.blockPosition().above(15).also {
+                scoutTargetPos[pokemonId] = it
+            }
+
+    pokemon.navigation.moveTo(
+        target.x + 0.5,
+        target.y.toDouble(),
+        target.z + 0.5,
+        1.3
+    )
+
+    val timer =
+        scoutScanTimer.getOrDefault(
+            pokemonId,
+            200
+        )
+
+    scoutScanTimer[pokemonId] =
+        timer - 1
+
+    if (timer <= 0) {
+        return false
+    }
+
+    return pokemon.distanceToSqr(
+        target.x + 0.5,
+        target.y + 0.5,
+        target.z + 0.5
+    ) < 9.0
+}
+
+fun handleScoutScan(
+    level: ServerLevel,
+    pokemon: PokemonEntity
+) {
+    println("SCAN EXECUTED")
+    val radius =
+        maxOf(
+            64.0,
+            pokemon.blockY * 3.0
+        )
+
+    level.getEntitiesOfClass(
+        LivingEntity::class.java,
+        pokemon.boundingBox.inflate(radius)
+    ) { entity ->
+
+        entity != pokemon &&
+                entity.uuid != pokemon.ownerUUID &&
+                (
+                        entity is PokemonEntity ||
+                                isEnemy(
+                                    pokemon,
+                                    entity
+                                )
+                        ) &&
+                pokemon.hasLineOfSight(entity)
+    }.forEach {
+
+        println("FOUND: $it")
+        it.addEffect(
+            MobEffectInstance(
+                MobEffects.GLOWING,
+                1200,
+                0
+            )
+        )
+    }
+
+    level.getEntitiesOfClass(
+        ItemEntity::class.java,
+        pokemon.boundingBox.inflate(radius)
+    ) { item ->
+
+        pokemon.hasLineOfSight(item)
+    }.forEach {
+
+        it.setGlowingTag(true)
+        scoutGlowItems[it.uuid] = 1200
+    }
+
+    var nearestName: String? = null
+    var nearestPos: BlockPos? = null
+    var nearestDistance = Double.MAX_VALUE
+
+    scoutStructures.forEach { (name, tag) ->
+
+        val posT =
+            level.findNearestMapStructure(
+                StructureTags.VILLAGE,
+                pokemon.blockPosition(),
+                1000,
+                false
+            )
+
+        println("VILLAGE RESULT: $posT")
+
+        val pos =
+            level.findNearestMapStructure(
+                tag,
+                pokemon.blockPosition(),
+                (radius * 5).toInt(),
+                false
+            )
+
+        if (pos == null)
+            return@forEach
+
+        if (
+            !canScoutDetectStructure(
+                level,
+                tag,
+                pos
+            )
+        ) {
+            return@forEach
+        }
+
+        val distance =
+            pos.distSqr(
+                pokemon.blockPosition()
+            )
+
+        if (distance < nearestDistance) {
+
+            nearestDistance =
+                distance
+
+            nearestName =
+                name
+
+            nearestPos =
+                pos
+        }
+    }
+
+    if (
+        nearestName != null &&
+        nearestPos != null
+    ) {
+
+        val realY =
+            level.getHeight(
+                Heightmap.Types.WORLD_SURFACE,
+                nearestPos.x,
+                nearestPos.z
+            )
+
+        scoutFoundStructure[pokemon.uuid] =
+            nearestName to BlockPos(
+                nearestPos.x,
+                realY,
+                nearestPos.z
+            )
+    }
+
+    repeat(25) {
+
+        level.sendParticles(
+            ParticleTypes.CLOUD,
+            pokemon.x,
+            pokemon.y,
+            pokemon.z,
+            1,
+            2.0,
+            1.0,
+            2.0,
+            0.0
+        )
+    }
+}
+
+fun handleScoutReturn(
+    pokemon: PokemonEntity,
+    owner: ServerPlayer
+): Boolean {
+
+    pokemon.navigation.moveTo(
+        owner,
+        1.2
+    )
+
+    return pokemon.distanceTo(owner) < 3.0
+}
+
+// 1 APRIL
 fun shootFireball(level: ServerLevel, pokemon: Mob, dx: Double, dy: Double, dz: Double) {
     val norm = sqrt(dx * dx + dy * dy + dz * dz)
     if (norm == 0.0) return
@@ -1611,6 +3183,29 @@ fun createNuke(level: ServerLevel, x: Double, y: Double, z: Double) {
             )
         }
     }
+}
+
+fun canScoutDetectStructure(
+    level: ServerLevel,
+    tag: TagKey<Structure>,
+    pos: BlockPos
+): Boolean {
+
+    if (tag in scoutSurfaceStructures)
+        return true
+
+    val surfaceY =
+        level.getHeight(
+            Heightmap.Types.WORLD_SURFACE,
+            pos.x,
+            pos.z
+        )
+
+    println("TAG: $tag")
+    println("SURFACE STRUCTURE: ${tag in scoutSurfaceStructures}")
+    println("POS: $pos")
+
+    return pos.y >= surfaceY - 20
 }
 
 fun handleNukeSystem(level: ServerLevel) {
@@ -2276,8 +3871,8 @@ fun handleSSStyle(level: ServerLevel) {
                 for (i in 0 until amount) {
                     val angle = (2 * Math.PI / amount) * i
 
-                    val x = player.x + Math.cos(angle) * radius
-                    val z = player.z + Math.sin(angle) * radius
+                    val x = player.x + cos(angle) * radius
+                    val z = player.z + sin(angle) * radius
                     val y = player.y + yOffset
 
                     val mob = type.create(level)

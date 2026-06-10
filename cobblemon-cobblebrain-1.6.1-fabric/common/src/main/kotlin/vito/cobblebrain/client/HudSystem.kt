@@ -10,7 +10,7 @@ import kotlin.math.sin
 object HudSystem {
 
     // Lista de comandos disponíveis
-    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF", "EAT", "COOK", "GROW", "REPAIR", "SHIFT")
+    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT")
     private var selectedActionIndex = 0
     private var isVisible = true
     private val cooldowns = mutableMapOf<String, Long>()

@@ -35,6 +35,25 @@ object CobblebrainClientRuntimeNeoForge {
             }
         }
 
+        PingClient.sendPingToServer = { pos, direction ->
+
+            if (
+                net.minecraft.client.Minecraft
+                    .getInstance()
+                    .player != null
+            ) {
+
+                net.neoforged.neoforge.network.PacketDistributor
+                    .sendToServer(
+
+                        CobblebrainPayloads.PingPayload(
+                            pos,
+                            direction
+                        )
+                    )
+            }
+        }
+
         // registra tick
         NeoForge.EVENT_BUS.register(this)
     }

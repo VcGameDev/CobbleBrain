@@ -2,6 +2,8 @@ package vito.cobblebrain.server
 
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
 import vito.cobblebrain.client.CobblebrainClientHandlers
 import vito.cobblebrain.network.CobblebrainPayloads
 
@@ -104,6 +106,40 @@ object CobblebrainPayloadRegistrarNeoForge {
 
             context.enqueueWork {
                 vito.cobblebrain.social.PlayerNicknameManager.set(player.uuid, payload.preferredName)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.PingPayload.TYPE,
+            CobblebrainPayloads.PingPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+
+            context.enqueueWork {
+                val accepted =
+                    vito.cobblebrain.social.PingManager
+                        .handlePingPacket(
+                            player,
+                            payload.pos,
+                            payload.direction
+                        )
+                if (accepted) {
+                    val level = player.serverLevel()
+                    val pos = payload.pos
+                    // Partículas visíveis no local do Ping
+                    level.sendParticles(
+                        net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
+                        pos.x + 0.5, pos.y + 1.2, pos.z + 0.5,
+                        15, 0.3, 0.3, 0.3, 0.05
+                    )
+                    // Som de feedback
+                    player.playNotifySound(
+                        SoundEvents.EXPERIENCE_ORB_PICKUP,
+                        SoundSource.PLAYERS,
+                        0.5f,
+                        1.5f
+                    )
+                }
             }
         }
     }

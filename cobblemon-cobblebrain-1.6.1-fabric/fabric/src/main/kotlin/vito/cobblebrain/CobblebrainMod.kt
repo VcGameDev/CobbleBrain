@@ -105,6 +105,11 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.PlayerNicknamePayload.CODEC
         )
 
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.PingPayload.TYPE,
+            CobblebrainPayloads.PingPayload.CODEC
+        )
+
         // registra handlers de networking
         vito.cobblebrain.server.CobblebrainServerHandlerFabric.register()
 
@@ -123,6 +128,7 @@ object CobblebrainMod : ModInitializer {
             currentServer = server
             // remover se der problemas
             CobblebrainWorldSave.init(server)
+            vito.cobblebrain.social.PingManager.init(server)
         }
 
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->

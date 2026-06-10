@@ -64,12 +64,19 @@ object CobbleBrainModClient : ClientModInitializer {
             "category.cobblebrain"
         )
 
+        val keyPing = KeyMapping(
+            "key.cobblebrain.ping",
+            GLFW.GLFW_KEY_G,
+            "category.cobblebrain"
+        )
+
         // keybinds
         KeyBindingHelper.registerKeyBinding(openConfig)
         KeyBindingHelper.registerKeyBinding(commandKeyQ)
         KeyBindingHelper.registerKeyBinding(commandKeyE)
         KeyBindingHelper.registerKeyBinding(commandKeyR)
         KeyBindingHelper.registerKeyBinding(commandKeyToggle)
+        KeyBindingHelper.registerKeyBinding(keyPing)
 
         // Passa as referências para a HUD dinâmica
         CobblebrainClientCommon.keyUp = commandKeyQ
@@ -92,6 +99,9 @@ object CobbleBrainModClient : ClientModInitializer {
             }
             while (commandKeyToggle.consumeClick()) {
                 HudSystem.toggleVisibility()
+            }
+            while (keyPing.consumeClick()) {
+                vito.cobblebrain.client.PingClient.triggerPingRaycast()
             }
         })
 

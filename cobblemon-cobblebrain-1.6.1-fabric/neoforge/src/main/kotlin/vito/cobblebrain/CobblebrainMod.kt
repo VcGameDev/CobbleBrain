@@ -103,6 +103,7 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
         currentServer = server
 
         CobblebrainWorldSave.init(server)
+        vito.cobblebrain.social.PingManager.init(server)
         ConfigHandler.load()
     }
 

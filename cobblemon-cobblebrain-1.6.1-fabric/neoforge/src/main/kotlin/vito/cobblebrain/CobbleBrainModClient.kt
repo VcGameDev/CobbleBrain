@@ -50,6 +50,12 @@ object CobbleBrainModClientNeoForge {
         "category.cobblebrain"
     )
 
+    private val KEY_PING = KeyMapping(
+        "key.cobblebrain.ping",
+        GLFW.GLFW_KEY_G,
+        "category.cobblebrain"
+    )
+
     fun init() {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
@@ -78,6 +84,7 @@ object CobbleBrainModClientNeoForge {
         event.register(CMD_DOWN)
         event.register(CMD_EXECUTE)
         event.register(CMD_TOGGLE)
+        event.register(KEY_PING)
     }
 
     // tick
@@ -96,6 +103,9 @@ object CobbleBrainModClientNeoForge {
         }
         while (CMD_TOGGLE.consumeClick()) {
             HudSystem.toggleVisibility()
+        }
+        while (KEY_PING.consumeClick()) {
+            vito.cobblebrain.client.PingClient.triggerPingRaycast()
         }
     }
 

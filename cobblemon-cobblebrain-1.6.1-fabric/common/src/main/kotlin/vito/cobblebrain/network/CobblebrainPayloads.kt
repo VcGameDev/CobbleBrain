@@ -194,4 +194,69 @@ object CobblebrainPayloads {
 
         override fun type() = TYPE
     }
+
+    data class PingPayload(
+        val pos: net.minecraft.core.BlockPos,
+        val direction: net.minecraft.core.Direction
+    ) : CustomPacketPayload {
+
+        companion object {
+
+            val ID =
+                ResourceLocation(
+                    "cobblebrain",
+                    "ping"
+                )
+
+            val TYPE =
+                CustomPacketPayload.Type<PingPayload>(
+                    ID
+                )
+
+            val CODEC:
+                    StreamCodec<
+                            RegistryFriendlyByteBuf,
+                            PingPayload
+                            > =
+                StreamCodec.of(
+
+                    { buf, payload ->
+
+                        buf.writeInt(
+                            payload.pos.x
+                        )
+
+                        buf.writeInt(
+                            payload.pos.y
+                        )
+
+                        buf.writeInt(
+                            payload.pos.z
+                        )
+
+                        buf.writeEnum(
+                            payload.direction
+                        )
+                    },
+
+                    { buf ->
+
+                        PingPayload(
+
+                            net.minecraft.core.BlockPos(
+                                buf.readInt(),
+                                buf.readInt(),
+                                buf.readInt()
+                            ),
+
+                            buf.readEnum(
+                                net.minecraft.core.Direction::class.java
+                            )
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
 }

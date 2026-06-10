@@ -33,6 +33,22 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        PingClient.sendPingToServer = { pos, direction ->
+            if (
+                net.minecraft.client.Minecraft
+                    .getInstance()
+                    .player != null
+            ) {
+
+                ClientPlayNetworking.send(
+                    CobblebrainPayloads.PingPayload(
+                        pos,
+                        direction
+                    )
+                )
+            }
+        }
+
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register { handler, sender, client ->
             client.execute {
                 val config = vito.cobblebrain.config.ClientConfigHandler.clientConfig

@@ -5,5 +5,6 @@
   "key.cobblebrain.cmd_up": "Select Previous Action",
   "key.cobblebrain.cmd_down": "Select Next Action",
   "key.cobblebrain.cmd_execute": "Use Action",
-  "key.cobblebrain.cmd_toggle": "Toggle Action HUD"
+  "key.cobblebrain.cmd_toggle": "Toggle Action HUD",
+  "key.cobblebrain.ping": "Ping Location"
 }
