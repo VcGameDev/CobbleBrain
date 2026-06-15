@@ -140,8 +140,9 @@ class AIHandler {
         ACTION FORMAT
         Format: #<PokemonName>:<action_code>
         Action codes:
-        A (attack), E (eat), B (buff), D (debuff enemy), S (sit), P (protect), I (idle)
-        fire type: C (cook) | steel type: R (repair) | grass type: G (grow) | ghost type: H (shift)
+        A (attack a mob), E (eat), B (buff owner), D (debuff enemy), S (sit), P (protect owner/attack agressive mobs), I (idle)
+        fire type: C (cook) | steel type: R (repair) | grass type: G (grow) | ghost type: SH (shift)
+        | dark type: N (nightmare) | fly type: SC (scout) | eletric type: L (light) | psychic type: T (teleport owner)
         If no action is needed, ALWAYS use I.
         Use one action per Pokémon at the end
         """

@@ -31,6 +31,11 @@ object CobblebrainServerHandler {
                     "GROW" -> "(PLANT)" to "Grows tree saplings and crops."
                     "REPAIR" -> "(METAL)" to "Repairs tools and weapons up to a certain durability threshold."
                     "SHIFT" -> "(GHOST)" to "Player becomes invisible, gains increased speed and jump height, but suffers from high weakness."
+                    "FISH" -> "(WATER)" to "Searches nearby waters for fish and other resources."
+                    "NIGHTMARE" -> "(DARK)" to "Inflicts fear on nearby creatures, causing them to flee in panic and giving ."
+                    "LIGHT" -> "(ELECTRIC)" to "Creates a temporary light source and illuminates dark areas."
+                    "SCOUT" -> "(FLYING)" to "Performs aerial reconnaissance and reports nearby structures and entities."
+                    "TELEPORT" -> "(PSYCHIC)" to "Teleports the trainer to the currently marked location."
                     "ATTACK" -> "" to "Pokémon attacks any mob close to it; it will stop after killing the target."
                     "PROTECT" -> "" to "Pokémon targets hostile mobs nearest to the player; if none are found, it follows the player."
                     "EAT" -> "" to "Pokémon eat any edible item dropped on the ground. Some foods and berries may grant temporary effects."
@@ -47,6 +52,11 @@ object CobblebrainServerHandler {
                     "GROW" -> net.minecraft.ChatFormatting.GREEN
                     "REPAIR" -> net.minecraft.ChatFormatting.DARK_GRAY
                     "SHIFT" -> net.minecraft.ChatFormatting.DARK_PURPLE
+                    "FISH" -> net.minecraft.ChatFormatting.BLUE
+                    "NIGHTMARE" -> net.minecraft.ChatFormatting.DARK_RED
+                    "LIGHT" -> net.minecraft.ChatFormatting.YELLOW
+                    "SCOUT" -> net.minecraft.ChatFormatting.AQUA
+                    "TELEPORT" -> net.minecraft.ChatFormatting.LIGHT_PURPLE
                     else -> net.minecraft.ChatFormatting.WHITE
                 }
 

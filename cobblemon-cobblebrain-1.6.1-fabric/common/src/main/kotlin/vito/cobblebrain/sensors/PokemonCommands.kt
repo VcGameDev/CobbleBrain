@@ -95,11 +95,12 @@ fun parseCommand(line: String): PokemonCommand? {
         "c" -> "cook"
         "r" -> "repair"
         "g" -> "grow"
-        "h" -> "shift"
+        "sh" -> "shift"
         "f" -> "fish"
         "n" -> "nightmare"
         "l" -> "light"
         "sc" -> "scout"
+        "t" -> "teleport"
         else -> action
     }
     
@@ -144,8 +145,6 @@ private fun exitAttackMode(pokemon: Mob) {
     pokemon.isAggressive = false
     pokemon.target = null
 }
-
-val pingMovementEnabled = mutableMapOf<UUID, Long>()
 
 // cooldown de ataque por Pokémon
 private val attackCooldowns: MutableMap<UUID, Int> = mutableMapOf()
@@ -1529,8 +1528,7 @@ object CommandTickHandler {
 
                     applyNightmareAura(
                         level,
-                        pokemon,
-                        owner
+                        pokemon
                     )
 
                     if (
@@ -2829,7 +2827,6 @@ fun spawnNightmareParticles(
 fun applyNightmareAura(
     level: ServerLevel,
     pokemon: PokemonEntity,
-    owner: ServerPlayer
 ) {
 
     val radius = 5.0
