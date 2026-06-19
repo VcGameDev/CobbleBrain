@@ -516,6 +516,22 @@ object CobblebrainConfigScreen {
             )
             .build()
 
+        val offlineModeEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Offline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.offlineMode
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> clientConfig.offlineMode = value }
+            .setTooltip(Component.literal("Enables Offline Mode. Disables AI requests and prompt building."))
+            .build()
+
+        val offlineTalkModeEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Offline Talk Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.offlineTalkMode
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> clientConfig.offlineTalkMode = value }
+            .setTooltip(Component.literal("Enables generating responses locally via the offline dialogue system when sending messages."))
+            .build()
+
         val maxInteractionSavesEntry = entryBuilder.startIntField(
             Component.literal("Recent Memories Limit").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.maxInteractionSaves
@@ -932,6 +948,8 @@ object CobblebrainConfigScreen {
         category.entries.add(selectedLanguageEntry)
         category.entries.add(maxInteractionSavesEntry)
         category.entries.add(preferredNameEntry)
+        category.entries.add(offlineModeEntry)
+        category.entries.add(offlineTalkModeEntry)
         category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(needsPokemonTranslatorEntry)
         category.entries.add(listenToChatEntry)
@@ -997,6 +1015,7 @@ object CobblebrainConfigScreen {
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)
+            CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(clientConfig.offlineMode, clientConfig.offlineTalkMode)
         }
 
         return builder.build()

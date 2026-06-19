@@ -20,6 +20,8 @@ data class CobblebrainClientConfig(
     var maxInteractionSaves: Int = 8,
     var preferredName: String = "",
     var ignoreHunger: Boolean = false,
+    var offlineMode: Boolean = false,
+    var offlineTalkMode: Boolean = false,
 
     // ================= DIALOGUE & UI SETTINGS =================
 

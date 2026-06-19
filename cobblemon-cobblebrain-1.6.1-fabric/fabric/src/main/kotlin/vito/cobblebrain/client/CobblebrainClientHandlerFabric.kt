@@ -33,6 +33,14 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        CobblebrainClientCommon.sendOfflineSettingsToServer = { offlineMode, offlineTalkMode ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(
+                    CobblebrainPayloads.OfflineSettingsPayload(offlineMode, offlineTalkMode)
+                )
+            }
+        }
+
         PingClient.sendPingToServer = { pos, direction ->
             if (
                 net.minecraft.client.Minecraft
@@ -54,6 +62,7 @@ object CobblebrainClientHandlerFabric {
                 val config = vito.cobblebrain.config.ClientConfigHandler.clientConfig
                 val nickname = config.preferredName.ifBlank { client.user.name }
                 CobblebrainClientCommon.sendNicknameToServer?.invoke(nickname)
+                CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(config.offlineMode, config.offlineTalkMode)
             }
         }
 

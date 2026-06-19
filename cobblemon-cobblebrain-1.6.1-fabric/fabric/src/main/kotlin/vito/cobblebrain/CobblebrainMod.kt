@@ -106,6 +106,11 @@ object CobblebrainMod : ModInitializer {
         )
 
         PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.OfflineSettingsPayload.TYPE,
+            CobblebrainPayloads.OfflineSettingsPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.PingPayload.TYPE,
             CobblebrainPayloads.PingPayload.CODEC
         )
@@ -143,6 +148,10 @@ object CobblebrainMod : ModInitializer {
                 giveCobblebrainGuide(player)
                 CobblebrainWorldSave.markGuideReceived(player)
             }
+        }
+
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            vito.cobblebrain.social.OfflinePlayers.removePlayer(handler.player.uuid)
         }
 
         // limpa quando o servidor para

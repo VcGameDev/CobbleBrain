@@ -35,6 +35,14 @@ object CobblebrainClientRuntimeNeoForge {
             }
         }
 
+        CobblebrainClientCommon.sendOfflineSettingsToServer = { offlineMode, offlineTalkMode ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                    CobblebrainPayloads.OfflineSettingsPayload(offlineMode, offlineTalkMode)
+                )
+            }
+        }
+
         PingClient.sendPingToServer = { pos, direction ->
 
             if (

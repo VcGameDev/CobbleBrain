@@ -46,6 +46,7 @@ class DialogueSystemNeoForge {
             CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
                 val thrower = event.thrower
                 val player = thrower as? ServerPlayer ?: return@subscribe
+                if (OfflinePlayers.isOffline(player.uuid)) return@subscribe
                 val target = event.pokemonEntity
                 val playerUuid = player.uuid.toString()
                 
@@ -62,6 +63,12 @@ class DialogueSystemNeoForge {
     fun onJoin(event: PlayerEvent.PlayerLoggedInEvent) {
         val player = event.entity as? ServerPlayer ?: return
         DialogueSystem.onPlayerJoin(player)
+    }
+
+    @SubscribeEvent
+    fun onLeave(event: PlayerEvent.PlayerLoggedOutEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        OfflinePlayers.removePlayer(player.uuid)
     }
 
     @SubscribeEvent

@@ -41,7 +41,6 @@ import vito.cobblebrain.config.ConfigHandler.config
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
 import vito.cobblebrain.currentServer
-import com.cobblemon.mod.common.util.party
 import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
 import vito.cobblebrain.sensors.MemoryStore.savePokemonMemory
@@ -283,6 +282,7 @@ object DialogueSystem {
     fun onDamage(entity: LivingEntity, source: DamageSource, amount: Float, newHealth: Float) {
         when (entity) {
             is ServerPlayer -> {
+                if (OfflinePlayers.isOffline(entity.uuid)) return
                 val ativos = PokemonQuery.findActivePokemon(entity)
                 if (ativos.isEmpty()) return
 
@@ -307,6 +307,7 @@ object DialogueSystem {
             is PokemonEntity -> {
                 val ownerUuid = entity.pokemon.getOwnerUUID()
                 if (ownerUuid != null && config.dialogueOnDamage) {
+                    if (OfflinePlayers.isOffline(ownerUuid)) return
                     val server = entity.server ?: return
                     val owner: ServerPlayer? = server.playerList.getPlayer(ownerUuid)
 
@@ -344,12 +345,20 @@ object DialogueSystem {
         flushScheduledMessages(server)
         tickBubbles(currentServer!!)
         StoryTimerSystem.tick(server)
+        AmbientReactionManager.tick(server)
 
         maintainLookAt(server)
 
         if (server.tickCount % 200 == 0) {
             for (player in server.playerList.players) {
+
                 runSocialTick(player)
+
+                if (
+                    OfflinePlayers.offlineMode[player.uuid] == true
+                ) {
+                    OfflineEventHandler.tick(player)
+                }
             }
         }
 
@@ -429,6 +438,8 @@ object DialogueSystem {
                 server.playerList.getPlayer(ownerId)
             } ?: return@execute
 
+            if (OfflinePlayers.isOffline(player.uuid)) return@execute
+
             scheduledMessages[player.uuid]?.clear()
 
             val meusNomes = meus.joinToString(", ") {
@@ -461,6 +472,8 @@ object DialogueSystem {
         val battle = BattleRegistry.getBattleByParticipatingPlayerId(ownerId)
         if (battle != null && config.dialogueOnBattle) {
             val ownerPlayer = pokemon.getOwnerPlayer() ?: return
+
+            if (OfflinePlayers.isOffline(ownerPlayer.uuid)) return
 
             scheduledMessages[ownerPlayer.uuid]?.clear()
 
@@ -497,6 +510,8 @@ object DialogueSystem {
 
         uuids.forEach { uuid ->
             val player = server.playerList.getPlayer(uuid) ?: return@forEach
+
+            if (OfflinePlayers.isOffline(player.uuid)) return@forEach
 
             scheduledMessages[player.uuid]?.clear()
 
@@ -559,15 +574,17 @@ object DialogueSystem {
                             }
                             
 
-                            val prompt = buildPrompt(
-                                player,
-                                ativos,
-                                "IMPORTANT: ${player.name.string} defeated the $targetSpecies! $giverName thanks him and reacts to the victory."
-                            )
+                            if (!OfflinePlayers.isOffline(player.uuid)) {
+                                val prompt = buildPrompt(
+                                    player,
+                                    ativos,
+                                    "IMPORTANT: ${player.name.string} defeated the $targetSpecies! $giverName thanks him and reacts to the victory."
+                                )
 
-                            isWaitingForQuestResponse[player.uuid] = true
-                            questResponseTimeout[player.uuid] = player.server.tickCount.toLong() + 600 // 30s
-                            sendToPlayer?.invoke(player, prompt)
+                                isWaitingForQuestResponse[player.uuid] = true
+                                questResponseTimeout[player.uuid] = player.server.tickCount.toLong() + 600 // 30s
+                                sendToPlayer?.invoke(player, prompt)
+                            }
 
                             adjustKarma(player, giverName, 2)
                             giveReward(player, giverName)
@@ -581,30 +598,34 @@ object DialogueSystem {
 
                 // Vitória sem quest
                 if (!sent) {
-                    val ativos = PokemonQuery.findActivePokemon(player)
+                    if (!OfflinePlayers.isOffline(player.uuid)) {
+                        val ativos = PokemonQuery.findActivePokemon(player)
 
-                    val prompt = buildPrompt(
-                        player,
-                        ativos,
-                        "IMPORTANT: ${player.name.string} team has just won a battle. The Pokémon react to the victory based on their personalities."
-                    )
+                        val prompt = buildPrompt(
+                            player,
+                            ativos,
+                            "IMPORTANT: ${player.name.string} team has just won a battle. The Pokémon react to the victory based on their personalities."
+                        )
 
-                    sendToPlayer?.invoke(player, prompt)
+                        sendToPlayer?.invoke(player, prompt)
+                    }
                 }
 
             } else {
                 // Derrota
                 // Sync cooldowns for player
                 vito.cobblebrain.sensors.PokemonCommands.syncCooldowns(player)
-                val ativos = PokemonQuery.findActivePokemon(player)
+                if (!OfflinePlayers.isOffline(player.uuid)) {
+                    val ativos = PokemonQuery.findActivePokemon(player)
 
-                val prompt = buildPrompt(
-                    player,
-                    ativos,
-                    "IMPORTANT: ${player.name.string} team has lost the battle. Pokémon are exhausted or knocked out, and should only react if they are still able to act and have more than 0 HP. Any response should reflect defeat, fatigue, or frustration."
-                )
+                    val prompt = buildPrompt(
+                        player,
+                        ativos,
+                        "IMPORTANT: ${player.name.string} team has lost the battle. Pokémon are exhausted or knocked out, and should only react if they are still able to act and have more than 0 HP. Any response should reflect defeat, fatigue, or frustration."
+                    )
 
-                sendToPlayer?.invoke(player, prompt)
+                    sendToPlayer?.invoke(player, prompt)
+                }
             }
         }
     }
@@ -644,6 +665,13 @@ object DialogueSystem {
     //}
 
     fun onPlayerChat(player: ServerPlayer, text: String): Boolean {
+        if (OfflinePlayers.isOffline(player.uuid)) {
+            if (OfflinePlayers.isOfflineTalk(player.uuid)) {
+                OfflineDialogueManager.handleOfflineTalk(player)
+            }
+            return true
+        }
+
         if (isWaitingForQuestResponse[player.uuid] == true) {
             if (pendingInterruption[player.uuid] != true) {
                 player.sendSystemMessage(
@@ -1182,14 +1210,16 @@ object DialogueSystem {
                 giveReward(player, giverName)
                 giveQuestXp(player, questObj)
 
-                val prompt = buildPrompt(
-                    player,
-                    PokemonQuery.findActivePokemon(player),
-                    "IMPORTANT: Mission concluded! $giverName thanks the player for bringing the $amount $target(s)!"
-                )
-                isWaitingForQuestResponse[player.uuid] = true
-                questResponseTimeout[player.uuid] = level.server.tickCount.toLong() + 600
-                sendToPlayer?.invoke(player, prompt)
+                if (!OfflinePlayers.isOffline(player.uuid)) {
+                    val prompt = buildPrompt(
+                        player,
+                        PokemonQuery.findActivePokemon(player),
+                        "IMPORTANT: Mission concluded! $giverName thanks the player for bringing the $amount $target(s)!"
+                    )
+                    isWaitingForQuestResponse[player.uuid] = true
+                    questResponseTimeout[player.uuid] = level.server.tickCount.toLong() + 600
+                    sendToPlayer?.invoke(player, prompt)
+                }
             }
         }
     }
@@ -1326,11 +1356,13 @@ object DialogueSystem {
                 }
                 val itemsStr = if (itemsList.isEmpty()) "nothing (it was empty!)" else itemsList.joinToString(", ")
                 
-                val ativos = PokemonQuery.findActivePokemon(player)
-                val prompt = buildPrompt(player, ativos, "IMPORTANT: ${player.name.string} has successfully found the item storage! Inside, they found: $itemsStr. Talk about the items found and thank the player!")
-                isWaitingForQuestResponse[player.uuid] = true
-                questResponseTimeout[player.uuid] = level.server.tickCount.toLong() + 600
-                sendToPlayer?.invoke(player, prompt)
+                if (!OfflinePlayers.isOffline(player.uuid)) {
+                    val ativos = PokemonQuery.findActivePokemon(player)
+                    val prompt = buildPrompt(player, ativos, "IMPORTANT: ${player.name.string} has successfully found the item storage! Inside, they found: $itemsStr. Talk about the items found and thank the player!")
+                    isWaitingForQuestResponse[player.uuid] = true
+                    questResponseTimeout[player.uuid] = level.server.tickCount.toLong() + 600
+                    sendToPlayer?.invoke(player, prompt)
+                }
 
                 player.sendSystemMessage(
                     Component.literal("Treasure Found! $giverName is happy you found it!")
@@ -1375,11 +1407,13 @@ object DialogueSystem {
                     // O dono quebrou o próprio tesouro!
                     adjustKarma(player, giverName, -3)
                     
-                    val ativos = PokemonQuery.findActivePokemon(player)
-                    val prompt = buildPrompt(player, ativos, "IMPORTANT: ${player.name.string} has DESTROYED the item storage that was part of the quest! The pokemon is very upset! React to this destruction!")
-                    isWaitingForQuestResponse[player.uuid] = true
-                    questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
-                    sendToPlayer?.invoke(player, prompt)
+                    if (!OfflinePlayers.isOffline(player.uuid)) {
+                        val ativos = PokemonQuery.findActivePokemon(player)
+                        val prompt = buildPrompt(player, ativos, "IMPORTANT: ${player.name.string} has DESTROYED the item storage that was part of the quest! The pokemon is very upset! React to this destruction!")
+                        isWaitingForQuestResponse[player.uuid] = true
+                        questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
+                        sendToPlayer?.invoke(player, prompt)
+                    }
                     
                     CobblebrainWorldSave.failQuest(ownerUuid, giverUuid, "TREASURE")
 
@@ -1391,11 +1425,13 @@ object DialogueSystem {
                     // Outro player quebrou
                     val owner = player.server.playerList.getPlayer(UUID.fromString(ownerUuid))
                     if (owner != null) {
-                        val ativos = PokemonQuery.findActivePokemon(owner)
-                        val prompt = buildPrompt(owner, ativos, "IMPORTANT: Someone else (not ${player.name.string}) has destroyed or stolen the item storage from the quest! React with shock and tell the player about it!")
-                        isWaitingForQuestResponse[owner.uuid] = true
-                        questResponseTimeout[owner.uuid] = owner.server?.tickCount?.toLong()?.plus(600) ?: 0L
-                        sendToPlayer?.invoke(owner, prompt)
+                        if (!OfflinePlayers.isOffline(owner.uuid)) {
+                            val ativos = PokemonQuery.findActivePokemon(owner)
+                            val prompt = buildPrompt(owner, ativos, "IMPORTANT: Someone else (not ${player.name.string}) has destroyed or stolen the item storage from the quest! React with shock and tell the player about it!")
+                            isWaitingForQuestResponse[owner.uuid] = true
+                            questResponseTimeout[owner.uuid] = owner.server?.tickCount?.toLong()?.plus(600) ?: 0L
+                            sendToPlayer?.invoke(owner, prompt)
+                        }
                         
                         CobblebrainWorldSave.failQuest(ownerUuid, giverUuid, "TREASURE")
 
@@ -1413,6 +1449,7 @@ object DialogueSystem {
     }
 
     fun handleAdviceQuestResponse(player: ServerPlayer, giver: PokemonEntity?, response: String) {
+        if (OfflinePlayers.isOffline(player.uuid)) return
         val quests = CobblebrainWorldSave.getActiveQuests(player)
         val quest = quests.firstOrNull { it.get("type").asString == "ADVICE" } ?: return
 
@@ -1534,15 +1571,17 @@ object DialogueSystem {
         )
 
         // 4. Trigger AI Reaction
-        val ativos = PokemonQuery.findActivePokemon(player)
-        val prompt = buildPrompt(
-            player,
-            ativos,
-            "IMPORTANT: ${player.name.string} has just ABANDONED the quest given by $giverName!"
-        )
-        isWaitingForQuestResponse[player.uuid] = true
-        questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
-        sendToPlayer?.invoke(player, prompt)
+        if (!OfflinePlayers.isOffline(player.uuid)) {
+            val ativos = PokemonQuery.findActivePokemon(player)
+            val prompt = buildPrompt(
+                player,
+                ativos,
+                "IMPORTANT: ${player.name.string} has just ABANDONED the quest given by $giverName!"
+            )
+            isWaitingForQuestResponse[player.uuid] = true
+            questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
+            sendToPlayer?.invoke(player, prompt)
+        }
         
         syncQuests?.invoke(player)
     }
@@ -1573,6 +1612,7 @@ object DialogueSystem {
     }
 
     private fun runSocialTick(player: ServerPlayer) {
+        if (OfflinePlayers.isOffline(player.uuid)) return
         // Se esse jogador acabou de mandar mensagem, não dispara espontâneo neste tick
         if (justSentMessage[player.uuid] == true) {
             justSentMessage[player.uuid] = false
@@ -2007,7 +2047,7 @@ object DialogueSystem {
                     val hasActiveQuest = activeQuestsList.any { it.get("status").asString == "IN_PROGRESS" }
 
                     // Se não há missão ativa
-                    if (!hasActiveQuest && Random.nextDouble() <= config.wildQuestChance) {
+                    if (!hasActiveQuest && !OfflinePlayers.isOffline(player.uuid) && Random.nextDouble() <= config.wildQuestChance) {
                         val roll = Random.nextInt(4) // 0 = Advice, 1 = Item, 2 = Battle, 3 = Treasure
                         when (roll) {
                             0 -> {
@@ -2547,6 +2587,10 @@ object DialogueSystem {
     }
 
     fun triggerSessionSummary(player: ServerPlayer) {
+        if (OfflinePlayers.isOffline(player.uuid)) {
+            player.sendSystemMessage(Component.literal("Session summary is not available in Offline Mode.").withStyle(ChatFormatting.RED))
+            return
+        }
         player.sendSystemMessage(Component.literal("Saving session context... Please wait.").withStyle(ChatFormatting.YELLOW))
 
         val nearbyPokemon = currentServer?.playerList?.players?.flatMap { PokemonQuery.findActivePokemon(it) }

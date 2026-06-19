@@ -110,6 +110,18 @@ object CobblebrainPayloadRegistrarNeoForge {
         }
 
         registrar.playToServer(
+            CobblebrainPayloads.OfflineSettingsPayload.TYPE,
+            CobblebrainPayloads.OfflineSettingsPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+
+            context.enqueueWork {
+                vito.cobblebrain.social.OfflinePlayers.offlineMode[player.uuid] = payload.offlineMode
+                vito.cobblebrain.social.OfflinePlayers.offlineTalkMode[player.uuid] = payload.offlineTalkMode
+            }
+        }
+
+        registrar.playToServer(
             CobblebrainPayloads.PingPayload.TYPE,
             CobblebrainPayloads.PingPayload.CODEC
         ) { payload, context ->

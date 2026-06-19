@@ -76,6 +76,7 @@ object DialogueSystemFabric {
         CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
             val thrower = event.thrower
             val player = thrower as? ServerPlayer ?: return@subscribe
+            if (OfflinePlayers.isOffline(player.uuid)) return@subscribe
             val target = event.pokemonEntity
             val playerUuid = player.uuid.toString()
             

@@ -47,6 +47,15 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
+        // Recebimento de Offline Settings do jogador
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.OfflineSettingsPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                vito.cobblebrain.social.OfflinePlayers.offlineMode[player.uuid] = payload.offlineMode
+                vito.cobblebrain.social.OfflinePlayers.offlineTalkMode[player.uuid] = payload.offlineTalkMode
+            }
+        }
+
         // Recebimento de Ping do jogador
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PingPayload.TYPE) { payload, context ->
             context.server().execute {

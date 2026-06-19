@@ -195,6 +195,29 @@ object CobblebrainPayloads {
         override fun type() = TYPE
     }
 
+    data class OfflineSettingsPayload(val offlineMode: Boolean, val offlineTalkMode: Boolean) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "offline_settings")
+            val TYPE = CustomPacketPayload.Type<OfflineSettingsPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, OfflineSettingsPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeBoolean(payload.offlineMode)
+                        buf.writeBoolean(payload.offlineTalkMode)
+                    },
+                    { buf ->
+                        OfflineSettingsPayload(
+                            buf.readBoolean(),
+                            buf.readBoolean()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
     data class PingPayload(
         val pos: net.minecraft.core.BlockPos,
         val direction: net.minecraft.core.Direction

@@ -11,6 +11,7 @@ import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
+import net.minecraft.world.entity.monster.Monster
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.storage.LevelResource
 import vito.cobblebrain.config.SyncedConfig
@@ -29,6 +30,7 @@ data class WorldContext(
     val terrainHint: String,
     val nearbyEntities: Int,
     val nearbyMobs: String,
+    val hostileMobs: Boolean,
     val nearbyPokemon: String,
     val nearbyPokemonEntities: List<PokemonEntity>,
     val nearbyItems: String,
@@ -85,8 +87,13 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
 
     val nearbyEntities = nearby.size
 
+    val nearbyHostiles = nearby
+        .filterIsInstance<Monster>()
+
+    val hostileMobs = nearbyHostiles.isNotEmpty()
+
     val nearbyMobs = nearby
-        .filter { it !is PokemonEntity } // exclui pokémons da lista de mobs
+        .filter { it !is PokemonEntity }
         .map { it.type.description.string }
         .groupingBy { it }
         .eachCount()
@@ -195,6 +202,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         terrainHint,
         nearbyEntities,
         nearbyMobs,
+        hostileMobs,
         nearbyPokemon,
         nearbyPokemonEntities,
         nearbyItems,
