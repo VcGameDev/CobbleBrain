@@ -42,8 +42,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
-import vito.cobblebrain.sensors.MemoryStore.loadPokemonMemories
-import vito.cobblebrain.sensors.MemoryStore.savePokemonMemory
 import vito.cobblebrain.sensors.collectWorldContext
 import vito.cobblebrain.sensors.parseCommand
 import vito.cobblebrain.social.WorldEventsSystem.spawnPokemon
@@ -84,6 +82,7 @@ object DialogueSystem {
     private val isWaitingForQuestResponse = mutableMapOf<UUID, Boolean>()
     private val pendingInterruption = mutableMapOf<UUID, Boolean>()
     private val questResponseTimeout = mutableMapOf<UUID, Long>() // Player -> Tick limite
+    private val serverLastInteractions = ConcurrentHashMap<UUID, MutableList<String>>()
 
     val scheduledMessages: MutableMap<UUID, MutableList<ScheduledMessage>> = ConcurrentHashMap()
 
@@ -1886,7 +1885,137 @@ object DialogueSystem {
         val nearbyPlayers = player.server.playerList.players
             .filter { it.distanceTo(player) <= 20 && it != player }
 
-        return buildString {
+        // --- RETRIEVAL AND MEMORIES LOGIC ---
+        val keywords = moreText.lowercase()
+            .split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+"))
+            .filter { it.length >= 3 }
+            .toSet()
+
+        val participatingPokemon = allPokemon.filter { it.currentHealth > 0 }
+        val participantsUuids = participatingPokemon.map { it.uuid.toString() }.toSet()
+
+        val candidateMemories = mutableSetOf<Memory>()
+        participatingPokemon.forEach { p ->
+            candidateMemories.addAll(MemorySystem.loadMemories(p.uuid.toString()))
+        }
+
+        val playerCache = MemoryCache.get(player.uuid)
+        val currentTick = player.server.tickCount
+
+        // 1. Exclude memories already in LAST_RETRIEVED_MEMORIES (playerCache)
+        val cachedMemories = playerCache.map { it.memory }
+        val nonCachedCandidates = candidateMemories.filter { candidate ->
+            cachedMemories.none { it.memory == candidate.memory && it.participants == candidate.participants }
+        }
+
+        val recentInteractions = serverLastInteractions[player.uuid] ?: emptyList()
+
+        val scoredMemories = nonCachedCandidates.map { m ->
+            var score = 0
+            val matchCount = m.keywords.count { it.lowercase() in keywords }
+            score += matchCount
+
+            val activeParticipantsCount = m.participants.count { it in participantsUuids }
+            score += activeParticipantsCount * 3
+
+            if (currentTick - m.createdTick < 100000) {
+                score += 2
+            }
+
+            if (activeParticipantsCount > 1) {
+                score += 1
+            }
+
+            // Check similarity with LAST_INTERACTIONS (recent summaries on server)
+            val mWords = m.memory.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+            var overlapWithLastInteractions = false
+            for (interaction in recentInteractions) {
+                val interactionWords = interaction.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+                val intersection = mWords.intersect(interactionWords).size
+                val union = mWords.union(interactionWords).size
+                val jaccard = if (union > 0) intersection.toDouble() / union else 0.0
+                if (jaccard > 0.5) {
+                    overlapWithLastInteractions = true
+                    break
+                }
+
+                val keywordsInInteraction = m.keywords.count { it in interaction.lowercase() }
+                if (m.keywords.isNotEmpty() && keywordsInInteraction.toDouble() / m.keywords.size > 0.6) {
+                    overlapWithLastInteractions = true
+                    break
+                }
+            }
+
+            if (overlapWithLastInteractions) {
+                score -= 10
+            }
+
+            m to score
+        }.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+
+        // 2. Diversity filter
+        val selectedMemories = mutableListOf<Memory>()
+        val skippedForDiversity = mutableListOf<Memory>()
+        val selectedKeywords = mutableSetOf<String>()
+        val selectedTexts = mutableListOf<String>()
+
+        for ((m, score) in scoredMemories) {
+            val words2 = m.memory.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+            val isTooSimilarText = selectedTexts.any { existingText ->
+                val words1 = existingText.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+                val intersection = words1.intersect(words2).size
+                val union = words1.union(words2).size
+                val jaccard = if (union > 0) intersection.toDouble() / union else 0.0
+                jaccard > 0.5
+            }
+
+            val overlapCount = m.keywords.count { it in selectedKeywords }
+            val isTooSimilarKeywords = m.keywords.isNotEmpty() && (overlapCount.toDouble() / m.keywords.size > 0.6 || overlapCount >= 3)
+
+            if (isTooSimilarText || isTooSimilarKeywords) {
+                skippedForDiversity.add(m)
+            } else {
+                if (selectedMemories.size < config.maxRelevantMemories) {
+                    selectedMemories.add(m)
+                    selectedKeywords.addAll(m.keywords)
+                    selectedTexts.add(m.memory)
+                }
+            }
+        }
+
+        // Fill remaining slots from skipped if we haven't reached the limit
+        for (m in skippedForDiversity) {
+            if (selectedMemories.size >= config.maxRelevantMemories) break
+            selectedMemories.add(m)
+        }
+
+        selectedMemories.forEach { m ->
+            MemoryCache.addOrUpdate(player.uuid, m, config.lastRetrievedMemoryLifetime, config.lastRetrievedMemoryCount)
+        }
+
+        MemoryCache.tick(player.uuid)
+
+        fun resolveParticipantName(uuidStr: String): String {
+            val uuid = try { UUID.fromString(uuidStr) } catch (e: Exception) { null } ?: return uuidStr
+            val alias = reversePokemonAliasMap[player.uuid]?.get(uuid)
+            if (alias != null) return alias
+
+            val partyPoke = PokemonQuery.getAllPokemon(player).find { it.uuid == uuid }
+            if (partyPoke != null) {
+                return partyPoke.nickname?.string?.takeIf { it.isNotBlank() } ?: partyPoke.species.name
+            }
+            
+            val level = player.serverLevel()
+            val entity = level.getEntity(uuid)
+            if (entity is PokemonEntity) {
+                val poke = entity.pokemon
+                return poke.nickname?.string?.takeIf { it.isNotBlank() } ?: poke.species.name
+            }
+
+            return "Pokémon ($uuidStr)"
+        }
+
+        val worldContextStr = buildString {
 
             temporaryFeedback[player.uuid]
                 ?.takeIf { it.isNotEmpty() }
@@ -2253,23 +2382,6 @@ object DialogueSystem {
                         CobblebrainWorldSave.save()
                     }
                 }
-
-                if (config.outputMemories) {
-                    val memories = currentServer?.let { srv ->
-                        loadPokemonMemories(
-                            srv,
-                            p.uuid.toString(),
-                            config.maxShortMemory
-                        )
-                    } ?: emptyList()
-
-                    if (memories.isNotEmpty()) {
-                        appendLine("\nMemories:\n")
-                        memories.forEach { m ->
-                            appendLine("@Pokemon ${p.nickname?.string ?: p.species.name}: $m\n")
-                        }
-                    }
-                }
             }
             appendLine("[UNAVAILABLE POKEMON]")
 
@@ -2316,6 +2428,34 @@ object DialogueSystem {
             appendLine("plus=${config.increaseFriendship}")
             appendLine("minus=${config.decreaseFriendship}")
         }.trim()
+
+        return buildString {
+            appendLine("[LAST RETRIEVED MEMORIES]")
+            val cached = MemoryCache.get(player.uuid)
+            if (cached.isNotEmpty()) {
+                cached.forEach { c ->
+                    val partsStr = c.memory.participants.joinToString(", ") { resolveParticipantName(it) }
+                    appendLine("- Memory: ${c.memory.memory} (Participants: $partsStr) | Keywords: ${c.memory.keywords.joinToString(", ")}")
+                }
+            } else {
+                appendLine("No recently discussed memories.")
+            }
+            appendLine()
+
+            appendLine("[RELEVANT MEMORIES]")
+            if (selectedMemories.isNotEmpty()) {
+                selectedMemories.forEach { m ->
+                    val partsStr = m.participants.joinToString(", ") { resolveParticipantName(it) }
+                    appendLine("- Memory: ${m.memory} (Participants: $partsStr) | Keywords: ${m.keywords.joinToString(", ")}")
+                }
+            } else {
+                appendLine("No relevant memories found.")
+            }
+            appendLine()
+
+            appendLine("[WORLD CONTEXT]")
+            append(worldContextStr)
+        }
     }
 
     fun checkIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
@@ -2360,17 +2500,61 @@ object DialogueSystem {
 
         // Linhas para chat (falas + friendship), excluindo memórias
         val headerCleanupRegex = Regex(
-            """^\s*\[?\s*(DIALOGUE FORMAT|FRIENDSHIP FORMAT|MEMORY FORMAT|ACTION FORMAT|GUARANTEED CATCH FORMAT|RESUME FORMAT|QUEST SYSTEM|GENERAL RULES)\s*]?\s*:?\s*""",
+            """^\s*\[?\s*(DIALOGUE FORMAT|FRIENDSHIP FORMAT|MEMORY FORMAT|ACTION FORMAT|GUARANTEED CATCH FORMAT|RESUME FORMAT|QUEST SYSTEM|QUEST COMPLETED|GENERAL RULES)\s*]?\s*:?\s*""",
             RegexOption.IGNORE_CASE
         )
 
-        val allLines = content.split("|")
+        // 1. Extract and process &MEMORY blocks, and remove them from content to avoid pollution
+        val memoryRegex = Regex("""&MEMORY:([^:]+):([^|]+)\|([^|]+)""", RegexOption.IGNORE_CASE)
+        var cleanedContent = content
+        
+        memoryRegex.findAll(content).forEach { match ->
+            val fullMatch = match.value
+            cleanedContent = cleanedContent.replace(fullMatch, "")
+
+            val namesStr = match.groupValues[1].trim()
+            val memoryText = match.groupValues[2].trim()
+            val keywordsStr = match.groupValues[3].trim()
+
+            val names = namesStr.split(",").map { it.trim() }
+            val uuids = names.mapNotNull { name ->
+                val aliases = pokemonAliasMap[player.uuid] ?: emptyMap()
+                var uuid = aliases[name]
+                if (uuid == null) {
+                    uuid = aliases.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+                }
+                if (uuid == null) {
+                    val cleaned = name.substringBefore("#").trim()
+                    uuid = aliases.entries.firstOrNull { it.key.substringBefore("#").equals(cleaned, ignoreCase = true) }?.value
+                }
+                uuid
+            }
+
+            if (uuids.isNotEmpty()) {
+                val participantsList = uuids.map { it.toString() }
+                val keywordsList = keywordsStr.split(",")
+                    .map { it.trim().lowercase() }
+                    .filter { it.isNotEmpty() }
+                
+                val memoryObj = Memory(
+                    participants = participantsList,
+                    memory = memoryText,
+                    keywords = keywordsList,
+                    createdTick = server.tickCount.toLong()
+                )
+
+                uuids.forEach { uuid ->
+                    MemorySystem.saveMemory(uuid.toString(), memoryObj)
+                }
+            }
+        }
+
+        val allLines = cleanedContent.split("|")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
             // remove headers automaticos
             .map { line ->
-
                 line.replace(headerCleanupRegex, "").trim()
             }
 
@@ -2389,18 +2573,23 @@ object DialogueSystem {
         val commandLines = allLines.filter { it.startsWith("#") }
         val summaryLines = allLines.filter { it.startsWith("&", ignoreCase = true) }
 
-        val memoryLines = content.split("|")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .filter { it.startsWith("@") }
-
-        val resumeLines = content.split("|")
+        val resumeLines = cleanedContent.split("|")
             .map { it.trim() }
             .filter { it.startsWith("!RESUME", ignoreCase = true) || it.startsWith("=") }
 
-        // 1. Salva as memórias no JSON
-        memoryLines.forEach { line ->
-            savePokemonMemory(server, line, config.maxShortMemory)
+        resumeLines.forEach { line ->
+            val resumeText = if (line.startsWith("!RESUME", ignoreCase = true)) {
+                line.substringAfter("!RESUME").removePrefix(":").trim()
+            } else {
+                line.removePrefix("=").trim()
+            }
+            if (resumeText.isNotBlank()) {
+                val list = serverLastInteractions.getOrPut(player.uuid) { mutableListOf() }
+                list.add(resumeText)
+                while (list.size > 15) {
+                    list.removeAt(0)
+                }
+            }
         }
 
         // 2. Detecta quest summary

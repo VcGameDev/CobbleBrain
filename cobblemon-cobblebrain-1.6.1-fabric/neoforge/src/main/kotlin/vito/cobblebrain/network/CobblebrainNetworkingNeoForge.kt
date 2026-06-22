@@ -65,8 +65,10 @@ object CobblebrainNetworkingNeoForge {
             cfg.outputPokemonLanguage,
             cfg.needsPokemonTranslator,
             cfg.outputGuaranteedCatch,
-            cfg.maxLongMemory,
-            cfg.maxShortMemory
+            cfg.maxStoredMemories,
+            cfg.maxRelevantMemories,
+            cfg.lastRetrievedMemoryCount,
+            cfg.lastRetrievedMemoryLifetime
         )
 
         PacketDistributor.sendToPlayer(player, payload)

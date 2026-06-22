@@ -29,9 +29,13 @@ object SyncedConfig {
         private set
     var outputGuaranteedCatch = true
         private set
-    var maxLongMemory = 3
+    var maxStoredMemories = 100
         private set
-    var maxShortMemory = 2
+    var maxRelevantMemories = 4
+        private set
+    var lastRetrievedMemoryCount = 3
+        private set
+    var lastRetrievedMemoryLifetime = 5
         private set
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
@@ -45,8 +49,10 @@ object SyncedConfig {
         outputPokemonLanguage = payload.outputPokemonLanguage
         needsPokemonTranslator = payload.needsPokemonTranslator
         outputGuaranteedCatch = payload.outputGuaranteedCatch
-        maxLongMemory = payload.maxLongMemory
-        maxShortMemory = payload.maxShortMemory
+        maxStoredMemories = payload.maxStoredMemories
+        maxRelevantMemories = payload.maxRelevantMemories
+        lastRetrievedMemoryCount = payload.lastRetrievedMemoryCount
+        lastRetrievedMemoryLifetime = payload.lastRetrievedMemoryLifetime
         received = true
 
         val client = Minecraft.getInstance()
@@ -66,8 +72,10 @@ object SyncedConfig {
         outputPokemonLanguage: Boolean,
         needsPokemonTranslator: Boolean,
         outputGuaranteedCatch: Boolean,
-        maxLongMemory: Int,
-        maxShortMemory: Int
+        maxStoredMemories: Int,
+        maxRelevantMemories: Int,
+        lastRetrievedMemoryCount: Int,
+        lastRetrievedMemoryLifetime: Int
     ) {
         if (isServerControlled) {
             println("Attempt to change config blocked (server-controlled)")
@@ -84,8 +92,10 @@ object SyncedConfig {
         this.outputPokemonLanguage = outputPokemonLanguage
         this.needsPokemonTranslator = needsPokemonTranslator
         this.outputGuaranteedCatch = outputGuaranteedCatch
-        this.maxLongMemory = maxLongMemory
-        this.maxShortMemory = maxShortMemory
+        this.maxStoredMemories = maxStoredMemories
+        this.maxRelevantMemories = maxRelevantMemories
+        this.lastRetrievedMemoryCount = lastRetrievedMemoryCount
+        this.lastRetrievedMemoryLifetime = lastRetrievedMemoryLifetime
 
         val cfg = ConfigHandler.config
 
@@ -99,8 +109,10 @@ object SyncedConfig {
         cfg.outputPokemonLanguage = outputPokemonLanguage
         cfg.needsPokemonTranslator = needsPokemonTranslator
         cfg.outputGuaranteedCatch = outputGuaranteedCatch
-        cfg.maxLongMemory = maxLongMemory
-        cfg.maxShortMemory = maxShortMemory
+        cfg.maxStoredMemories = maxStoredMemories
+        cfg.maxRelevantMemories = maxRelevantMemories
+        cfg.lastRetrievedMemoryCount = lastRetrievedMemoryCount
+        cfg.lastRetrievedMemoryLifetime = lastRetrievedMemoryLifetime
 
         ConfigHandler.save()
     }

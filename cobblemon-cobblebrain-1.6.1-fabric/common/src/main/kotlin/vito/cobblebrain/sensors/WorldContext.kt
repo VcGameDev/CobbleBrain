@@ -1,23 +1,13 @@
 package vito.cobblebrain.sensors
 
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.entity.monster.Monster
 import net.minecraft.world.level.LightLayer
-import net.minecraft.world.level.storage.LevelResource
-import vito.cobblebrain.config.SyncedConfig
-import vito.cobblebrain.social.PokemonQuery
-import java.nio.file.Files
-import java.nio.file.Path
 
 data class WorldContext(
     val playerName: String,
@@ -213,120 +203,4 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         mainHand,
         offHand,
     )
-}
-
-object MemoryStore {
-    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
-
-    private fun file(server: MinecraftServer): Path {
-        val dataDir = server.getWorldPath(LevelResource.ROOT).resolve("data")
-        Files.createDirectories(dataDir)
-        val f = dataDir.resolve("cobblebrain_memories.json")
-        println(">>> memoryFile path: $f (exists=${Files.exists(f)})")
-        return f
-    }
-
-    fun savePokemonMemory(server: MinecraftServer?, line: String, maxMemories: Int) {
-        val s = server ?: run {
-            println(">>> server is null, aborting save")
-            return
-        }
-
-        println(">>> savePokemonMemory called with line='$line'")
-        val regex = Regex("""(@{1,2})(?:Pokemon\s+)?([^:]+):\s*(.+)""")
-        val match = regex.find(line) ?: run {
-            println(">>> regex did not match, skipping")
-            return
-        }
-
-        val marker = match.groupValues[1] // "@" ou "@@"
-        val nameFromLine = match.groupValues[2].trim()
-        val memory = match.groupValues[3].trim()
-        val ativos = s.playerList.players.flatMap { PokemonQuery.findActivePokemon(it) }
-        val alvo = ativos.firstOrNull { poke ->
-            val nick = poke.nickname?.string
-            (nick != null && nick.equals(nameFromLine, ignoreCase = true)) ||
-                    poke.species.name.equals(nameFromLine, ignoreCase = true)
-        } ?: run {
-            println(">>> no active Pokémon found for '$nameFromLine'")
-            return
-        }
-
-        val f = file(s)
-        try {
-            val gson = GsonBuilder().setPrettyPrinting().create()
-            val root = if (Files.exists(f)) {
-                gson.fromJson(Files.readString(f), JsonObject::class.java) ?: JsonObject()
-            } else JsonObject()
-
-            val arr = root.getAsJsonArray("pokemon_memories") ?: JsonArray().also {
-                root.add("pokemon_memories", it)
-            }
-
-            val uuidStr = alvo.uuid.toString()
-            val existing = arr.firstOrNull { it.asJsonObject["uuid"].asString == uuidStr }?.asJsonObject
-            val obj = existing ?: JsonObject().apply {
-                addProperty("uuid", uuidStr)
-                addProperty("nickname", alvo.nickname?.string ?: "")
-                addProperty("species", alvo.species.name)
-                add("short_term", JsonArray())
-                add("long_term", JsonArray())
-                arr.add(this)
-            }
-
-            val targetArray = if (marker == "@@") {
-                obj.getAsJsonArray("long_term")
-            } else {
-                obj.getAsJsonArray("short_term")
-            }
-
-            if (targetArray.none { it.asString == memory }) targetArray.add(memory)
-
-            // só aplica limite em curto prazo
-            if (marker == "@" && maxMemories > 0) {
-                while (targetArray.size() > maxMemories) targetArray.remove(0)
-            }
-
-            if (marker == "@@" && SyncedConfig.maxLongMemory > 0) {
-                while (targetArray.size() > SyncedConfig.maxLongMemory) targetArray.remove(0)
-            }
-
-
-            Files.writeString(f, gson.toJson(root))
-            println(">>> wrote memories.json (exists=${Files.exists(f)})")
-        } catch (e: Exception) {
-            println(">>> ERROR writing memories.json: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-
-
-    fun loadPokemonMemories(server: MinecraftServer, uuid: String, maxMemories: Int): List<String> {
-        val f = file(server)
-        if (!Files.exists(f)) return emptyList()
-
-        val root = gson.fromJson(Files.readString(f), JsonObject::class.java) ?: return emptyList()
-        val arr = root.getAsJsonArray("pokemon_memories") ?: return emptyList()
-
-        val obj = arr.firstOrNull { it.asJsonObject["uuid"].asString == uuid }?.asJsonObject
-            ?: return emptyList()
-
-        val shortTerm = obj.getAsJsonArray("short_term")?.map { it.asString } ?: emptyList()
-        val longTerm = obj.getAsJsonArray("long_term")?.map { it.asString } ?: emptyList()
-
-        val shortLimited = if (maxMemories > 0) shortTerm.takeLast(maxMemories) else shortTerm
-        val longLimited = if (SyncedConfig.maxLongMemory > 0) longTerm.takeLast(SyncedConfig.maxLongMemory) else longTerm
-
-        val result = mutableListOf<String>()
-        if (shortLimited.isNotEmpty()) {
-            result.add("SHORT-TERM MEMORIES")
-            result.addAll(shortLimited)
-        }
-        if (longLimited.isNotEmpty()) {
-            result.add("IMPORTANT / CHARACTERISTIC MEMORIES")
-            result.addAll(longLimited)
-        }
-
-        return result
-    }
 }

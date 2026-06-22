@@ -128,13 +128,12 @@ class AIHandler {
 
         const val MEMORY = """
         MEMORY FORMAT
-        @name:short memory
-        @@name:core memory
-        third-person pokemon perspective
-        @=fleeting perception
-        @@=important event
+        &MEMORY:PokemonNames:MemoryText|keywords
+        PokemonNames = comma separated list of pokemon names involved
+        MemoryText = third-person short summary of the memory/interaction
+        keywords = comma separated list of relevant lowercase keywords
         generate only when meaningful
-"""
+        """
 
         const val ACTION = """
         ACTION FORMAT
@@ -179,9 +178,11 @@ class AIHandler {
         const val RESUME = """
         RESUME FORMAT
         =summary
-        short recap + emotions
-        natural continuation if needed
-        max 6 sentences
+        recent events and conversation topics only
+        do not include ongoing goals, concerns, emotions, opinions, or intentions
+        do not describe what a Pokémon will continue doing
+        focus only on what happened
+        max 4 sentences
         EN only
         """
 

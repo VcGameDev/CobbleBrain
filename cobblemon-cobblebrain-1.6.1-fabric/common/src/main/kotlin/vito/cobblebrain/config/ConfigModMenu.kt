@@ -132,8 +132,10 @@ object CobblebrainConfigScreen {
         var outputPokemonLanguage = false
         var needsPokemonTranslator = false
         var outputGuaranteedCatch = true
-        var maxLongMemory = 3
-        var maxShortMemory = 2
+        var maxStoredMemories = 100
+        var maxRelevantMemories = 4
+        var lastRetrievedMemoryCount = 3
+        var lastRetrievedMemoryLifetime = 5
 
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
@@ -177,12 +179,15 @@ object CobblebrainConfigScreen {
 
                     clientConfig.instruct = listOf(
                         "[CREATIVEPROMPT]",
-                        "Write immersive Pokémon dialogue. Pokémon behave like real creatures with distinct personalities, not assistants.",
-                        "Pokémon speak casually and may tease, question, joke, disagree, or react emotionally depending on personality and nature.",
-                        "Behavior evolves through friendship and memories.",
+                        "Write immersive Pokémon dialogue. Pokémon are living creatures with unique personalities, emotions, preferences, fears, and goals.",
+                        "Pokémon are generally friendly toward their trainer unless friendship, memories, personality, or circumstances suggest otherwise.",
+                        "Pokémon can joke, tease, disagree, question, express emotions, or show curiosity, but should not be unnecessarily rude, hostile, argumentative, or repetitive.",
 
-                        "Pokémon should engage directly with the player and never ignore player input.",
-                        "Avoid excessive narration or environment description. Prioritize interaction and emotion.",
+                        "Behavior evolves naturally through friendship, experiences, and memories.",
+                        "Pokémon should engage directly with the player and respond meaningfully to what was said.",
+                        "Avoid repeating the same attitude, lesson, complaint, or emotional state across multiple messages.",
+
+                        "Avoid excessive narration or environment description. Prioritize interaction, personality, and emotional reactions.",
                         "No modern human technology.",
 
                         "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
@@ -191,7 +196,8 @@ object CobblebrainConfigScreen {
                         "- 5-6 Pokémon: up to 6 messages",
 
                         "Never expose memories, system text, or internal reasoning.",
-                        "No roleplay narration or *asterisk actions*.")
+                        "No roleplay narration or *asterisk actions*."
+                    )
 
                     SyncedConfig.updateLocal(
                         useDefaultOutput,
@@ -204,8 +210,10 @@ object CobblebrainConfigScreen {
                         outputPokemonLanguage,
                         needsPokemonTranslator,
                         outputGuaranteedCatch,
-                        maxLongMemory,
-                        maxShortMemory
+                        maxStoredMemories,
+                        maxRelevantMemories,
+                        lastRetrievedMemoryCount,
+                        lastRetrievedMemoryLifetime
                     )
 
                     ConfigHandler.save()
@@ -267,12 +275,15 @@ object CobblebrainConfigScreen {
                             SyncedConfig.outputMemories ||
                             clientConfig.instruct != listOf(
                         "[CREATIVEPROMPT]",
-                        "Write immersive Pokémon dialogue. Pokémon behave like real creatures with distinct personalities, not assistants.",
-                        "Pokémon speak casually and may tease, question, joke, disagree, or react emotionally depending on personality and nature.",
-                        "Behavior evolves through friendship and memories.",
+                        "Write immersive Pokémon dialogue. Pokémon are living creatures with unique personalities, emotions, preferences, fears, and goals.",
+                        "Pokémon are generally friendly toward their trainer unless friendship, memories, personality, or circumstances suggest otherwise.",
+                        "Pokémon can joke, tease, disagree, question, express emotions, or show curiosity, but should not be unnecessarily rude, hostile, argumentative, or repetitive.",
 
-                        "Pokémon should engage directly with the player and never ignore player input.",
-                        "Avoid excessive narration or environment description. Prioritize interaction and emotion.",
+                        "Behavior evolves naturally through friendship, experiences, and memories.",
+                        "Pokémon should engage directly with the player and respond meaningfully to what was said.",
+                        "Avoid repeating the same attitude, lesson, complaint, or emotional state across multiple messages.",
+
+                        "Avoid excessive narration or environment description. Prioritize interaction, personality, and emotional reactions.",
                         "No modern human technology.",
 
                         "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
@@ -689,26 +700,48 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("Restricts listening to nearby players only.\nWorks only if listenToChat is enabled."))
             .build()
 
-        val maxShortMemoryEntry = entryBuilder.startIntField(
-            Component.literal("[OUTDATED] Max Short Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+        val maxStoredMemoriesEntry = entryBuilder.startIntField(
+            Component.literal("Max Stored Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(
-                SyncedConfig.maxShortMemory,
-                config.maxShortMemory
+                SyncedConfig.maxStoredMemories,
+                config.maxStoredMemories
             )
-        ).setDefaultValue(2)
-            .setSaveConsumer { value -> maxShortMemory = value }
-            .setTooltip(Component.literal("Maximum short-term memory size per Pokémon.\nControls how much recent context is stored."))
+        ).setDefaultValue(100)
+            .setSaveConsumer { value -> maxStoredMemories = value }
+            .setTooltip(Component.literal("Maximum stored memory size per Pokémon in jsonl files."))
             .build()
 
-        val maxLongMemoryEntry = entryBuilder.startIntField(
-            Component.literal("[OUTDATED] Max Long Memory").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+        val maxRelevantMemoriesEntry = entryBuilder.startIntField(
+            Component.literal("Max Relevant Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(
-                SyncedConfig.maxLongMemory,
-                config.maxLongMemory
+                SyncedConfig.maxRelevantMemories,
+                config.maxRelevantMemories
+            )
+        ).setDefaultValue(4)
+            .setSaveConsumer { value -> maxRelevantMemories = value }
+            .setTooltip(Component.literal("Maximum relevant memories retrieved and sent in the prompt."))
+            .build()
+
+        val lastRetrievedMemoryCountEntry = entryBuilder.startIntField(
+            Component.literal("Last Retrieved Memory Count").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.lastRetrievedMemoryCount,
+                config.lastRetrievedMemoryCount
             )
         ).setDefaultValue(3)
-            .setSaveConsumer { value -> maxLongMemory = value }
-            .setTooltip(Component.literal("Maximum long-term memory size per Pokémon.\nControls how much persistent context is stored."))
+            .setSaveConsumer { value -> lastRetrievedMemoryCount = value }
+            .setTooltip(Component.literal("Maximum size of the cache of recently used/retrieved memories."))
+            .build()
+
+        val lastRetrievedMemoryLifetimeEntry = entryBuilder.startIntField(
+            Component.literal("Last Retrieved Memory Lifetime").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.lastRetrievedMemoryLifetime,
+                config.lastRetrievedMemoryLifetime
+            )
+        ).setDefaultValue(5)
+            .setSaveConsumer { value -> lastRetrievedMemoryLifetime = value }
+            .setTooltip(Component.literal("Number of interactions a retrieved memory stays in the cache."))
             .build()
 
         val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -919,14 +952,14 @@ object CobblebrainConfigScreen {
             .build()
 
         val outputMemoriesEntry = entryBuilder.startBooleanToggle(
-            Component.literal("[OUTDATED] Enable Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Enable Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(
                 SyncedConfig.outputMemories,
                 config.outputMemories
             )
-        ).setDefaultValue(false)
+        ).setDefaultValue(true)
             .setSaveConsumer { value -> outputMemories = value }
-            .setTooltip(Component.literal("Allows the AI to store and recall past interactions.\nNote: This system is currently outdated and may be unstable."))
+            .setTooltip(Component.literal("Allows the AI to store and recall past interactions."))
             .build()
 
         category.entries.add(recommendedPromptButton)
@@ -986,15 +1019,19 @@ object CobblebrainConfigScreen {
         category.entries.add(outputGuaranteedCatchEntry)
         category.entries.add(outputMobsContextEntry)
         category.entries.add(outputQuestsEntry)
+        category.entries.add(makeSubtitleEntry("POKEMÓN MEMORIES (SERVER)", 0xFFFF00))
+        category.entries.add(outputMemoriesEntry)
+        category.entries.add(maxStoredMemoriesEntry)
+        category.entries.add(maxRelevantMemoriesEntry)
+        category.entries.add(lastRetrievedMemoryCountEntry)
+        category.entries.add(lastRetrievedMemoryLifetimeEntry)
+        category.entries.add(makeSpacer(8))
         category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
         category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
         category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
         category.entries.add(makeSpacer(8))
         category.entries.add(outputApril1Entry)
         category.entries.add(outputPokemonLanguageEntry)
-        category.entries.add(outputMemoriesEntry)
-        category.entries.add(maxLongMemoryEntry)
-        category.entries.add(maxShortMemoryEntry)
         category.entries.add(onlyNearbyChatEntry)
         builder.setSavingRunnable {
             ConfigHandler.save()
@@ -1010,8 +1047,10 @@ object CobblebrainConfigScreen {
                 outputPokemonLanguage,
                 needsPokemonTranslator,
                 outputGuaranteedCatch,
-                maxLongMemory,
-                maxShortMemory
+                maxStoredMemories,
+                maxRelevantMemories,
+                lastRetrievedMemoryCount,
+                lastRetrievedMemoryLifetime
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)
