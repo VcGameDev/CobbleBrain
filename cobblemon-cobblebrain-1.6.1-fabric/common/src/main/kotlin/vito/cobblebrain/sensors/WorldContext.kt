@@ -54,21 +54,21 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
     val blockUnder = level.getBlockState(pos.below()).block.descriptionId
 
     val timeLabel = when (timeOfDay) {
-        in 0..1000 -> "amanhecer"
-        in 1001..5000 -> "manhã"
-        in 5001..7000 -> "perto do meio-dia"
-        in 7001..10000 -> "tarde"
-        in 10001..12000 -> "final da tarde"
-        in 12001..13000 -> "pôr do sol"
-        in 13001..18000 -> "noite"
-        else -> "madrugada"
+        in 0..1000 -> "sunrise"
+        in 1001..5000 -> "morning"
+        in 5001..7000 -> "near noon"
+        in 7001..10000 -> "afternoon"
+        in 10001..12000 -> "late afternoon"
+        in 12001..13000 -> "sunset"
+        in 13001..18000 -> "night"
+        else -> "before dawn"
     }
 
     val y = player.blockY
     val terrainHint = when {
-        lightLevel < 7 && blockUnder.contains("stone") -> "em uma caverna"
-        y > 100 -> "em uma montanha"
-        else -> "em terreno aberto"
+        lightLevel < 7 && blockUnder.contains("stone") -> "inside a cave"
+        y > 100 -> "on a mountain"
+        else -> "in open terrain"
     }
 
     val nearby = level.getEntities(player, player.boundingBox.inflate(10.0))
@@ -91,7 +91,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         .joinToString { (mob, count) ->
             if (count > 1) "$count x $mob" else mob
         }
-        .ifEmpty { "nenhum" }
+        .ifEmpty { "none" }
 
     val nearbyItemsList = level.getEntitiesOfClass(
         ItemEntity::class.java,
@@ -124,7 +124,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         .joinToString { (poke, count) ->
             if (count > 1) "$count x $poke" else poke
         }
-        .ifEmpty { "nenhum" }
+        .ifEmpty { "none" }
 
 
     val nearbyPokemonEntities = level.getEntitiesOfClass(
@@ -155,7 +155,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
                 if (count > 1) "$count x $item" else item
             }
     } else {
-        "nenhum"
+        "none"
     }
 
 
@@ -167,7 +167,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
             specials.add(blockId.removePrefix("block.minecraft."))
         }
     }
-    val specialBlocks = if (specials.isEmpty()) "nenhum" else specials.joinToString(", ")
+    val specialBlocks = if (specials.isEmpty()) "none" else specials.joinToString(", ")
 
     val health = player.health
     val maxHealth = player.maxHealth
@@ -175,11 +175,11 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
 
     val mainHand = if (!player.mainHandItem.isEmpty)
         player.mainHandItem.item.descriptionId.removePrefix("item.minecraft.")
-    else "vazio"
+    else "none"
 
     val offHand = if (!player.offhandItem.isEmpty)
         player.offhandItem.item.descriptionId.removePrefix("item.minecraft.")
-    else "vazio"
+    else "none"
 
     return WorldContext(
         playerName,

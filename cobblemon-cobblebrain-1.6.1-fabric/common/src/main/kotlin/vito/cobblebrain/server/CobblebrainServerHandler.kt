@@ -26,27 +26,25 @@ object CobblebrainServerHandler {
                     }
                 }
                 
-                val (typeInfo, explanation) = when(command.action.uppercase()) {
-                    "COOK" -> "(FIRE)" to "Can cook food and smelt ores. 5% chance of item turning into charcoal."
-                    "GROW" -> "(PLANT)" to "Grows tree saplings and crops."
-                    "REPAIR" -> "(METAL)" to "Repairs tools and weapons up to a certain durability threshold."
-                    "SHIFT" -> "(GHOST)" to "Player becomes invisible, gains increased speed and jump height, but suffers from high weakness."
-                    "FISH" -> "(WATER)" to "Searches nearby waters for fish and other resources."
-                    "NIGHTMARE" -> "(DARK)" to "Inflicts fear on nearby creatures, causing them to flee in panic and giving ."
-                    "LIGHT" -> "(ELECTRIC)" to "Creates a temporary light source and illuminates dark areas."
-                    "SCOUT" -> "(FLYING)" to "Performs aerial reconnaissance and reports nearby structures and entities."
-                    "TELEPORT" -> "(PSYCHIC)" to "Teleports the trainer to the currently marked location."
-                    "ATTACK" -> "" to "Pokémon attacks any mob close to it; it will stop after killing the target."
-                    "PROTECT" -> "" to "Pokémon targets hostile mobs nearest to the player; if none are found, it follows the player."
-                    "EAT" -> "" to "Pokémon eat any edible item dropped on the ground. Some foods and berries may grant temporary effects."
-                    "BUFF" -> "" to "Pokémon grants the player a positive status effect based on its type."
-                    "DEBUFF ENEMY" -> "" to "Pokémon applies a negative status effect to nearby mobs based on its primary type."
-                    "SIT" -> "" to "Pokémon stays fixed in place, ignoring other actions."
-                    "IDLE" -> "" to "Pokémon cancels all active commands and returns to normal behavior."
-                    else -> "" to "Executing command."
+                val actionName = command.action.uppercase()
+                
+                val typeInfo = when(actionName) {
+                    "COOK" -> " (FIRE)"
+                    "GROW" -> " (PLANT)"
+                    "REPAIR" -> " (METAL)"
+                    "SHIFT" -> " (GHOST)"
+                    "FISH" -> " (WATER)"
+                    "NIGHTMARE" -> " (DARK)"
+                    "LIGHT" -> " (ELECTRIC)"
+                    "SCOUT" -> " (FLYING)"
+                    "TELEPORT" -> " (PSYCHIC)"
+                    else -> ""
                 }
                 
-                val actionName = command.action.uppercase()
+                val actionKey = command.action.lowercase().replace(" ", "_")
+                val actionTransName = Component.translatable("cobblebrain.action.$actionKey")
+                val explanationTrans = Component.translatable("cobblebrain.action.desc.$actionKey")
+                
                 val actionColor = when(actionName) {
                     "COOK" -> net.minecraft.ChatFormatting.GOLD
                     "GROW" -> net.minecraft.ChatFormatting.GREEN
@@ -62,8 +60,10 @@ object CobblebrainServerHandler {
 
                 val message = Component.literal("All Pokémon -> ")
                     .withStyle(net.minecraft.ChatFormatting.WHITE)
-                    .append(Component.literal("$actionName $typeInfo".trim()).withStyle(net.minecraft.ChatFormatting.BOLD).withStyle(actionColor))
-                    .append(Component.literal(": $explanation").withStyle(net.minecraft.ChatFormatting.GRAY))
+                    .append(actionTransName.withStyle(net.minecraft.ChatFormatting.BOLD).withStyle(actionColor))
+                    .append(Component.literal(typeInfo).withStyle(net.minecraft.ChatFormatting.BOLD).withStyle(actionColor))
+                    .append(Component.literal(": ").withStyle(net.minecraft.ChatFormatting.GRAY))
+                    .append(explanationTrans.withStyle(net.minecraft.ChatFormatting.GRAY))
 
                 player.sendSystemMessage(message)
             } else {
@@ -76,12 +76,12 @@ object CobblebrainServerHandler {
 
                 pokemon?.entity?.let { entity ->
                     CommandState.activeCommands[entity.uuid] = command.action
-                    player.sendSystemMessage(Component.literal("Command '${command.action}' applied to ${command.pokemonName}."))
+                    player.sendSystemMessage(Component.translatable("cobblebrain.feedback.command_applied", command.action, command.pokemonName))
 
                     // Send prompt back (make AI talk) only for individual commands
                     DialogueSystem.sendToPlayer?.let { it(player, "${command.pokemonName}: executing ${command.action}") }
                 } ?: run {
-                    player.sendSystemMessage(Component.literal("Could not find active Pokémon named ${command.pokemonName}."))
+                    player.sendSystemMessage(Component.translatable("cobblebrain.feedback.pokemon_not_found", command.pokemonName))
                 }
             }
         }

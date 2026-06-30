@@ -190,8 +190,6 @@ object OfflineDialogueManager {
         context: WorldContext
     ): FeelingContext {
 
-        println("POKEMONS POR PERTO: " + context.nearbyPokemon)
-
         val hpPercent =
             pokemon.currentHealth.toFloat() /
                     pokemon.maxHealth.toFloat() * 100f
@@ -217,7 +215,7 @@ object OfflineDialogueManager {
                 FeelingContext.BERRY
 
             context.nearbyItems.isNotBlank() &&
-                    context.nearbyItems.lowercase() != "nenhum" ->
+                    context.nearbyItems.lowercase() != "none" ->
                 FeelingContext.ITEMS
 
             weather.contains("storm") ||
@@ -479,9 +477,7 @@ object OfflineDialogueManager {
         context: WorldContext
     ): String {
 
-        val name =
-            pokemon.nickname?.string
-                ?: pokemon.species.name
+        val name = pokemon.species.name
 
         val vocal =
             generateVocalization(name)

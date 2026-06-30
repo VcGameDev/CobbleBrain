@@ -17,6 +17,11 @@ data class Memory(
     val createdTick: Long
 )
 
+data class PokemonPersonality(
+    val traits: MutableList<String> = mutableListOf(),
+    val quirks: MutableList<String> = mutableListOf()
+)
+
 data class CachedMemory(
     val memory: Memory,
     var interactionsLeft: Int
@@ -24,6 +29,37 @@ data class CachedMemory(
 
 object MemorySystem {
     private val gson: Gson = GsonBuilder().create()
+
+    fun getTraitsFile(pokemonUuid: String): File {
+        val dir = File("stored_memories")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return File(dir, "${pokemonUuid}_traits.json")
+    }
+
+    fun loadPersonality(pokemonUuid: String): PokemonPersonality {
+        val file = getTraitsFile(pokemonUuid)
+        if (!file.exists()) return PokemonPersonality()
+        return try {
+            val text = file.readText()
+            gson.fromJson(text, PokemonPersonality::class.java) ?: PokemonPersonality()
+        } catch (e: Exception) {
+            println("Error loading personality for $pokemonUuid: ${e.message}")
+            PokemonPersonality()
+        }
+    }
+
+    fun savePersonality(pokemonUuid: String, personality: PokemonPersonality) {
+        val file = getTraitsFile(pokemonUuid)
+        try {
+            val text = gson.toJson(personality)
+            file.writeText(text)
+        } catch (e: Exception) {
+            println("Error saving personality for $pokemonUuid: ${e.message}")
+        }
+    }
+
 
     fun getMemoryFile(pokemonUuid: String): File {
         val dir = File("stored_memories")

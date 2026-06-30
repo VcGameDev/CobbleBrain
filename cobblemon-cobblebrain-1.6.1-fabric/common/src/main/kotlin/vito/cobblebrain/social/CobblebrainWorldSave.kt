@@ -26,6 +26,8 @@ import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.BarrelBlockEntity
+import net.minecraft.world.effect.MobEffectInstance
+import net.minecraft.world.effect.MobEffects
 import kotlin.random.Random
 
 object MobBridge {
@@ -265,6 +267,29 @@ object CobblebrainWorldSave {
         ensureQuestsInitialized()
         val targetSpecies = battleSpecies.random()
 
+        val level = player.serverLevel()
+
+        // Calcula o nível alvo baseado no Pokémon mais forte do jogador
+        val strongestLevel = PokemonQuery.findActivePokemon(player).maxOfOrNull { it.level } ?: 20
+        val minLevel = maxOf(5, strongestLevel - 2)
+        val maxLevel = strongestLevel + 8
+        val targetLevel = Random.nextInt(minLevel, maxLevel + 1)
+
+        val nearbyWildPokemon = level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(64.0)) {
+            it.pokemon.getOwnerUUID() == null && it.pokemon.species.name.equals(targetSpecies, ignoreCase = true)
+        }.minByOrNull { it.distanceTo(player) }
+
+        val targetPokemon = nearbyWildPokemon ?: run {
+            val spawnX = player.blockX + (if (Random.nextBoolean()) (20..40).random() else (-40..-20).random())
+            val spawnZ = player.blockZ + (if (Random.nextBoolean()) (20..40).random() else (-40..-20).random())
+            val spawnY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, spawnX, spawnZ)
+            WorldEventsSystem.spawnPokemon(level, targetSpecies, spawnX, spawnY, spawnZ, targetLevel)
+        }
+
+        targetPokemon?.addEffect(
+            MobEffectInstance(MobEffects.GLOWING, 999999, 0, false, false)
+        )
+
         val questObj = JsonObject().apply {
             addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
@@ -278,9 +303,6 @@ object CobblebrainWorldSave {
 
             // novos campos
             addProperty("startTime", System.currentTimeMillis())
-            addProperty("spawned", false)
-            addProperty("distanceWalked", 0.0)
-            addProperty("requiredDistance", 800.0 + (Random.nextInt(801))) // Distância base 800 + sorteio 0-800
             
             val giverName = giver.pokemon.nickname?.string ?: giver.pokemon.species.resourceIdentifier.path
             addProperty("giverName", giverName)
@@ -458,13 +480,12 @@ object CobblebrainWorldSave {
         val level = player.serverLevel()
         val rand = java.util.Random()
 
-        // 1. Sorteia local e profundidade
+        // 1. Sorteia local
         val targetX = player.blockX + rand.nextInt(800) - 400
         val targetZ = player.blockZ + rand.nextInt(800) - 400
         val surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, targetX, targetZ)
         
-        val depth = rand.nextInt(11) // 0 a 10 blocos de profundidade
-        val targetY = surfaceY - depth
+        val targetY = surfaceY
         val barrelPos = BlockPos(targetX, targetY, targetZ)
 
         // 2. Coloca o barril e itens
@@ -694,7 +715,7 @@ object CobblebrainWorldSave {
                         .append(Component.literal(species).withStyle(ChatFormatting.YELLOW))
                         .append(Component.literal(" appreciate your help! Now you can receive ").withStyle(ChatFormatting.WHITE))
                         .append(Component.literal(tier).withStyle(if (tier == "EPIC") ChatFormatting.LIGHT_PURPLE else if (tier == "RARE") ChatFormatting.GOLD else ChatFormatting.AQUA))
-                        .append(Component.literal(" items!").withStyle(ChatFormatting.WHITE))
+                        .append(Component.literal(" items from this species!").withStyle(ChatFormatting.WHITE))
                 )
             }
         }
@@ -889,7 +910,7 @@ object CobblebrainWorldSave {
             Component.literal("")
                 .append("LOST ITEM SEARCH\n")
                 .append("find the lost Pokemon item barrel\n" +
-                        "you must dig it up and open it to complete the mission\n"),
+                        "you must find and open it to complete the mission\n"),
 
             Component.literal("")
                 .append(Component.literal("QUEST REWARDS\n\n").withStyle(ChatFormatting.BOLD))

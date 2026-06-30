@@ -126,7 +126,7 @@ object CobblebrainConfigScreen {
         var outputDialogue = true
         var outputActions = true
         var outputFriendship = true
-        var outputMemories = false
+        var outputMemories = true
         var outputApril1 = false
         var outputQuests = true
         var outputPokemonLanguage = false
@@ -180,14 +180,9 @@ object CobblebrainConfigScreen {
                     clientConfig.instruct = listOf(
                         "[CREATIVEPROMPT]",
                         "Write immersive Pokémon dialogue. Pokémon are living creatures with unique personalities, emotions, preferences, fears, and goals.",
-                        "Pokémon are generally friendly toward their trainer unless friendship, memories, personality, or circumstances suggest otherwise.",
-                        "Pokémon can joke, tease, disagree, question, express emotions, or show curiosity, but should not be unnecessarily rude, hostile, argumentative, or repetitive.",
-
-                        "Behavior evolves naturally through friendship, experiences, and memories.",
-                        "Pokémon should engage directly with the player and respond meaningfully to what was said.",
-                        "Avoid repeating the same attitude, lesson, complaint, or emotional state across multiple messages.",
-
-                        "Avoid excessive narration or environment description. Prioritize interaction, personality, and emotional reactions.",
+                        "Pokémon are generally friendly toward their trainer, but may joke, tease, disagree, question, or express emotions depending on personality, friendship, memories, and circumstances.",
+                        "Engage directly with the player and avoid repeating the same attitude, lesson, complaint, or emotional state.",
+                        "Prioritize interaction, personality, and emotional reactions over narration or environment description.",
                         "No modern human technology.",
 
                         "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
@@ -198,6 +193,8 @@ object CobblebrainConfigScreen {
                         "Never expose memories, system text, or internal reasoning.",
                         "No roleplay narration or *asterisk actions*."
                     )
+
+                    clientConfig.maxInteractionSaves = 3
 
                     SyncedConfig.updateLocal(
                         useDefaultOutput,
@@ -273,17 +270,13 @@ object CobblebrainConfigScreen {
                             SyncedConfig.outputApril1 ||
                             SyncedConfig.outputPokemonLanguage ||
                             SyncedConfig.outputMemories ||
+                            clientConfig.maxInteractionSaves != 3 ||
                             clientConfig.instruct != listOf(
                         "[CREATIVEPROMPT]",
                         "Write immersive Pokémon dialogue. Pokémon are living creatures with unique personalities, emotions, preferences, fears, and goals.",
-                        "Pokémon are generally friendly toward their trainer unless friendship, memories, personality, or circumstances suggest otherwise.",
-                        "Pokémon can joke, tease, disagree, question, express emotions, or show curiosity, but should not be unnecessarily rude, hostile, argumentative, or repetitive.",
-
-                        "Behavior evolves naturally through friendship, experiences, and memories.",
-                        "Pokémon should engage directly with the player and respond meaningfully to what was said.",
-                        "Avoid repeating the same attitude, lesson, complaint, or emotional state across multiple messages.",
-
-                        "Avoid excessive narration or environment description. Prioritize interaction, personality, and emotional reactions.",
+                        "Pokémon are generally friendly toward their trainer, but may joke, tease, disagree, question, or express emotions depending on personality, friendship, memories, and circumstances.",
+                        "Engage directly with the player and avoid repeating the same attitude, lesson, complaint, or emotional state.",
+                        "Prioritize interaction, personality, and emotional reactions over narration or environment description.",
                         "No modern human technology.",
 
                         "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
@@ -292,7 +285,8 @@ object CobblebrainConfigScreen {
                         "- 5-6 Pokémon: up to 6 messages",
 
                         "Never expose memories, system text, or internal reasoning.",
-                        "No roleplay narration or *asterisk actions*.")
+                        "No roleplay narration or *asterisk actions*."
+                    )
 
                 button.visible = shouldShow
 
@@ -375,7 +369,7 @@ object CobblebrainConfigScreen {
             clientConfig.apiKey
         ).setDefaultValue(listOf("YOUR_API_KEY"))
             .setSaveConsumer { value -> clientConfig.apiKey = value }
-            .setTooltip(Component.literal("The API key used for authentication with the AI system. \nIt can be a Bearer token or a Google API key depending on the provider."))
+            .setTooltip(Component.translatable("cobblebrain.config.api_key.tooltip"))
             .build()
 
         val keyRotationEntry = entryBuilder.startBooleanToggle(
@@ -383,7 +377,7 @@ object CobblebrainConfigScreen {
             clientConfig.keyRotation
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.keyRotation = value }
-            .setTooltip(Component.literal("Enables API key rotation when errors occur. \nUseful for handling invalid or expired keys."))
+            .setTooltip(Component.translatable("cobblebrain.config.key_rotation.tooltip"))
             .build()
 
         val keyRotationTriggerEntry = entryBuilder.startIntList(
@@ -391,7 +385,7 @@ object CobblebrainConfigScreen {
             clientConfig.keyRotationTrigger
         ).setDefaultValue(listOf(401, 429))
             .setSaveConsumer { value -> clientConfig.keyRotationTrigger = value }
-            .setTooltip(Component.literal("List of HTTP status codes that trigger key rotation. \nDefines error conditions for switching keys."))
+            .setTooltip(Component.translatable("cobblebrain.config.key_rotation_trigger.tooltip"))
             .build()
 
         val apiBaseUrlEntry = entryBuilder.startStrField(
@@ -399,7 +393,7 @@ object CobblebrainConfigScreen {
             clientConfig.apiBaseUrl
         ).setDefaultValue("http://127.0.0.1:4315")
             .setSaveConsumer { value -> clientConfig.apiBaseUrl = value }
-            .setTooltip(Component.literal("The base URL of the API endpoint. \nExamples include \n- OpenRouter: https://openrouter.ai/api\n- Google AI Studio: https://generativelanguage.googleapis.com\n- Or a local LM Studio server."))
+            .setTooltip(Component.translatable("cobblebrain.config.api_base_url.tooltip"))
             .build()
 
         val useChatEndpointEntry = entryBuilder.startBooleanToggle(
@@ -407,7 +401,7 @@ object CobblebrainConfigScreen {
             clientConfig.useChatEndpoint
         ).setDefaultValue(true)
             .setSaveConsumer { value -> clientConfig.useChatEndpoint = value }
-            .setTooltip(Component.literal("Automatically includes '/v1/chat/completions' in the ApiBaseUrl address.\nDisable it if you are having trouble accessing your AI API"))
+            .setTooltip(Component.translatable("cobblebrain.config.use_chat_endpoint.tooltip"))
             .build()
 
         val localApiProviderEntry = entryBuilder.startStrField(
@@ -415,7 +409,7 @@ object CobblebrainConfigScreen {
             clientConfig.localApiProvider
         ).setDefaultValue("player2")
             .setSaveConsumer { value -> clientConfig.localApiProvider = value }
-            .setTooltip(Component.literal("If apiBaseUrl is a local address (127.0.0.1),\nThe system uses the provider name to adapt messages for the correct provider. \nOfficially supported providers: player2, lmstudio"))
+            .setTooltip(Component.translatable("cobblebrain.config.local_api_provider.tooltip"))
             .build()
 
         val aiModelEntry = entryBuilder.startStrList(
@@ -423,7 +417,7 @@ object CobblebrainConfigScreen {
             clientConfig.aiModel
         ).setDefaultValue(listOf("gemma-3-12b-it", "gemma-3-4b-it"))
             .setSaveConsumer { value -> clientConfig.aiModel = value }
-            .setTooltip(Component.literal("The names of the AI models to use.\nExamples are gemini-2.5-flash, gemma-3-12b-it"))
+            .setTooltip(Component.translatable("cobblebrain.config.ai_model.tooltip"))
             .build()
 
         val modelRotationEntry = entryBuilder.startBooleanToggle(
@@ -431,7 +425,7 @@ object CobblebrainConfigScreen {
             clientConfig.modelRotation
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.modelRotation = value }
-            .setTooltip(Component.literal("Enables model rotation when errors occur.\nUseful for fallback to alternative models."))
+            .setTooltip(Component.translatable("cobblebrain.config.model_rotation.tooltip"))
             .build()
 
         val modelRotationTriggerEntry = entryBuilder.startIntList(
@@ -439,7 +433,7 @@ object CobblebrainConfigScreen {
             clientConfig.modelRotationTrigger
         ).setDefaultValue(listOf(404, 429))
             .setSaveConsumer { value -> clientConfig.modelRotationTrigger = value }
-            .setTooltip(Component.literal("List of HTTP status codes that trigger model rotation.\nDefines error conditions for switching models."))
+            .setTooltip(Component.translatable("cobblebrain.config.model_rotation_trigger.tooltip"))
             .build()
 
         val temperatureEntry = entryBuilder.startIntSlider(
@@ -462,7 +456,7 @@ object CobblebrainConfigScreen {
             clientConfig.aiProvider
         ).setDefaultValue("")
             .setSaveConsumer { value -> clientConfig.aiProvider = value }
-            .setTooltip(Component.literal("A provider hint used for routing in OpenRouter. \nThis is ignored when using other provider."))
+            .setTooltip(Component.translatable("cobblebrain.config.ai_provider.tooltip"))
             .build()
 
         val reasoningEffortEntry = entryBuilder.startStrField(
@@ -470,7 +464,7 @@ object CobblebrainConfigScreen {
             clientConfig.reasoningEffort
         ).setDefaultValue("none")
             .setSaveConsumer { value -> clientConfig.reasoningEffort = value }
-            .setTooltip(Component.literal("Defines the reasoning effort level for supported models.\nOptions include high, medium, low, auto, or none."))
+            .setTooltip(Component.translatable("cobblebrain.config.reasoning_effort.tooltip"))
             .build()
 
         val requestTimeoutEntry = entryBuilder.startLongField(
@@ -478,7 +472,7 @@ object CobblebrainConfigScreen {
             clientConfig.requestTimeoutSeconds
         ).setDefaultValue(60L)
             .setSaveConsumer { value -> clientConfig.requestTimeoutSeconds = value }
-            .setTooltip(Component.literal("Defines the request timeout in seconds.\nLocal models may require longer values."))
+            .setTooltip(Component.translatable("cobblebrain.config.request_timeout.tooltip"))
             .build()
 
         val debugLoggingEntry = entryBuilder.startBooleanToggle(
@@ -486,7 +480,7 @@ object CobblebrainConfigScreen {
             clientConfig.debugLogging
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.debugLogging = value }
-            .setTooltip(Component.literal("Enables debug logging for troubleshooting.\nLogs are stored in the cobblebrain-ai/logs directory."))
+            .setTooltip(Component.translatable("cobblebrain.config.debug_logging.tooltip"))
             .build()
 
         val ignoreHungerEntry = entryBuilder.startBooleanToggle(
@@ -494,7 +488,7 @@ object CobblebrainConfigScreen {
             clientConfig.ignoreHunger
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.ignoreHunger = value }
-            .setTooltip(Component.literal("Makes the AI ignore any information about the Pokémon's hunger.\nAdding a new rule to the AI's instructions"))
+            .setTooltip(Component.translatable("cobblebrain.config.ignore_hunger.tooltip"))
             .build()
 
         val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
@@ -502,7 +496,7 @@ object CobblebrainConfigScreen {
             SyncedConfig.useDefaultOutput
         ).setDefaultValue(true)
             .setSaveConsumer { value -> useDefaultOutput = value }
-            .setTooltip(Component.literal("Uses the recommended and updated OUTPUT FORMAT of the mod version.\nOnly disable it if you want to apply your own CUSTOM OUTPUT, \nWhich is not recommended."))
+            .setTooltip(Component.translatable("cobblebrain.config.use_default_output.tooltip"))
             .build()
 
         val selectedLanguageEntry = entryBuilder.startStrField(
@@ -510,7 +504,7 @@ object CobblebrainConfigScreen {
             clientConfig.selectedLanguage
         ).setDefaultValue("English")
             .setSaveConsumer { value -> clientConfig.selectedLanguage = value }
-            .setTooltip(Component.literal("The language the AI uses for responses.\nDetermines dialogue output language."))
+            .setTooltip(Component.translatable("cobblebrain.config.selected_language.tooltip"))
             .build()
 
         val preferredNameEntry = entryBuilder.startStrField(
@@ -521,8 +515,8 @@ object CobblebrainConfigScreen {
             .setDefaultValue(Minecraft.getInstance().user.name)
             .setSaveConsumer { value -> clientConfig.preferredName = value }
             .setTooltip(
-                Component.literal(
-                    "Defines how the AI and Pokémon should call you during conversations."
+                Component.translatable(
+                    "cobblebrain.config.preferred_name.tooltip"
                 )
             )
             .build()
@@ -532,7 +526,7 @@ object CobblebrainConfigScreen {
             clientConfig.offlineMode
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.offlineMode = value }
-            .setTooltip(Component.literal("Enables Offline Mode. Disables AI requests and prompt building."))
+            .setTooltip(Component.translatable("cobblebrain.config.offline_mode.tooltip"))
             .build()
 
         val offlineTalkModeEntry = entryBuilder.startBooleanToggle(
@@ -540,7 +534,15 @@ object CobblebrainConfigScreen {
             clientConfig.offlineTalkMode
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.offlineTalkMode = value }
-            .setTooltip(Component.literal("Enables generating responses locally via the offline dialogue system when sending messages."))
+            .setTooltip(Component.translatable("cobblebrain.config.offline_talk_mode.tooltip"))
+            .build()
+
+        val psychicTranslationEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Psychic Pokémon Translation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.psychicTranslation
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> clientConfig.psychicTranslation = value }
+            .setTooltip(Component.translatable("cobblebrain.config.psychic_translation.tooltip"))
             .build()
 
         val maxInteractionSavesEntry = entryBuilder.startIntField(
@@ -548,7 +550,7 @@ object CobblebrainConfigScreen {
             clientConfig.maxInteractionSaves
         ).setDefaultValue(8)
             .setSaveConsumer { value -> clientConfig.maxInteractionSaves = value }
-            .setTooltip(Component.literal("The max number of recent memories the AI/Pokémon can create.\nHigher values improve conversation flow but use more tokens or\ntime to generate responses."))
+            .setTooltip(Component.translatable("cobblebrain.config.max_interaction_saves.tooltip"))
             .build()
 
         val dialogueInChatEntry = entryBuilder.startBooleanToggle(
@@ -556,7 +558,7 @@ object CobblebrainConfigScreen {
             config.dialogueInChat
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.dialogueInChat = value }
-            .setTooltip(Component.literal("Shows generated dialogue directly in the chat.\nThis makes Pokémon conversations visible to players."))
+            .setTooltip(Component.translatable("cobblebrain.config.dialogue_in_chat.tooltip"))
             .build()
 
         val chatbubblesEntry = entryBuilder.startBooleanToggle(
@@ -564,7 +566,7 @@ object CobblebrainConfigScreen {
             config.chatbubbles
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.chatbubbles = value }
-            .setTooltip(Component.literal("Enables chat bubbles above characters.\nDialogue will appear visually instead of only in text chat."))
+            .setTooltip(Component.translatable("cobblebrain.config.chatbubbles.tooltip"))
             .build()
 
         // ========================= GAME AND INTERACTIONS =========================
@@ -577,7 +579,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(false)
             .setSaveConsumer { value -> needsPokemonTranslator = value }
-            .setTooltip(Component.literal("When active, Pokémon speak normally if the player has the Exp Share equipped on themselves.\nIf not equiped, the Pokémon speak like animals.\nThis setting takes priority over 'outputDialogue' and 'outputCanonLanguage'"))
+            .setTooltip(Component.translatable("cobblebrain.config.needs_pokemon_translator.tooltip"))
             .build()
 
         val allowPokemonPVPEntry = entryBuilder.startBooleanToggle(
@@ -585,7 +587,7 @@ object CobblebrainConfigScreen {
             config.allowPokemonPVP
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.allowPokemonPVP = value }
-            .setTooltip(Component.literal("Allows Pokémon to attack other players’ Pokémon.\nDisabling prevents player-versus-player battles."))
+            .setTooltip(Component.translatable("cobblebrain.config.allow_pokemon_pvp.tooltip"))
             .build()
 
         val allowPokemonPVEEntry = entryBuilder.startBooleanToggle(
@@ -593,7 +595,7 @@ object CobblebrainConfigScreen {
             config.allowPokemonPVE
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.allowPokemonPVE = value }
-            .setTooltip(Component.literal("Allows Pokémon to attack mobs in the world.\nExceptions include tamed mobs and non-aggressive tagged mobs."))
+            .setTooltip(Component.translatable("cobblebrain.config.allow_pokemon_pve.tooltip"))
             .build()
 
         val scheduleRaidEntry = entryBuilder.startBooleanToggle(
@@ -601,7 +603,7 @@ object CobblebrainConfigScreen {
             config.scheduleRaids
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.scheduleRaids = value }
-            .setTooltip(Component.literal("Determines if raids can be created in the world.\nRaids can happen when your karma with a species falls below -11"))
+            .setTooltip(Component.translatable("cobblebrain.config.schedule_raid.tooltip"))
             .build()
 
         val characteristicsEntry = entryBuilder.startStrList(
@@ -609,7 +611,7 @@ object CobblebrainConfigScreen {
             config.characteristics
         ).setDefaultValue(listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"))
             .setSaveConsumer { value -> config.characteristics = value }
-            .setTooltip(Component.literal("list to define characteristics of a specific Pokémon for the AI.\nFormat: <pokemonName>: <text>"))
+            .setTooltip(Component.translatable("cobblebrain.config.characteristics.tooltip"))
             .build()
 
         val lowTokenModeEntry = entryBuilder.startBooleanToggle(
@@ -617,7 +619,7 @@ object CobblebrainConfigScreen {
             config.lowTokenMode
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.lowTokenMode = value }
-            .setTooltip(Component.literal("Reduces world information sent to the AI.\nThis helps conserve tokens and lower usage costs."))
+            .setTooltip(Component.translatable("cobblebrain.config.low_token_mode.tooltip"))
             .build()
 
         val dialogueOnDamageEntry = entryBuilder.startBooleanToggle(
@@ -625,7 +627,7 @@ object CobblebrainConfigScreen {
             config.dialogueOnDamage
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.dialogueOnDamage = value }
-            .setTooltip(Component.literal("Makes Pokémon speak when someone is hurt.\nDialogue is triggered by damage events."))
+            .setTooltip(Component.translatable("cobblebrain.config.dialogue_on_damage.tooltip"))
             .build()
 
         val dialogueOnBattleEntry = entryBuilder.startBooleanToggle(
@@ -633,7 +635,7 @@ object CobblebrainConfigScreen {
             config.dialogueOnBattle
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.dialogueOnBattle = value }
-            .setTooltip(Component.literal("Makes Pokémon speak during battle events.\nDialogue reflects combat situations."))
+            .setTooltip(Component.translatable("cobblebrain.config.dialogue_on_battle.tooltip"))
             .build()
 
         val wildPokemonTalkChanceEntry = entryBuilder.startIntSlider(
@@ -649,7 +651,7 @@ object CobblebrainConfigScreen {
             .setTextGetter { value ->
                 Component.literal(String.format("%.2f", value / 100.0))
             }
-            .setTooltip(Component.literal("Sets the chance of wild pokemon to participate in dialogue, not generate new ones. \nWild Pokémon may speak randomly during ongoing dialogues."))
+            .setTooltip(Component.translatable("cobblebrain.config.wild_pokemon_talk_chance.tooltip"))
             .build()
 
         val wildQuestChanceEntry = entryBuilder.startIntSlider(
@@ -665,7 +667,7 @@ object CobblebrainConfigScreen {
             .setTextGetter { value ->
                 Component.literal(String.format("%.2f", value / 100.0))
             }
-            .setTooltip(Component.literal("Set the chance for a Pokémon to start a quest when you have a dialogue with wild Pokémon. \nThe quests can be of the type BATTLE, ITEM, or ADVICE."))
+            .setTooltip(Component.translatable("cobblebrain.config.wild_quest_chance.tooltip"))
             .build()
 
         val spontaneousDialogueChanceEntry = entryBuilder.startIntSlider(
@@ -681,7 +683,7 @@ object CobblebrainConfigScreen {
             .setTextGetter { value ->
                 Component.literal(String.format("%.2f", value / 100.0))
             }
-            .setTooltip(Component.literal("Sets the chance of spontaneous dialogue.\nPokémon may speak randomly during idle moments."))
+            .setTooltip(Component.translatable("cobblebrain.config.spontaneous_dialogue_chance.tooltip"))
             .build()
 
         val listenToChatEntry = entryBuilder.startBooleanToggle(
@@ -689,7 +691,7 @@ object CobblebrainConfigScreen {
             config.listenToChat
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.listenToChat = value }
-            .setTooltip(Component.literal("Enables listening to regular player chat.\nIf disabled, the AI ignores non-command messages."))
+            .setTooltip(Component.translatable("cobblebrain.config.listen_to_chat.tooltip"))
             .build()
 
         val onlyNearbyChatEntry = entryBuilder.startBooleanToggle(
@@ -697,7 +699,7 @@ object CobblebrainConfigScreen {
             config.onlyNearbyChat
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.onlyNearbyChat = value }
-            .setTooltip(Component.literal("Restricts listening to nearby players only.\nWorks only if listenToChat is enabled."))
+            .setTooltip(Component.translatable("cobblebrain.config.only_nearby_chat.tooltip"))
             .build()
 
         val maxStoredMemoriesEntry = entryBuilder.startIntField(
@@ -708,7 +710,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(100)
             .setSaveConsumer { value -> maxStoredMemories = value }
-            .setTooltip(Component.literal("Maximum stored memory size per Pokémon in jsonl files."))
+            .setTooltip(Component.translatable("cobblebrain.config.max_stored_memories.tooltip"))
             .build()
 
         val maxRelevantMemoriesEntry = entryBuilder.startIntField(
@@ -719,7 +721,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(4)
             .setSaveConsumer { value -> maxRelevantMemories = value }
-            .setTooltip(Component.literal("Maximum relevant memories retrieved and sent in the prompt."))
+            .setTooltip(Component.translatable("cobblebrain.config.max_relevant_memories.tooltip"))
             .build()
 
         val lastRetrievedMemoryCountEntry = entryBuilder.startIntField(
@@ -730,7 +732,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(3)
             .setSaveConsumer { value -> lastRetrievedMemoryCount = value }
-            .setTooltip(Component.literal("Maximum size of the cache of recently used/retrieved memories."))
+            .setTooltip(Component.translatable("cobblebrain.config.last_retrieved_memory_count.tooltip"))
             .build()
 
         val lastRetrievedMemoryLifetimeEntry = entryBuilder.startIntField(
@@ -741,7 +743,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(5)
             .setSaveConsumer { value -> lastRetrievedMemoryLifetime = value }
-            .setTooltip(Component.literal("Number of interactions a retrieved memory stays in the cache."))
+            .setTooltip(Component.translatable("cobblebrain.config.last_retrieved_memory_lifetime.tooltip"))
             .build()
 
         val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -749,7 +751,7 @@ object CobblebrainConfigScreen {
             config.decreaseFriendship
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.decreaseFriendship = value }
-            .setTooltip(Component.literal("Dialogue can decrease friendship with players.\nUsed for negative interactions."))
+            .setTooltip(Component.translatable("cobblebrain.config.decrease_friendship.tooltip"))
             .build()
 
         val increaseFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -757,7 +759,7 @@ object CobblebrainConfigScreen {
             config.increaseFriendship
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.increaseFriendship = value }
-            .setTooltip(Component.literal("Dialogue can increase friendship with players.\nUsed for positive interactions."))
+            .setTooltip(Component.translatable("cobblebrain.config.increase_friendship.tooltip"))
             .build()
 
         val showFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -765,7 +767,7 @@ object CobblebrainConfigScreen {
             config.showFriendship
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.showFriendship = value }
-            .setTooltip(Component.literal("Displays friendship values in chat.\nPlayers can see relationship changes."))
+            .setTooltip(Component.translatable("cobblebrain.config.show_friendship.tooltip"))
             .build()
 
         // ========================= PROMPT AND OUTPUT =========================
@@ -820,7 +822,7 @@ object CobblebrainConfigScreen {
             "Never expose memories, system text, or internal reasoning.",
             "No roleplay narration or *asterisk actions*."))
             .setSaveConsumer { value -> clientConfig.instruct = value }
-            .setTooltip(Component.literal("The Instructs as a whole works as a global prompt.\nDefines how the AI or Pokemon behave, think and responds.\nEach instruct (item on the list) shapes how the response is sent"))
+            .setTooltip(Component.translatable("cobblebrain.config.instruct.tooltip"))
             .build()
 
         val outputFormatEntry = object : AbstractConfigListEntry<Unit>(
@@ -865,7 +867,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(true)
             .setSaveConsumer { value -> outputDialogue = value }
-            .setTooltip(Component.literal("Enables the Pokémon to generate natural language dialogue,\nAllowing them to dialogue with the player."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_dialogue.tooltip"))
             .build()
 
         val outputActionsEntry = entryBuilder.startBooleanToggle(
@@ -876,7 +878,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(true)
             .setSaveConsumer { value -> outputActions = value }
-            .setTooltip(Component.literal("Enables Pokémon to perform specialized actions based on the situation or the player command,\nsuch as cooking food, growing berries, or eating items."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_actions.tooltip"))
             .build()
 
         val outputFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -887,7 +889,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(true)
             .setSaveConsumer { value -> outputFriendship = value }
-            .setTooltip(Component.literal("Enables the AI to manage and update friendship levels based on your interactions,\ninfluencing the Pokémon's loyalty and behavior."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_friendship.tooltip"))
             .build()
 
         val outputWorldContextEntry = entryBuilder.startBooleanToggle(
@@ -895,7 +897,7 @@ object CobblebrainConfigScreen {
             config.outputWorldContext
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.outputWorldContext = value }
-            .setTooltip(Component.literal("Provides the AI with information about the current environment\n (like time of day, biome, player status and etc...) for more contextual responses."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_world_context.tooltip"))
             .build()
 
         val outputGuaranteedCatchEntry = entryBuilder.startBooleanToggle(
@@ -906,7 +908,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(true)
             .setSaveConsumer { value -> outputGuaranteedCatch = value }
-            .setTooltip(Component.literal("Enables the possibility of wild Pokémon to be convinced via dialogue to join you,\nwith a 100% capture rate in the next Poké Ball throw."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_guaranteed_catch.tooltip"))
             .build()
 
         val outputMobsContextEntry = entryBuilder.startBooleanToggle(
@@ -914,7 +916,7 @@ object CobblebrainConfigScreen {
             config.outputMobsContext
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.outputMobsContext = value }
-            .setTooltip(Component.literal("Gives the AI awareness of nearby non-Pokémon entities,\nallowing it to react to the presence of other mobs in the area."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_mobs_context.tooltip"))
             .build()
 
         val outputQuestsEntry = entryBuilder.startBooleanToggle(
@@ -925,7 +927,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(true)
             .setSaveConsumer { value -> outputQuests = value }
-            .setTooltip(Component.literal("Enables the automated quest system, allowing Pokémon\nto offer tasks and rewards to the player."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_quests.tooltip"))
             .build()
 
         // the fun one
@@ -937,7 +939,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(false)
             .setSaveConsumer { value -> outputApril1 = value }
-            .setTooltip(Component.literal("Activates special 'April Fools' actions (e.g nuke, imaginary technique).\nMost of the actions are destructive so be careful!"))
+            .setTooltip(Component.translatable("cobblebrain.config.output_april1.tooltip"))
             .build()
 
         val outputPokemonLanguageEntry = entryBuilder.startBooleanToggle(
@@ -948,7 +950,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(false)
             .setSaveConsumer { value -> outputPokemonLanguage = value }
-            .setTooltip(Component.literal("Makes Pokémon speak using their iconic vocalizations (e.g., 'Pika Pika')\ninstead of human speech. Automatically deactivates outputDialogue when in use."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_pokemon_language.tooltip"))
             .build()
 
         val outputMemoriesEntry = entryBuilder.startBooleanToggle(
@@ -959,7 +961,7 @@ object CobblebrainConfigScreen {
             )
         ).setDefaultValue(true)
             .setSaveConsumer { value -> outputMemories = value }
-            .setTooltip(Component.literal("Allows the AI to store and recall past interactions."))
+            .setTooltip(Component.translatable("cobblebrain.config.output_memories.tooltip"))
             .build()
 
         category.entries.add(recommendedPromptButton)
@@ -983,6 +985,7 @@ object CobblebrainConfigScreen {
         category.entries.add(preferredNameEntry)
         category.entries.add(offlineModeEntry)
         category.entries.add(offlineTalkModeEntry)
+        category.entries.add(psychicTranslationEntry)
         category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(needsPokemonTranslatorEntry)
         category.entries.add(listenToChatEntry)

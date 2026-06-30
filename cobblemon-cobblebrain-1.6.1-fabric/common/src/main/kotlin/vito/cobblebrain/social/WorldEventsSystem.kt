@@ -291,7 +291,7 @@ object WorldEventsSystem {
                 }
 
                 player.sendSystemMessage(
-                    Component.literal("You were defeated... The Pokémon seem to calm down...")
+                    Component.translatable("cobblebrain.raid.defeated")
                         .withStyle(ChatFormatting.RED)
                 )
 
@@ -361,7 +361,7 @@ object WorldEventsSystem {
                 }
 
                 player.sendSystemMessage(
-                    Component.literal("You survived the raid. The Pokémon seem to calm down...")
+                    Component.translatable("cobblebrain.raid.survived")
                         .withStyle(ChatFormatting.GREEN)
                 )
 
@@ -385,7 +385,8 @@ object WorldEventsSystem {
         speciesName: String,
         x: Int,
         y: Int,
-        z: Int
+        z: Int,
+        level: Int? = null
     ): PokemonEntity? {
 
         val properties = PokemonProperties()
@@ -393,8 +394,8 @@ object WorldEventsSystem {
         val species = PokemonSpecies.getByName(speciesName.lowercase()) ?: return null
         properties.species = species.resourceIdentifier.toString()
 
-        // nível simples (pode ajustar depois)
-        properties.level = Random.nextInt(10, 40)
+        // nível definido externamente ou aleatório
+        properties.level = level ?: Random.nextInt(10, 40)
 
         val pokemon = try {
             properties.createEntity(world)

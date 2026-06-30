@@ -126,24 +126,32 @@ class AIHandler {
         respect PLUS/MINUS settings
         """
 
-        const val MEMORY = """
+        val PSYCHIC_TRANSLATION get() = """
+        PSYCHIC TRANSLATION
+        Psychic Pokémon speak $USER_LANGUAGE naturally.
+        They may occasionally interpret another Pokémon's intentions or emotions.
+        Do not translate literally.
+        Only if it improves the conversation.
+        """
+
+        val MEMORY get() = """
         MEMORY FORMAT
         &MEMORY:PokemonNames:MemoryText|keywords
         PokemonNames = comma separated list of pokemon names involved
         MemoryText = third-person short summary of the memory/interaction
-        keywords = comma separated list of relevant lowercase keywords
+        keywords = comma separated list of 5 relevant lowercase keywords
+        Memory text and keywords must be written in $USER_LANGUAGE.
         generate only when meaningful
         """
 
         const val ACTION = """
         ACTION FORMAT
+        Use actions only when appropriate to the dialogue, environment, or situation.
         Format: #<PokemonName>:<action_code>
         Action codes:
-        A (attack a mob), E (eat), B (buff owner), D (debuff enemy), S (sit), P (protect owner/attack agressive mobs), I (idle)
-        fire type: C (cook) | steel type: R (repair) | grass type: G (grow) | ghost type: SH (shift)
-        | dark type: N (nightmare) | fly type: SC (scout) | eletric type: L (light) | psychic type: T (teleport owner)
-        If no action is needed, ALWAYS use I.
-        Use one action per Pokémon at the end
+        A (attack a mob), E (eat/ask for food), B (buff owner), D (debuff enemy), S (sit), P (protect owner/attack agressive mobs), I (idle)
+        fire type: C (cook/smelt ores) | steel type: R (repair tools) | grass type: G (grow crops/saplings) | ghost type: SH (shift)
+        | dark type: N (nightmare aura) | fly type: SC (scout) | eletric type: L (light) | psychic type: T (teleport owner)
         """
 
         const val CATCH = """
@@ -191,17 +199,13 @@ class AIHandler {
             appendLine("- strict format only")
             appendLine("- keep section order")
             appendLine("- pokemon + player only")
-            appendLine("- ONLY Pokémon in [ACTIVE POKEMON] or [NEARBY POKEMON] can speak")
-            appendLine("- unavailable Pokémon NEVER speak")
-            appendLine("- if [ACTIVE POKEMON] is empty, only nearby Pokémon may respond")
-            appendLine("- if no Pokémon can respond, output only: \"no Pokémon heard what you said\" in $USER_LANGUAGE")
+            appendLine("- only ACTIVE or NEARBY Pokémon may speak")
+            appendLine("- unavailable Pokémon never speak")
+            appendLine("- if no Pokémon can respond, output only: \"No Pokémon heard what you said\" in $USER_LANGUAGE")
             appendLine("- consistent names")
             appendLine("- no self-talk unless specified")
-            appendLine("- follow [CREATIVEPROMPT]")
-            appendLine("- use [LAST INTERACTIONS] naturally")
-            appendLine("- subtle environment usage")
-            appendLine("- nearby Pokémon do not know the player's name")
             appendLine("- never speak or act for the player")
+            appendLine("- nearby Pokémon do not know the player's name")
             appendLine("- player IDs belong to players, not Pokémon")
 
             if (IGNORE_HUNGER) {
@@ -257,7 +261,8 @@ class AIHandler {
         //mobsContext: Boolean,
         //lastContext: Boolean,
         //blockSensors: Boolean,
-        memories: Boolean
+        memories: Boolean,
+        psychicTranslation: Boolean
     ): String {
 
         val sections = mutableListOf<String>()
@@ -270,6 +275,7 @@ class AIHandler {
         if (friendship) sections += FRIENDSHIP
         if (memories) sections += MEMORY
         if (actions) sections += ACTION
+        if (psychicTranslation) sections += PSYCHIC_TRANSLATION
         
         if (guaranteedCatch && dialogue) {
             sections += CATCH
@@ -303,7 +309,8 @@ class AIHandler {
             //mobsContext = clientConfig.outputMobsContext,
             //lastContext = clientConfig.outputLastContext,
             //blockSensors = clientConfig.outputBlockSensors,
-            memories = SyncedConfig.outputMemories
+            memories = SyncedConfig.outputMemories,
+            psychicTranslation = clientConfig.psychicTranslation
         )
     }
     // agora usando rotadores

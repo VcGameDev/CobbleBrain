@@ -149,9 +149,8 @@ object HudSystem {
         when(type) {
             "BATTLE" -> {
                 val target = quest.get("targetSpecies")?.asString ?: "Target"
-                val walked = quest.get("distanceWalked")?.asFloat ?: 0f
-                val required = quest.get("requiredDistance")?.asFloat ?: 1000f
-                progress = (walked / required).coerceIn(0f, 1f)
+                val status = quest.get("status")?.asString ?: "IN_PROGRESS"
+                progress = if (status == "COMPLETED") 1f else 0f
                 progressText = "Defeat $target in a battle"
             }
             "ITEM" -> {
@@ -234,11 +233,33 @@ object HudSystem {
         val screenWidth = client.window.guiScaledWidth
         val screenHeight = client.window.guiScaledHeight
 
-        // Centro-Direito (Compacto: Largura 42, Item 10)
-        val menuWidth = 42
+        // Centro-Direito (Compacto: Largura dinâmica, Item 10)
         val itemHeight = 10
         val sortedCommands = getSortedCommands()
-        val totalHeight = sortedCommands.size * itemHeight
+        val totalCount = sortedCommands.size
+
+        // Calcula a largura do menu com base no nome mais longo (escala 0.7)
+        val textScale = 0.7f
+        val minMenuWidth = 42
+        val longestNameWidth = sortedCommands.maxOfOrNull { cmd ->
+            val displayName = net.minecraft.client.resources.language.I18n.get("cobblebrain.action.${cmd.lowercase()}")
+            ((client.font.width("> $displayName") * textScale) + 6).toInt()
+        } ?: minMenuWidth
+        val menuWidth = maxOf(minMenuWidth, longestNameWidth)
+
+        val maxVisible = 10
+        var startVisible = 0
+        if (totalCount > maxVisible) {
+            startVisible = selectedActionIndex - (maxVisible / 2)
+            if (startVisible < 0) {
+                startVisible = 0
+            } else if (startVisible + maxVisible > totalCount) {
+                startVisible = totalCount - maxVisible
+            }
+        }
+        val endVisible = minOf(startVisible + maxVisible, totalCount)
+        val visibleCount = endVisible - startVisible
+        val totalHeight = visibleCount * itemHeight
         val x = screenWidth - menuWidth - 8
         val y = (screenHeight - totalHeight) / 2
 
@@ -246,15 +267,35 @@ object HudSystem {
         guiGraphics.fill(x - 2, y - 2, x + menuWidth + 2, y + totalHeight + 2, 0x99000000.toInt())
         guiGraphics.fill(x - 2, y - 2, x - 1, y + totalHeight + 2, 0xFF5555FF.toInt())
 
-        sortedCommands.forEachIndexed { index, cmd ->
+        val hasAbove = startVisible > 0
+        val hasBelow = endVisible < totalCount
+        val centerX = x + (menuWidth / 2)
+
+        if (hasAbove) {
+            val upStr = "▲"
+            val upWidth = client.font.width(upStr)
+            guiGraphics.drawString(client.font, upStr, centerX - (upWidth / 2), y - 10, 0xFFFFFFFF.toInt(), false)
+        }
+
+        if (hasBelow) {
+            val downStr = "▼"
+            val downWidth = client.font.width(downStr)
+            guiGraphics.drawString(client.font, downStr, centerX - (downWidth / 2), y + totalHeight + 2, 0xFFFFFFFF.toInt(), false)
+        }
+
+        for (visibleIndex in 0 until visibleCount) {
+            val index = startVisible + visibleIndex
+            val cmd = sortedCommands[index]
             val isSelected = index == selectedActionIndex
-            val itemY = y + (index * itemHeight)
+            val itemY = y + (visibleIndex * itemHeight)
             val cmdColor = getCommandColor(cmd)
             val remaining = getCooldownRemaining(cmd)
 
             guiGraphics.pose().pushPose()
             guiGraphics.pose().translate((x + 2).toDouble(), (itemY + 2).toDouble(), 0.0)
             guiGraphics.pose().scale(0.7f, 0.7f, 1f)
+
+            val displayName = net.minecraft.client.resources.language.I18n.get("cobblebrain.action.${cmd.lowercase()}")
 
             if (isSelected) {
                 val time = client.level?.gameTime ?: 0L
@@ -273,9 +314,9 @@ object HudSystem {
                     val timerText = formatTime(remaining)
                     val timerWidth = client.font.width(timerText)
                     guiGraphics.drawString(client.font, timerText, -timerWidth - 4, 0, 0xFFFF5555.toInt())
-                    guiGraphics.drawString(client.font, "> $cmd", 0, 0, 0xFFAAAAAA.toInt()) // Cinza em cooldown
+                    guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFAAAAAA.toInt()) // Cinza em cooldown
                 } else {
-                    guiGraphics.drawString(client.font, "> $cmd", 0, 0, 0xFFFFFFFF.toInt())
+                    guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFFFFFFF.toInt())
                 }
             } else {
                 if (remaining > 0) {
@@ -291,7 +332,7 @@ object HudSystem {
                         darkenColor(cmdColor, 0.55f)
                     else
                         cmdColor
-                guiGraphics.drawString(client.font, "  $cmd", 0, 0, renderColor)
+                guiGraphics.drawString(client.font, "  $displayName", 0, 0, renderColor)
             }
             guiGraphics.pose().popPose()
         }
@@ -302,15 +343,21 @@ object HudSystem {
         val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
         val toggleKey = CobblebrainClientCommon.keyToggle?.translatedKeyMessage?.string ?: "N"
 
+        val selectUpMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_up")
+        val selectDownMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_down")
+        val confirmOrderMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.confirm_order")
+        val toggleHudMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.toggle_hud")
+        val markLocationMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.mark_location")
+
         guiGraphics.pose().pushPose()
         guiGraphics.pose().translate((x).toDouble(), (y + totalHeight + 6).toDouble(), 0.0)
         guiGraphics.pose().scale(0.5f, 0.5f, 1f) // Voltando para o tamanho anterior
 
-        guiGraphics.drawString(client.font, "$upKey: Select Up", 0, 0, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$downKey: Select Down", 0, 10, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$execKey: Confirm Order", 0, 20, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$toggleKey: Toggle HUD", 0, 30, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$toggleKey: Mark location", 0, 30, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$upKey: $selectUpMsg", 0, 0, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$downKey: $selectDownMsg", 0, 10, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$execKey: $confirmOrderMsg", 0, 20, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$toggleKey: $toggleHudMsg", 0, 30, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$toggleKey: $markLocationMsg", 0, 40, 0x99FFFFFF.toInt(), false)
 
         guiGraphics.pose().popPose()
     }

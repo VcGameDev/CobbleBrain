@@ -2947,7 +2947,7 @@ fun handleScoutScan(
     val radius =
         maxOf(
             64.0,
-            pokemon.blockY * 3.0
+            pokemon.blockY * 2.0
         )
 
     level.getEntitiesOfClass(
@@ -2995,16 +2995,6 @@ fun handleScoutScan(
 
     scoutStructures.forEach { (name, tag) ->
 
-        val posT =
-            level.findNearestMapStructure(
-                StructureTags.VILLAGE,
-                pokemon.blockPosition(),
-                1000,
-                false
-            )
-
-        println("VILLAGE RESULT: $posT")
-
         val pos =
             level.findNearestMapStructure(
                 tag,
@@ -3026,10 +3016,12 @@ fun handleScoutScan(
             return@forEach
         }
 
-        val distance =
-            pos.distSqr(
-                pokemon.blockPosition()
-            )
+        val distanceSq = pos.distSqr(pokemon.blockPosition())
+        val distance = sqrt(distanceSq)
+
+        println(
+            "Scout found $name at ${distance.toInt()} blocks (search radius = ${(radius * 5).toInt()})"
+        )
 
         if (distance < nearestDistance) {
 
