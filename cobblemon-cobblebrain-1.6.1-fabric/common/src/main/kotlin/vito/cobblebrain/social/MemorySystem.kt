@@ -7,24 +7,19 @@ import com.google.gson.JsonParser
 import java.io.File
 import java.io.FileWriter
 import java.io.PrintWriter
-import java.util.UUID
 import vito.cobblebrain.config.ConfigHandler.config
 
 data class Memory(
     val participants: List<String>,
     val memory: String,
     val keywords: List<String>,
-    val createdTick: Long
+    val createdTick: Long,
+    val playerMessage: String = ""
 )
 
 data class PokemonPersonality(
     val traits: MutableList<String> = mutableListOf(),
     val quirks: MutableList<String> = mutableListOf()
-)
-
-data class CachedMemory(
-    val memory: Memory,
-    var interactionsLeft: Int
 )
 
 object MemorySystem {
@@ -81,7 +76,8 @@ object MemorySystem {
                     val memory = obj.get("memory").asString
                     val keywords = obj.getAsJsonArray("keywords").map { it.asString }
                     val createdTick = obj.get("createdTick").asLong
-                    memories.add(Memory(participants, memory, keywords, createdTick))
+                    val playerMessage = obj.get("playerMessage")?.asString ?: ""
+                    memories.add(Memory(participants, memory, keywords, createdTick, playerMessage))
                 }
             }
         } catch (e: Exception) {
@@ -102,60 +98,26 @@ object MemorySystem {
             memories
         }
 
-        try {
-            PrintWriter(FileWriter(file, false)).use { writer ->
-                toSave.forEach { m ->
-                    val obj = JsonObject().apply {
-                        val partsArr = com.google.gson.JsonArray()
-                        m.participants.forEach { partsArr.add(it) }
-                        add("participants", partsArr)
-                        addProperty("memory", m.memory)
-                        val kwArr = com.google.gson.JsonArray()
-                        m.keywords.forEach { kwArr.add(it.lowercase()) }
-                        add("keywords", kwArr)
-                        addProperty("createdTick", m.createdTick)
+        DiskWriteExecutor.submit {
+            try {
+                PrintWriter(FileWriter(file, false)).use { writer ->
+                    toSave.forEach { m ->
+                        val obj = JsonObject().apply {
+                            val partsArr = com.google.gson.JsonArray()
+                            m.participants.forEach { partsArr.add(it) }
+                            add("participants", partsArr)
+                            addProperty("memory", m.memory)
+                            val kwArr = com.google.gson.JsonArray()
+                            m.keywords.forEach { kwArr.add(it.lowercase()) }
+                            add("keywords", kwArr)
+                            addProperty("createdTick", m.createdTick)
+                            addProperty("playerMessage", m.playerMessage)
+                        }
+                        writer.println(gson.toJson(obj))
                     }
-                    writer.println(gson.toJson(obj))
                 }
-            }
-        } catch (e: Exception) {
-            println("Error saving memory for $pokemonUuid: ${e.message}")
-        }
-    }
-}
-
-object MemoryCache {
-    val cache = mutableMapOf<UUID, MutableList<CachedMemory>>()
-
-    fun get(playerUuid: UUID): List<CachedMemory> {
-        return cache[playerUuid] ?: emptyList()
-    }
-
-    fun addOrUpdate(playerUuid: UUID, memory: Memory, lifetime: Int, maxCount: Int) {
-        val list = cache.getOrPut(playerUuid) { mutableListOf() }
-        val existing = list.firstOrNull { it.memory.memory == memory.memory && it.memory.participants == memory.participants }
-        if (existing != null) {
-            existing.interactionsLeft = lifetime
-        } else {
-            list.add(CachedMemory(memory, lifetime))
-        }
-
-        if (list.size > maxCount) {
-            list.sortByDescending { it.interactionsLeft }
-            while (list.size > maxCount) {
-                list.removeAt(list.size - 1)
-            }
-        }
-    }
-
-    fun tick(playerUuid: UUID) {
-        val list = cache[playerUuid] ?: return
-        val iterator = list.iterator()
-        while (iterator.hasNext()) {
-            val cached = iterator.next()
-            cached.interactionsLeft--
-            if (cached.interactionsLeft <= 0) {
-                iterator.remove()
+            } catch (e: Exception) {
+                println("Error saving memory for $pokemonUuid: ${e.message}")
             }
         }
     }

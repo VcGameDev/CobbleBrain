@@ -75,6 +75,7 @@ object CobbleBrainModClientNeoForge {
         CobblebrainClientCommon.keyDown = CMD_DOWN
         CobblebrainClientCommon.keyExecute = CMD_EXECUTE
         CobblebrainClientCommon.keyToggle = CMD_TOGGLE
+        CobblebrainClientCommon.keyPing = KEY_PING
     }
 
     // registra keybind

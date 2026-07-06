@@ -73,6 +73,7 @@ object PlayerConversationState {
 
 object DialogueSystem {
     val justSentMessage: MutableMap<UUID, Boolean> = ConcurrentHashMap()
+    val lastPlayerMessage: MutableMap<UUID, String> = ConcurrentHashMap()
     private val lastResponseContent = mutableMapOf<UUID, String>()
     private val pendingBarrelRemovals = mutableMapOf<net.minecraft.core.GlobalPos, Long>() // Pos -> Tick que foi marcado
     private val pendingQuestNote = mutableMapOf<UUID, String>()
@@ -202,6 +203,7 @@ object DialogueSystem {
     }
 
     fun onChat(sender: ServerPlayer, rawContent: String) {
+        lastPlayerMessage[sender.uuid] = rawContent
         if (!config.listenToChat) return
 
         if (config.onlyNearbyChat) {
@@ -957,36 +959,40 @@ object DialogueSystem {
         val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma") ?: JsonObject().also { CobblebrainWorldSave.data.add("karma", it) }
         val playerKey = player.uuid.toString()
 
-        var effectiveKarma = if (karmaRoot.has(playerKey)) {
-            karmaRoot.getAsJsonObject(playerKey).get(giverName)?.asInt ?: 0
-        } else 0
-        
-        // Nerf para missões de Advice
-        if (isAdvice) {
-            effectiveKarma -= 4
+        val effectiveKarma = if (config.enableKarma) {
+            var karma = if (karmaRoot.has(playerKey)) {
+                karmaRoot.getAsJsonObject(playerKey).get(giverName)?.asInt ?: 0
+            } else 0
+
+            if (isAdvice) {
+                karma -= 4
+            }
+
+            karma
+        } else {
+            0
         }
 
         val random = player.server.overworld().random
         val roll = random.nextFloat() * 100f
-        
-        // Determina o tier sorteado baseado no karma desbloqueado e nos pesos
+
         val selectedTier = when {
             effectiveKarma >= 12 -> when {
-                roll < 5 -> 3   // EPIC (5%)
-                roll < 20 -> 2  // RARE (15%)
-                roll < 50 -> 1  // UNCOMMON (30%)
-                else -> 0       // COMMON (50%)
+                roll < 5 -> 3
+                roll < 20 -> 2
+                roll < 50 -> 1
+                else -> 0
             }
             effectiveKarma >= 7 -> when {
-                roll < 10 -> 2  // RARE (10%)
-                roll < 40 -> 1  // UNCOMMON (30%)
-                else -> 0       // COMMON (60%)
+                roll < 10 -> 2
+                roll < 40 -> 1
+                else -> 0
             }
             effectiveKarma >= 3 -> when {
-                roll < 30 -> 1  // UNCOMMON (30%)
-                else -> 0       // COMMON (70%)
+                roll < 30 -> 1
+                else -> 0
             }
-            else -> 0 // Sempre COMMON
+            else -> 0
         }
 
         val rewardItem = when (selectedTier) {
@@ -1851,8 +1857,16 @@ object DialogueSystem {
             val matchCount = m.keywords.count { it.lowercase() in keywords }
             score += matchCount
 
+            val playerMsgWords = m.playerMessage.lowercase().split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+")).filter { it.length >= 3 }.toSet()
+            val playerMsgMatchCount = playerMsgWords.count { it in keywords }
+            score += playerMsgMatchCount * 2
+
+            val memoryWords = m.memory.lowercase().split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+")).filter { it.length >= 3 }.toSet()
+            val memoryMatchCount = memoryWords.count { it in keywords }
+            score += memoryMatchCount
+
             val activeParticipantsCount = m.participants.count { it in participantsUuids }
-            score += activeParticipantsCount * 3
+            score += activeParticipantsCount * 2
 
             if (currentTick - m.createdTick < 100000) {
                 score += 2
@@ -1883,7 +1897,7 @@ object DialogueSystem {
             }
 
             if (overlapWithLastInteractions) {
-                score -= 10
+                println("repetição detectada")//score -= 10
             }
 
             m to score
@@ -2355,6 +2369,31 @@ object DialogueSystem {
         }.trim()
     }
 
+    private fun isPromptArtifact(line: String): Boolean {
+
+        val normalized = line.trim().lowercase()
+
+        // Se parece um diálogo ("Nome: fala"), nunca filtra.
+        if (":" in normalized)
+            return false
+
+        return normalized.startsWith("separator") ||
+                normalized.startsWith("quests") ||
+                normalized.startsWith("types") ||
+                normalized.startsWith("response language") ||
+                normalized.startsWith("dialogue format") ||
+                normalized.startsWith("friendship format") ||
+                normalized.startsWith("memory format") ||
+                normalized.startsWith("action format") ||
+                normalized.startsWith("guaranteed catch format") ||
+                normalized.startsWith("resume format") ||
+                normalized.startsWith("trait format") ||
+                normalized.startsWith("quirk format") ||
+                normalized.startsWith("general rules") ||
+                normalized.startsWith("quest system") ||
+                normalized.startsWith("quest completed")
+    }
+
     fun checkIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
         val last = lastResponseContent[player.uuid]
         if (content.isBlank() || content == last) return
@@ -2503,7 +2542,8 @@ object DialogueSystem {
                     participants = participantsList,
                     memory = memoryText,
                     keywords = keywordsList,
-                    createdTick = server.tickCount.toLong()
+                    createdTick = server.tickCount.toLong(),
+                    playerMessage = lastPlayerMessage[player.uuid] ?: ""
                 )
 
                 uuids.forEach { uuid ->
@@ -2524,13 +2564,17 @@ object DialogueSystem {
             .filter { it.isNotEmpty() }
 
         val falas = allLines.filterNot {
-            it.startsWith("@") ||
+            isPromptArtifact(it) ||
+
+                    it.startsWith("@") ||
                     it.startsWith("#") ||
                     it.startsWith("&") ||
                     it.startsWith("=") ||
                     it.startsWith("!RESUME") ||
                     (it.startsWith("%") && !it.contains(":")) ||
-                    (!config.showFriendship && (it.startsWith("friendship", ignoreCase = true) || (it.startsWith("%") && it.contains(":"))))
+                    (!config.showFriendship &&
+                            (it.startsWith("friendship", ignoreCase = true) ||
+                                    (it.startsWith("%") && it.contains(":"))))
         }
 
         val commandLines = allLines.filter { it.startsWith("#") }

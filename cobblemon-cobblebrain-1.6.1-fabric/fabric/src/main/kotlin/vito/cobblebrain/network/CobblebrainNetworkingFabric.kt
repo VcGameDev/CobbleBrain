@@ -44,10 +44,9 @@ object CobblebrainNetworkingFabric {
             config.outputPokemonLanguage,
             config.needsPokemonTranslator,
             config.outputGuaranteedCatch,
+            config.enableKarma,
             config.maxStoredMemories,
-            config.maxRelevantMemories,
-            config.lastRetrievedMemoryCount,
-            config.lastRetrievedMemoryLifetime
+            config.maxRelevantMemories
         )
 
         ServerPlayNetworking.send(player, payload)

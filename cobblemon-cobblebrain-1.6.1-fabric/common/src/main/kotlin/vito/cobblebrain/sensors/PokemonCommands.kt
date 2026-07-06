@@ -259,6 +259,9 @@ object FoodExperienceSource : ExperienceSource
 
 object CommandTickHandler {
     fun processActiveCommands(server: MinecraftServer) {
+        // Ping movement is independent of any active command
+        PingManager.tickPingMovement(server)
+
         server.allLevels.forEach { level ->
             handleNukeSystem(level)
             handleImaginaryTechnique(level)
@@ -415,47 +418,6 @@ object CommandTickHandler {
             val speed = 0.40 + (spd * 0.005)
 
             when (action) {
-                "goto_ping" -> {
-
-                    val ping =
-                        PingManager.getPing(
-                            owner.uuid
-                        ) ?: run {
-
-                            CommandState.activeCommands[
-                                pokemonId
-                            ] = "idle"
-
-                            return@forEach
-                        }
-
-                    suspendFollowGoal(
-                        pokemon
-                    )
-
-                    pokemon.navigation.moveTo(
-                        ping.pos.x + 0.5,
-                        ping.pos.y.toDouble(),
-                        ping.pos.z + 0.5,
-                        1.2
-                    )
-
-                    if (
-                        pokemon.distanceToSqr(
-                            ping.pos.x + 0.5,
-                            ping.pos.y + 0.5,
-                            ping.pos.z + 0.5
-                        ) < 4.0
-                    ) {
-
-                        pokemon.navigation.stop()
-
-                        CommandState.activeCommands[
-                            pokemonId
-                        ] = "idle"
-                    }
-                }
-
                 "grow" -> {
                     val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
                     val pokemonId = pokemon.uuid
@@ -2971,7 +2933,7 @@ fun handleScoutScan(
         it.addEffect(
             MobEffectInstance(
                 MobEffects.GLOWING,
-                1200,
+                400,
                 0
             )
         )
@@ -2986,7 +2948,7 @@ fun handleScoutScan(
     }.forEach {
 
         it.setGlowingTag(true)
-        scoutGlowItems[it.uuid] = 1200
+        scoutGlowItems[it.uuid] = 400
     }
 
     var nearestName: String? = null

@@ -157,6 +157,7 @@ object CobblebrainMod : ModInitializer {
         // limpa quando o servidor para
         ServerLifecycleEvents.SERVER_STOPPED.register {
             currentServer = null
+            vito.cobblebrain.social.DiskWriteExecutor.shutdown()
         }
     }
 }

@@ -127,5 +127,6 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
     @SubscribeEvent
     fun onServerStop(event: ServerStoppingEvent) {
         currentServer = null
+        vito.cobblebrain.social.DiskWriteExecutor.shutdown()
     }
 }

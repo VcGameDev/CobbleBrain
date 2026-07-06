@@ -28,6 +28,7 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.BarrelBlockEntity
 import net.minecraft.world.effect.MobEffectInstance
 import net.minecraft.world.effect.MobEffects
+import vito.cobblebrain.config.ConfigHandler
 import kotlin.random.Random
 
 object MobBridge {
@@ -170,8 +171,15 @@ object CobblebrainWorldSave {
 
     fun save() {
         val file = saveFile
-        FileWriter(file).use { writer ->
-            GsonBuilder().setPrettyPrinting().create().toJson(data, writer)
+        val dataSnapshot = data.deepCopy()
+        DiskWriteExecutor.submit {
+            try {
+                FileWriter(file).use { writer ->
+                    GsonBuilder().setPrettyPrinting().create().toJson(dataSnapshot, writer)
+                }
+            } catch (e: Exception) {
+                println("Error saving world save data: ${e.message}")
+            }
         }
     }
 
@@ -685,6 +693,7 @@ object CobblebrainWorldSave {
     }
 
     fun adjustKarma(player: ServerPlayer, species: String, delta: Int) {
+        if (!ConfigHandler.config.enableKarma) return
         println("[DEBUG] adjustKarma chamado para ${player.name.string} | espécie=$species | delta=$delta")
         val karmaRoot = data.getAsJsonObject("karma")
         val playerKey = player.uuid.toString()

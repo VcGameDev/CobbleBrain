@@ -55,6 +55,7 @@
   "cobblebrain.config.needs_pokemon_translator.tooltip": "Quando ativo, os Pokémon falam normalmente se o jogador tiver o Exp Share equipado em si.\nSe não estiver equipado, os Pokémon falam como animais.\nEsta configuração tem prioridade sobre 'outputDialogue' and 'outputCanonLanguage'.",
   "cobblebrain.config.allow_pokemon_pvp.tooltip": "Permite que os Pokémon ataquem os Pokémon de outros jogadores.",
   "cobblebrain.config.allow_pokemon_pve.tooltip": "Permite que os Pokémon ataquem criaturas no mundo.\nAs exceções incluem criaturas domesticadas e criaturas não agressivas marcadas.",
+  "cobblebrain.config.enable_karma.tooltip": "Ativa ganho/perda de karma e mecânicas baseadas em karma.\nSe desativado, os valores armazenados de karma não mudam e recompensas/raids baseadas em karma ficam desligadas.",
   "cobblebrain.config.schedule_raid.tooltip": "Determina se invasões (raids) podem ser criadas no mundo.\nInvasões podem ocorrer quando seu karma com uma espécie cai abaixo de -11.",
   "cobblebrain.config.characteristics.tooltip": "Lista para definir características de um Pokémon específico para a IA.\nFormato: <nomeDoPokemon>: <texto>",
   "cobblebrain.config.low_token_mode.tooltip": "Reduz as informações do mundo enviadas para a IA.\nIsso ajuda a economizar tokens e diminuir os custos de uso.",

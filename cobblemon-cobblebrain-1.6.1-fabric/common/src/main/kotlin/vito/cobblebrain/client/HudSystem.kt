@@ -342,6 +342,7 @@ object HudSystem {
         val downKey = CobblebrainClientCommon.keyDown?.translatedKeyMessage?.string ?: "V"
         val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
         val toggleKey = CobblebrainClientCommon.keyToggle?.translatedKeyMessage?.string ?: "N"
+        val pingKey = CobblebrainClientCommon.keyPing?.translatedKeyMessage?.string ?: "G"
 
         val selectUpMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_up")
         val selectDownMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_down")
@@ -353,11 +354,11 @@ object HudSystem {
         guiGraphics.pose().translate((x).toDouble(), (y + totalHeight + 6).toDouble(), 0.0)
         guiGraphics.pose().scale(0.5f, 0.5f, 1f) // Voltando para o tamanho anterior
 
-        guiGraphics.drawString(client.font, "$upKey: $selectUpMsg", 0, 0, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$downKey: $selectDownMsg", 0, 10, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$execKey: $confirmOrderMsg", 0, 20, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$toggleKey: $toggleHudMsg", 0, 30, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$toggleKey: $markLocationMsg", 0, 40, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$upKey: $selectUpMsg", 0, 5, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$downKey: $selectDownMsg", 0, 15, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$execKey: $confirmOrderMsg", 0, 25, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$toggleKey: $toggleHudMsg", 0, 35, 0x99FFFFFF.toInt(), false)
+        guiGraphics.drawString(client.font, "$pingKey: $markLocationMsg", 0, 45, 0x99FFFFFF.toInt(), false)
 
         guiGraphics.pose().popPose()
     }

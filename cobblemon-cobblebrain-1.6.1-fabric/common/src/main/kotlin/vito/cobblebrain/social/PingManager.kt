@@ -11,9 +11,9 @@ import net.minecraft.resources.ResourceKey
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.entity.Mob
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.storage.LevelResource
-import vito.cobblebrain.sensors.CommandState
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -30,12 +30,15 @@ object PingManager {
     private val pings = ConcurrentHashMap<UUID, PlayerPing>()
     private var saveFile: File? = null
 
+    // Pokémon UUID → Player UUID: tracks which Pokémon are moving toward a ping.
+    val activePingTargets: MutableMap<UUID, UUID> = ConcurrentHashMap()
+
+    fun removePingTarget(pokemonUuid: UUID) {
+        activePingTargets.remove(pokemonUuid)
+    }
+
     // Máximo de distância permitida para o ping (servidor e cliente usam o mesmo limite)
     const val MAX_PING_DISTANCE = 64.0
-
-    // -------------------------------------------------------------------------
-    // Lifecycle
-    // -------------------------------------------------------------------------
 
     fun init(server: MinecraftServer) {
         val dataDir = server.getWorldPath(LevelResource.ROOT).resolve("data").toFile()
@@ -43,10 +46,6 @@ object PingManager {
         saveFile = File(dataDir, "cobblebrainPings.dat")
         load()
     }
-
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
 
     fun getPing(playerId: UUID): PlayerPing? = pings[playerId]
 
@@ -61,12 +60,6 @@ object PingManager {
     }
 
     fun hasPing(playerId: UUID): Boolean = pings.containsKey(playerId)
-
-    // -------------------------------------------------------------------------
-    // Packet handler — only validates and stores data.
-    // Visual/sound feedback is the caller's responsibility.
-    // Returns true if the ping was accepted, false if validation failed.
-    // -------------------------------------------------------------------------
 
     fun handlePingPacket(
         player: ServerPlayer,
@@ -114,14 +107,53 @@ object PingManager {
         party.forEach { pokemon ->
 
             pokemon.entity?.let {
-
-                CommandState.activeCommands[
-                    it.uuid
-                ] = "goto_ping"
+                activePingTargets[it.uuid] = player.uuid
             }
         }
 
         return true
+    }
+
+    fun tickPingMovement(server: MinecraftServer) {
+        val toRemove = mutableListOf<UUID>()
+
+        for ((pokemonEntityUuid, ownerUuid) in activePingTargets) {
+            val ping = getPing(ownerUuid)
+            if (ping == null) {
+                // Ping was removed or expired — stop tracking
+                toRemove.add(pokemonEntityUuid)
+                continue
+            }
+
+            val pokemon = server.allLevels
+                .firstNotNullOfOrNull { it.getEntity(pokemonEntityUuid) as? Mob }
+
+            if (pokemon == null || !pokemon.isAlive) {
+                // Entity gone — clean up
+                toRemove.add(pokemonEntityUuid)
+                continue
+            }
+
+            val distSq = pokemon.distanceToSqr(
+                ping.pos.x + 0.5,
+                ping.pos.y + 0.5,
+                ping.pos.z + 0.5
+            )
+
+            if (distSq < 4.0) {
+                // Arrived — clear the ping target
+                toRemove.add(pokemonEntityUuid)
+            } else {
+                pokemon.navigation.moveTo(
+                    ping.pos.x + 0.5,
+                    ping.pos.y.toDouble(),
+                    ping.pos.z + 0.5,
+                    1.2
+                )
+            }
+        }
+
+        toRemove.forEach { activePingTargets.remove(it) }
     }
 
     // -------------------------------------------------------------------------

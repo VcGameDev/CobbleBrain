@@ -105,12 +105,12 @@ class AIHandler {
         response language=$USER_LANGUAGE
         """
 
-        const val CANON_DIALOGUE = """
+        val CANON_DIALOGUE get() = """
         DIALOGUE FORMAT
         the player cannot understand Pokémon language
         communication is limited to vocalizations and emotion
         format=name: sound(emotion/intent)
-        ALWAYS include (emotion/intent) after vocalizations
+        response language=$USER_LANGUAGE
         separator=|
         short creature sounds only
         wild pokemon allowed
@@ -139,7 +139,7 @@ class AIHandler {
         &MEMORY:PokemonNames:MemoryText|keywords
         PokemonNames = comma separated list of pokemon names involved
         MemoryText = third-person short summary of the memory/interaction
-        keywords = comma separated list of 5 relevant lowercase keywords
+        keywords = comma separated list of 7 relevant lowercase keywords
         Memory text and keywords must be written in $USER_LANGUAGE.
         generate only when meaningful
         """

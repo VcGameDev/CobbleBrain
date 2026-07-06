@@ -132,10 +132,9 @@ object CobblebrainConfigScreen {
         var outputPokemonLanguage = false
         var needsPokemonTranslator = false
         var outputGuaranteedCatch = true
+        var enableKarma = true
         var maxStoredMemories = 100
         var maxRelevantMemories = 4
-        var lastRetrievedMemoryCount = 3
-        var lastRetrievedMemoryLifetime = 5
 
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
@@ -207,10 +206,9 @@ object CobblebrainConfigScreen {
                         outputPokemonLanguage,
                         needsPokemonTranslator,
                         outputGuaranteedCatch,
+                        enableKarma,
                         maxStoredMemories,
-                        maxRelevantMemories,
-                        lastRetrievedMemoryCount,
-                        lastRetrievedMemoryLifetime
+                        maxRelevantMemories
                     )
 
                     ConfigHandler.save()
@@ -598,6 +596,17 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.allow_pokemon_pve.tooltip"))
             .build()
 
+        val enableKarmaEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Enable Karma").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.enableKarma,
+                config.enableKarma
+            )
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> enableKarma = value }
+            .setTooltip(Component.translatable("cobblebrain.config.enable_karma.tooltip"))
+            .build()
+
         val scheduleRaidEntry = entryBuilder.startBooleanToggle(
             Component.literal("Schedule Raid").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.scheduleRaids
@@ -722,28 +731,6 @@ object CobblebrainConfigScreen {
         ).setDefaultValue(4)
             .setSaveConsumer { value -> maxRelevantMemories = value }
             .setTooltip(Component.translatable("cobblebrain.config.max_relevant_memories.tooltip"))
-            .build()
-
-        val lastRetrievedMemoryCountEntry = entryBuilder.startIntField(
-            Component.literal("Last Retrieved Memory Count").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            getConfigValue(
-                SyncedConfig.lastRetrievedMemoryCount,
-                config.lastRetrievedMemoryCount
-            )
-        ).setDefaultValue(3)
-            .setSaveConsumer { value -> lastRetrievedMemoryCount = value }
-            .setTooltip(Component.translatable("cobblebrain.config.last_retrieved_memory_count.tooltip"))
-            .build()
-
-        val lastRetrievedMemoryLifetimeEntry = entryBuilder.startIntField(
-            Component.literal("Last Retrieved Memory Lifetime").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            getConfigValue(
-                SyncedConfig.lastRetrievedMemoryLifetime,
-                config.lastRetrievedMemoryLifetime
-            )
-        ).setDefaultValue(5)
-            .setSaveConsumer { value -> lastRetrievedMemoryLifetime = value }
-            .setTooltip(Component.translatable("cobblebrain.config.last_retrieved_memory_lifetime.tooltip"))
             .build()
 
         val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
@@ -999,6 +986,7 @@ object CobblebrainConfigScreen {
         category.entries.add(characteristicsEntry)
         category.entries.add(allowPokemonPVPEntry)
         category.entries.add(allowPokemonPVEEntry)
+        category.entries.add(enableKarmaEntry)
         category.entries.add(dialogueOnDamageEntry)
         category.entries.add(dialogueOnBattleEntry)
         category.entries.add(decreaseFriendshipEntry)
@@ -1026,8 +1014,6 @@ object CobblebrainConfigScreen {
         category.entries.add(outputMemoriesEntry)
         category.entries.add(maxStoredMemoriesEntry)
         category.entries.add(maxRelevantMemoriesEntry)
-        category.entries.add(lastRetrievedMemoryCountEntry)
-        category.entries.add(lastRetrievedMemoryLifetimeEntry)
         category.entries.add(makeSpacer(8))
         category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
         category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
@@ -1050,10 +1036,9 @@ object CobblebrainConfigScreen {
                 outputPokemonLanguage,
                 needsPokemonTranslator,
                 outputGuaranteedCatch,
+                enableKarma,
                 maxStoredMemories,
-                maxRelevantMemories,
-                lastRetrievedMemoryCount,
-                lastRetrievedMemoryLifetime
+                maxRelevantMemories
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)

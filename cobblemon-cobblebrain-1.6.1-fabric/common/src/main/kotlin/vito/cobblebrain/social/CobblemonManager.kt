@@ -51,6 +51,8 @@ object PokemonTalkCommand {
                             val player: ServerPlayer = ctx.source.playerOrException
                             val conteudo = StringArgumentType.getString(ctx, "message")
 
+                            DialogueSystem.lastPlayerMessage[player.uuid] = conteudo
+
                             //DialogueSystem.onSendPromptClient?.invoke()
 
                             // UTIL PRA DEBUG

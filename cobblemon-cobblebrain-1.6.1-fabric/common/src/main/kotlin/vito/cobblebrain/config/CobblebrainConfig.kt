@@ -10,6 +10,7 @@ data class CobblebrainConfig(
     // ================= DIALOGUE & UI SETTINGS =================
     var allowPokemonPVP: Boolean = false,
     var allowPokemonPVE: Boolean = true,
+    var enableKarma: Boolean = true,
     var scheduleRaids: Boolean = true,
     var wildPokemonTalkChance: Double = 0.10,
     var wildQuestChance: Double = 0.20,
@@ -26,8 +27,6 @@ data class CobblebrainConfig(
     var onlyNearbyChat: Boolean = false,
     var maxStoredMemories: Int = 100,
     var maxRelevantMemories: Int = 4,
-    var lastRetrievedMemoryCount: Int = 3,
-    var lastRetrievedMemoryLifetime: Int = 5,
     var useDefaultOutput: Boolean = true,
     var outputDialogue: Boolean = true,
     var outputActions: Boolean = true,

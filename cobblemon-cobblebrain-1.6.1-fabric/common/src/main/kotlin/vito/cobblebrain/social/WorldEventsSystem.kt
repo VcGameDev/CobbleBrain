@@ -68,6 +68,11 @@ object WorldEventsSystem {
     )
 
     fun onServerTick(server: MinecraftServer) {
+        if (!ConfigHandler.config.enableKarma) {
+            clearRaids()
+            return
+        }
+
         if (!ConfigHandler.config.scheduleRaids) return
 
         if (raidCooldown > 0) raidCooldown--
@@ -369,6 +374,22 @@ object WorldEventsSystem {
                 continue
             }
         }
+    }
+
+    private fun clearRaids() {
+        pendingRaids.clear()
+        raidCooldown = 0
+
+        activeRaids.forEach { raid ->
+            raid.spawnedPokemon.forEach { pokemon ->
+                if (pokemon.isAlive) {
+                    pokemon.discard()
+                }
+            }
+        }
+
+        activeRaids.clear()
+        attackCooldowns.clear()
     }
 
     private fun getDifficulty(karma: Int): RaidDifficulty? {
