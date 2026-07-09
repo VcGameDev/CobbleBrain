@@ -46,6 +46,5 @@ versionRange="[15,)"
 ordering="NONE"
 side="CLIENT"
 
-# =========================
-# OPTIONAL (suggests)
-# =========================
+[[mixins]]
+config="cobblebrain.mixins.json"

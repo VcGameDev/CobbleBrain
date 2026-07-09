@@ -782,12 +782,11 @@ object CobblebrainWorldSave {
                 .append(clickablePage("Setup", 2)).append("\n")
                 .append(clickablePage("Talk to Pokemon", 4)).append("\n")
                 .append(clickablePage("Actions", 5)).append("\n")
-                .append(clickablePage("Quests", 11)).append("\n")
-                .append(clickablePage("Karma", 16)).append("\n")
-                .append(clickablePage("Raids", 18)).append("\n")
-                .append(clickablePage("Other Mechanics", 19)).append("\n")
-                .append(clickablePage("Custom Settings", 20)).append("\n")
-                .append(clickablePage("Developer’s Notes", 22)).append("\n"),
+                .append(clickablePage("Quests", 7)).append("\n")
+                .append(clickablePage("Karma", 12)).append("\n")
+                .append(clickablePage("Raids", 15)).append("\n")
+                .append(clickablePage("Other Mechanics", 16)).append("\n")
+                .append(clickablePage("Gameplay Settings", 17)).append("\n"),
 
             // PAGE 2 - SETUP
             Component.literal("")
@@ -836,7 +835,7 @@ object CobblebrainWorldSave {
                             it.withClickEvent(
                                 ClickEvent(
                                     ClickEvent.Action.OPEN_URL,
-                                    "https://youtu.be/Th1ylIsnQlg"
+                                    "https://youtu.be/i4OzYmMDzP0"
                                 )
                             )
                         }
@@ -855,45 +854,18 @@ object CobblebrainWorldSave {
 
             Component.literal("")
                 .append(Component.literal("ACTIONS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Pokémon can perform actions when you ask them.\n\n")
-                .append("There are two types:\n")
-                .append("1. Type-Based Actions\n")
-                .append("2. General Actions\n\n")
-                .append("Type-Based actions depend on\n")
-                .append("the PRIMARY type only."),
+                .append("Ask your Pokémon to perform actions.\n")
+                .append("Check the Action HUD to see all\n")
+                .append("available actions.\n\n")
+                .append("General (gray) actions are always\n")
+                .append("available.\n\n"),
 
             Component.literal("")
-                .append(Component.literal("TYPE-BASED ACTIONS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("E.g: Chandelure is (Ghost/Fire)\n")
-                .append("It can use Shift, but not Cook\n\n")
-                .append("Fire - Cook\n")
-                .append("Cooks food and smelts ores.\n")
-                .append("5% chance to turn item into charcoal.\n\n"),
-
-            Component.literal("")
-                .append("Ghost - Shift\n")
-                .append("Moves player to alternate dimension.\n")
-                .append("You gain invisibility, speed and jump.\n")
-                .append("But you suffer strong weakness.\n\n")
-                .append("Steel - Repair\n")
-                .append("Fix tools a bit. Cooldown of 5 minutes\n"),
-
-            Component.literal("")
-                .append("Grass - Grow\n")
-                .append("Grows crops and tree saplings."),
-
-            Component.literal("")
-                .append(Component.literal("GENERAL ACTIONS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Attack - Fight any nearby entities\n")
-                .append("Except tagged and tamed mobs.\n\n")
-                .append("Protect - Defend player from \n\n")
-                .append("Eat - Consume dropped food"),
-
-            Component.literal("")
-                .append("Buff - Give positive effect to player\n\n")
-                .append("Debuff - Apply negative effect to mobs\n\n")
-                .append("Sit - Stay in place\n\n")
-                .append("Idle - Cancel all actions"),
+                .append("Type (colored) actions unlock when a\n")
+                .append("Pokémon of that PRIMARY type\n")
+                .append("joins your team.\n\n")
+                .append("Action colors match their\n")
+                .append("Pokémon type (e.g. orange = Fire)."),
 
             Component.literal("")
                 .append(Component.literal("QUESTS\n\n").withStyle(ChatFormatting.BOLD))
@@ -909,6 +881,8 @@ object CobblebrainWorldSave {
                 .append("Drop specific items to the Pokemon.\n\n")
                 .append("BATTLE QUEST\n")
                 .append("Defeat the target in a Pokemon battle.\n")
+                .append("The target glows nearby to help\n")
+                .append("you find it.\n")
                 .append("Killing outside battle does not count.\n\n"),
 
             Component.literal("")
@@ -936,8 +910,10 @@ object CobblebrainWorldSave {
                 .append("Karma represents how much\n")
                 .append("a species respects you.\n\n")
                 .append("Each species tracks you separately.\n\n")
-                .append("To see your karma:\n")
-                .append("/cobblebrain karma"),
+                .append("Use /cobblebrain karma\n")
+                .append("to view your Karma.\n\n"),
+            Component.literal("")
+                .append("The karma system can be enabled or disabled with 'Enable Karma'\n"),
 
             Component.literal("")
                 .append("+Karma:\n")
@@ -945,18 +921,16 @@ object CobblebrainWorldSave {
                 .append("-Karma:\n")
                 .append(" °Defeat or kill Pokémon\n")
                 .append(" °Annoy Pokémon in quests\n\n")
-                .append("Better karma = Better rewards in quests.\n")
-                .append("karma under -6 may trigger raids."),
+                .append("Better karma = Better rewards in quests.\n"),
 
             Component.literal("")
                 .append(Component.literal("RAID DETAILS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Maximum difficulty at -30 Karma.\n\n")
-                .append("Higher difficulty means:\n")
-                .append("- More Pokemon spawn\n")
-                .append("- Higher levels\n")
-                .append("- Stronger attackers\n\n")
-                .append("Raid ends when you die\n")
-                .append("or defeat all pokémon."),
+                .append("Raids may occur when Karma\n")
+                .append("becomes lower than -8.\n\n")
+                .append("Maximum difficulty at\n")
+                .append("-30 Karma.\n\n")
+                .append("Disable them anytime with\n")
+                .append("'Schedule Raids'\n\n."),
 
             Component.literal("")
                 .append(Component.literal("OTHER MECHANICS\n\n").withStyle(ChatFormatting.BOLD))
@@ -964,21 +938,21 @@ object CobblebrainWorldSave {
                 .append("Food effect: When using the EAT command, certain foods give effects and XP to Pokémon."),
 
             Component.literal("")
-                .append(Component.literal("CUSTOM SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Access the mod settings by pressing Y.\n")
-                .append("Hover your mouse over the options to see what they do!\n\n")
-                .append("Recommended settings: Selected Language, Instruct, and Characteristics."),
+                .append(Component.literal("GAMEPLAY SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Press Y to open settings.\n")
+                .append("Most gameplay features can\n")
+                .append("be enabled, disabled or\n")
+                .append("customized.\n\n")
+                .append("Hover options to read\n")
+                .append("their description."),
 
             Component.literal("")
-                .append(Component.literal("PROMPTS AND BEHAVIOR\n\n").withStyle(ChatFormatting.BOLD))
-                .append("The Instructs as a whole works as a global prompt.\n")
-                .append("You can define how the AI or Pokemon behave, think and responds.\n")
-                .append("Each instruct shapes how the response is sent.\n"),
-
-            Component.literal("")
-                .append(Component.literal("Developer’s Notes...\n\n").withStyle(ChatFormatting.BOLD))
-                .append("You can experience everything the mod has to offer just by talking to the Pokémon.\n\nFeel free to customize it in the config menu or by editing config/cobblebrain\n.json5")
-        )
+                .append(Component.literal("PROMPT SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
+                .append("The 'Instructs' setting works as a global prompt.\n")
+                .append("You can define how the AI or Pokémon behave, think and respond.\n\n")
+                .append("Use 'Characteristics' to customize\n")
+                .append("the behavior of specific Pokémon.\n"),
+            )
 
         val content = WrittenBookContent(
             Filterable.passThrough("Cobblebrain Guide"),

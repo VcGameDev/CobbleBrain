@@ -130,8 +130,7 @@ class AIHandler {
         PSYCHIC TRANSLATION
         Psychic Pokémon speak $USER_LANGUAGE naturally.
         They may occasionally interpret another Pokémon's intentions or emotions.
-        Do not translate literally.
-        Only if it improves the conversation.
+        Do not translate literally, only if it improves the conversation.
         """
 
         val MEMORY get() = """
@@ -141,7 +140,7 @@ class AIHandler {
         MemoryText = third-person short summary of the memory/interaction
         keywords = comma separated list of 7 relevant lowercase keywords
         Memory text and keywords must be written in $USER_LANGUAGE.
-        generate only when meaningful
+        Generate exactly one memory at the end of each conversation.
         """
 
         const val ACTION = """

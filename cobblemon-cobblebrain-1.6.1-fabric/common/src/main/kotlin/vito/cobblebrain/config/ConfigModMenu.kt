@@ -546,7 +546,7 @@ object CobblebrainConfigScreen {
         val maxInteractionSavesEntry = entryBuilder.startIntField(
             Component.literal("Recent Memories Limit").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.maxInteractionSaves
-        ).setDefaultValue(8)
+        ).setDefaultValue(3)
             .setSaveConsumer { value -> clientConfig.maxInteractionSaves = value }
             .setTooltip(Component.translatable("cobblebrain.config.max_interaction_saves.tooltip"))
             .build()

@@ -107,8 +107,8 @@ object WorldEventsSystem {
 
                 val karma = karmaJson.asInt
 
-                // Apenas raides para karma <= -8
-                if (karma > -8) return@forEach
+                // Apenas raides para karma <= -9
+                if (karma > -9) return@forEach
 
                 val chance = (0.03 + (abs(karma) - 8) * (0.37 / 22.0))
                     .coerceAtMost(0.4)
@@ -264,6 +264,11 @@ object WorldEventsSystem {
                 "A group of $count $speciesName wants to attack you because of your actions against them (level range: $minLevel - $maxLevel)..."
             ).withStyle(ChatFormatting.RED)
         )
+        player.sendSystemMessage(
+            Component.literal(
+                "If you prefer a more relaxed experience, you can disable raids by turning off 'Schedule Raids' in the CobbleBrain settings."
+            ).withStyle(ChatFormatting.GRAY)
+        )
     }
 
     private fun processActiveRaids() {
@@ -394,7 +399,7 @@ object WorldEventsSystem {
 
     private fun getDifficulty(karma: Int): RaidDifficulty? {
         return when {
-            karma <= -8 && karma > -19 -> RaidDifficulty.EASY
+            karma <= -9 && karma > -19 -> RaidDifficulty.EASY
             karma <= -19 && karma > -30 -> RaidDifficulty.MEDIUM
             karma <= -30 -> RaidDifficulty.HARD
             else -> null
