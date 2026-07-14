@@ -12,6 +12,7 @@ import org.lwjgl.glfw.GLFW
 import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.client.CobblebrainClientHandlerFabric.registerReceivers
 import vito.cobblebrain.client.HudSystem
+import vito.cobblebrain.client.PersonalityListScreen
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfigScreen
 import vito.cobblebrain.config.SyncedConfig
@@ -28,6 +29,12 @@ object CobbleBrainModClient : ClientModInitializer {
         CobblebrainClientCommon.openConfigScreen = {
             Minecraft.getInstance().setScreen(
                 CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
+            )
+        }
+
+        CobblebrainClientCommon.onPersonalityListReceived = { json ->
+            Minecraft.getInstance().setScreen(
+                PersonalityListScreen(Minecraft.getInstance().screen, json)
             )
         }
 

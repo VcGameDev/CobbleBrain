@@ -58,6 +58,13 @@ object DialogueSystemFabric {
             )
         }
 
+        DialogueSystem.sendPersonalityList = { player, dataJson ->
+            ServerPlayNetworking.send(
+                player,
+                CobblebrainPayloads.PersonalityListPayload(dataJson)
+            )
+        }
+
         DialogueSystem.syncQuests = { player ->
             vito.cobblebrain.network.CobblebrainNetworkingFabric.sendQuests(player)
         }

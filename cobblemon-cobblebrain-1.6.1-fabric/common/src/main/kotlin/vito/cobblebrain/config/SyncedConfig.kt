@@ -35,6 +35,8 @@ object SyncedConfig {
         private set
     var maxRelevantMemories = 4
         private set
+    var allowClientPersonalityEditing = true
+        private set
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
         useDefaultOutput = payload.useDefaultOutput
@@ -50,6 +52,7 @@ object SyncedConfig {
         enableKarma = payload.enableKarma
         maxStoredMemories = payload.maxStoredMemories
         maxRelevantMemories = payload.maxRelevantMemories
+        allowClientPersonalityEditing = payload.allowClientPersonalityEditing
         received = true
 
         val client = Minecraft.getInstance()
@@ -71,7 +74,8 @@ object SyncedConfig {
         outputGuaranteedCatch: Boolean,
         enableKarma: Boolean,
         maxStoredMemories: Int,
-        maxRelevantMemories: Int
+        maxRelevantMemories: Int,
+        allowClientPersonalityEditing: Boolean
     ) {
         if (isServerControlled) {
             println("Attempt to change config blocked (server-controlled)")
@@ -91,6 +95,7 @@ object SyncedConfig {
         this.enableKarma = enableKarma
         this.maxStoredMemories = maxStoredMemories
         this.maxRelevantMemories = maxRelevantMemories
+        this.allowClientPersonalityEditing = allowClientPersonalityEditing
 
         val cfg = ConfigHandler.config
 
@@ -107,6 +112,7 @@ object SyncedConfig {
         cfg.enableKarma = enableKarma
         cfg.maxStoredMemories = maxStoredMemories
         cfg.maxRelevantMemories = maxRelevantMemories
+        cfg.allowClientPersonalityEditing = allowClientPersonalityEditing
 
         ConfigHandler.save()
     }

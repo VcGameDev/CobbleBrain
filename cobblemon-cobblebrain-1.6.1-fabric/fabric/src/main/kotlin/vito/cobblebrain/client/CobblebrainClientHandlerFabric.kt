@@ -41,6 +41,27 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        CobblebrainClientCommon.requestPersonalityList = {
+            val mc = net.minecraft.client.Minecraft.getInstance()
+            if (mc.player != null) {
+                ClientPlayNetworking.send(CobblebrainPayloads.RequestPersonalityListPayload)
+            } else {
+                mc.setScreen(PersonalityListScreen(mc.screen, "[]", noWorld = true))
+            }
+        }
+
+        CobblebrainClientCommon.savePersonality = { uuid, json ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(CobblebrainPayloads.SavePersonalityPayload(uuid, json))
+            }
+        }
+
+        CobblebrainClientCommon.deletePersonality = { uuid ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(CobblebrainPayloads.DeletePersonalityPayload(uuid))
+            }
+        }
+
         PingClient.sendPingToServer = { pos, direction ->
             if (
                 net.minecraft.client.Minecraft
@@ -112,6 +133,14 @@ object CobblebrainClientHandlerFabric {
                     payload.shiftRemaining,
                     payload.debuffRemaining
                 )
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.PersonalityListPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                CobblebrainClientCommon.onPersonalityListReceived?.invoke(payload.dataJson)
             }
         }
     }

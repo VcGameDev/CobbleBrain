@@ -32,4 +32,8 @@ object CobblebrainClientHandlers {
             payload.debuffRemaining
         )
     }
+
+    fun onPersonalityList(payload: CobblebrainPayloads.PersonalityListPayload) {
+        CobblebrainClientCommon.onPersonalityListReceived?.invoke(payload.dataJson)
+    }
 }

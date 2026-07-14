@@ -86,5 +86,27 @@ object CobblebrainServerHandlerFabric {
                 }
             }
         }
+
+        // PERSONALITY EDITOR REQUESTS
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestPersonalityListPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                CobblebrainServerHandler.handleRequestPersonalityList(player)
+            }
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.SavePersonalityPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                CobblebrainServerHandler.handleSavePersonality(player, payload.pokemonUuid, payload.personalityJson)
+            }
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.DeletePersonalityPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                CobblebrainServerHandler.handleDeletePersonality(player, payload.pokemonUuid)
+            }
+        }
     }
 }

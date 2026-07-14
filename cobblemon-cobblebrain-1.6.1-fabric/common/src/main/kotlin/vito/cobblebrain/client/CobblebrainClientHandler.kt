@@ -13,7 +13,13 @@ object CobblebrainClientCommon {
     var callTeamAction: ((String) -> Unit)? = null
     var sendNicknameToServer: ((String) -> Unit)? = null
     var sendOfflineSettingsToServer: ((Boolean, Boolean) -> Unit)? = null
+    var requestPersonalityList: (() -> Unit)? = null
+    var savePersonality: ((String, String) -> Unit)? = null
+    var deletePersonality: ((String) -> Unit)? = null
 
+    // Callback ao receber do servidor
+    var onPersonalityListReceived: ((String) -> Unit)? = null
+    
     // HUD Quests
     var currentQuestsJson: String = "[]"
     

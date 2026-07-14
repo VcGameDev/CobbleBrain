@@ -23,6 +23,10 @@ class DialogueSystemNeoForge {
                 CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
             }
 
+            DialogueSystem.sendPersonalityList = { player, dataJson ->
+                CobblebrainNetworkingNeoForge.sendPersonalityList(player, dataJson)
+            }
+
             DialogueSystem.syncQuests = { player ->
                 CobblebrainNetworkingNeoForge.sendQuests(player)
             }

@@ -154,5 +154,48 @@ object CobblebrainPayloadRegistrarNeoForge {
                 }
             }
         }
+
+        // =========================
+        // PERSONALITY EDITOR PAYLOADS
+        // =========================
+
+        registrar.playToClient(
+            CobblebrainPayloads.PersonalityListPayload.TYPE,
+            CobblebrainPayloads.PersonalityListPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onPersonalityList(payload)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.RequestPersonalityListPayload.TYPE,
+            CobblebrainPayloads.RequestPersonalityListPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+            context.enqueueWork {
+                CobblebrainServerHandlers.onRequestPersonalityList(player)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.SavePersonalityPayload.TYPE,
+            CobblebrainPayloads.SavePersonalityPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+            context.enqueueWork {
+                CobblebrainServerHandlers.onSavePersonality(player, payload)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.DeletePersonalityPayload.TYPE,
+            CobblebrainPayloads.DeletePersonalityPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+            context.enqueueWork {
+                CobblebrainServerHandlers.onDeletePersonality(player, payload)
+            }
+        }
     }
 }

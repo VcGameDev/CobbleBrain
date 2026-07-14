@@ -115,6 +115,27 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.PingPayload.CODEC
         )
 
+        // PERSONALITY EDITOR PAYLOADS
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.PersonalityListPayload.TYPE,
+            CobblebrainPayloads.PersonalityListPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.RequestPersonalityListPayload.TYPE,
+            CobblebrainPayloads.RequestPersonalityListPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.SavePersonalityPayload.TYPE,
+            CobblebrainPayloads.SavePersonalityPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.DeletePersonalityPayload.TYPE,
+            CobblebrainPayloads.DeletePersonalityPayload.CODEC
+        )
+
         // registra handlers de networking
         vito.cobblebrain.server.CobblebrainServerHandlerFabric.register()
 

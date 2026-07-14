@@ -15,5 +15,21 @@ object CobblebrainServerHandlers {
             player,
             payload.content
         )
+     }
+
+    fun onRequestPersonalityList(player: ServerPlayer) {
+        CobblebrainServerHandler.handleRequestPersonalityList(player)
+    }
+
+    fun onSavePersonality(player: ServerPlayer, payload: CobblebrainPayloads.SavePersonalityPayload) {
+        CobblebrainServerHandler.handleSavePersonality(
+            player,
+            payload.pokemonUuid,
+            payload.personalityJson
+        )
+    }
+
+    fun onDeletePersonality(player: ServerPlayer, payload: CobblebrainPayloads.DeletePersonalityPayload) {
+        CobblebrainServerHandler.handleDeletePersonality(player, payload.pokemonUuid)
     }
 }

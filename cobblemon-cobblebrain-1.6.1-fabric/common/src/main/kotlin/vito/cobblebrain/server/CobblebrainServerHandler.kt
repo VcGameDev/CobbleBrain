@@ -7,8 +7,11 @@ import vito.cobblebrain.sensors.PokemonCommand
 import vito.cobblebrain.sensors.parseCommand
 import com.cobblemon.mod.common.pokemon.Pokemon
 import net.minecraft.server.MinecraftServer
+import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.social.DialogueSystem
 import vito.cobblebrain.social.DialogueSystem.checkIaResponse
+import vito.cobblebrain.social.MemorySystem
+import vito.cobblebrain.social.PokemonPersonality
 import vito.cobblebrain.social.PokemonQuery
 
 object CobblebrainServerHandler {
@@ -91,4 +94,91 @@ object CobblebrainServerHandler {
     fun processIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
         checkIaResponse(server, player, content)
     }
-}
+
+    fun handleRequestPersonalityList(player: ServerPlayer) {
+        val gson = com.google.gson.Gson()
+        val array = com.google.gson.JsonArray()
+
+        // --- Party Pokémon (always shown) ---
+        val partyPokemon = PokemonQuery.getAllPokemon(player)
+        val partyUuids = partyPokemon.map { it.uuid.toString() }.toSet()
+
+        partyPokemon.forEach { p ->
+            val uuidStr = p.uuid.toString()
+            val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+            val personality = MemorySystem.loadPersonality(uuidStr, displayName)
+            val personalityJson = gson.toJson(personality)
+
+            val entry = com.google.gson.JsonObject()
+            entry.addProperty("uuid", uuidStr)
+            entry.addProperty("displayName", displayName)
+            entry.addProperty("species", p.species.name)
+            entry.addProperty("personalityJson", personalityJson)
+            entry.addProperty("inParty", true)
+            array.add(entry)
+        }
+
+        // --- PC Pokémon that have a personality file (previously edited) ---
+        try {
+            val pc = com.cobblemon.mod.common.Cobblemon.storage.getPC(player)
+            for (p in pc) {
+                if (p == null) continue
+                val uuidStr = p.uuid.toString()
+                // Skip if already in party
+                if (uuidStr in partyUuids) continue
+                // Only include if a personality file exists for this Pokémon
+                val traitsFile = MemorySystem.getTraitsFile(uuidStr)
+                if (!traitsFile.exists()) continue
+
+                val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                val personality = MemorySystem.loadPersonality(uuidStr, displayName)
+                val personalityJson = gson.toJson(personality)
+
+                val entry = com.google.gson.JsonObject()
+                entry.addProperty("uuid", uuidStr)
+                entry.addProperty("displayName", displayName)
+                entry.addProperty("species", p.species.name)
+                entry.addProperty("personalityJson", personalityJson)
+                entry.addProperty("inParty", false)
+                array.add(entry)
+            }
+        } catch (e: Exception) {
+            println("[CobbleBrain] Could not read PC storage for personality list: ${e.message}")
+        }
+
+        DialogueSystem.sendPersonalityList?.invoke(player, array.toString())
+    }
+
+    fun handleSavePersonality(player: ServerPlayer, pokemonUuid: String, personalityJson: String) {
+        val cfg = ConfigHandler.config
+        if (!cfg.allowClientPersonalityEditing) {
+            player.sendSystemMessage(Component.literal("Client personality editing is disabled by the server.").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+
+        try {
+            val gson = com.google.gson.Gson()
+            val personality = gson.fromJson(personalityJson, PokemonPersonality::class.java)
+            if (personality != null) {
+                MemorySystem.savePersonality(pokemonUuid, personality)
+                player.sendSystemMessage(Component.literal("Personality saved successfully.").withStyle(net.minecraft.ChatFormatting.GREEN))
+            }
+        } catch (e: Exception) {
+            player.sendSystemMessage(Component.literal("Error parsing/saving personality: ${e.message}").withStyle(net.minecraft.ChatFormatting.RED))
+        }
+    }
+
+    fun handleDeletePersonality(player: ServerPlayer, pokemonUuid: String) {
+        val cfg = ConfigHandler.config
+        if (!cfg.allowClientPersonalityEditing) {
+            player.sendSystemMessage(Component.literal("Client personality editing is disabled by the server.").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+
+        val file = MemorySystem.getTraitsFile(pokemonUuid)
+        if (file.exists()) {
+            file.delete()
+            player.sendSystemMessage(Component.literal("Personality reset successfully.").withStyle(net.minecraft.ChatFormatting.GREEN))
+        }
+    }
+}

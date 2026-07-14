@@ -8,6 +8,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory
 import net.neoforged.neoforge.network.PacketDistributor
 import vito.cobblebrain.client.CobblebrainClientCommon
+import vito.cobblebrain.client.PersonalityListScreen
 import vito.cobblebrain.config.CobblebrainConfigScreen
 import vito.cobblebrain.config.ConfigHandler
 
@@ -67,7 +68,8 @@ object CobblebrainNetworkingNeoForge {
             cfg.outputGuaranteedCatch,
             cfg.enableKarma,
             cfg.maxStoredMemories,
-            cfg.maxRelevantMemories
+            cfg.maxRelevantMemories,
+            cfg.allowClientPersonalityEditing
         )
 
         PacketDistributor.sendToPlayer(player, payload)
@@ -93,6 +95,13 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendPersonalityList(player: ServerPlayer, dataJson: String) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.PersonalityListPayload(dataJson)
+        )
+    }
+
     fun onClientSetup(event: FMLClientSetupEvent) {
         event.enqueueWork {
 
@@ -100,6 +109,29 @@ object CobblebrainNetworkingNeoForge {
                 Minecraft.getInstance().setScreen(
                     CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
                 )
+            }
+
+            CobblebrainClientCommon.onPersonalityListReceived = { json ->
+                Minecraft.getInstance().setScreen(
+                    PersonalityListScreen(Minecraft.getInstance().screen, json)
+                )
+            }
+
+            CobblebrainClientCommon.requestPersonalityList = {
+                val mc = Minecraft.getInstance()
+                if (mc.player != null) {
+                    PacketDistributor.sendToServer(CobblebrainPayloads.RequestPersonalityListPayload)
+                } else {
+                    mc.setScreen(PersonalityListScreen(mc.screen, "[]", noWorld = true))
+                }
+            }
+
+            CobblebrainClientCommon.savePersonality = { uuid, json ->
+                PacketDistributor.sendToServer(CobblebrainPayloads.SavePersonalityPayload(uuid, json))
+            }
+
+            CobblebrainClientCommon.deletePersonality = { uuid ->
+                PacketDistributor.sendToServer(CobblebrainPayloads.DeletePersonalityPayload(uuid))
             }
 
             ModLoadingContext.get().registerExtensionPoint(

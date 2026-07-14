@@ -218,7 +218,7 @@ object DialogueSystem {
 
             if (!hasOtherNearby) {
                 sender.sendSystemMessage(
-                    Component.literal("Nenhum jogador próximo para ouvir sua fala.")
+                    Component.translatable("cobblebrain.only_nearby_messages.warning")
                 )
             }
 
@@ -414,6 +414,7 @@ object DialogueSystem {
 
     // bridge de networking (Fabric vai implementar)
     var sendToPlayer: ((ServerPlayer, String) -> Unit)? = null
+    var sendPersonalityList: ((ServerPlayer, String) -> Unit)? = null
     var syncQuests: ((ServerPlayer) -> Unit)? = null
     var onSendPromptClient: (() -> Unit)? = null
 
@@ -1726,7 +1727,7 @@ object DialogueSystem {
         playPokemonCry(pokemon, variedPitch)
 
         // só pula se estiver no chão
-        if (entity.onGround()) {
+        if (entity != null && entity.onGround()) {
             entity.jumpFromGround()
         }
 
@@ -2058,7 +2059,7 @@ object DialogueSystem {
                 appendLine()
             }
 
-            val genCandidateUuid = if (Random.nextDouble() < 0.01) {
+            val genCandidateUuid = if (config.enableTraits && Random.nextDouble() < 0.01) {
                 pokemons.filter {
                     val personality = MemorySystem.loadPersonality(it.uuid.toString())
                     (personality.traits.size < 2 || personality.quirks.size < 2) &&
@@ -2125,32 +2126,28 @@ object DialogueSystem {
                     if (p.entity?.passengers?.any { it is ServerPlayer } == true) {
                         parts += "Mounted"
                     }
+                    if (PokemonQuery.isShoulderMounted(player, p)) {
+                        parts += "Riding player shoulder"
+                    }
 
                     appendLine(parts.joinToString(" | "))
 
-                    val personality = MemorySystem.loadPersonality(p.uuid.toString())
-                    if (personality.traits.isNotEmpty()) {
-                        appendLine("Traits: ${personality.traits.joinToString(", ")}")
-                    }
-                    if (personality.quirks.isNotEmpty()) {
-                        appendLine("Quirks: ${personality.quirks.joinToString(", ")}")
+                    // Load personality with displayName for lazy migration from Characteristics
+                    val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
+
+                    // Inline personality line: only emit if any field is non-empty
+                    val personalityParts = mutableListOf<String>()
+                    if (personality.about.isNotBlank()) personalityParts += "About: ${personality.about}"
+                    if (personality.traits.isNotEmpty()) personalityParts += "Traits: ${personality.traits.joinToString(", ")}"
+                    if (personality.quirks.isNotEmpty()) personalityParts += "Quirks: ${personality.quirks.joinToString(", ")}"
+                    if (personality.likes.isNotEmpty()) personalityParts += "Likes: ${personality.likes.joinToString(", ")}"
+                    if (personality.dislikes.isNotEmpty()) personalityParts += "Dislikes: ${personality.dislikes.joinToString(", ")}"
+                    if (personalityParts.isNotEmpty()) {
+                        appendLine(personalityParts.joinToString(" | "))
                     }
 
-                    // Characteristics (immediately after traits/quirks)
-                    val nameToCheck = p.nickname?.string ?: p.species.name
-                    config.characteristics.forEach { entry ->
-                        val split = entry.split(":")
-                        if (split.size >= 2) {
-                            val charName = split[0].trim()
-                            val charDesc = split.drop(1).joinToString(":").trim()
-                            if (nameToCheck.equals(charName, ignoreCase = true)) {
-                                appendLine("Characteristics: $charDesc")
-                            }
-                        }
-                    }
-
-                    // A personality slot is free instructions
-                    if (p.uuid == genCandidateUuid) {
+                    // A personality slot is free — only when enableTraits is on
+                    if (config.enableTraits && p.uuid == genCandidateUuid) {
                         val maxTraits = 2
                         val maxQuirks = 2
                         val freeTraits = personality.traits.size < maxTraits
@@ -2287,6 +2284,7 @@ object DialogueSystem {
                 val worldParts = mutableListOf<String>()
                 worldParts += compactId(context.biome)
                 context.weather.let { worldParts += it }
+                context.dimension.let { worldParts += it }
                 context.timeLabel.let { worldParts += it }
                 appendLine("World: ${worldParts.joinToString(" | ")}")
                 if (!config.lowTokenMode) {
@@ -2329,42 +2327,44 @@ object DialogueSystem {
             appendLine("plus=${config.increaseFriendship}")
             appendLine("minus=${config.decreaseFriendship}")
 
-            val needInit = pokemons.filter { p ->
-                val personality = MemorySystem.loadPersonality(p.uuid.toString())
-                personality.traits.isEmpty() && personality.quirks.isEmpty()
-            }
-            if (needInit.isNotEmpty()) {
-                appendLine()
-                appendLine()
-                appendLine("IMPORTANT:")
-                appendLine()
-                appendLine("The following party Pokémon have no established traits or quirks:")
-                appendLine()
-
-                needInit.forEach { p ->
-                    val displayName =
-                        reversePokemonAliasMap[player.uuid]?.get(p.uuid)
-                            ?: p.nickname?.string?.takeIf { it.isNotBlank() }
-                            ?: p.species.name
-
-                    appendLine("- $displayName")
+            if (config.enableTraits) {
+                val needInit = pokemons.filter { p ->
+                    val personality = MemorySystem.loadPersonality(p.uuid.toString())
+                    personality.traits.isEmpty() && personality.quirks.isEmpty()
                 }
+                if (needInit.isNotEmpty()) {
+                    appendLine()
+                    appendLine()
+                    appendLine("IMPORTANT:")
+                    appendLine()
+                    appendLine("The following party Pokémon have no established traits or quirks:")
+                    appendLine()
 
-                appendLine()
-                appendLine("Generate exactly:")
-                appendLine("- 1 Trait per Pokémon")
-                appendLine("- 1 Quirk per Pokémon")
-                appendLine()
-                appendLine("Rules:")
-                appendLine("- Traits and quirks are part of identity, not the entire personality.")
-                appendLine("- Prefer preferences, fears, habits, opinions, reactions, or recurring behaviors.")
-                appendLine("- Quirks must be discoverable through dialogue and interactions.")
-                appendLine("- NEVER use visual-only, sound-only, animation-only, or body-language quirks.")
-                appendLine("- NEVER generate a trait or quirk that already exists for that Pokémon.")
-                appendLine()
-                appendLine("Format:")
-                appendLine("&TRAIT:<PokemonName>:<trait>")
-                appendLine("&QUIRK:<PokemonName>:<quirk>")
+                    needInit.forEach { p ->
+                        val displayName =
+                            reversePokemonAliasMap[player.uuid]?.get(p.uuid)
+                                ?: p.nickname?.string?.takeIf { it.isNotBlank() }
+                                ?: p.species.name
+
+                        appendLine("- $displayName")
+                    }
+
+                    appendLine()
+                    appendLine("Generate exactly:")
+                    appendLine("- 1 Trait per Pokémon")
+                    appendLine("- 1 Quirk per Pokémon")
+                    appendLine()
+                    appendLine("Rules:")
+                    appendLine("- Traits and quirks are part of identity, not the entire personality.")
+                    appendLine("- Prefer preferences, fears, habits, opinions, reactions, or recurring behaviors.")
+                    appendLine("- Quirks must be discoverable through dialogue and interactions.")
+                    appendLine("- NEVER use visual-only, sound-only, animation-only, or body-language quirks.")
+                    appendLine("- NEVER generate a trait or quirk that already exists for that Pokémon.")
+                    appendLine()
+                    appendLine("Format:")
+                    appendLine("&TRAIT:<PokemonName>:<trait>")
+                    appendLine("&QUIRK:<PokemonName>:<quirk>")
+                }
             }
         }.trim()
     }
@@ -2450,6 +2450,8 @@ object DialogueSystem {
             val fullMatch = match.value
             cleanedContent = cleanedContent.replace(fullMatch, "")
 
+            if (!config.enableTraits) return@forEach
+
             val pokemonName = match.groupValues[1].trim()
             val traitText = match.groupValues[2].trim()
 
@@ -2481,6 +2483,8 @@ object DialogueSystem {
         quirkRegex.findAll(content).forEach { match ->
             val fullMatch = match.value
             cleanedContent = cleanedContent.replace(fullMatch, "")
+
+            if (!config.enableTraits) return@forEach
 
             val pokemonName = match.groupValues[1].trim()
             val quirkText = match.groupValues[2].trim()

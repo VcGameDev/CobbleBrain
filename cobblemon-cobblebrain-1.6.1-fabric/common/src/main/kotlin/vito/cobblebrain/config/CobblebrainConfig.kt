@@ -41,4 +41,6 @@ data class CobblebrainConfig(
     var outputPokemonLanguage: Boolean = false,
     var needsPokemonTranslator: Boolean = false,
     var outputGuaranteedCatch: Boolean = true,
+    var allowClientPersonalityEditing: Boolean = true,
+    var enableTraits: Boolean = true,
 )

@@ -26,14 +26,26 @@ object PokemonQuery {
         return storage.toList()
     }
 
-    // Retorna apenas os Pokémon vivos e invocados no mundo (fora da Pokébola)
+    fun isShoulderMounted(player: ServerPlayer, pokemon: Pokemon): Boolean {
+        val left = player.shoulderEntityLeft
+        if (!left.isEmpty && left.hasUUID("UUID")) {
+            if (left.getUUID("UUID") == pokemon.uuid) return true
+        }
+        val right = player.shoulderEntityRight
+        if (!right.isEmpty && right.hasUUID("UUID")) {
+            if (right.getUUID("UUID") == pokemon.uuid) return true
+        }
+        return false
+    }
+
+    // Retorna apenas os Pokémon vivos e invocados no mundo (fora da Pokébola) ou no ombro
     fun findActivePokemon(player: ServerPlayer): List<Pokemon> {
         val party: PartyStore = Cobblemon.storage.getParty(player)
 
         val ativos = mutableListOf<Pokemon>()
         for (i in 0..5) {
             val p = party.get(i)
-            if (p != null && p.currentHealth > 0 && p.entity != null) {
+            if (p != null && p.currentHealth > 0 && (p.entity != null || isShoulderMounted(player, p))) {
                 ativos.add(p)
             }
         }

@@ -64,7 +64,8 @@ object CobblebrainPayloads {
         val outputGuaranteedCatch: Boolean,
         val enableKarma: Boolean,
         val maxStoredMemories: Int,
-        val maxRelevantMemories: Int
+        val maxRelevantMemories: Int,
+        val allowClientPersonalityEditing: Boolean
     ) : CustomPacketPayload {
 
         companion object {
@@ -87,6 +88,7 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.enableKarma)
                         buf.writeInt(payload.maxStoredMemories)
                         buf.writeInt(payload.maxRelevantMemories)
+                        buf.writeBoolean(payload.allowClientPersonalityEditing)
                     },
                     { buf ->
                         SyncConfigPayload(
@@ -102,7 +104,8 @@ object CobblebrainPayloads {
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readInt(),
-                            buf.readInt()
+                            buf.readInt(),
+                            buf.readBoolean()
                         )
                     }
                 )
@@ -227,59 +230,102 @@ object CobblebrainPayloads {
     ) : CustomPacketPayload {
 
         companion object {
+            val ID = ResourceLocation("cobblebrain", "ping")
+            val TYPE = CustomPacketPayload.Type<PingPayload>(ID)
 
-            val ID =
-                ResourceLocation(
-                    "cobblebrain",
-                    "ping"
-                )
-
-            val TYPE =
-                CustomPacketPayload.Type<PingPayload>(
-                    ID
-                )
-
-            val CODEC:
-                    StreamCodec<
-                            RegistryFriendlyByteBuf,
-                            PingPayload
-                            > =
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, PingPayload> =
                 StreamCodec.of(
-
                     { buf, payload ->
-
-                        buf.writeInt(
-                            payload.pos.x
-                        )
-
-                        buf.writeInt(
-                            payload.pos.y
-                        )
-
-                        buf.writeInt(
-                            payload.pos.z
-                        )
-
-                        buf.writeEnum(
-                            payload.direction
-                        )
+                        buf.writeInt(payload.pos.x)
+                        buf.writeInt(payload.pos.y)
+                        buf.writeInt(payload.pos.z)
+                        buf.writeEnum(payload.direction)
                     },
-
                     { buf ->
-
                         PingPayload(
-
                             net.minecraft.core.BlockPos(
                                 buf.readInt(),
                                 buf.readInt(),
                                 buf.readInt()
                             ),
-
-                            buf.readEnum(
-                                net.minecraft.core.Direction::class.java
-                            )
+                            buf.readEnum(net.minecraft.core.Direction::class.java)
                         )
                     }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    // ===================== PERSONALITY EDITOR =====================
+
+    /** Client → Server: request the player's party Pokémon list with their personalities */
+    object RequestPersonalityListPayload : CustomPacketPayload {
+        val ID = ResourceLocation("cobblebrain", "request_personality_list")
+        val TYPE = CustomPacketPayload.Type<RequestPersonalityListPayload>(ID)
+
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestPersonalityListPayload> =
+            StreamCodec.unit(RequestPersonalityListPayload)
+
+        override fun type() = TYPE
+    }
+
+    /**
+     * Server → Client: responds with a JSON array of party Pokémon personality data.
+     * Each entry: { uuid, displayName, species, personalityJson }
+     */
+    data class PersonalityListPayload(val dataJson: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "personality_list")
+            val TYPE = CustomPacketPayload.Type<PersonalityListPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, PersonalityListPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.dataJson) },
+                    { buf -> PersonalityListPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Client → Server: save the edited personality for a specific Pokémon */
+    data class SavePersonalityPayload(
+        val pokemonUuid: String,
+        val personalityJson: String
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "save_personality")
+            val TYPE = CustomPacketPayload.Type<SavePersonalityPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, SavePersonalityPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeUtf(payload.pokemonUuid)
+                        buf.writeUtf(payload.personalityJson)
+                    },
+                    { buf ->
+                        SavePersonalityPayload(
+                            buf.readUtf(),
+                            buf.readUtf()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Client → Server: delete (reset) the personality for a specific Pokémon */
+    data class DeletePersonalityPayload(val pokemonUuid: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "delete_personality")
+            val TYPE = CustomPacketPayload.Type<DeletePersonalityPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, DeletePersonalityPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.pokemonUuid) },
+                    { buf -> DeletePersonalityPayload(buf.readUtf()) }
                 )
         }
 

@@ -14,6 +14,7 @@ data class WorldContext(
     val biome: String,
     val timeOfDay: Long,
     val weather: String,
+    val dimension: String,
     val lightLevel: Int,
     val blockUnder: String,
     val timeLabel: String,
@@ -45,9 +46,17 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
     val timeOfDay = level.dayTime % 24000
 
     val weather = when {
+        !level.dimensionType().hasSkyLight() -> "no weather"
         level.isThundering -> "thunderstorm"
         level.isRaining -> "rain"
         else -> "clear"
+    }
+
+    val dimension = when (level.dimension().location().path) {
+        "overworld" -> "Overworld"
+        "the_nether" -> "Nether"
+        "the_end" -> "The End"
+        else -> level.dimension().location().path
     }
 
     val lightLevel = level.getBrightness(LightLayer.BLOCK, pos)
@@ -186,6 +195,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         biome,
         timeOfDay,
         weather,
+        dimension,
         lightLevel,
         blockUnder,
         timeLabel,

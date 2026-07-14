@@ -46,7 +46,8 @@ object CobblebrainNetworkingFabric {
             config.outputGuaranteedCatch,
             config.enableKarma,
             config.maxStoredMemories,
-            config.maxRelevantMemories
+            config.maxRelevantMemories,
+            config.allowClientPersonalityEditing
         )
 
         ServerPlayNetworking.send(player, payload)
@@ -67,6 +68,13 @@ object CobblebrainNetworkingFabric {
         ServerPlayNetworking.send(
             player,
             CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+        )
+    }
+
+    fun sendPersonalityList(player: ServerPlayer, dataJson: String) {
+        ServerPlayNetworking.send(
+            player,
+            CobblebrainPayloads.PersonalityListPayload(dataJson)
         )
     }
 }

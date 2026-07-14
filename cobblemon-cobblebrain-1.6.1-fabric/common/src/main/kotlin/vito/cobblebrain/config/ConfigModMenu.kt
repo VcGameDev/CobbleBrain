@@ -135,6 +135,7 @@ object CobblebrainConfigScreen {
         var enableKarma = true
         var maxStoredMemories = 100
         var maxRelevantMemories = 4
+        var allowClientPersonalityEditing = true
 
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
@@ -208,7 +209,8 @@ object CobblebrainConfigScreen {
                         outputGuaranteedCatch,
                         enableKarma,
                         maxStoredMemories,
-                        maxRelevantMemories
+                        maxRelevantMemories,
+                        allowClientPersonalityEditing
                     )
 
                     ConfigHandler.save()
@@ -299,6 +301,48 @@ object CobblebrainConfigScreen {
             override fun getItemHeight(): Int {
                 return if (button.visible) 24 else 0
             }
+        }
+
+        val personalityEditorButton = object : AbstractConfigListEntry<Unit>(
+            Component.literal("Open Personality Editor"),
+            false
+        ) {
+            private var button: net.minecraft.client.gui.components.Button =
+                net.minecraft.client.gui.components.Button.builder(
+                    Component.literal("Open Personality Editor")
+                ) {
+                    Minecraft.getInstance().player?.playSound(
+                        SoundEvents.UI_BUTTON_CLICK.value(),
+                        1.0f,
+                        1.0f
+                    )
+                    Minecraft.getInstance().setScreen(null)
+                    CobblebrainClientCommon.requestPersonalityList?.invoke()
+                }.bounds(0, 0, 260, 20).build()
+
+            override fun getValue(): Unit? = null
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+            override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+            override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+                button.x = x + (listWidth / 2) - 130
+                button.y = y
+                button.render(guiGraphics, mouseX, mouseY, delta)
+            }
+
+            override fun getItemHeight(): Int = 24
         }
 
         val category = builder.getOrCreateCategory(Component.literal("Config"))
@@ -544,7 +588,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val maxInteractionSavesEntry = entryBuilder.startIntField(
-            Component.literal("Recent Memories Limit").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Recent Context Limit").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.maxInteractionSaves
         ).setDefaultValue(3)
             .setSaveConsumer { value -> clientConfig.maxInteractionSaves = value }
@@ -616,11 +660,27 @@ object CobblebrainConfigScreen {
             .build()
 
         val characteristicsEntry = entryBuilder.startStrList(
-            Component.literal("Characteristics").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Characteristics (Legacy)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x888888))),
             config.characteristics
         ).setDefaultValue(listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"))
             .setSaveConsumer { value -> config.characteristics = value }
             .setTooltip(Component.translatable("cobblebrain.config.characteristics.tooltip"))
+            .build()
+
+        val enableTraitsEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Enable Traits & Quirks").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.enableTraits)
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> config.enableTraits = value }
+            .setTooltip(Component.literal("If enabled, the AI will automatically generate and evolve Traits and Quirks for your Pokémon."))
+            .build()
+
+        val allowClientPersonalityEditingEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Allow Client Personality Editing").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.allowClientPersonalityEditing)
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> allowClientPersonalityEditing = value; config.allowClientPersonalityEditing = value }
+            .setTooltip(Component.literal("If enabled, players can use the Personality Editor to manually edit their Pokémon's personality. When disabled, the editor becomes read-only."))
             .build()
 
         val lowTokenModeEntry = entryBuilder.startBooleanToggle(
@@ -952,6 +1012,7 @@ object CobblebrainConfigScreen {
             .build()
 
         category.entries.add(recommendedPromptButton)
+        category.entries.add(personalityEditorButton)
         category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
         category.entries.add(useChatEndpointEntry)
@@ -984,6 +1045,8 @@ object CobblebrainConfigScreen {
         category.entries.add(lowTokenModeEntry)
         category.entries.add(scheduleRaidEntry)
         category.entries.add(characteristicsEntry)
+        category.entries.add(enableTraitsEntry)
+        category.entries.add(allowClientPersonalityEditingEntry)
         category.entries.add(allowPokemonPVPEntry)
         category.entries.add(allowPokemonPVEEntry)
         category.entries.add(enableKarmaEntry)
@@ -1038,7 +1101,8 @@ object CobblebrainConfigScreen {
                 outputGuaranteedCatch,
                 enableKarma,
                 maxStoredMemories,
-                maxRelevantMemories
+                maxRelevantMemories,
+                allowClientPersonalityEditing
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)

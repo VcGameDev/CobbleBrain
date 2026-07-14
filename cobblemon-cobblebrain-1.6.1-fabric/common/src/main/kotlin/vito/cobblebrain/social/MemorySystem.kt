@@ -19,7 +19,10 @@ data class Memory(
 
 data class PokemonPersonality(
     val traits: MutableList<String> = mutableListOf(),
-    val quirks: MutableList<String> = mutableListOf()
+    val quirks: MutableList<String> = mutableListOf(),
+    val about: String = "",
+    val likes: MutableList<String> = mutableListOf(),
+    val dislikes: MutableList<String> = mutableListOf()
 )
 
 object MemorySystem {
@@ -34,15 +37,39 @@ object MemorySystem {
     }
 
     fun loadPersonality(pokemonUuid: String): PokemonPersonality {
+        return loadPersonality(pokemonUuid, null)
+    }
+
+    fun loadPersonality(pokemonUuid: String, displayName: String?): PokemonPersonality {
         val file = getTraitsFile(pokemonUuid)
-        if (!file.exists()) return PokemonPersonality()
-        return try {
-            val text = file.readText()
-            gson.fromJson(text, PokemonPersonality::class.java) ?: PokemonPersonality()
-        } catch (e: Exception) {
-            println("Error loading personality for $pokemonUuid: ${e.message}")
-            PokemonPersonality()
+        var personality = if (!file.exists()) PokemonPersonality()
+        else {
+            try {
+                val text = file.readText()
+                gson.fromJson(text, PokemonPersonality::class.java) ?: PokemonPersonality()
+            } catch (e: Exception) {
+                println("Error loading personality for $pokemonUuid: ${e.message}")
+                PokemonPersonality()
+            }
         }
+
+        // Lazy migration
+        if (displayName != null && personality.about.isBlank()) {
+            val matched = config.characteristics.firstOrNull { entry ->
+                val split = entry.split(":", limit = 2)
+                if (split.size >= 2) {
+                    val charName = split[0].trim()
+                    charName.equals(displayName, ignoreCase = true)
+                } else false
+            }
+            if (matched != null) {
+                val desc = matched.split(":", limit = 2)[1].trim()
+                personality = personality.copy(about = desc)
+                savePersonality(pokemonUuid, personality)
+            }
+        }
+
+        return personality
     }
 
     fun savePersonality(pokemonUuid: String, personality: PokemonPersonality) {
