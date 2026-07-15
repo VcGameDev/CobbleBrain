@@ -208,7 +208,8 @@ object CobblebrainConfigScreen {
                         outputGuaranteedCatch,
                         enableKarma,
                         maxStoredMemories,
-                        maxRelevantMemories
+                        maxRelevantMemories,
+                        config.allowClientPersonalityEditing
                     )
 
                     ConfigHandler.save()
@@ -1100,7 +1101,8 @@ object CobblebrainConfigScreen {
                 outputGuaranteedCatch,
                 enableKarma,
                 maxStoredMemories,
-                maxRelevantMemories
+                maxRelevantMemories,
+                config.allowClientPersonalityEditing
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)

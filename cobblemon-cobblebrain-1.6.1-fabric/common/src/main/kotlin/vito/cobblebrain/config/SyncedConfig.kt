@@ -117,39 +117,6 @@ object SyncedConfig {
         ConfigHandler.save()
     }
 
-    fun updateLocal(
-        useDefaultOutput: Boolean,
-        outputDialogue: Boolean,
-        outputActions: Boolean,
-        outputFriendship: Boolean,
-        outputMemories: Boolean,
-        outputApril1: Boolean,
-        outputQuests: Boolean,
-        outputPokemonLanguage: Boolean,
-        needsPokemonTranslator: Boolean,
-        outputGuaranteedCatch: Boolean,
-        enableKarma: Boolean,
-        maxStoredMemories: Int,
-        maxRelevantMemories: Int
-    ) {
-        updateLocal(
-            useDefaultOutput,
-            outputDialogue,
-            outputActions,
-            outputFriendship,
-            outputMemories,
-            outputApril1,
-            outputQuests,
-            outputPokemonLanguage,
-            needsPokemonTranslator,
-            outputGuaranteedCatch,
-            enableKarma,
-            maxStoredMemories,
-            maxRelevantMemories,
-            this.allowClientPersonalityEditing
-        )
-    }
-
     fun resetToLocal() {
         isServerControlled = false
         received = false
