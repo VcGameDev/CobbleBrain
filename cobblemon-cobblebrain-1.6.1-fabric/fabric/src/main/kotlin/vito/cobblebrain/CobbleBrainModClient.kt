@@ -12,6 +12,7 @@ import org.lwjgl.glfw.GLFW
 import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.client.CobblebrainClientHandlerFabric.registerReceivers
 import vito.cobblebrain.client.HudSystem
+import vito.cobblebrain.client.MigrationNoticeChecker
 import vito.cobblebrain.client.PersonalityListScreen
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfigScreen
@@ -92,6 +93,7 @@ object CobbleBrainModClient : ClientModInitializer {
         CobblebrainClientCommon.keyPing = keyPing
 
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick { client ->
+            MigrationNoticeChecker.checkAndShow(client)
             while (openConfig.consumeClick()) {
                 CobblebrainClientCommon.openConfig()
             }

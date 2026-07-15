@@ -11,9 +11,9 @@ class PersonalityListScreen(
     private val parentScreen: Screen?,
     partyJson: String,
     private val noWorld: Boolean = false
-) : Screen(Component.literal("Party Personality Editor")) {
+) : Screen(Component.translatable("cobblebrain.screen.personality_list.title")) {
 
-    private class PokemonEntry(
+    private data class PokemonEntry(
         val uuid: String,
         val displayName: String,
         val species: String,
@@ -49,102 +49,121 @@ class PersonalityListScreen(
     }
 
     private val rowHeight = 28
-    private val startY = 55
+    private val startY = 48
     private val sectionHeaderHeight = 16
+    private val bottomBarH = 45
 
-    /** Compute rows for a section given list size */
-    private fun sectionHeight(list: List<PokemonEntry>): Int {
-        return if (list.isEmpty()) rowHeight else list.size * rowHeight
+    // Vertical scroll offset (index of the first visible row item across both lists combined)
+    private var scrollOffset = 0
+    private var isDraggingScrollbar = false
+
+    private fun getVisibleRows(): Int {
+        val availableH = height - startY - bottomBarH
+        return maxOf(1, availableH / rowHeight)
     }
 
-    /** Remove a Pokémon from both lists (after reset) and re-init */
+    private fun getCombinedRows(): List<Any> {
+        val list = mutableListOf<Any>()
+        if (partyPokemons.isNotEmpty()) {
+            list.add(Component.translatable("cobblebrain.screen.personality_list.party"))
+            list.addAll(partyPokemons)
+        }
+        if (pcPokemons.isNotEmpty()) {
+            list.add(Component.translatable("cobblebrain.screen.personality_list.pc"))
+            list.addAll(pcPokemons)
+        }
+        return list
+    }
+
     private fun removePokemon(uuid: String) {
         partyPokemons.removeIf { it.uuid == uuid }
         pcPokemons.removeIf { it.uuid == uuid }
+        clampScroll()
         clearWidgets()
         init()
+    }
+
+    fun updatePersonality(uuid: String, personality: vito.cobblebrain.social.PokemonPersonality) {
+        val newJson = com.google.gson.Gson().toJson(personality)
+        val partyIdx = partyPokemons.indexOfFirst { it.uuid == uuid }
+        if (partyIdx >= 0) {
+            partyPokemons[partyIdx] = partyPokemons[partyIdx].copy(personalityJson = newJson)
+        }
+        val pcIdx = pcPokemons.indexOfFirst { it.uuid == uuid }
+        if (pcIdx >= 0) {
+            pcPokemons[pcIdx] = pcPokemons[pcIdx].copy(personalityJson = newJson)
+        }
+    }
+
+    private fun clampScroll() {
+        val combined = getCombinedRows()
+        val vis = getVisibleRows()
+        scrollOffset = scrollOffset.coerceIn(0, maxOf(0, combined.size - vis))
     }
 
     override fun init() {
         val screenWidth = width
         val isReadOnly = !SyncedConfig.allowClientPersonalityEditing
 
-        // Back Button (always shown)
+        // Back Button (always shown at the very bottom)
         addRenderableWidget(
-            Button.builder(Component.literal("Back")) {
+            Button.builder(Component.translatable("cobblebrain.button.back")) {
                 minecraft?.setScreen(parentScreen)
             }.bounds(screenWidth / 2 - 100, height - 35, 200, 20).build()
         )
 
-        if (noWorld) return  // No pokemon buttons when not in world
+        if (noWorld) return
 
-        val x = screenWidth / 2 - 150
+        clampScroll()
+        val x = screenWidth / 2 - 165
+        val vis = getVisibleRows()
+        val combined = getCombinedRows()
+
         var currentY = startY
 
-        // --- Party Pokémon buttons ---
-        if (partyPokemons.isNotEmpty()) {
-            currentY += sectionHeaderHeight  // space for section label
-            for (poke in partyPokemons) {
-                val btnY = currentY
-                val buttonText = if (isReadOnly) "View" else "Edit"
-                addRenderableWidget(
-                    Button.builder(Component.literal(buttonText)) {
-                        minecraft?.setScreen(
-                            PersonalityEditScreen(this, poke.uuid, poke.displayName, poke.species, poke.personalityJson)
-                        )
-                    }.bounds(x + 215, btnY + 2, 55, 18).build()
-                )
-                if (!isReadOnly) {
-                    addRenderableWidget(
-                        Button.builder(Component.literal("Reset")) {
-                            minecraft?.setScreen(
-                                ConfirmResetScreen(this, poke.displayName, poke.uuid, poke.inParty) {
-                                    CobblebrainClientCommon.deletePersonality?.invoke(poke.uuid)
-                                    // Party Pokémon: just clear personality locally, keep in list
-                                    val idx = partyPokemons.indexOfFirst { it.uuid == poke.uuid }
-                                    if (idx >= 0) {
-                                        partyPokemons[idx] = PokemonEntry(
-                                            poke.uuid, poke.displayName, poke.species,
-                                            "{}", true
-                                        )
-                                    }
-                                    clearWidgets(); init()
-                                }
-                            )
-                        }.bounds(x + 273, btnY + 2, 50, 18).build()
-                    )
-                }
-                currentY += rowHeight
-            }
-        }
+        // Rebuild only the widgets that fit within the viewport
+        for (i in 0 until vis) {
+            val dataIdx = scrollOffset + i
+            if (dataIdx >= combined.size) break
+            val item = combined[dataIdx]
 
-        // --- PC Pokémon buttons (only if there are any) ---
-        if (pcPokemons.isNotEmpty()) {
-            currentY += sectionHeaderHeight  // space for section label
-            for (poke in pcPokemons) {
+            if (item is PokemonEntry) {
                 val btnY = currentY
-                val buttonText = if (isReadOnly) "View" else "Edit"
+                val buttonTextKey = if (isReadOnly) "cobblebrain.button.view" else "cobblebrain.button.edit"
                 addRenderableWidget(
-                    Button.builder(Component.literal(buttonText)) {
+                    Button.builder(Component.translatable(buttonTextKey)) {
                         minecraft?.setScreen(
-                            PersonalityEditScreen(this, poke.uuid, poke.displayName, poke.species, poke.personalityJson)
+                            PersonalityEditScreen(this, item.uuid, item.displayName, item.species, item.personalityJson)
                         )
                     }.bounds(x + 215, btnY + 2, 55, 18).build()
                 )
                 if (!isReadOnly) {
-                    val capturedPoke = poke
+                    val capturedPoke = item
                     addRenderableWidget(
-                        Button.builder(Component.literal("Reset")) {
+                        Button.builder(Component.translatable("cobblebrain.button.reset")) {
                             minecraft?.setScreen(
                                 ConfirmResetScreen(this, capturedPoke.displayName, capturedPoke.uuid, capturedPoke.inParty) {
                                     CobblebrainClientCommon.deletePersonality?.invoke(capturedPoke.uuid)
-                                    removePokemon(capturedPoke.uuid)
+                                    if (capturedPoke.inParty) {
+                                        val idx = partyPokemons.indexOfFirst { it.uuid == capturedPoke.uuid }
+                                        if (idx >= 0) {
+                                            partyPokemons[idx] = PokemonEntry(
+                                                capturedPoke.uuid, capturedPoke.displayName, capturedPoke.species,
+                                                "{}", true
+                                            )
+                                        }
+                                        clearWidgets(); init()
+                                    } else {
+                                        removePokemon(capturedPoke.uuid)
+                                    }
                                 }
                             )
                         }.bounds(x + 273, btnY + 2, 50, 18).build()
                     )
                 }
                 currentY += rowHeight
+            } else {
+                currentY += sectionHeaderHeight
             }
         }
     }
@@ -155,73 +174,148 @@ class PersonalityListScreen(
         val screenWidth = width
         val isReadOnly = !SyncedConfig.allowClientPersonalityEditing
 
-        // Header
         val titleText = when {
-            noWorld -> "Personality Editor"
-            isReadOnly -> "Personality List (READ ONLY)"
-            else -> "Select a Pokémon to Edit"
+            noWorld -> Component.translatable("cobblebrain.screen.personality_list.no_world_title")
+            isReadOnly -> Component.translatable("cobblebrain.screen.personality_list.read_only_title")
+            else -> Component.translatable("cobblebrain.screen.personality_list.select_title")
         }
         guiGraphics.drawCenteredString(font, titleText, screenWidth / 2, 15, 0xFFFFA500.toInt())
 
-        // No-world message
         if (noWorld) {
-            guiGraphics.drawCenteredString(
-                font,
-                "You must be inside a world to edit",
-                screenWidth / 2, height / 2 - 22, 0xFFCCCCCC.toInt()
-            )
-            guiGraphics.drawCenteredString(
-                font,
-                "Pokémon personalities.",
-                screenWidth / 2, height / 2 - 10, 0xFFCCCCCC.toInt()
-            )
+            guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.personality_list.no_world_line1"), screenWidth / 2, height / 2 - 22, 0xFFCCCCCC.toInt())
+            guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.personality_list.no_world_line2"), screenWidth / 2, height / 2 - 10, 0xFFCCCCCC.toInt())
             return
         }
 
-        val x = screenWidth / 2 - 150
+        val combined = getCombinedRows()
+        if (combined.isEmpty()) {
+            guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.personality_list.empty"), screenWidth / 2, height / 2 - 10, 0xFFCCCCCC.toInt())
+            return
+        }
+
+        val x = screenWidth / 2 - 165
+        val vis = getVisibleRows()
         var currentY = startY
 
-        // Draw empty state
-        if (partyPokemons.isEmpty() && pcPokemons.isEmpty()) {
-            guiGraphics.drawCenteredString(font, "No Pokémon to show.", screenWidth / 2, height / 2 - 10, 0xFFCCCCCC.toInt())
-            return
-        }
+        // Scissor viewport to prevent text and row highlights from overlapping Back button area
+        guiGraphics.enableScissor(x - 5, startY, x + 335, height - bottomBarH + 5)
 
-        // --- Party section ---
-        if (partyPokemons.isNotEmpty()) {
-            guiGraphics.drawString(font, "⚔ Party", x, currentY, 0xFFFFA500.toInt())
-            currentY += sectionHeaderHeight
+        for (i in 0 until vis) {
+            val dataIdx = scrollOffset + i
+            if (dataIdx >= combined.size) break
+            val item = combined[dataIdx]
 
-            for (poke in partyPokemons) {
-                // Row background
-                guiGraphics.fill(x, currentY, x + 325, currentY + 24, 0x55000000)
+            if (item is PokemonEntry) {
+                val isPc = !item.inParty
+                val rowColor = if (isPc) 0x44003366 else 0x55000000
+                guiGraphics.fill(x, currentY, x + 325, currentY + 24, rowColor)
 
-                val nameStr = poke.displayName
-                val speciesStr = "(${poke.species})"
-                guiGraphics.drawString(font, nameStr, x + 8, currentY + 8, 0xFFFFFFFF.toInt())
-                guiGraphics.drawString(font, speciesStr, x + 8 + font.width(nameStr) + 4, currentY + 8, 0xFFAAAAAA.toInt())
+                val nameStr = item.displayName
+                val speciesStr = "(${item.species})"
+                val nameColor = if (isPc) 0xFFCCDDFF.toInt() else 0xFFFFFFFF.toInt()
+                val speciesColor = if (isPc) 0xFF8899BB.toInt() else 0xFFAAAAAA.toInt()
 
-                currentY += rowHeight
-            }
-        }
-
-        // --- PC section ---
-        if (pcPokemons.isNotEmpty()) {
-            if (partyPokemons.isNotEmpty()) currentY += 4  // small gap between sections
-            guiGraphics.drawString(font, "📦 PC (Previously Edited)", x, currentY, 0xFF88AAFF.toInt())
-            currentY += sectionHeaderHeight
-
-            for (poke in pcPokemons) {
-                // Row background (slightly different shade for PC)
-                guiGraphics.fill(x, currentY, x + 325, currentY + 24, 0x44003366)
-
-                val nameStr = poke.displayName
-                val speciesStr = "(${poke.species})"
-                guiGraphics.drawString(font, nameStr, x + 8, currentY + 8, 0xFFCCDDFF.toInt())
-                guiGraphics.drawString(font, speciesStr, x + 8 + font.width(nameStr) + 4, currentY + 8, 0xFF8899BB.toInt())
+                guiGraphics.drawString(font, nameStr, x + 8, currentY + 8, nameColor)
+                guiGraphics.drawString(font, speciesStr, x + 8 + font.width(nameStr) + 4, currentY + 8, speciesColor)
 
                 currentY += rowHeight
+            } else if (item is Component) {
+                val itemStr = item.string
+                val headerColor = if (itemStr.contains("Party") || itemStr.contains("Equipe")) 0xFFFFA500.toInt() else 0xFF88AAFF.toInt()
+                guiGraphics.drawString(font, item, x, currentY + 4, headerColor)
+                currentY += sectionHeaderHeight
             }
+        }
+        guiGraphics.disableScissor()
+
+        // Render scrollbar on the right side if content overflows
+        if (combined.size > vis) {
+            val scrollbarX = x + 332
+            val scrollbarY = startY
+            val scrollbarW = 5
+            val scrollbarH = vis * rowHeight
+
+            // Track background
+            guiGraphics.fill(scrollbarX, scrollbarY, scrollbarX + scrollbarW, scrollbarY + scrollbarH, 0x33FFFFFF)
+
+            // Thumb
+            val thumbH = maxOf(8, (scrollbarH.toFloat() * vis.toFloat() / combined.size.toFloat()).toInt())
+            val maxScrollTop = combined.size - vis
+            val scrollPercent = scrollOffset.toFloat() / maxScrollTop.toFloat()
+            val thumbY = scrollbarY + ((scrollbarH - thumbH) * scrollPercent).toInt()
+
+            guiGraphics.fill(scrollbarX, thumbY, scrollbarX + scrollbarW, thumbY + thumbH, 0xFFFFA500.toInt())
+        }
+    }
+
+    override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+        if (!noWorld) {
+            val delta = if (scrollY > 0) -1 else 1
+            val combined = getCombinedRows()
+            val vis = getVisibleRows()
+            scrollOffset = (scrollOffset + delta).coerceIn(0, maxOf(0, combined.size - vis))
+            clearWidgets()
+            init()
+            return true
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+    }
+
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (!noWorld && button == 0) {
+            val sw = width
+            val x = sw / 2 - 165
+            val combined = getCombinedRows()
+            val vis = getVisibleRows()
+
+            if (combined.size > vis) {
+                val scrollbarX = x + 332
+                val scrollbarY = startY
+                val scrollbarW = 5
+                val scrollbarH = vis * rowHeight
+
+                if (mouseX >= scrollbarX && mouseX <= scrollbarX + scrollbarW && mouseY >= scrollbarY && mouseY <= scrollbarY + scrollbarH) {
+                    isDraggingScrollbar = true
+                    updateScrollFromMouse(mouseY, scrollbarY, scrollbarH, combined.size, vis)
+                    return true
+                }
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button)
+    }
+
+    override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        if (isDraggingScrollbar) {
+            val sw = width
+            val x = sw / 2 - 165
+            val combined = getCombinedRows()
+            val vis = getVisibleRows()
+            val scrollbarY = startY
+            val scrollbarH = vis * rowHeight
+
+            updateScrollFromMouse(mouseY, scrollbarY, scrollbarH, combined.size, vis)
+            return true
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+    }
+
+    override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (button == 0) {
+            isDraggingScrollbar = false
+        }
+        return super.mouseReleased(mouseX, mouseY, button)
+    }
+
+    private fun updateScrollFromMouse(mouseY: Double, scrollbarY: Int, scrollbarH: Int, totalItems: Int, vis: Int) {
+        val maxScrollTop = totalItems - vis
+        val relativeY = (mouseY - scrollbarY).coerceIn(0.0, scrollbarH.toDouble())
+        val scrollPercent = relativeY / scrollbarH.toDouble()
+        val newOffset = (scrollPercent * totalItems).toInt().coerceIn(0, maxScrollTop)
+
+        if (newOffset != scrollOffset) {
+            scrollOffset = newOffset
+            clearWidgets()
+            init()
         }
     }
 

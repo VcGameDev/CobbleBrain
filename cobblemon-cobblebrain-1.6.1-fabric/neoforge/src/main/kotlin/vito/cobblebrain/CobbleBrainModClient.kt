@@ -12,6 +12,7 @@ import net.minecraft.world.effect.MobEffects
 import org.lwjgl.glfw.GLFW
 import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.client.HudSystem
+import vito.cobblebrain.client.MigrationNoticeChecker
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfigScreen
 import vito.cobblebrain.config.SyncedConfig
@@ -90,6 +91,7 @@ object CobbleBrainModClientNeoForge {
 
     // tick
     fun onClientTick(event: ClientTickEvent.Post) {
+        MigrationNoticeChecker.checkAndShow(Minecraft.getInstance())
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
         }

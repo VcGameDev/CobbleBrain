@@ -23,6 +23,7 @@ data class CobblebrainClientConfig(
     var offlineMode: Boolean = false,
     var offlineTalkMode: Boolean = false,
     var psychicTranslation: Boolean = false,
+    var seenMigrationNotice140: Boolean = false,
 
     // ================= DIALOGUE & UI SETTINGS =================
 

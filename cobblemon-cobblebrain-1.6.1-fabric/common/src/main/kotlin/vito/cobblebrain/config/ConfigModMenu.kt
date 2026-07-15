@@ -135,7 +135,6 @@ object CobblebrainConfigScreen {
         var enableKarma = true
         var maxStoredMemories = 100
         var maxRelevantMemories = 4
-        var allowClientPersonalityEditing = true
 
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
@@ -209,8 +208,7 @@ object CobblebrainConfigScreen {
                         outputGuaranteedCatch,
                         enableKarma,
                         maxStoredMemories,
-                        maxRelevantMemories,
-                        allowClientPersonalityEditing
+                        maxRelevantMemories
                     )
 
                     ConfigHandler.save()
@@ -349,6 +347,7 @@ object CobblebrainConfigScreen {
 
         // ========================= RANDOM TIPS =========================
         val configTips = listOf(
+        "Tip: Feijão com farinha.",
         "Tip: Using a local model? Set Local API Provider to 'lmstudio' or 'player2'.",
         "Tip: Use '/cobblebrain quitQuest' to abandon a secondary quest you don't want to complete.",
         "Tip: You can turn raids on/off in 'Schedule Raids'.",
@@ -660,7 +659,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val characteristicsEntry = entryBuilder.startStrList(
-            Component.literal("Characteristics (Legacy)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x888888))),
+            Component.literal("[OUTDATED] Characteristics").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x888888))),
             config.characteristics
         ).setDefaultValue(listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"))
             .setSaveConsumer { value -> config.characteristics = value }
@@ -668,7 +667,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val enableTraitsEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Enable Traits & Quirks").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Enable Automatic Trait Creation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.enableTraits)
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.enableTraits = value }
@@ -679,7 +678,7 @@ object CobblebrainConfigScreen {
             Component.literal("Allow Client Personality Editing").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.allowClientPersonalityEditing)
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> allowClientPersonalityEditing = value; config.allowClientPersonalityEditing = value }
+            .setSaveConsumer { value -> config.allowClientPersonalityEditing = value; config.allowClientPersonalityEditing = value }
             .setTooltip(Component.literal("If enabled, players can use the Personality Editor to manually edit their Pokémon's personality. When disabled, the editor becomes read-only."))
             .build()
 
@@ -1044,8 +1043,6 @@ object CobblebrainConfigScreen {
         category.entries.add(wildQuestChanceEntry)
         category.entries.add(lowTokenModeEntry)
         category.entries.add(scheduleRaidEntry)
-        category.entries.add(characteristicsEntry)
-        category.entries.add(enableTraitsEntry)
         category.entries.add(allowClientPersonalityEditingEntry)
         category.entries.add(allowPokemonPVPEntry)
         category.entries.add(allowPokemonPVEEntry)
@@ -1073,6 +1070,7 @@ object CobblebrainConfigScreen {
         category.entries.add(outputGuaranteedCatchEntry)
         category.entries.add(outputMobsContextEntry)
         category.entries.add(outputQuestsEntry)
+        category.entries.add(enableTraitsEntry)
         category.entries.add(makeSubtitleEntry("POKEMÓN MEMORIES (SERVER)", 0xFFFF00))
         category.entries.add(outputMemoriesEntry)
         category.entries.add(maxStoredMemoriesEntry)
@@ -1082,6 +1080,7 @@ object CobblebrainConfigScreen {
         category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
         category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
         category.entries.add(makeSpacer(8))
+        category.entries.add(characteristicsEntry)
         category.entries.add(outputApril1Entry)
         category.entries.add(outputPokemonLanguageEntry)
         category.entries.add(onlyNearbyChatEntry)
@@ -1101,8 +1100,7 @@ object CobblebrainConfigScreen {
                 outputGuaranteedCatch,
                 enableKarma,
                 maxStoredMemories,
-                maxRelevantMemories,
-                allowClientPersonalityEditing
+                maxRelevantMemories
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)

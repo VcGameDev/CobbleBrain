@@ -164,42 +164,37 @@ object DialogueSystem {
 
 
     fun onPlayerJoin(player: ServerPlayer) {
-        // Limpa estados de espera de missão ao entrar
         isWaitingForQuestResponse[player.uuid] = false
         pendingInterruption[player.uuid] = false
 
-        player.sendSystemMessage(
-            Component.translatable("cobblebrain.welcome.title")
-                .withStyle(ChatFormatting.YELLOW)
+        val shouldSuppressTranslatorGuide = try {
+            val config = vito.cobblebrain.config.ClientConfigHandler.clientConfig
+            !config.seenMigrationNotice140
+        } catch (_: Throwable) {
+            false
+        }
 
-                .append(Component.translatable("cobblebrain.welcome.line1").withStyle(ChatFormatting.YELLOW))
-                .append(Component.translatable("cobblebrain.welcome.line1_cmd").withStyle(ChatFormatting.AQUA))
-                .append(Component.translatable("cobblebrain.welcome.line1_end").withStyle(ChatFormatting.YELLOW))
+        val welcomeMsg = Component.translatable("cobblebrain.welcome.title")
+            .withStyle(ChatFormatting.YELLOW)
+            .append(Component.translatable("cobblebrain.welcome.line1").withStyle(ChatFormatting.YELLOW))
+            .append(Component.translatable("cobblebrain.welcome.line1_cmd").withStyle(ChatFormatting.AQUA))
+            .append(Component.translatable("cobblebrain.welcome.line1_end").withStyle(ChatFormatting.YELLOW))
+            .append(Component.translatable("cobblebrain.welcome.line2").withStyle(ChatFormatting.YELLOW))
+            .append(Component.translatable("cobblebrain.welcome.line2_cmd").withStyle(ChatFormatting.AQUA))
+            .append(Component.translatable("cobblebrain.welcome.line2_end").withStyle(ChatFormatting.YELLOW))
+            .append(Component.translatable("cobblebrain.welcome.line3").withStyle(ChatFormatting.YELLOW))
+            .append(Component.translatable("cobblebrain.welcome.line3_key").withStyle(ChatFormatting.AQUA))
+            .append(Component.translatable("cobblebrain.welcome.line3_end").withStyle(ChatFormatting.YELLOW))
 
-                .append(Component.translatable("cobblebrain.welcome.line2").withStyle(ChatFormatting.YELLOW))
-                .append(Component.translatable("cobblebrain.welcome.line2_cmd").withStyle(ChatFormatting.AQUA))
-                .append(Component.translatable("cobblebrain.welcome.line2_end").withStyle(ChatFormatting.YELLOW))
-
-                .append(Component.translatable("cobblebrain.welcome.line3").withStyle(ChatFormatting.YELLOW))
-                .append(Component.translatable("cobblebrain.welcome.line3_key").withStyle(ChatFormatting.AQUA))
-                .append(Component.translatable("cobblebrain.welcome.line3_end").withStyle(ChatFormatting.YELLOW))
-
-                .append(Component.translatable("cobblebrain.welcome.line4").withStyle(ChatFormatting.YELLOW))
+        if (!shouldSuppressTranslatorGuide) {
+            welcomeMsg.append(Component.translatable("cobblebrain.welcome.line4").withStyle(ChatFormatting.YELLOW))
                 .append(Component.translatable("cobblebrain.welcome.line4_option").withStyle(ChatFormatting.AQUA))
                 .append(Component.translatable("cobblebrain.welcome.line4_mid").withStyle(ChatFormatting.YELLOW))
                 .append(Component.translatable("cobblebrain.welcome.line4_item").withStyle(ChatFormatting.AQUA))
                 .append(Component.translatable("cobblebrain.welcome.line4_end").withStyle(ChatFormatting.YELLOW))
+        }
 
-
-            //.append(Component.literal("Activate 'Output April Fools Actions' in the config menu and use these new actions:\n").withStyle(ChatFormatting.LIGHT_PURPLE))
-                //.append(Component.literal("(fire pokemon) fireball machine\n").withStyle(ChatFormatting.LIGHT_PURPLE))
-                //.append(Component.literal("(fire pokemon) nuke\n").withStyle(ChatFormatting.LIGHT_PURPLE))
-                //.append(Component.literal("(electric pokemon) final judgment\n").withStyle(ChatFormatting.LIGHT_PURPLE))
-                //.append(Component.literal("(fairy pokemon) imaginary technique\n").withStyle(ChatFormatting.LIGHT_PURPLE))
-                //.append(Component.literal("(psychic pokemon) psychic stand").withStyle(ChatFormatting.LIGHT_PURPLE))
-                //.append(Component.literal("ssstyle\n").withStyle(ChatFormatting.LIGHT_PURPLE))
-
-        )
+        player.sendSystemMessage(welcomeMsg)
     }
 
     fun onChat(sender: ServerPlayer, rawContent: String) {
@@ -1727,7 +1722,7 @@ object DialogueSystem {
         playPokemonCry(pokemon, variedPitch)
 
         // só pula se estiver no chão
-        if (entity != null && entity.onGround()) {
+        if (entity.onGround()) {
             entity.jumpFromGround()
         }
 
