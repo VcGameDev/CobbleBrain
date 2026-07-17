@@ -32,7 +32,6 @@ import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.levelgen.Heightmap
-import net.minecraft.world.phys.Vec3
 import vito.cobblebrain.social.CobblebrainWorldSave.adjustKarma
 import vito.cobblebrain.social.CobblebrainWorldSave.adjustKillCount
 import vito.cobblebrain.config.ConfigHandler.config
@@ -159,9 +158,6 @@ object DialogueSystem {
     private val bubbleProgress = mutableMapOf<UUID, Int>()          // standUuid -> chars revelados
     private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> texto completo
     private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars por tick
-
-    val lastPositions = mutableMapOf<String, Vec3>()
-
 
     fun onPlayerJoin(player: ServerPlayer) {
         isWaitingForQuestResponse[player.uuid] = false
@@ -351,7 +347,8 @@ object DialogueSystem {
                 runSocialTick(player)
 
                 if (
-                    OfflinePlayers.offlineMode[player.uuid] == true
+                    OfflinePlayers.offlineMode[player.uuid] == true &&
+                    OfflinePlayers.offlineTalkMode[player.uuid] == true
                 ) {
                     OfflineEventHandler.tick(player)
                 }
@@ -575,7 +572,12 @@ object DialogueSystem {
                                 val prompt = buildPrompt(
                                     player,
                                     ativos,
-                                    "IMPORTANT: ${player.name.string} defeated the $targetSpecies! $giverName thanks him and reacts to the victory."
+                                    Component.translatable(
+                                        "cobblebrain.prompt.quest_battle_victory",
+                                        player.name.string,
+                                        targetSpecies,
+                                        giverName
+                                    ).string
                                 )
 
                                 isWaitingForQuestResponse[player.uuid] = true
@@ -601,7 +603,10 @@ object DialogueSystem {
                         val prompt = buildPrompt(
                             player,
                             ativos,
-                            "IMPORTANT: ${player.name.string} team has just won a battle. The Pokémon react to the victory based on their personalities."
+                            Component.translatable(
+                                "cobblebrain.prompt.battle_victory",
+                                player.name.string
+                            ).string
                         )
 
                         sendToPlayer?.invoke(player, prompt)
@@ -618,7 +623,10 @@ object DialogueSystem {
                     val prompt = buildPrompt(
                         player,
                         ativos,
-                        "IMPORTANT: ${player.name.string} team has lost the battle. Pokémon are exhausted or knocked out, and should only react if they are still able to act and have more than 0 HP. Any response should reflect defeat, fatigue, or frustration."
+                        Component.translatable(
+                            "cobblebrain.prompt.battle_defeat",
+                            player.name.string
+                        ).string
                     )
 
                     sendToPlayer?.invoke(player, prompt)
@@ -1227,15 +1235,9 @@ object DialogueSystem {
 
     fun handleQuestTick(player: ServerPlayer, quest: JsonObject) {
         val type = quest.get("type").asString
-        if (type == "BATTLE") {
-            handleBattleQuestTick(player, quest)
-        } else if (type == "TREASURE") {
+        if (type == "TREASURE") {
             handleTreasureQuestTick(player, quest)
         }
-    }
-
-    fun handleBattleQuestTick(player: ServerPlayer, quest: JsonObject) {
-        // Now handled at quest creation
     }
 
     fun handleTreasureQuestTick(player: ServerPlayer, quest: JsonObject) {
@@ -1440,7 +1442,10 @@ object DialogueSystem {
                 val prompt = buildPrompt(
                     player,
                     ativos,
-                    "IMPORTANT: Advice Quest Success! $giverName is very happy with the player's advice! Conclude the topic and thank the player!"
+                    Component.translatable(
+                        "cobblebrain.prompt.advice_quest_success",
+                        giverName
+                    ).string
                 )
                 isWaitingForQuestResponse[player.uuid] = true
                 questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
@@ -1461,7 +1466,10 @@ object DialogueSystem {
                 val prompt = buildPrompt(
                     player,
                     ativos,
-                    "IMPORTANT: Advice Quest Failed! $giverName was offended or ignored the advice! React to this failure with frustration or disappointment!"
+                    Component.translatable(
+                        "cobblebrain.prompt.advice_quest_failed",
+                        giverName
+                    ).string
                 )
                 isWaitingForQuestResponse[player.uuid] = true
                 questResponseTimeout[player.uuid] = player.server?.tickCount?.toLong()?.plus(600) ?: 0L
@@ -1842,7 +1850,8 @@ object DialogueSystem {
 
         val candidateMemories = mutableSetOf<Memory>()
         participatingPokemon.forEach { p ->
-            candidateMemories.addAll(MemorySystem.loadMemories(p.uuid.toString()))
+            val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+            candidateMemories.addAll(MemorySystem.loadMemories(p.uuid.toString(), displayName))
         }
 
         val recentInteractions = serverLastInteractions[player.uuid] ?: emptyList()
@@ -2056,7 +2065,8 @@ object DialogueSystem {
 
             val genCandidateUuid = if (config.enableTraits && Random.nextDouble() < 0.01) {
                 pokemons.filter {
-                    val personality = MemorySystem.loadPersonality(it.uuid.toString())
+                    val displayName = it.nickname?.string?.takeIf { name -> name.isNotBlank() } ?: it.species.name
+                    val personality = MemorySystem.loadPersonality(it.uuid.toString(), displayName)
                     (personality.traits.size < 2 || personality.quirks.size < 2) &&
                     (personality.traits.isNotEmpty() || personality.quirks.isNotEmpty())
                 }.randomOrNull()?.uuid
@@ -2324,7 +2334,8 @@ object DialogueSystem {
 
             if (config.enableTraits) {
                 val needInit = pokemons.filter { p ->
-                    val personality = MemorySystem.loadPersonality(p.uuid.toString())
+                    val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                    val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
                     personality.traits.isEmpty() && personality.quirks.isEmpty()
                 }
                 if (needInit.isNotEmpty()) {
@@ -2459,7 +2470,7 @@ object DialogueSystem {
                 }
 
                 if (uuid != null) {
-                    val personality = MemorySystem.loadPersonality(uuid.toString())
+                    val personality = MemorySystem.loadPersonality(uuid.toString(), pokemonName)
                     if (personality.traits.size < 2) {
                         val isDup = personality.traits.any { existing ->
                             existing.equals(traitText, ignoreCase = true) ||
@@ -2468,7 +2479,7 @@ object DialogueSystem {
                         }
                         if (!isDup) {
                             personality.traits.add(traitText)
-                            MemorySystem.savePersonality(uuid.toString(), personality)
+                            MemorySystem.savePersonality(uuid.toString(), personality, pokemonName)
                         }
                     }
                 }
@@ -2493,7 +2504,7 @@ object DialogueSystem {
                 }
 
                 if (uuid != null) {
-                    val personality = MemorySystem.loadPersonality(uuid.toString())
+                    val personality = MemorySystem.loadPersonality(uuid.toString(), pokemonName)
                     if (personality.quirks.size < 2) {
                         val isDup = personality.quirks.any { existing ->
                             existing.equals(quirkText, ignoreCase = true) ||
@@ -2502,7 +2513,7 @@ object DialogueSystem {
                         }
                         if (!isDup) {
                             personality.quirks.add(quirkText)
-                            MemorySystem.savePersonality(uuid.toString(), personality)
+                            MemorySystem.savePersonality(uuid.toString(), personality, pokemonName)
                         }
                     }
                 }
@@ -2545,8 +2556,8 @@ object DialogueSystem {
                     playerMessage = lastPlayerMessage[player.uuid] ?: ""
                 )
 
-                uuids.forEach { uuid ->
-                    MemorySystem.saveMemory(uuid.toString(), memoryObj)
+                uuids.forEachIndexed { index, uuid ->
+                    MemorySystem.saveMemory(uuid.toString(), memoryObj, names.getOrNull(index))
                 }
             }
         }

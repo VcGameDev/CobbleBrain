@@ -27,7 +27,7 @@ object MigrationNoticeChecker {
         val message = Component.literal("1.4 Update: Pokémon now develop unique personalities automatically after their first conversation. Disable ")
                     .withStyle(yellowStyle)
             .append(
-                Component.literal("'Enable Traits'")
+                Component.literal("'Enable Trait Creation'")
                     .withStyle(aquaStyle)
             )
             .append(

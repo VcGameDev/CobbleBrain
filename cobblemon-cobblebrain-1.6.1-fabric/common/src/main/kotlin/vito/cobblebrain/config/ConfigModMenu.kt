@@ -572,7 +572,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val offlineTalkModeEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Offline Talk Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Offline Talk Mode (v1.0)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.offlineTalkMode
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.offlineTalkMode = value }
@@ -668,7 +668,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val enableTraitsEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Enable Automatic Trait Creation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Enable Trait Creation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.enableTraits)
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.enableTraits = value }

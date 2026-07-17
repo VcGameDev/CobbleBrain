@@ -96,6 +96,7 @@ object CobblebrainServerHandler {
     }
 
     fun handleRequestPersonalityList(player: ServerPlayer) {
+        MemorySystem.warnAboutAnyFilenameConflicts(player)
         val gson = com.google.gson.Gson()
         val array = com.google.gson.JsonArray()
 
@@ -122,15 +123,12 @@ object CobblebrainServerHandler {
         try {
             val pc = com.cobblemon.mod.common.Cobblemon.storage.getPC(player)
             for (p in pc) {
-                if (p == null) continue
                 val uuidStr = p.uuid.toString()
                 // Skip if already in party
                 if (uuidStr in partyUuids) continue
                 // Only include if a personality file exists for this Pokémon
-                val traitsFile = MemorySystem.getTraitsFile(uuidStr)
-                if (!traitsFile.exists()) continue
-
                 val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                if (!MemorySystem.hasStoredPersonality(uuidStr, displayName)) continue
                 val personality = MemorySystem.loadPersonality(uuidStr, displayName)
                 val personalityJson = gson.toJson(personality)
 
@@ -160,6 +158,7 @@ object CobblebrainServerHandler {
             val gson = com.google.gson.Gson()
             val personality = gson.fromJson(personalityJson, PokemonPersonality::class.java)
             if (personality != null) {
+                MemorySystem.warnAboutFilenameConflict(player, pokemonUuid)
                 MemorySystem.savePersonality(pokemonUuid, personality)
                 player.sendSystemMessage(Component.literal("Personality saved successfully.").withStyle(net.minecraft.ChatFormatting.GREEN))
             }
@@ -175,10 +174,11 @@ object CobblebrainServerHandler {
             return
         }
 
+        MemorySystem.warnAboutFilenameConflict(player, pokemonUuid)
         val file = MemorySystem.getTraitsFile(pokemonUuid)
         if (file.exists()) {
             file.delete()
             player.sendSystemMessage(Component.literal("Personality reset successfully.").withStyle(net.minecraft.ChatFormatting.GREEN))
         }
     }
-}
+}

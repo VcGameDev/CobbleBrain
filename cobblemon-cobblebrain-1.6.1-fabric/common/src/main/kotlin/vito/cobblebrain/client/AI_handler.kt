@@ -150,7 +150,7 @@ class AIHandler {
         Action codes:
         A (attack a mob), E (eat/ask for food), B (buff owner), D (debuff enemy), S (sit), P (protect owner/attack agressive mobs), I (idle)
         fire type: C (cook/smelt ores) | steel type: R (repair tools) | grass type: G (grow crops/saplings) | ghost type: SH (shift)
-        | dark type: N (nightmare aura) | fly type: SC (scout) | eletric type: L (light) | psychic type: T (teleport owner)
+        | dark type: N (nightmare aura) | fly type: SC (scout) | eletric type: L (light)
         """
 
         const val CATCH = """

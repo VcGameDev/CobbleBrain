@@ -2,6 +2,7 @@ package vito.cobblebrain.social
 
 import net.minecraft.server.level.ServerPlayer
 import com.cobblemon.mod.common.pokemon.Pokemon
+import net.minecraft.network.chat.Component
 import vito.cobblebrain.social.DialogueSystem.ScheduledMessage
 import vito.cobblebrain.social.DialogueSystem.scheduledMessages
 import vito.cobblebrain.sensors.collectWorldContext
@@ -334,6 +335,28 @@ object OfflineDialogueManager {
         context: FeelingContext,
         pokemonName: String
     ): String {
+        val translatedSubject = if (pokemonCount == 1) {
+            Component.literal(pokemonName)
+        } else {
+            Component.translatable("cobblebrain.offline.subject.one_of_your_pokemon")
+        }
+
+        val translatedKey = when (context) {
+            FeelingContext.HOSTILE_MOBS -> "cobblebrain.offline.narrator.hostile_mobs"
+            FeelingContext.POKEMON_GROUP -> "cobblebrain.offline.narrator.pokemon_group"
+            FeelingContext.BERRY -> "cobblebrain.offline.narrator.berry"
+            FeelingContext.ITEMS -> "cobblebrain.offline.narrator.items"
+            FeelingContext.LOW_HP -> "cobblebrain.offline.narrator.low_hp"
+            FeelingContext.HUNGRY -> "cobblebrain.offline.narrator.hungry"
+            FeelingContext.THUNDERSTORM -> "cobblebrain.offline.narrator.thunderstorm"
+            FeelingContext.SNOW -> "cobblebrain.offline.narrator.snow"
+            FeelingContext.RAIN -> "cobblebrain.offline.narrator.rain"
+            else -> ""
+        }
+
+        if (translatedKey.isNotBlank()) {
+            return Component.translatable(translatedKey, translatedSubject).string
+        }
 
         val subject =
             if (pokemonCount == 1)
@@ -374,6 +397,11 @@ object OfflineDialogueManager {
                 ""
         }
     }
+
+    private fun translateFeeling(feeling: String): String {
+        return Component.translatable("cobblebrain.offline.feeling.$feeling").string
+    }
+
     fun generateFeeling(
         pokemon: Pokemon,
         context: WorldContext,
@@ -491,7 +519,7 @@ object OfflineDialogueManager {
         return if (feeling == null) {
             vocal
         } else {
-            "$vocal ($feeling)"
+            "$vocal (${translateFeeling(feeling)})"
         }
     }
 
@@ -510,24 +538,27 @@ object OfflineDialogueManager {
                     1 -> {
                         CobblebrainWorldSave.createItemQuest(player, wildEntity)
                         player.sendSystemMessage(
-                            net.minecraft.network.chat.Component.literal(
-                                "$giverName has started an ITEM quest!"
+                            Component.translatable(
+                                "cobblebrain.quest.started.item",
+                                giverName
                             ).withStyle(net.minecraft.ChatFormatting.YELLOW)
                         )
                     }
                     2 -> {
                         CobblebrainWorldSave.createBattleQuest(player, wildEntity)
                         player.sendSystemMessage(
-                            net.minecraft.network.chat.Component.literal(
-                                "$giverName has started a BATTLE quest!"
+                            Component.translatable(
+                                "cobblebrain.quest.started.battle",
+                                giverName
                             ).withStyle(net.minecraft.ChatFormatting.YELLOW)
                         )
                     }
                     3 -> {
                         CobblebrainWorldSave.createTreasureQuest(player, wildEntity)
                         player.sendSystemMessage(
-                            net.minecraft.network.chat.Component.literal(
-                                "$giverName needs help finding LOST ITEMS!"
+                            Component.translatable(
+                                "cobblebrain.quest.started.treasure",
+                                giverName
                             ).withStyle(net.minecraft.ChatFormatting.YELLOW)
                         )
                     }

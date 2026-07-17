@@ -93,6 +93,8 @@ object OfflineEventHandler {
 
         if (!OfflinePlayers.offlineMode.getOrDefault(player.uuid, false))
             return
+        if (!OfflinePlayers.offlineTalkMode.getOrDefault(player.uuid, false))
+            return
 
         val currentTick = player.server.tickCount.toLong()
 
