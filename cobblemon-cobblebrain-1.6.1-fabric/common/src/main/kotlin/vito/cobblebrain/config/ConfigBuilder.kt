@@ -95,6 +95,8 @@ class ConfigBuilder<T> private constructor(
             "\"psychicTranslation\"" to "\n// Allows Psychic-type Pokémon to naturally speak human language and occasionally interpret other Pokémon.",
             "\"dialogueInChat\"" to "\n\n//========================= // GAME AND INTERACTIONS // =========================\n\n\n// Shows generated dialogue directly in chat.",
             "\"chatbubbles\"" to "\n// Displays dialogue above Pokémon as chat bubbles.",
+            "\"forceOfflineMode\"" to "\n// Forces Offline Mode for every player on this server. Clients cannot disable it while connected.",
+            "\"disableWelcomeMessage\"" to "\n// Disables the CobbleBrain welcome message shown when players join.",
             "\"pokemonTalk\"" to "\n// Enables Pokémon dialogue.",
             "\"needsPokemonTranslator\"" to "\n// Requires an Exp. Share to understand Pokémon. Otherwise they speak using creature vocalizations.",
             "\"allowPokemonPVP\"" to "\n// Allows Pokémon to battle other players' Pokémon.",

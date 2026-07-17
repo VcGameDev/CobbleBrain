@@ -82,8 +82,12 @@ object CobblebrainClientHandlerFabric {
             client.execute {
                 val config = vito.cobblebrain.config.ClientConfigHandler.clientConfig
                 val nickname = config.preferredName.ifBlank { client.user.name }
+                val forceOfflineMode = SyncedConfig.forceOfflineMode && !client.isLocalServer
                 CobblebrainClientCommon.sendNicknameToServer?.invoke(nickname)
-                CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(config.offlineMode, config.offlineTalkMode)
+                CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(
+                    config.offlineMode || forceOfflineMode,
+                    config.offlineTalkMode
+                )
             }
         }
 

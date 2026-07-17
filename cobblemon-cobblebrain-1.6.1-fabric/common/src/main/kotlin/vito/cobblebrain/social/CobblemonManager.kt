@@ -10,6 +10,7 @@ import com.cobblemon.mod.common.pokemon.Pokemon
 import com.google.gson.Gson
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.ChatFormatting
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.ClientConfigHandler
@@ -27,15 +28,20 @@ object PokemonQuery {
     }
 
     fun isShoulderMounted(player: ServerPlayer, pokemon: Pokemon): Boolean {
-        val left = player.shoulderEntityLeft
-        if (!left.isEmpty && left.hasUUID("UUID")) {
-            if (left.getUUID("UUID") == pokemon.uuid) return true
+        fun matches(tag: CompoundTag): Boolean {
+            if (tag.isEmpty) return false
+
+            val pokemonTag = tag.getCompound("Pokemon")
+
+            if (pokemonTag.hasUUID("UUID")) {
+                return pokemonTag.getUUID("UUID") == pokemon.uuid
+            }
+
+            return false
         }
-        val right = player.shoulderEntityRight
-        if (!right.isEmpty && right.hasUUID("UUID")) {
-            if (right.getUUID("UUID") == pokemon.uuid) return true
-        }
-        return false
+
+        return matches(player.shoulderEntityLeft) ||
+                matches(player.shoulderEntityRight)
     }
 
     // Retorna apenas os Pokémon vivos e invocados no mundo (fora da Pokébola) ou no ombro

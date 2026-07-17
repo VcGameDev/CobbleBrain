@@ -17,6 +17,8 @@ data class CobblebrainConfig(
 
     var dialogueInChat: Boolean = true,
     var chatbubbles: Boolean = true,
+    var forceOfflineMode: Boolean = false,
+    var disableWelcomeMessage: Boolean = false,
 
     var characteristics: List<String> = listOf("TestPokemon: He likes to sing, he fell off a bike once, he is from a farm"),
     var lowTokenMode: Boolean = false,

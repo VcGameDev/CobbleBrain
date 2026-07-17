@@ -51,7 +51,8 @@ object CobblebrainServerHandlerFabric {
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.OfflineSettingsPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
-                vito.cobblebrain.social.OfflinePlayers.offlineMode[player.uuid] = payload.offlineMode
+                val forceOfflineMode = vito.cobblebrain.config.ConfigHandler.config.forceOfflineMode
+                vito.cobblebrain.social.OfflinePlayers.offlineMode[player.uuid] = forceOfflineMode || payload.offlineMode
                 vito.cobblebrain.social.OfflinePlayers.offlineTalkMode[player.uuid] = payload.offlineTalkMode
             }
         }

@@ -69,7 +69,8 @@ object CobblebrainNetworkingNeoForge {
             cfg.enableKarma,
             cfg.maxStoredMemories,
             cfg.maxRelevantMemories,
-            cfg.allowClientPersonalityEditing
+            cfg.allowClientPersonalityEditing,
+            cfg.forceOfflineMode
         )
 
         PacketDistributor.sendToPlayer(player, payload)

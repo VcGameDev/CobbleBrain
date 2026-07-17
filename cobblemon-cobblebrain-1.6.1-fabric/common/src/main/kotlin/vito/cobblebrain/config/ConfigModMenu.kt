@@ -17,6 +17,10 @@ import vito.cobblebrain.config.ConfigHandler.config
 import java.util.Optional
 
 object CobblebrainConfigScreen {
+    private fun effectiveForceOfflineMode(): Boolean {
+        return SyncedConfig.forceOfflineMode && !Minecraft.getInstance().isLocalServer
+    }
+
     fun makeSubtitleEntry(text: String, color: Int = 0xFFFF00): AbstractConfigListEntry<Unit> {
         return object : AbstractConfigListEntry<Unit>(
             Component.literal(text).withStyle(
@@ -565,7 +569,7 @@ object CobblebrainConfigScreen {
 
         val offlineModeEntry = entryBuilder.startBooleanToggle(
             Component.literal("Offline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.offlineMode
+            clientConfig.offlineMode || effectiveForceOfflineMode()
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.offlineMode = value }
             .setTooltip(Component.translatable("cobblebrain.config.offline_mode.tooltip"))
@@ -657,6 +661,22 @@ object CobblebrainConfigScreen {
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.scheduleRaids = value }
             .setTooltip(Component.translatable("cobblebrain.config.schedule_raid.tooltip"))
+            .build()
+
+        val forceOfflineModeEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Force Offline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.forceOfflineMode
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> config.forceOfflineMode = value }
+            .setTooltip(Component.translatable("cobblebrain.config.force_offline_mode.tooltip"))
+            .build()
+
+        val disableWelcomeMessageEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Disable Welcome Message").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.disableWelcomeMessage
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> config.disableWelcomeMessage = value }
+            .setTooltip(Component.translatable("cobblebrain.config.disable_welcome_message.tooltip"))
             .build()
 
         val characteristicsEntry = entryBuilder.startStrList(
@@ -1044,6 +1064,8 @@ object CobblebrainConfigScreen {
         category.entries.add(wildQuestChanceEntry)
         category.entries.add(lowTokenModeEntry)
         category.entries.add(scheduleRaidEntry)
+        category.entries.add(forceOfflineModeEntry)
+        category.entries.add(disableWelcomeMessageEntry)
         category.entries.add(allowClientPersonalityEditingEntry)
         category.entries.add(allowPokemonPVPEntry)
         category.entries.add(allowPokemonPVEEntry)
@@ -1086,6 +1108,10 @@ object CobblebrainConfigScreen {
         category.entries.add(outputPokemonLanguageEntry)
         category.entries.add(onlyNearbyChatEntry)
         builder.setSavingRunnable {
+            if (Minecraft.getInstance().isLocalServer && !config.forceOfflineMode) {
+                clientConfig.offlineMode = false
+                clientConfig.offlineTalkMode = false
+            }
             ConfigHandler.save()
             ClientConfigHandler.save()
             SyncedConfig.updateLocal(
@@ -1106,7 +1132,10 @@ object CobblebrainConfigScreen {
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)
-            CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(clientConfig.offlineMode, clientConfig.offlineTalkMode)
+            CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(
+                clientConfig.offlineMode || effectiveForceOfflineMode(),
+                clientConfig.offlineTalkMode
+            )
         }
 
         return builder.build()

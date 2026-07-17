@@ -162,6 +162,15 @@ object DialogueSystem {
     fun onPlayerJoin(player: ServerPlayer) {
         isWaitingForQuestResponse[player.uuid] = false
         pendingInterruption[player.uuid] = false
+        if (config.forceOfflineMode) {
+            OfflinePlayers.offlineMode[player.uuid] = true
+        } else {
+            OfflinePlayers.offlineMode[player.uuid] = false
+            OfflinePlayers.offlineTalkMode[player.uuid] = false
+        }
+        if (config.disableWelcomeMessage) {
+            return
+        }
 
         val shouldSuppressTranslatorGuide = try {
             val config = vito.cobblebrain.config.ClientConfigHandler.clientConfig
@@ -182,7 +191,9 @@ object DialogueSystem {
             .append(Component.translatable("cobblebrain.welcome.line3_key").withStyle(ChatFormatting.AQUA))
             .append(Component.translatable("cobblebrain.welcome.line3_end").withStyle(ChatFormatting.YELLOW))
 
-        if (!shouldSuppressTranslatorGuide) {
+        if (config.forceOfflineMode) {
+            welcomeMsg.append(Component.translatable("cobblebrain.welcome.force_offline").withStyle(ChatFormatting.YELLOW))
+        } else if (!shouldSuppressTranslatorGuide) {
             welcomeMsg.append(Component.translatable("cobblebrain.welcome.line4").withStyle(ChatFormatting.YELLOW))
                 .append(Component.translatable("cobblebrain.welcome.line4_option").withStyle(ChatFormatting.AQUA))
                 .append(Component.translatable("cobblebrain.welcome.line4_mid").withStyle(ChatFormatting.YELLOW))
@@ -1789,7 +1800,11 @@ object DialogueSystem {
     }
 
     fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
-        generatePokemonAliases(player, pokemons)
+        val shoulderPokemon = PokemonQuery.getAllPokemon(player)
+            .filter { it.currentHealth > 0 && PokemonQuery.isShoulderMounted(player, it) }
+        val activePokemon = (pokemons + shoulderPokemon).distinctBy { it.uuid }
+
+        generatePokemonAliases(player, activePokemon)
         val context = collectWorldContext(player)
 
         // RESET MAPS
@@ -1797,7 +1812,7 @@ object DialogueSystem {
         reversePokemonAliasMap[player.uuid] = mutableMapOf()
 
         // TODOS OS POKÉMONS PARTICIPANTES
-        val allPokemon = pokemons + context.nearbyPokemonEntities.map { it.pokemon }
+        val allPokemon = activePokemon + context.nearbyPokemonEntities.map { it.pokemon }
 
         // CONTADORES GLOBAIS
         val nameCounters = mutableMapOf<String, Int>()
@@ -2064,7 +2079,7 @@ object DialogueSystem {
             }
 
             val genCandidateUuid = if (config.enableTraits && Random.nextDouble() < 0.01) {
-                pokemons.filter {
+                activePokemon.filter {
                     val displayName = it.nickname?.string?.takeIf { name -> name.isNotBlank() } ?: it.species.name
                     val personality = MemorySystem.loadPersonality(it.uuid.toString(), displayName)
                     (personality.traits.size < 2 || personality.quirks.size < 2) &&
@@ -2076,10 +2091,10 @@ object DialogueSystem {
 
             appendLine("[ACTIVE POKEMON]")
             val nameCounters = mutableMapOf<String, Int>()
-            if (pokemons.isEmpty()) {
+            if (activePokemon.isEmpty()) {
                 appendLine("No party Pokémon are currently active, so none will participate in the dialogue.")
             } else {
-                pokemons.forEach { p ->
+                activePokemon.forEach { p ->
                     val allMoves = p.moveSet.getMoves().map { it.name }
                     val baseName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
                     val currentCount = nameCounters.getOrDefault(baseName, 0) + 1
@@ -2261,14 +2276,16 @@ object DialogueSystem {
             }
 
             appendLine("[UNAVAILABLE POKEMON]")
-            val activeUuids = pokemons.map { it.uuid }.toSet()
+            val activeUuids = activePokemon.map { it.uuid }.toSet()
             val allPartyPokemon = PokemonQuery.getAllPokemon(player)
-            val unavailableCount = allPartyPokemon.count { it.uuid !in activeUuids }
+            val unavailableCount = allPartyPokemon.count {
+                it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)
+            }
             if (unavailableCount == 0) {
                 appendLine("none")
             } else {
                 allPartyPokemon.forEach { p ->
-                    if (p.uuid in activeUuids) {
+                    if (p.uuid in activeUuids || PokemonQuery.isShoulderMounted(player, p)) {
                         return@forEach
                     }
                     val name = p.nickname?.string ?: p.species.name
@@ -2333,7 +2350,7 @@ object DialogueSystem {
             appendLine("minus=${config.decreaseFriendship}")
 
             if (config.enableTraits) {
-                val needInit = pokemons.filter { p ->
+                val needInit = activePokemon.filter { p ->
                     val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
                     val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
                     personality.traits.isEmpty() && personality.quirks.isEmpty()

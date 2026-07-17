@@ -65,7 +65,8 @@ object CobblebrainPayloads {
         val enableKarma: Boolean,
         val maxStoredMemories: Int,
         val maxRelevantMemories: Int,
-        val allowClientPersonalityEditing: Boolean
+        val allowClientPersonalityEditing: Boolean,
+        val forceOfflineMode: Boolean
     ) : CustomPacketPayload {
 
         companion object {
@@ -89,6 +90,7 @@ object CobblebrainPayloads {
                         buf.writeInt(payload.maxStoredMemories)
                         buf.writeInt(payload.maxRelevantMemories)
                         buf.writeBoolean(payload.allowClientPersonalityEditing)
+                        buf.writeBoolean(payload.forceOfflineMode)
                     },
                     { buf ->
                         SyncConfigPayload(
@@ -105,6 +107,7 @@ object CobblebrainPayloads {
                             buf.readBoolean(),
                             buf.readInt(),
                             buf.readInt(),
+                            buf.readBoolean(),
                             buf.readBoolean()
                         )
                     }

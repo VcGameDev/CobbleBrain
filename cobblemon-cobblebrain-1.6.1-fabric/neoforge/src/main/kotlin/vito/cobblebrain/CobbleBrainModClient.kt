@@ -116,8 +116,12 @@ object CobbleBrainModClientNeoForge {
     fun onClientLogin(event: ClientPlayerNetworkEvent.LoggingIn) {
         val config = ClientConfigHandler.clientConfig
         val name = config.preferredName.ifBlank { Minecraft.getInstance().user.name }
+        val forceOfflineMode = SyncedConfig.forceOfflineMode && !Minecraft.getInstance().isLocalServer
         CobblebrainClientCommon.sendNicknameToServer?.invoke(name)
-        CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(config.offlineMode, config.offlineTalkMode)
+        CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(
+            config.offlineMode || forceOfflineMode,
+            config.offlineTalkMode
+        )
     }
 
     // HUD

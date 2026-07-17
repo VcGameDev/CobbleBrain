@@ -37,6 +37,8 @@ object SyncedConfig {
         private set
     var allowClientPersonalityEditing = true
         private set
+    var forceOfflineMode = false
+        private set
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
         useDefaultOutput = payload.useDefaultOutput
@@ -53,6 +55,7 @@ object SyncedConfig {
         maxStoredMemories = payload.maxStoredMemories
         maxRelevantMemories = payload.maxRelevantMemories
         allowClientPersonalityEditing = payload.allowClientPersonalityEditing
+        forceOfflineMode = payload.forceOfflineMode
         received = true
 
         val client = Minecraft.getInstance()

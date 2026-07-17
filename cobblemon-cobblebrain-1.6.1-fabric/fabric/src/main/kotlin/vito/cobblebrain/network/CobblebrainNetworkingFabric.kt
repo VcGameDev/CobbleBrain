@@ -47,7 +47,8 @@ object CobblebrainNetworkingFabric {
             config.enableKarma,
             config.maxStoredMemories,
             config.maxRelevantMemories,
-            config.allowClientPersonalityEditing
+            config.allowClientPersonalityEditing,
+            config.forceOfflineMode
         )
 
         ServerPlayNetworking.send(player, payload)

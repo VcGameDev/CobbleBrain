@@ -116,7 +116,8 @@ object CobblebrainPayloadRegistrarNeoForge {
             val player = context.player() as? ServerPlayer ?: return@playToServer
 
             context.enqueueWork {
-                vito.cobblebrain.social.OfflinePlayers.offlineMode[player.uuid] = payload.offlineMode
+                val forceOfflineMode = vito.cobblebrain.config.ConfigHandler.config.forceOfflineMode
+                vito.cobblebrain.social.OfflinePlayers.offlineMode[player.uuid] = forceOfflineMode || payload.offlineMode
                 vito.cobblebrain.social.OfflinePlayers.offlineTalkMode[player.uuid] = payload.offlineTalkMode
             }
         }
