@@ -1,16 +1,18 @@
 # CobbleBrain – AI Dialogue System for Cobblemon
 
-CobbleBrain is an open-source Minecraft mod that gives Pokémon a “brain,” allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions more lively and responsive.
-
-![Version](https://img.shields.io/badge/version-1.3.2-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MPL_2.0-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
+### **Built for AI-powered gameplay, with offline support since v1.4.0**
+
+---
+
 **Discord: join the official <span style="color:#3598db"><a href="https://discord.gg/cobblemon" target="_blank" rel="nofollow">Cobblemon server</a></span>, check mods-and-plugins → CobbleBrain.**
 
-If you have installed older versions of the mod (<1.0.0) and are going to newer versions, make sure NOT to use the old json5. Let the mod generate a new json5 to play.
+❗**Report Bugs and Submit Suggestions [here](https://docs.google.com/forms/d/e/1FAIpQLSddvxnQP-E2gUZYEmuqquldpSFkkhLScfkcNrCm-ZeMpjIRuw/viewform?usp=dialog)!**
 
-Disable the Catch indicator mod (present in Cobbleverse) when playing with cobblebrain.
+Disable the Catch indicator mod (present in Cobbleverse) when playing with CobbleBrain.
 
 ## 📖 Table of Contents
 - [About](#about)
@@ -27,20 +29,24 @@ Disable the Catch indicator mod (present in Cobbleverse) when playing with cobbl
 ---
 
 ## About
-CobbleBrain enhances the **Cobblemon** experience by giving Pokémon dynamic personalities and dialogue. They can talk to you, react to battles, respond to the environment, protect you from mobs, and even interact spontaneously during your adventure.
+CobbleBrain is a mod that gives Pokémon a "brain," allowing them to think, talk, and interact dynamically with the world. It integrates artificial intelligence into gameplay, making your companions talk to you, react to battles, protect you from mobs, and even cook a delicious steak, all using your prompts.
 
 Wild Pokémon can also interact with the player and the world, creating quests, remembering your actions, and reacting to how you treat their species.
+
+You can also fully customize each Pokémon's personality through the built-in **Personality Editor**, allowing every companion to develop a unique identity.
 
 ---
 
 ## Features
 - Pokémon can talk to the player and to each other.
-- Pokémon can perform actions such as attacking, eating, cooking, repairing tools, growing plants, and more.
-- Dialogue influenced by friendship, nature, past interactions, and world conditions.
+- Pokémon can perform actions such as attacking, eating, cooking, repairing tools, growing plants, fishing, scouting, creating light, teleporting, and more.
+- Dialogue influenced by friendship, nature, past interactions, world conditions, and memories.
+- Memory system that stores previous interactions.
+- Pokémon Personality Editor for customizing Traits, Quirks, Likes, Dislikes, and other personality attributes.
 - Wild Pokémon quests and karma system that react to your actions.
 - Raid events triggered when Pokémon species become hostile toward you.
-- Fully configurable AI prompts, gameplay settings, and behaviors through the Mod Menu configuration screen.
-- Supports cloud AI models (Google AI Studio, OpenAI, OpenRouter, Player2) and local models via LM Studio and Player2.
+- Fully configurable AI prompts, gameplay settings, gameplay systems, and behaviors through the Mod Menu configuration screen.
+- Supports cloud AI models (Google AI Studio, OpenAI, OpenRouter, Player2), local models via LM Studio and Player2, and Offline gameplay.
 - Multiplayer compatible, with each player managing their own AI processing.
 
 ---
@@ -64,21 +70,20 @@ Wild Pokémon can also interact with the player and the world, creating quests, 
 ## How to Play
 
 <details>
-  <summary>1. Choosing AI Mode</summary>
+  <summary>1. Choose How to Play</summary>
 
   <details>
-    <summary>Cloud Mode (Easiest)</summary>
+    <summary>Cloud Mode (Recommended)</summary>
 
 Cloud mode uses external AI providers to process dialogue.
 
-### Using Player2
+### Using Player2 (Recommended)
 
 1. Install the [Player2 app](https://player2.game/) and create an account.
-2. Copy the `apiBaseUrl` from the app (Example: `http://127.0.0.1:4315`).
-3. Open the mod config Menu and paste the value into `apiBaseUrl`.
-4. Set `localApiProvider` to player2.
+2. Run Player2.exe (the app).
 
-Optional: Choose a model directly inside the Player2 app (under Chat Model or Local LLM).  
+Player2 includes a free amount of energy, which can be replenished daily using a spinner. You can also choose the AI model that best fits your needs. In general, more expensive models are smarter.
+
 Here's a [Tutorial on YouTube](https://youtu.be/tPInNexUEmM)!
 
 ---
@@ -86,14 +91,14 @@ Here's a [Tutorial on YouTube](https://youtu.be/tPInNexUEmM)!
 ### Using Other Providers
 
 1. Create an account with a provider (examples: Google AI Studio, OpenAI, OpenRouter).
-2. Generate an API key from the provider’s dashboard.
+2. Generate an API key from the provider's dashboard.
 3. Choose a model (examples: `gemma-3-12b-it`, `gpt-4.1-mini`, `anthropic/claude-3.5-sonnet`).
 4. Open the mod config Menu and fill:
    - `apiKey`: your generated key
-   - `apiBaseUrl`: provider’s official URL
+   - `apiBaseUrl`: provider's official URL
    - `aiModel`: ID of the chosen model
 
-Here's a [Tutorial on YouTube](https://youtu.be/Th1ylIsnQlg?si=KYWN34hF8qAoB7as)!
+Here's a [Tutorial on YouTube](https://youtu.be/i4OzYmMDzP0)!
 
   </details>
 
@@ -119,6 +124,24 @@ WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO 
 
   </details>
 
+  <details>
+    <summary>Offline Mode (No AI Required)</summary>
+
+Play CobbleBrain without an AI connection.
+
+Starting with version **1.4.0**, you can enable **Offline Mode** and **Offline Talk Mode** to enjoy an adapted gameplay experience without internet access or an AI provider.
+
+While AI-powered conversations are unavailable, many gameplay mechanics continue to work, allowing you to interact with your Pokémon, use actions, complete quests, and enjoy the mod offline.
+
+**How to enable it:**
+1. Open the **Config Menu** by pressing **Y**.
+2. Enable **Offline Mode**.
+3. (Recommended) Enable **Offline Talk Mode** for Pokémon dialogue and reactions.
+
+> **Note:** Using an AI provider is still recommended for the full CobbleBrain experience. Offline Talk Mode will continue to receive improvements and new features in future updates.
+
+  </details>
+
 </details>
 
 <details>
@@ -130,10 +153,19 @@ WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO 
 </details>
 
 <details>
-  <summary>3. Performance Adjustments</summary>
+  <summary>3. Customize the Mod</summary>
 
-- Use `lowTokenMode` for faster and lighter responses.
-- Adjust `maxShortMemory` and `maxLongMemory` to control how much dialogue memory Pokémon retain.
+CobbleBrain is highly customizable and can be configured entirely in-game.
+
+Press **Y** to open the configuration menu, where you can customize AI behavior, dialogue systems, gameplay mechanics, memories, actions, quests, and more.
+
+### Recommended settings for new players:
+
+- **Selected Language** — Changes the language used by the AI during conversations.
+- **Instruct** — Defines how the AI should behave and respond. You can customize it to make Pokémon more serious, funny, emotional, roleplay-focused, or anything else you prefer.
+- **Personality Editor** — Customize each Pokémon's Traits, Quirks, Likes, Dislikes, and other personality attributes through an intuitive in-game editor.
+
+All settings include tooltips explaining what they do!
 
 </details>
 
@@ -143,9 +175,9 @@ WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO 
 
 CobbleBrain can be configured directly in-game through the mod config menu screen. You can open it by pressing Y or typing /cobblebrain openConfig in chat.
 Advanced users can still edit the generated configuration files in the `/config` folder if needed.
+<br><br>
 
-
-| Variable                       | Type | Description                                                                                                                        |
+| Variable | Type | Description |
 |--------------------------------|------|------------------------------------------------------------------------------------------------------------------------------------|
 | `apiKey` | List of Strings | The API key used for authentication with the AI system. It can be a Bearer token or a Google API key depending on the provider. |
 | `useChatEndpoint` | Boolean | Automatically includes '/v1/chat/completions' in the ApiBaseUrl address. Disable it if you are having trouble accessing your AI API |
@@ -162,15 +194,24 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `requestTimeoutSeconds` | Long | Defines the request timeout in seconds. Local models may require longer values. |
 | `debugLogging` | Boolean | Enables debug logging for troubleshooting. Logs are stored in the cobblebrain-ai/logs directory. |
 | `Recent Memories Limit (maxInteractionSaves)` | Integer | The max number of recent memories the AI/Pokémon can create. Higher values improve conversation flow but use more tokens or time to generate responses. |
+| `maxStoredMemories` | Integer | Maximum number of memories permanently stored for each Pokémon. |
+| `maxRelevantMemories` | Integer | Maximum number of relevant memories retrieved and sent to the AI during a conversation. |
+| `lastRetrievedMemoryCount` | Integer | Number of recently retrieved memories temporarily cached to reduce repetition. |
+| `lastRetrievedMemoryLifetime` | Integer | Number of conversations before cached retrieved memories expire. |
 | `useDefaultOutput` | Boolean | Uses the recommended and updated OUTPUT FORMAT of the mod version. Only disable it if you want to apply your own CUSTOM OUTPUT, Which is not recommended. |
 | `selectedLanguage` | String | The language the AI uses for responses. Determines dialogue output language. |
+| `preferredName` | String | The preferred name the AI uses when referring to the player. |
 | `dialogueInChat` | Boolean | Shows generated dialogue directly in the chat. This makes Pokémon conversations visible to players. |
 | `chatbubbles` | Boolean | Enables chat bubbles above characters. Dialogue will appear visually instead of only in text chat. |
 | `Needs Pokémon Translator (needsPokemonTranslator)` | Boolean | When active, Pokémon speak normally if the player has the Exp Share equipped on themselves. If not equiped, the Pokémon speak like animals. This setting takes priority over 'outputDialogue' and 'outputCanonLanguage' |
 | `allowPokemonPVP` | Boolean | Allows Pokémon to attack other players’ Pokémon. Disabling prevents player-versus-player battles. |
 | `allowPokemonPVE` | Boolean | Allows Pokémon to attack mobs in the world. Exceptions include tamed mobs and non-aggressive tagged mobs. |
 | `scheduleRaids` | Boolean | Determines if raids can be created in the world. Raids can happen when your karma with a species falls below -11 |
-| `characteristics` | List of Strings | list to define characteristics of a specific Pokémon for the AI. Format: <pokemonName>: <text> |
+| `characteristics` | List of Strings **(Legacy)** | Legacy configuration for defining Pokémon personalities. Replaced by the Pokémon Personality Editor. |
+| `enableTraitCreation` | Boolean | Automatically generates one Trait and one Quirk the first time a Pokémon is interacted with. |
+| `allowClientPersonalityEditing` | Boolean | Allows servers to decide whether players can edit their Pokémon's personalities. Disable this to prevent client-side personality editing. |
+| `forceOfflineMode` | Boolean | Forces all players to use CobbleBrain without AI, disabling AI-dependent features and adapting gameplay for offline use. Ideal for servers that don't want players using AI features. |
+| `disableWelcomeMessage` | Boolean | Disables the welcome message displayed when joining a world. |
 | `lowTokenMode` | Boolean | Reduces world information sent to the AI. This helps conserve tokens and lower usage costs. |
 | `dialogueOnDamage` | Boolean | Makes Pokémon speak when someone is hurt. Dialogue is triggered by damage events. |
 | `dialogueOnBattle` | Boolean | Makes Pokémon speak during battle events. Dialogue reflects combat situations. |
@@ -187,6 +228,8 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `instruct` | List of Strings | The Instructs as a whole works as a global prompt. Defines how the AI or Pokemon behave, think and responds. Each instruct (item on the list) shapes how the response is sent. |
 | `Custom Output (outputFormat)` | String | Only editable via config/cobblebrain.json5 |
 | `Ignore hunger` | Boolean | Makes the AI ignore any information about the Pokémon's hunger. Adding a new rule to the AI's instructions |
+| `offlineMode` | Boolean | Disables AI requests while keeping supported gameplay systems active. |
+| `offlineTalkMode` | Boolean | Enables built-in Pokémon dialogue and reactions when Offline Mode is active. |
 | `Enable Dialogue (outputDialogue)` | Boolean | Enables the Pokémon to generate natural language dialogue, Allowing them to dialogue with the player. |
 | `Enable Actions (outputActions)` | Boolean | Enables Pokémon to perform specialized actions based on the situation or the player command, such as cooking food, growing berries, or eating items. |
 | `Enable Friendship (outputFriendship)` | Boolean | Enables the AI to manage and update friendship levels based on your interactions, influencing the Pokémon's loyalty and behavior. |
@@ -196,10 +239,12 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `Enable Quests (outputQuests)` | Boolean | Enables the automated quest system, allowing Pokémon to offer tasks and rewards to the player. |
 | `Enable April Fools Actions (outputApril1)` | Boolean | Activates special 'April Fools' actions (e.g nuke, imaginary technique). Most of the actions are destructive so be careful! |
 | `Enable Pokémon Language (outputPokemonLanguage)` | Boolean | Makes Pokémon speak using their iconic vocalizations (e.g., 'Pika Pika') instead of human speech. Automatically deactivates outputDialogue when in use. |
-| `[OUTDATED] Enable Memories (outputMemories)` | Boolean | Allows the AI to store and recall past interactions. Note: This system is currently outdated and may be unstable. |
----
+| `Enable Memories (outputMemories)` | Boolean | Enables the Memory System, allowing Pokémon to store and retrieve relevant memories during conversations. |
 
 ## Pokémon Actions
+
+Use the action HUD to make all your Pokémon perform the chosen action or encourage Pokémon through chat to perform actions!
+Example: *Squirtle, defend me!* / *Bulbasaur, want to eat some berries I dropped?*
 
 <details>
   <summary>Type-based Actions</summary>
@@ -226,47 +271,69 @@ Advanced users can still edit the generated configuration files in the `/config`
     Player becomes invisible, gains increased speed and jump height, but suffers from high weakness.
   </details>
 
-</details>
+  <details>
+    <summary>Fish (Water)</summary>
+    Pokémon can catch fish and other items from nearby water sources.
+  </details>
 
----
+  <details>
+    <summary>Nightmare Aura (Dark)</summary>
+    Creates a terrifying aura that frightens nearby creatures.
+  </details>
+
+  <details>
+    <summary>Light (Electric)</summary>
+    Creates a temporary light source around the Pokémon.
+  </details>
+
+  <details>
+    <summary>Scout (Flying)</summary>
+    Sends the Pokémon to scout the surrounding area.
+  </details>
+
+  <details>
+    <summary>Teleport (Psychic)</summary>
+    Teleports the player to a marked location using the Ping System. Press <kbd>G</kbd> to mark the location.
+  </details>
+
+</details>
 
 <details>
   <summary>General Actions</summary>
 
   <details>
     <summary>Attack</summary>
-    Pokémon attacks any mobs close to it.
+    Pokémon attacks nearby mobs.
   </details>
 
   <details>
     <summary>Protect</summary>
-    Pokémon targets hostile mobs nearest to the player; if none are found, it follows the player.
+    Pokémon targets hostile mobs nearest to the player. If none are found, it follows the player.
   </details>
 
   <details>
     <summary>Eat</summary>
-    Pokémon eat any edible item dropped on the ground.  
-    Some foods and berries may grant temporary effects.
+    Pokémon eat edible items dropped on the ground. Some foods and berries may grant temporary effects.
   </details>
 
   <details>
     <summary>Buff</summary>
-    Pokémon grants the player a positive status effect based on its primary type (e.g., regeneration, speed).
+    Pokémon grants the player a positive status effect based on its primary type.
   </details>
 
   <details>
     <summary>Debuff</summary>
-    Pokémon applies a negative status effect to nearby mobs based on its primary type (e.g., slowness, weakness).
+    Pokémon applies a negative status effect to nearby mobs based on its primary type.
   </details>
 
   <details>
     <summary>Sit</summary>
-    Pokémon stays fixed in place, ignoring other actions.
+    Pokémon stays in place, ignoring other actions.
   </details>
 
   <details>
     <summary>Idle</summary>
-    Pokémon cancels all active commands and returns to normal behavior.
+    Pokémon cancels all active commands and returns to its normal behavior.
   </details>
 
 </details>
@@ -276,58 +343,96 @@ Advanced users can still edit the generated configuration files in the `/config`
 ## FAQ
 
 <details>
-  <summary>Can I play with a free model?</summary>
-  Yes, many providers offer free models, but with usage limits. I recommend using models from Player2 (Default in the mod). Test them to find the one that has the better cost/intelligence ratio for your gameplay.
-</details>
-
-<details>
-  <summary>My pokemon is not performing actions!</summary>
-  Check in latest.log if prints like "Pokemon action detected" appear, if it appears, check if there is any mod that could interfere with the names/tags of the cobblemons, like the Catch Indicator mod and then disable them.
+  <summary>Pokémon are not responding. What should I check?</summary>
+  Enable <b>Debug Logging</b> in the mod settings, send another message using <code>/mpk</code>, then check:
+  <br><br>
+  <code>cobblebrain-ai/logs</code>
+  <br><br>
+  Most issues are caused by:
+  <ul>
+    <li>Invalid API key</li>
+    <li>No provider credits</li>
+    <li>Incorrect model name</li>
+    <li>LM Studio server not running</li>
+  </ul>
 </details>
 
 <details>
   <summary>Pokémon responses are too slow. Why?</summary>
-  It depends on:  
-  1. Model size (larger models are slower).  
-  2. Prompt length.  
-  3. Internet connection quality.  
-  4. Provider traffic load.  
+  Response speed depends on model size, provider traffic, internet connection and prompt size.
+  See the question below to learn how to speed up responses.
 </details>
 
 <details>
-  <summary>How can I speed up Pokémon responses?</summary>
-  1. Shorten the instruct.  
-  2. Enable `lowTokenMode`.  
-  3. Use smaller/quantized models.  
-  4. Adjust `maxShortMemory` and `maxLongMemory`.  
-  All these settings are in cobblebrain.json5 inside the config folder.
+  <summary>How can I reduce AI costs and token usage?</summary>
+  <ul>
+    <li>Enable Low Token Mode</li>
+    <li>Disable "unnecessary" AI Capabilities</li>
+    <li>Use smaller models</li>
+    <li>Shorten custom instructions</li>
+  </ul>
 </details>
 
 <details>
-  <summary>I have issues with my key or provider. What should I do?</summary>
-  CobbleBrain only bridges the game and the provider. If problems related to the provider occurs, contact the provider’s support directly.
+  <summary>What are Key Rotation and Model Rotation?</summary>
+  Automatically switches to another API key or model when the current one fails or reaches its limit.
 </details>
 
 <details>
-  <summary>I found a bug / have a suggestion / have a question.</summary>
-  Join the official <span style="color:#3598db"><a href="https://discord.gg/cobblemon" target="_blank" rel="nofollow">Cobblemon discord server</a></span>, check content-zone-help then search CobbleBrain.
+  <summary>How do I change Pokémon behavior?</summary>
+  Edit the <b>Instruct</b> setting inside the AI Prompt category.
+  You can add, remove or modify instructions to change Pokémon personalities and behavior.
+  To change the behavior of a specific Pokémon, open the Pokémon Personality Editor. The old Characteristics setting is now marked as Legacy.
+</details>
+
+<details>
+  <summary>How do I make Pokémon use canon Pokémon language?</summary>
+  Enable <b>Needs Pokémon Translator</b>.
+  When enabled, players need an EXP Share to understand Pokémon language.
+</details>
+
+<details>
+  <summary>How do I change server settings?</summary>
+  Settings marked with <b>(SERVER)</b> must be edited directly inside <code>config/cobblebrain.json5</code> on the server.
+</details>
+
+<details>
+  <summary>Can I play without an AI or internet connection?</summary>
+
+Yes. Since **v1.4.0**, CobbleBrain includes **Offline Mode** and **Offline Talk Mode**, allowing you to play without an AI provider or an internet connection.
+
+Offline Mode keeps many gameplay mechanics available, while Offline Talk Mode lets Pokémon communicate using built-in dialogue and world-aware reactions.
+
+For the best experience, however, using an AI provider is still recommended.
+
 </details>
 
 <details>
   <summary>Does the mod collect personal data?</summary>
-  No. The mod only forwards the player’s prompt to the chosen AI provider and returns the response.  
-  Local logs are generated only if `debugLogging = true`.  
+  No. CobbleBrain only sends prompts to the AI provider you choose and receives responses back.
 </details>
 
 <details>
-  <summary>Can I use local models?</summary>
-  Yes, via LM Studio. But be careful: large models may cause crashes or require strong hardware.  
+  <summary>Can I use CobbleBrain on multiplayer servers?</summary>
+  Yes. It is recommended that each player uses their own AI provider instead of sharing a single AI instance.
 </details>
 
 <details>
-  <summary>I want to revert my cobblebrain.json to default. What should I do?</summary>
-  Delete or rename your current `cobblebrain.json5` file inside the config folder.  
-  When you restart the game, the mod will automatically generate a new config file with the default values.  
+  <summary>Found a bug, suggestion, or need help?</summary>
+
+<b>Bug reports & suggestions</b><br>
+Please use the <a href="https://docs.google.com/forms/d/e/1FAIpQLSddvxnQP-E2gUZYEmuqquldpSFkkhLScfkcNrCm-ZeMpjIRuw/viewform?usp=dialog" target="_blank" rel="nofollow">CobbleBrain Feedback Form</a>.
+<br><br>
+
+<b>Need support?</b><br>
+Enable <b>Debug Logging</b> first, then ask for help in the CobbleBrain support thread and include your logs whenever possible.
+<br><br>
+
+To find the support thread:
+<br>1. Join the official <span style="color:#3598db"><a href="https://discord.gg/cobblemon" target="_blank" rel="nofollow">Cobblemon Discord server</a></span>
+<br>2. Go to the <b>content-help</b> channel
+<br>3. Search for <b>"CobbleBrain"</b>
+
 </details>
 
 ---
