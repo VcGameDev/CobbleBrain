@@ -222,6 +222,13 @@ object ConfigCommands {
 
                                 player.sendSystemMessage(Component.literal(" "))
 
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain clearChatBubbles <mode>[safe|strong] (OP only) - Removes stuck chat bubbles from the world (safe: tagged bubbles, strong: legacy bubbles, can delete other invisible armor stands with no gravity).")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
                                 ctx.source.sendSuccess(
                                     { Component.literal("Cobblebrain guide added to your inventory!") },
                                     false
@@ -491,6 +498,44 @@ object ConfigCommands {
                                         ).withStyle(ChatFormatting.GREEN)
                                     )
 
+                                    1
+                                }
+                        )
+                )
+
+                .then(
+                    Commands.literal("clearChatBubbles")
+                        .requires { src -> src.hasPermission(2) }
+                        .executes { ctx ->
+                            val server = ctx.source.server
+                            val removedCount = DialogueSystem.clearChatBubbles(server, strongMode = false)
+                            ctx.source.sendSuccess(
+                                { Component.literal("Cleared $removedCount chat bubble(s) [safe mode].").withStyle(ChatFormatting.GREEN) },
+                                false
+                            )
+                            1
+                        }
+                        .then(
+                            Commands.literal("safe")
+                                .executes { ctx ->
+                                    val server = ctx.source.server
+                                    val removedCount = DialogueSystem.clearChatBubbles(server, strongMode = false)
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("Cleared $removedCount chat bubble(s) [safe mode].").withStyle(ChatFormatting.GREEN) },
+                                        false
+                                    )
+                                    1
+                                }
+                        )
+                        .then(
+                            Commands.literal("strong")
+                                .executes { ctx ->
+                                    val server = ctx.source.server
+                                    val removedCount = DialogueSystem.clearChatBubbles(server, strongMode = true)
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("Cleared $removedCount chat bubble(s) [strong mode].").withStyle(ChatFormatting.GREEN) },
+                                        false
+                                    )
                                     1
                                 }
                         )

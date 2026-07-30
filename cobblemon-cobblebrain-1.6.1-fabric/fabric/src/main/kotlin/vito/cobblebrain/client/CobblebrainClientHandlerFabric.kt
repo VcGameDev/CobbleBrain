@@ -62,6 +62,12 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        CobblebrainClientCommon.sendRequestPromptWithMemory = { memoryText ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(CobblebrainPayloads.RequestPromptWithMemoryPayload(memoryText))
+            }
+        }
+
         PingClient.sendPingToServer = { pos, direction ->
             if (
                 net.minecraft.client.Minecraft

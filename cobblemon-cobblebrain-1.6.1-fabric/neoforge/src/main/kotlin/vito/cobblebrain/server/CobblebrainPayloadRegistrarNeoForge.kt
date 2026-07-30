@@ -99,6 +99,17 @@ object CobblebrainPayloadRegistrarNeoForge {
         }
 
         registrar.playToServer(
+            CobblebrainPayloads.RequestPromptWithMemoryPayload.TYPE,
+            CobblebrainPayloads.RequestPromptWithMemoryPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+
+            context.enqueueWork {
+                CobblebrainServerHandlers.onRequestPromptWithMemory(player, payload)
+            }
+        }
+
+        registrar.playToServer(
             CobblebrainPayloads.PlayerNicknamePayload.TYPE,
             CobblebrainPayloads.PlayerNicknamePayload.CODEC
         ) { payload, context ->

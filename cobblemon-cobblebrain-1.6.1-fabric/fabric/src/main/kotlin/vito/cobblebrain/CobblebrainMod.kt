@@ -101,6 +101,11 @@ object CobblebrainMod : ModInitializer {
         )
 
         PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.RequestPromptWithMemoryPayload.TYPE,
+            CobblebrainPayloads.RequestPromptWithMemoryPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.PlayerNicknamePayload.TYPE,
             CobblebrainPayloads.PlayerNicknamePayload.CODEC
         )

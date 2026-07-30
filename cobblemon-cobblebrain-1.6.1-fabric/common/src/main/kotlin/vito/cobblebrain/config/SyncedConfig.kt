@@ -35,9 +35,13 @@ object SyncedConfig {
         private set
     var maxRelevantMemories = 4
         private set
+    var baseCandidateMemories = 10
+        private set
     var allowClientPersonalityEditing = true
         private set
     var forceOfflineMode = false
+        private set
+    var enableAiMemoryRetrieval = false
         private set
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
@@ -54,8 +58,10 @@ object SyncedConfig {
         enableKarma = payload.enableKarma
         maxStoredMemories = payload.maxStoredMemories
         maxRelevantMemories = payload.maxRelevantMemories
+        baseCandidateMemories = payload.baseCandidateMemories
         allowClientPersonalityEditing = payload.allowClientPersonalityEditing
         forceOfflineMode = payload.forceOfflineMode
+        enableAiMemoryRetrieval = payload.enableAiMemoryRetrieval
         received = true
 
         val client = Minecraft.getInstance()
@@ -78,7 +84,9 @@ object SyncedConfig {
         enableKarma: Boolean,
         maxStoredMemories: Int,
         maxRelevantMemories: Int,
-        allowClientPersonalityEditing: Boolean
+        baseCandidateMemories: Int = 10,
+        allowClientPersonalityEditing: Boolean,
+        enableAiMemoryRetrieval: Boolean = false
     ) {
         if (isServerControlled) {
             println("Attempt to change config blocked (server-controlled)")
@@ -98,7 +106,9 @@ object SyncedConfig {
         this.enableKarma = enableKarma
         this.maxStoredMemories = maxStoredMemories
         this.maxRelevantMemories = maxRelevantMemories
+        this.baseCandidateMemories = baseCandidateMemories
         this.allowClientPersonalityEditing = allowClientPersonalityEditing
+        this.enableAiMemoryRetrieval = enableAiMemoryRetrieval
 
         val cfg = ConfigHandler.config
 
@@ -115,7 +125,9 @@ object SyncedConfig {
         cfg.enableKarma = enableKarma
         cfg.maxStoredMemories = maxStoredMemories
         cfg.maxRelevantMemories = maxRelevantMemories
+        cfg.baseCandidateMemories = baseCandidateMemories
         cfg.allowClientPersonalityEditing = allowClientPersonalityEditing
+        cfg.enableAiMemoryRetrieval = enableAiMemoryRetrieval
 
         ConfigHandler.save()
     }

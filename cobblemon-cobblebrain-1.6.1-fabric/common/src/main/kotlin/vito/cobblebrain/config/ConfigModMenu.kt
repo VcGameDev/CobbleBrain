@@ -18,13 +18,14 @@ import java.util.Optional
 
 object CobblebrainConfigScreen {
     private fun effectiveForceOfflineMode(): Boolean {
-        return SyncedConfig.forceOfflineMode && !Minecraft.getInstance().isLocalServer
+        val mc = Minecraft.getInstance()
+        return if (mc.isLocalServer) config.forceOfflineMode else SyncedConfig.forceOfflineMode
     }
 
-    fun makeSubtitleEntry(text: String, color: Int = 0xFFFF00): AbstractConfigListEntry<Unit> {
+    fun makeSubtitleEntry(text: String, color: Int = 0xFFFF00, bold: Boolean = true, alignLeft: Boolean = false): AbstractConfigListEntry<Unit> {
         return object : AbstractConfigListEntry<Unit>(
             Component.literal(text).withStyle(
-                Style.EMPTY.withColor(TextColor.fromRgb(color)).withBold(true)
+                Style.EMPTY.withColor(TextColor.fromRgb(color)).withBold(bold)
             ),
             false
         ) {
@@ -46,9 +47,8 @@ object CobblebrainConfigScreen {
                 delta: Float
             ) {
                 val font = Minecraft.getInstance().font
-                val textWidth = font.width(fieldName)
-                val centerX = x + (listWidth / 2) - (textWidth / 2)
-                guiGraphics.drawString(font, fieldName, centerX, y + (itemHeight / 2 - font.lineHeight / 2), color, true)
+                val drawX = if (alignLeft) x else (x + (listWidth / 2) - (font.width(fieldName) / 2))
+                guiGraphics.drawString(font, fieldName, drawX, y + (itemHeight / 2 - font.lineHeight / 2), color, true)
             }
         }
     }
@@ -139,6 +139,8 @@ object CobblebrainConfigScreen {
         var enableKarma = true
         var maxStoredMemories = 100
         var maxRelevantMemories = 4
+        var baseCandidateMemories = 10
+        var enableAiMemoryRetrieval = false
 
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
@@ -213,7 +215,9 @@ object CobblebrainConfigScreen {
                         enableKarma,
                         maxStoredMemories,
                         maxRelevantMemories,
-                        config.allowClientPersonalityEditing
+                        baseCandidateMemories,
+                        config.allowClientPersonalityEditing,
+                        enableAiMemoryRetrieval
                     )
 
                     ConfigHandler.save()
@@ -348,6 +352,47 @@ object CobblebrainConfigScreen {
             override fun getItemHeight(): Int = 24
         }
 
+        val reportBugsButton = object : AbstractConfigListEntry<Unit>(
+            Component.translatable("cobblebrain.button.report_bugs"),
+            false
+        ) {
+            private var button: net.minecraft.client.gui.components.Button =
+                net.minecraft.client.gui.components.Button.builder(
+                    Component.translatable("cobblebrain.button.report_bugs")
+                ) {
+                    Minecraft.getInstance().player?.playSound(
+                        SoundEvents.UI_BUTTON_CLICK.value(),
+                        1.0f,
+                        1.0f
+                    )
+                    net.minecraft.Util.getPlatform().openUri("https://docs.google.com/forms/d/e/1FAIpQLSddvxnQP-E2gUZYEmuqquldpSFkkhLScfkcNrCm-ZeMpjIRuw/viewform?usp=dialog")
+                }.bounds(0, 0, 260, 20).build()
+
+            override fun getValue(): Unit? = null
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+            override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+            override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+                button.x = x + (listWidth / 2) - 130
+                button.y = y
+                button.render(guiGraphics, mouseX, mouseY, delta)
+            }
+
+            override fun getItemHeight(): Int = 24
+        }
+
         val category = builder.getOrCreateCategory(Component.literal("Config"))
 
         // ========================= RANDOM TIPS =========================
@@ -450,12 +495,12 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.use_chat_endpoint.tooltip"))
             .build()
 
-        val localApiProviderEntry = entryBuilder.startStrField(
-            Component.literal("Local API Provider").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.localApiProvider
+        val customApiProviderEntry = entryBuilder.startStrField(
+            Component.literal("Custom API Provider").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.customApiProvider
         ).setDefaultValue("player2")
-            .setSaveConsumer { value -> clientConfig.localApiProvider = value }
-            .setTooltip(Component.translatable("cobblebrain.config.local_api_provider.tooltip"))
+            .setSaveConsumer { value -> clientConfig.customApiProvider = value }
+            .setTooltip(Component.translatable("cobblebrain.config.custom_api_provider.tooltip"))
             .build()
 
         val aiModelEntry = entryBuilder.startStrList(
@@ -529,12 +574,12 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.debug_logging.tooltip"))
             .build()
 
-        val ignoreHungerEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Ignore Hunger").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.ignoreHunger
+        val showHungerEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Show Hunger").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.showHunger
         ).setDefaultValue(false)
-            .setSaveConsumer { value -> clientConfig.ignoreHunger = value }
-            .setTooltip(Component.translatable("cobblebrain.config.ignore_hunger.tooltip"))
+            .setSaveConsumer { value -> clientConfig.showHunger = value }
+            .setTooltip(Component.translatable("cobblebrain.config.show_hunger.tooltip"))
             .build()
 
         val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
@@ -567,13 +612,59 @@ object CobblebrainConfigScreen {
             )
             .build()
 
-        val offlineModeEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Offline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.offlineMode || effectiveForceOfflineMode()
-        ).setDefaultValue(false)
-            .setSaveConsumer { value -> clientConfig.offlineMode = value }
-            .setTooltip(Component.translatable("cobblebrain.config.offline_mode.tooltip"))
-            .build()
+        val isForcedByServer = effectiveForceOfflineMode()
+        val offlineModeEntry: AbstractConfigListEntry<*> = if (isForcedByServer) {
+            object : AbstractConfigListEntry<Boolean>(
+                Component.literal("Offline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFF00))),
+                false
+            ) {
+                private var button: net.minecraft.client.gui.components.Button =
+                    net.minecraft.client.gui.components.Button.builder(
+                        Component.literal("Yes").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x55FF55)))
+                    ) {
+                        val currentScreen = Minecraft.getInstance().screen
+                        Minecraft.getInstance().setScreen(vito.cobblebrain.client.OfflineForcedNoticeScreen(currentScreen))
+                    }.bounds(0, 0, 112, 20).build()
+
+                override fun getValue(): Boolean = true
+                override fun getDefaultValue(): Optional<Boolean> = Optional.of(false)
+                override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+                override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+                override fun render(
+                    guiGraphics: GuiGraphics,
+                    index: Int,
+                    y: Int,
+                    x: Int,
+                    listWidth: Int,
+                    itemHeight: Int,
+                    mouseX: Int,
+                    mouseY: Int,
+                    isSelected: Boolean,
+                    delta: Float
+                ) {
+                    val labelText = Component.literal("Offline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFF00)))
+                    guiGraphics.drawString(Minecraft.getInstance().font, labelText, x, y + 6, 0xFFFF00)
+                    button.x = x + listWidth - 150
+                    button.y = y
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
+
+                fun getTooltip(): Optional<Array<Component>> {
+                    return Optional.of(arrayOf(Component.translatable("cobblebrain.config.offline_mode.forced_tooltip")))
+                }
+
+                override fun getItemHeight(): Int = 24
+            }
+        } else {
+            entryBuilder.startBooleanToggle(
+                Component.literal("Offline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                clientConfig.offlineMode
+            ).setDefaultValue(false)
+                .setSaveConsumer { value -> clientConfig.offlineMode = value }
+                .setTooltip(Component.translatable("cobblebrain.config.offline_mode.tooltip"))
+                .build()
+        }
 
         val offlineTalkModeEntry = entryBuilder.startBooleanToggle(
             Component.literal("Offline Talk Mode (v1.0)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
@@ -813,6 +904,31 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.max_relevant_memories.tooltip"))
             .build()
 
+        val baseCandidateMemoriesEntry = entryBuilder.startIntField(
+            Component.literal("Base Candidate Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.baseCandidateMemories,
+                config.baseCandidateMemories
+            )
+        ).setDefaultValue(10)
+            .setSaveConsumer { value -> baseCandidateMemories = value }
+            .setTooltip(Component.translatable("cobblebrain.config.base_candidate_memories.tooltip"))
+            .build()
+
+        val enableAiMemoryRetrievalEntry = entryBuilder.startBooleanToggle(
+            Component.literal("AI-Driven Memory Retrieval").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.enableAiMemoryRetrieval,
+                config.enableAiMemoryRetrieval
+            )
+        ).setDefaultValue(false)
+            .setSaveConsumer { value ->
+                enableAiMemoryRetrieval = value
+                clientConfig.enableAiMemoryRetrieval = value
+            }
+            .setTooltip(Component.translatable("cobblebrain.config.enable_ai_memory_retrieval.tooltip"))
+            .build()
+
         val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
             Component.literal("Decrease Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.decreaseFriendship
@@ -1033,10 +1149,11 @@ object CobblebrainConfigScreen {
 
         category.entries.add(recommendedPromptButton)
         category.entries.add(personalityEditorButton)
+        category.entries.add(reportBugsButton)
         category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
         category.entries.add(useChatEndpointEntry)
-        category.entries.add(localApiProviderEntry)
+        category.entries.add(customApiProviderEntry)
         category.entries.add(temperatureEntry)
         category.entries.add(aiProviderEntry)
         category.entries.add(reasoningEffortEntry)
@@ -1076,7 +1193,7 @@ object CobblebrainConfigScreen {
         category.entries.add(increaseFriendshipEntry)
         category.entries.add(showFriendshipEntry)
         category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT (CLIENT)", 0xFFFF00))
-        category.entries.add(ignoreHungerEntry)
+        category.entries.add(showHungerEntry)
         category.entries.add(instructEntry)
         category.entries.add(makeSpacer(10))
         category.entries.add(outputFormatEntry)
@@ -1094,10 +1211,16 @@ object CobblebrainConfigScreen {
         category.entries.add(outputMobsContextEntry)
         category.entries.add(outputQuestsEntry)
         category.entries.add(enableTraitsEntry)
-        category.entries.add(makeSubtitleEntry("POKEMÓN MEMORIES (SERVER)", 0xFFFF00))
+        category.entries.add(makeSubtitleEntry("POKÉMON MEMORIES (SERVER)", 0xFFFF00))
         category.entries.add(outputMemoriesEntry)
         category.entries.add(maxStoredMemoriesEntry)
+        category.entries.add(makeSpacer(6))
+        category.entries.add(makeSubtitleEntry("Local Retrieval", 0x55FFFF, bold = false, alignLeft = false))
         category.entries.add(maxRelevantMemoriesEntry)
+        category.entries.add(makeSpacer(6))
+        category.entries.add(makeSubtitleEntry("AI-Driven Retrieval", 0x55FFFF, bold = false, alignLeft = false))
+        category.entries.add(enableAiMemoryRetrievalEntry)
+        category.entries.add(baseCandidateMemoriesEntry)
         category.entries.add(makeSpacer(8))
         category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
         category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
@@ -1107,11 +1230,9 @@ object CobblebrainConfigScreen {
         category.entries.add(outputApril1Entry)
         category.entries.add(outputPokemonLanguageEntry)
         category.entries.add(onlyNearbyChatEntry)
+        val initialForceOfflineMode = config.forceOfflineMode
         builder.setSavingRunnable {
-            if (Minecraft.getInstance().isLocalServer && !config.forceOfflineMode) {
-                clientConfig.offlineMode = false
-                clientConfig.offlineTalkMode = false
-            }
+            val forceOfflineChanged = config.forceOfflineMode != initialForceOfflineMode
             ConfigHandler.save()
             ClientConfigHandler.save()
             SyncedConfig.updateLocal(
@@ -1128,7 +1249,9 @@ object CobblebrainConfigScreen {
                 enableKarma,
                 maxStoredMemories,
                 maxRelevantMemories,
-                config.allowClientPersonalityEditing
+                baseCandidateMemories,
+                config.allowClientPersonalityEditing,
+                enableAiMemoryRetrieval
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)
@@ -1136,6 +1259,11 @@ object CobblebrainConfigScreen {
                 clientConfig.offlineMode || effectiveForceOfflineMode(),
                 clientConfig.offlineTalkMode
             )
+
+            if (forceOfflineChanged) {
+                val currentScreen = Minecraft.getInstance().screen
+                Minecraft.getInstance().setScreen(vito.cobblebrain.client.ForceOfflineNoticeScreen(currentScreen))
+            }
         }
 
         return builder.build()

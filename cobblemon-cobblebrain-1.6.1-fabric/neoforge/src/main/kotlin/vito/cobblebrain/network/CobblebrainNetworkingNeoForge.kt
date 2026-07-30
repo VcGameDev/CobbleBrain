@@ -52,6 +52,12 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendRequestPromptWithMemory(memoryText: String) {
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.RequestPromptWithMemoryPayload(memoryText)
+        )
+    }
+
     fun sendConfig(player: ServerPlayer) {
         val cfg = ConfigHandler.config
 
@@ -69,8 +75,10 @@ object CobblebrainNetworkingNeoForge {
             cfg.enableKarma,
             cfg.maxStoredMemories,
             cfg.maxRelevantMemories,
+            cfg.baseCandidateMemories,
             cfg.allowClientPersonalityEditing,
-            cfg.forceOfflineMode
+            cfg.forceOfflineMode,
+            cfg.enableAiMemoryRetrieval
         )
 
         PacketDistributor.sendToPlayer(player, payload)

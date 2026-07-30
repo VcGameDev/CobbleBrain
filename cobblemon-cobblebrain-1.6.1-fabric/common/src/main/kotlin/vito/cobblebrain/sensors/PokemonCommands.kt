@@ -58,6 +58,7 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.social.PingManager
+import vito.cobblebrain.social.RecentEventsSystem
 import java.util.UUID
 import kotlin.math.cos
 import kotlin.math.sin
@@ -416,6 +417,22 @@ object CommandTickHandler {
             val spd = cobblemonPokemon.speed
             val scaledDamage = 2.0f + (atk * 0.03f)
             val speed = 0.40 + (spd * 0.005)
+
+            // Record ActionEvent when a new action starts (announcedStates changed)
+            val prevAnnounced = announcedStates[pokemonId]
+            if (action != "idle" && action != "eat" && prevAnnounced != action) {
+                val pokemonDisplayName = cobblemonPokemon.nickname?.string ?: cobblemonPokemon.species.name
+                val trigger = RecentEventsSystem.commandSources[pokemonId] ?: RecentEventsSystem.CommandSource.HUD
+                RecentEventsSystem.recordEvent(
+                    cobblemonPokemon.uuid,
+                    RecentEventsSystem.ActionEvent(
+                        pokemonName = pokemonDisplayName,
+                        action = action.uppercase(),
+                        trigger = if (trigger == RecentEventsSystem.CommandSource.AI) "AI" else "Action HUD",
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
 
             when (action) {
                 "grow" -> {
@@ -826,6 +843,29 @@ object CommandTickHandler {
                             } else if (id.namespace == "cobblemon") {
                                 applyCobblemonBerryEffects(pokemon, stack)
                             }
+
+                            val itemName = id.path.replace("_", " ")
+                            // Determine item source using public owner API
+                            val ownerUuidForEat = cobblemonPokemon.getOwnerUUID()
+                            val throwerUuid = (foodItem.owner as? ServerPlayer)?.uuid
+                            val eatSource = when {
+                                throwerUuid != null && throwerUuid == ownerUuidForEat -> "its owner"
+                                throwerUuid != null && server.playerList.getPlayer(throwerUuid) != null -> "another player"
+                                foodItem.owner != null && foodItem.owner !is ServerPlayer -> "an entity"
+                                else -> "the world"
+                            }
+                            val eatTrigger = RecentEventsSystem.commandSources[pokemonId] ?: RecentEventsSystem.CommandSource.HUD
+                            val pokemonDisplayNameEat = cobblemonPokemon.nickname?.string ?: cobblemonPokemon.species.name
+                            RecentEventsSystem.recordEvent(
+                                cobblemonPokemon.uuid,
+                                RecentEventsSystem.EatEvent(
+                                    pokemonName = pokemonDisplayNameEat,
+                                    itemName = itemName,
+                                    source = eatSource,
+                                    trigger = if (eatTrigger == RecentEventsSystem.CommandSource.AI) "AI" else "Action HUD",
+                                    timestamp = System.currentTimeMillis()
+                                )
+                            )
 
                             stack.shrink(1)
                             if (stack.isEmpty) {

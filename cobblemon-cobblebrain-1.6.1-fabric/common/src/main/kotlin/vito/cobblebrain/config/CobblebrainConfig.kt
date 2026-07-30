@@ -29,6 +29,8 @@ data class CobblebrainConfig(
     var onlyNearbyChat: Boolean = false,
     var maxStoredMemories: Int = 100,
     var maxRelevantMemories: Int = 4,
+    var baseCandidateMemories: Int = 10,
+    var enableAiMemoryRetrieval: Boolean = false,
     var useDefaultOutput: Boolean = true,
     var outputDialogue: Boolean = true,
     var outputActions: Boolean = true,

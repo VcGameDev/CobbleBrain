@@ -65,8 +65,10 @@ object CobblebrainPayloads {
         val enableKarma: Boolean,
         val maxStoredMemories: Int,
         val maxRelevantMemories: Int,
+        val baseCandidateMemories: Int,
         val allowClientPersonalityEditing: Boolean,
-        val forceOfflineMode: Boolean
+        val forceOfflineMode: Boolean,
+        val enableAiMemoryRetrieval: Boolean
     ) : CustomPacketPayload {
 
         companion object {
@@ -89,8 +91,10 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.enableKarma)
                         buf.writeInt(payload.maxStoredMemories)
                         buf.writeInt(payload.maxRelevantMemories)
+                        buf.writeInt(payload.baseCandidateMemories)
                         buf.writeBoolean(payload.allowClientPersonalityEditing)
                         buf.writeBoolean(payload.forceOfflineMode)
+                        buf.writeBoolean(payload.enableAiMemoryRetrieval)
                     },
                     { buf ->
                         SyncConfigPayload(
@@ -107,10 +111,27 @@ object CobblebrainPayloads {
                             buf.readBoolean(),
                             buf.readInt(),
                             buf.readInt(),
+                            buf.readInt(),
+                            buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean()
                         )
                     }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    data class RequestPromptWithMemoryPayload(val memoryText: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "request_prompt_memory")
+            val TYPE = CustomPacketPayload.Type<RequestPromptWithMemoryPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestPromptWithMemoryPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.memoryText) },
+                    { buf -> RequestPromptWithMemoryPayload(buf.readUtf()) }
                 )
         }
 

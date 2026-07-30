@@ -16,6 +16,7 @@ object CobblebrainClientCommon {
     var requestPersonalityList: (() -> Unit)? = null
     var savePersonality: ((String, String) -> Unit)? = null
     var deletePersonality: ((String) -> Unit)? = null
+    var sendRequestPromptWithMemory: ((String) -> Unit)? = null
 
     // Callback ao receber do servidor
     var onPersonalityListReceived: ((String) -> Unit)? = null
@@ -40,7 +41,39 @@ object CobblebrainClientCommon {
             return
         }
 
-        // fluxo normal da IA
+        if (vito.cobblebrain.config.SyncedConfig.enableAiMemoryRetrieval && !prompt.contains("[RELEVANT MEMORIES]")) {
+            val playerMessage = if (prompt.contains("[PLAYER_MESSAGE]")) {
+                prompt.substringAfter("[PLAYER_MESSAGE]").substringBefore("[").trim()
+            } else {
+                prompt.lines().lastOrNull { it.isNotBlank() } ?: ""
+            }
+
+            val candidateMemories = mutableListOf<String>()
+            if (prompt.contains("[CANDIDATE_MEMORIES]")) {
+                val block = prompt.substringAfter("[CANDIDATE_MEMORIES]").substringBefore("[/CANDIDATE_MEMORIES]")
+                block.lines().forEach { line ->
+                    val trimmed = line.trim()
+                    if (trimmed.isNotBlank() && !trimmed.startsWith("PLAYER_MESSAGE:")) {
+                        // Remove line number prefix if present (e.g., "1. ")
+                        val text = trimmed.replaceFirst(Regex("^\\d+\\.\\s*"), "")
+                        candidateMemories.add(text)
+                    }
+                }
+            }
+
+            AIClientHandler.executeMemoryRetrieval(playerMessage, candidateMemories).thenAccept { result ->
+                val memoryToSend = if (result.isBlank()) "NO_MEMORY" else result
+                sendRequestPromptWithMemory?.invoke(memoryToSend)
+            }.exceptionally { e ->
+                e.printStackTrace()
+                // Fallback to NO_MEMORY prompt execution
+                sendRequestPromptWithMemory?.invoke("NO_MEMORY")
+                null
+            }
+            return
+        }
+
+        // fluxo normal da IA (quando já reconstruído com RELEVANT MEMORIES ou quando AI memory retrieval está desligado)
         AIClientHandler.sendPrompt(prompt).thenAccept { response ->
             sendToServer?.invoke(response)
         }.exceptionally { e ->

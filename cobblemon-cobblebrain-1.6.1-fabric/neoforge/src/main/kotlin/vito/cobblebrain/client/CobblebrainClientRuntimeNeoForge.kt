@@ -43,6 +43,11 @@ object CobblebrainClientRuntimeNeoForge {
             }
         }
 
+        CobblebrainClientCommon.sendRequestPromptWithMemory = { memoryText ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                CobblebrainNetworkingNeoForge.sendRequestPromptWithMemory(memoryText)
+            }
+        }
         PingClient.sendPingToServer = { pos, direction ->
 
             if (

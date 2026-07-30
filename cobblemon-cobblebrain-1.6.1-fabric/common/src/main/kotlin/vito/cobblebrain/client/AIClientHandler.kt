@@ -16,6 +16,17 @@ object AIClientHandler {
         }
     }
 
+    fun executeMemoryRetrieval(playerMessage: String, candidateMemories: List<String>): CompletableFuture<String> {
+        return CompletableFuture.supplyAsync {
+            try {
+                val handler = createHandler()
+                handler.executeMemoryRetrieval(playerMessage, candidateMemories)
+            } catch (e: Exception) {
+                "NO_MEMORY"
+            }
+        }
+    }
+
     fun sendSummaryPrompt(contextData: String): CompletableFuture<Unit> {
         return CompletableFuture.supplyAsync {
             try {
