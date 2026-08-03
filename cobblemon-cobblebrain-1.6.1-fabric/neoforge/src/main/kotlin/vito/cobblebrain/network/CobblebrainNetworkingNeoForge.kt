@@ -52,6 +52,12 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendVoiceInputToServer(text: String) {
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.VoiceInputPayload(text)
+        )
+    }
+
     fun sendRequestPromptWithMemory(memoryText: String) {
         PacketDistributor.sendToServer(
             CobblebrainPayloads.RequestPromptWithMemoryPayload(memoryText)
@@ -78,7 +84,8 @@ object CobblebrainNetworkingNeoForge {
             cfg.baseCandidateMemories,
             cfg.allowClientPersonalityEditing,
             cfg.forceOfflineMode,
-            cfg.enableAiMemoryRetrieval
+            cfg.enableAiMemoryRetrieval,
+            com.google.gson.Gson().toJson(cfg.actionSettings)
         )
 
         PacketDistributor.sendToPlayer(player, payload)

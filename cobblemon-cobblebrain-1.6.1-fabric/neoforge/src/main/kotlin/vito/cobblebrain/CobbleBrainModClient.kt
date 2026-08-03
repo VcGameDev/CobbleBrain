@@ -57,10 +57,24 @@ object CobbleBrainModClientNeoForge {
         "category.cobblebrain"
     )
 
+    private val KEY_VOICE = KeyMapping(
+        "key.cobblebrain.voice_input",
+        GLFW.GLFW_KEY_H,
+        "category.cobblebrain"
+    )
+
     fun init() {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
         println("Cobblebrain loaded on the client (NeoForge)")
+
+        CobblebrainClientCommon.isMcmtiInstalled = {
+            net.neoforged.fml.ModList.get().isLoaded("mcmti")
+        }
+
+        if (CobblebrainClientCommon.isMcmtiInstalled()) {
+            vito.cobblebrain.client.mcmti.McmtiNeoForgeHandler.register()
+        }
 
         CobblebrainClientCommon.openConfigScreen = {
             Minecraft.getInstance().setScreen(
@@ -77,6 +91,7 @@ object CobbleBrainModClientNeoForge {
         CobblebrainClientCommon.keyExecute = CMD_EXECUTE
         CobblebrainClientCommon.keyToggle = CMD_TOGGLE
         CobblebrainClientCommon.keyPing = KEY_PING
+        CobblebrainClientCommon.keyVoice = KEY_VOICE
     }
 
     // registra keybind
@@ -87,6 +102,7 @@ object CobbleBrainModClientNeoForge {
         event.register(CMD_EXECUTE)
         event.register(CMD_TOGGLE)
         event.register(KEY_PING)
+        event.register(KEY_VOICE)
     }
 
     // tick
@@ -109,6 +125,22 @@ object CobbleBrainModClientNeoForge {
         }
         while (KEY_PING.consumeClick()) {
             vito.cobblebrain.client.PingClient.triggerPingRaycast()
+        }
+        while (KEY_VOICE.consumeClick()) {
+            if (!CobblebrainClientCommon.isMcmtiInstalled()) {
+                Minecraft.getInstance().setScreen(
+                    vito.cobblebrain.client.McmtiNotInstalledNoticeScreen(Minecraft.getInstance().screen)
+                )
+            } else if (!ClientConfigHandler.clientConfig.enableStt) {
+                Minecraft.getInstance().player?.sendSystemMessage(
+                    net.minecraft.network.chat.Component.literal("[CobbleBrain] Speech-to-Text (STT) está desativado nas configurações.")
+                )
+            } else {
+                vito.cobblebrain.client.mcmti.McmtiNeoForgeHandler.awaitingPokemonVoice = true
+                Minecraft.getInstance().player?.sendSystemMessage(
+                    net.minecraft.network.chat.Component.literal("[CobbleBrain STT] Fale no microfone para conversar com seu Pokémon...")
+                )
+            }
         }
     }
 

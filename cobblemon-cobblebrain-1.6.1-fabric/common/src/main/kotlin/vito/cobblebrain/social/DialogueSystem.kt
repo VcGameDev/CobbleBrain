@@ -763,7 +763,7 @@ object DialogueSystem {
     //}
     //}
 
-    fun onPlayerChat(player: ServerPlayer, text: String): Boolean {
+    fun onPlayerChat(player: ServerPlayer, text: String, isStt: Boolean = false): Boolean {
         if (OfflinePlayers.isOffline(player.uuid)) {
             if (OfflinePlayers.isOfflineTalk(player.uuid)) {
                 OfflineDialogueManager.handleOfflineTalk(player)
@@ -789,9 +789,18 @@ object DialogueSystem {
         scheduledMessages[player.uuid]?.clear()
         justSentMessage[player.uuid] = true
         val ativos = PokemonQuery.findActivePokemon(player)
+
+        val formattedText = if (isStt) {
+            "[Voice Input / Speech-to-Text Notice: This player message was transcribed using microphone speech recognition. It may contain transcription or phonetic inaccuracies, particularly regarding Pokémon names, moves, or game terms. Interpret player intent accordingly.]\n\n${player.name.string} said: $text"
+        } else if (text.startsWith("${player.name.string} said:")) {
+            text
+        } else {
+            "${player.name.string} said: $text"
+        }
+
         // Store context for possible rebuildPromptForPlayer after memory search
-        lastPromptContext[player.uuid] = Pair(ativos, "\n\n$text")
-        val prompt = buildPrompt(player, ativos, "\n\n$text")
+        lastPromptContext[player.uuid] = Pair(ativos, "\n\n$formattedText")
+        val prompt = buildPrompt(player, ativos, "\n\n$formattedText")
 
         // envia prompt para o cliente processar
         sendToPlayer?.invoke(player, prompt)

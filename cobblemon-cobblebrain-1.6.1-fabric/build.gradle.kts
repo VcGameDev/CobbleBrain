@@ -27,8 +27,21 @@ allprojects {
         maven("https://maven.architectury.dev/")
         maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
         maven("https://maven.impactdev.net/repository/development/")
-        maven("https://api.modrinth.com/maven")
-        maven("https://maven.terraformersmc.com/releases/")
+        exclusiveContent {
+            forRepository {
+                maven("https://api.modrinth.com/maven")
+            }
+            filter {
+                includeGroup("maven.modrinth")
+                includeGroup("remapped.maven.modrinth")
+                includeGroupByRegex(".*maven\\.modrinth.*")
+            }
+        }
+        maven("https://maven.terraformersmc.com/releases/") {
+            content {
+                includeGroup("com.terraformersmc")
+            }
+        }
         maven("https://maven.shedaniel.me/")
         maven("https://artefacts.cobblemon.com/releases/")
     }

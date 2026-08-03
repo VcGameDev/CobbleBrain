@@ -134,6 +134,17 @@ object CobblebrainPayloadRegistrarNeoForge {
         }
 
         registrar.playToServer(
+            CobblebrainPayloads.VoiceInputPayload.TYPE,
+            CobblebrainPayloads.VoiceInputPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+
+            context.enqueueWork {
+                vito.cobblebrain.social.PokemonTalkCommand.processTalk(player, payload.text, isStt = true)
+            }
+        }
+
+        registrar.playToServer(
             CobblebrainPayloads.PingPayload.TYPE,
             CobblebrainPayloads.PingPayload.CODEC
         ) { payload, context ->

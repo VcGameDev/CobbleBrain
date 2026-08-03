@@ -68,7 +68,8 @@ object CobblebrainPayloads {
         val baseCandidateMemories: Int,
         val allowClientPersonalityEditing: Boolean,
         val forceOfflineMode: Boolean,
-        val enableAiMemoryRetrieval: Boolean
+        val enableAiMemoryRetrieval: Boolean,
+        val actionSettingsJson: String = ""
     ) : CustomPacketPayload {
 
         companion object {
@@ -95,6 +96,7 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.allowClientPersonalityEditing)
                         buf.writeBoolean(payload.forceOfflineMode)
                         buf.writeBoolean(payload.enableAiMemoryRetrieval)
+                        buf.writeUtf(payload.actionSettingsJson)
                     },
                     { buf ->
                         SyncConfigPayload(
@@ -114,7 +116,8 @@ object CobblebrainPayloads {
                             buf.readInt(),
                             buf.readBoolean(),
                             buf.readBoolean(),
-                            buf.readBoolean()
+                            buf.readBoolean(),
+                            buf.readUtf()
                         )
                     }
                 )
@@ -242,6 +245,21 @@ object CobblebrainPayloads {
                             buf.readBoolean()
                         )
                     }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    data class VoiceInputPayload(val text: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "voice_input")
+            val TYPE = CustomPacketPayload.Type<VoiceInputPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, VoiceInputPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.text) },
+                    { buf -> VoiceInputPayload(buf.readUtf()) }
                 )
         }
 

@@ -47,4 +47,101 @@ data class CobblebrainConfig(
     var outputGuaranteedCatch: Boolean = true,
     var allowClientPersonalityEditing: Boolean = true,
     var enableTraits: Boolean = true,
+    var actionSettings: ActionSettings = ActionSettings()
+)
+
+data class BaseActionConfig(
+    var active: Boolean = true
+)
+
+data class FishActionConfig(
+    var active: Boolean = true,
+    var maxFishRewardCount: Int = 5,
+    var luckBonus: Int = 0,
+    var allowTreasureLoot: Boolean = true
+)
+
+data class LightActionConfig(
+    var active: Boolean = true,
+    var lightIntensity: Int = 15
+)
+
+data class CookActionConfig(
+    var active: Boolean = true,
+    var charcoalChancePercent: Int = 5,
+    var cooldownTicks: Int = 22
+)
+
+data class RepairActionConfig(
+    var active: Boolean = true,
+    var maxRepairPercent: Int = 100,
+    var cooldownTicks: Int = 40
+)
+
+data class ScoutActionConfig(
+    var active: Boolean = true,
+    var scoutRadius: Int = 50,
+    var scoutFindStructures: Boolean = true,
+    var scoutHighlightMobs: Boolean = true
+)
+
+data class NightmareActionConfig(
+    var active: Boolean = true,
+    var nightmareRadius: Int = 10,
+    var durationSeconds: Int = 8,
+    var effectLevel: Int = 1,
+    var cooldownSeconds: Int = 120
+)
+
+data class ShiftActionConfig(
+    var active: Boolean = true,
+    var shiftDurationSeconds: Int = 30,
+    var effectLevel: Int = 1,
+    var cooldownSeconds: Int = 240
+)
+
+data class GrowActionConfig(
+    var active: Boolean = true,
+    var growIntervalTicks: Int = 20
+)
+
+data class AttackActionConfig(
+    var active: Boolean = true,
+    var damageMultiplier: Double = 1.0
+)
+
+data class ProtectActionConfig(
+    var active: Boolean = true,
+    var damageMultiplier: Double = 1.0
+)
+
+data class BuffActionConfig(
+    var active: Boolean = true,
+    var durationSeconds: Int = 30,
+    var effectLevel: Int = 1
+)
+
+data class DebuffEnemyActionConfig(
+    var active: Boolean = true,
+    var durationSeconds: Int = 15,
+    var effectLevel: Int = 1
+)
+
+data class ActionSettings(
+    var cook: CookActionConfig = CookActionConfig(),
+    var grow: GrowActionConfig = GrowActionConfig(),
+    var repair: RepairActionConfig = RepairActionConfig(),
+    var shift: ShiftActionConfig = ShiftActionConfig(),
+    var fish: FishActionConfig = FishActionConfig(),
+    var nightmare: NightmareActionConfig = NightmareActionConfig(),
+    var light: LightActionConfig = LightActionConfig(),
+    var scout: ScoutActionConfig = ScoutActionConfig(),
+    var teleport: BaseActionConfig = BaseActionConfig(),
+    var attack: AttackActionConfig = AttackActionConfig(),
+    var protect: ProtectActionConfig = ProtectActionConfig(),
+    var eat: BaseActionConfig = BaseActionConfig(),
+    var buff: BuffActionConfig = BuffActionConfig(),
+    var debuffEnemy: DebuffEnemyActionConfig = DebuffEnemyActionConfig(),
+    var sit: BaseActionConfig = BaseActionConfig(),
+    var idle: BaseActionConfig = BaseActionConfig()
 )

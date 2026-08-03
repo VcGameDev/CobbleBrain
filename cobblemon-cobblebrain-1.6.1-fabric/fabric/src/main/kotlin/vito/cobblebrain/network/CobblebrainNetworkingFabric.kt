@@ -32,6 +32,10 @@ object CobblebrainNetworkingFabric {
         ClientPlayNetworking.send(CobblebrainPayloads.ActionPayload(action))
     }
 
+    fun sendVoiceInputToServer(text: String) {
+        ClientPlayNetworking.send(CobblebrainPayloads.VoiceInputPayload(text))
+    }
+
     fun sendConfig(player: ServerPlayer) {
         val payload = CobblebrainPayloads.SyncConfigPayload(
             config.useDefaultOutput,
@@ -50,7 +54,8 @@ object CobblebrainNetworkingFabric {
             config.baseCandidateMemories,
             config.allowClientPersonalityEditing,
             config.forceOfflineMode,
-            config.enableAiMemoryRetrieval
+            config.enableAiMemoryRetrieval,
+            com.google.gson.Gson().toJson(config.actionSettings)
         )
 
         ServerPlayNetworking.send(player, payload)

@@ -484,8 +484,8 @@ object CommandTickHandler {
                                     }
                                 }
 
-                                // aplica cooldown de 40 ticks (~2s)
-                                growCooldowns[pokemonId] = 40
+                                // aplica cooldown configurado em growIntervalTicks
+                                growCooldowns[pokemonId] = config.actionSettings.grow.growIntervalTicks.coerceAtLeast(1)
 
                                 // partículas verdes claras
                                 val option = DustParticleOptions(Vector3f(0.5f, 1.0f, 0.5f), 1.0f)
@@ -578,8 +578,8 @@ object CommandTickHandler {
                                             result.count = stack.count
                                             target.item = result
 
-                                            // cooldown por Pokémon (22 ticks ~1.1s)
-                                            cookCooldown[pokemonId] = 22
+                                            // cooldown por Pokémon (configurado via cooldownTicks)
+                                            cookCooldown[pokemonId] = config.actionSettings.cook.cooldownTicks.coerceAtLeast(1)
 
                                             // partículas simples e confiáveis
                                             repeat(20) {
@@ -615,7 +615,8 @@ object CommandTickHandler {
                                             )
 
                                             // chance de transformar UM item em carvão
-                                            if (level.random.nextFloat() < 0.05f && !target.item.isEmpty) {
+                                            val charcoalChance = (config.actionSettings.cook.charcoalChancePercent / 100.0f).coerceIn(0.0f, 1.0f)
+                                            if (level.random.nextFloat() < charcoalChance && !target.item.isEmpty) {
                                                 val stack = target.item
                                                 stack.shrink(1)
                                                 val coal = ItemStack(Items.COAL, 1)
@@ -694,7 +695,8 @@ object CommandTickHandler {
 
                     val cd = attackCooldowns.getOrDefault(pokemonId, 0)
                     if (inRange && cd <= 0) {
-                        finalTarget.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage)
+                        val mult = config.actionSettings.attack.damageMultiplier.coerceAtLeast(0.1).toFloat()
+                        finalTarget.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage * mult)
                         pokemon.swing(InteractionHand.MAIN_HAND)
                         attackCooldowns[pokemonId] = 10
                     } else {
@@ -764,7 +766,8 @@ object CommandTickHandler {
 
                     val cd = attackCooldowns.getOrDefault(pokemonId, 0)
                     if (inRange && cd <= 0) {
-                        finalTarget.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage)
+                        val mult = config.actionSettings.protect.damageMultiplier.coerceAtLeast(0.1).toFloat()
+                        finalTarget.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage * mult)
                         pokemon.swing(InteractionHand.MAIN_HAND)
                         attackCooldowns[pokemonId] = 10
                     } else {
@@ -982,7 +985,9 @@ object CommandTickHandler {
                         val effectName =
                             BuiltInRegistries.MOB_EFFECT.getKey(effectHolder.value())?.path?.uppercase()
 
-                        finalTarget.addEffect(MobEffectInstance(effectHolder, 600, 1)) // 30 segundos
+                        val debuffDur = config.actionSettings.debuffEnemy.durationSeconds.coerceAtLeast(1) * 20
+                        val debuffAmp = (config.actionSettings.debuffEnemy.effectLevel - 1).coerceAtLeast(0)
+                        finalTarget.addEffect(MobEffectInstance(effectHolder, debuffDur, debuffAmp))
                         pokemon.swing(InteractionHand.MAIN_HAND)
 
                         sendMessage(
@@ -1042,7 +1047,9 @@ object CommandTickHandler {
 
                     val effectName = BuiltInRegistries.MOB_EFFECT.getKey(effectHolder.value())?.path?.uppercase()
 
-                    owner.addEffect(MobEffectInstance(effectHolder, 600, 1)) // 30 segundos
+                    val buffDur = config.actionSettings.buff.durationSeconds.coerceAtLeast(1) * 20
+                    val buffAmp = (config.actionSettings.buff.effectLevel - 1).coerceAtLeast(0)
+                    owner.addEffect(MobEffectInstance(effectHolder, buffDur, buffAmp))
                     CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "BuffCD", now + 150000) // 2:30 = 150s
                     PokemonCommands.syncCooldowns(owner)
                     
@@ -1067,7 +1074,7 @@ object CommandTickHandler {
                         "steel" -> {
                             val now = System.currentTimeMillis()
                             val lastRepairEnd = CobblebrainWorldSave.getPlayerCooldown(owner.uuid.toString(), "RepairCD")
-                            val repairDuration = 300000L
+                            val repairDuration = config.actionSettings.repair.cooldownTicks * 50L
 
                             // Janela de carência de 2s
                             if (now < lastRepairEnd && (lastRepairEnd - now) < (repairDuration - 2000)) {
@@ -1098,8 +1105,10 @@ object CommandTickHandler {
 
                             if (target != null) {
                                 val stack = target.item
-                                stack.damageValue = (stack.damageValue - 60).coerceAtLeast(0)
-                                CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "RepairCD", now + 300000) // 5 min
+                                val maxDur = stack.maxDamage
+                                val minDamageAllowed = maxDur - (maxDur * config.actionSettings.repair.maxRepairPercent.coerceIn(1, 100) / 100)
+                                stack.damageValue = (stack.damageValue - 60).coerceAtLeast(minDamageAllowed)
+                                CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "RepairCD", now + repairDuration)
                                 PokemonCommands.syncCooldowns(owner)
 
                                 pokemon.swing(InteractionHand.MAIN_HAND)
@@ -1117,13 +1126,11 @@ object CommandTickHandler {
                                     "${pokemon.displayName?.string} REPAIRED your dropped weapon a bit!",
                                     ChatFormatting.GREEN
                                 )
-
                                 CommandState.activeCommands[pokemonId] = "idle"
                             }
                         }
                     }
                 }
-
 
                 "shift" -> {
                     val ownerUUID = pokemon.ownerUUID ?: return@forEach
@@ -1134,10 +1141,10 @@ object CommandTickHandler {
                         "ghost" -> {
                             val now = System.currentTimeMillis()
                             val lastShiftEnd = CobblebrainWorldSave.getPlayerCooldown(owner.uuid.toString(), "ShiftCD")
-                            val shiftDuration = 240000L
+                            val shiftDuration = config.actionSettings.shift.cooldownSeconds * 1000L
 
                             // Janela de carência de 2s
-                            if (now < lastShiftEnd && (lastShiftEnd - now) < (shiftDuration - 2000)) { // 4:00 cooldown
+                            if (now < lastShiftEnd && (lastShiftEnd - now) < (shiftDuration - 2000)) {
                                 if (announcedStates[pokemonId] == "shift") {
                                     sendMessage(owner, "${pokemon.displayName?.string} is recharging SHIFT...", ChatFormatting.GOLD)
                                 }
@@ -1162,16 +1169,17 @@ object CommandTickHandler {
                                 )
                             }
 
-                            // aplica/renova os efeitos (1 MINUTO)
-                            val duration = 1200 
-                            owner.addEffect(MobEffectInstance(MobEffects.INVISIBILITY, duration, 0))
-                            owner.addEffect(MobEffectInstance(MobEffects.JUMP, duration, 2))
-                            owner.addEffect(MobEffectInstance(MobEffects.SLOW_FALLING, duration, 0))
-                            owner.addEffect(MobEffectInstance(MobEffects.WEAKNESS, duration, 2))
-                            owner.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, duration, 2))
+                            // aplica/renova os efeitos (configurado via shiftDurationSeconds e effectLevel)
+                            val duration = config.actionSettings.shift.shiftDurationSeconds.coerceAtLeast(1) * 20
+                            val amp = (config.actionSettings.shift.effectLevel - 1).coerceAtLeast(0)
+                            owner.addEffect(MobEffectInstance(MobEffects.INVISIBILITY, duration, amp))
+                            owner.addEffect(MobEffectInstance(MobEffects.JUMP, duration, amp + 2))
+                            owner.addEffect(MobEffectInstance(MobEffects.SLOW_FALLING, duration, amp))
+                            owner.addEffect(MobEffectInstance(MobEffects.WEAKNESS, duration, amp + 2))
+                            owner.addEffect(MobEffectInstance(MobEffects.MOVEMENT_SPEED, duration, amp + 2))
 
                             pokemon.swing(InteractionHand.MAIN_HAND)
-                            CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "ShiftCD", now + 240000) // 4:00 = 240s
+                            CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "ShiftCD", now + shiftDuration)
                             PokemonCommands.syncCooldowns(owner)
 
                             if (announcedStates[pokemonId] != "shift") {
@@ -1502,10 +1510,12 @@ object CommandTickHandler {
                             return@forEach
                         }
 
-                        nightmareDuration[pokemonId] = 160
-                        nightmareCooldown[pokemonId] = 2400
+                        val durTicks = config.actionSettings.nightmare.durationSeconds.coerceAtLeast(1) * 20
+                        val cdTicks = config.actionSettings.nightmare.cooldownSeconds.coerceAtLeast(1) * 20
+                        nightmareDuration[pokemonId] = durTicks
+                        nightmareCooldown[pokemonId] = cdTicks
 
-                        duration = 160
+                        duration = durTicks
 
                         sendMessage(
                             owner,
@@ -1596,9 +1606,10 @@ object CommandTickHandler {
                             .isAir
                     ) {
 
+                        val levelVal = config.actionSettings.light.lightIntensity.coerceIn(1, 15)
                         level.setBlockAndUpdate(
                             currentPos,
-                            Blocks.LIGHT.defaultBlockState()
+                            Blocks.LIGHT.defaultBlockState().setValue(net.minecraft.world.level.block.LightBlock.LEVEL, levelVal)
                         )
 
                         lightBlocks[pokemonId] =
@@ -2594,7 +2605,7 @@ fun generateFishingLoot(
     deepSpot: Boolean
 ): ItemStack {
 
-    var rolls = 1
+    var rolls = 1 + config.actionSettings.fish.luckBonus.coerceAtLeast(0)
 
     if (pokemon.pokemon.friendship >= 180)
         rolls++
@@ -2612,8 +2623,10 @@ fun generateFishingLoot(
 
         val roll = level.random.nextDouble()
 
+        val allowTreasure = config.actionSettings.fish.allowTreasureLoot
         val treasureChance =
-            if (deepSpot) 0.15
+            if (!allowTreasure) 0.0
+            else if (deepSpot) 0.15
             else 0.05
 
         val junkChance = 0.10
@@ -2668,6 +2681,8 @@ fun generateFishingLoot(
         }
     }
 
+    val maxRewards = config.actionSettings.fish.maxFishRewardCount.coerceAtLeast(1)
+    bestItem.count = if (maxRewards > 1) (1..maxRewards).random() else 1
     return bestItem
 }
 
@@ -2831,7 +2846,7 @@ fun applyNightmareAura(
     pokemon: PokemonEntity,
 ) {
 
-    val radius = 5.0
+    val radius = config.actionSettings.nightmare.nightmareRadius.coerceAtLeast(1).toDouble()
 
     val entities =
         level.getEntitiesOfClass(
@@ -2842,13 +2857,15 @@ fun applyNightmareAura(
                     isEnemy(pokemon, it)
         }
 
+    val nightmareAmp = (config.actionSettings.nightmare.effectLevel - 1).coerceAtLeast(0)
+
     entities.forEach { target ->
 
         target.addEffect(
             MobEffectInstance(
                 MobEffects.WEAKNESS,
                 60,
-                0
+                nightmareAmp
             )
         )
 

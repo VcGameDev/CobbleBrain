@@ -111,6 +111,11 @@ object CobblebrainMod : ModInitializer {
         )
 
         PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.VoiceInputPayload.TYPE,
+            CobblebrainPayloads.VoiceInputPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.OfflineSettingsPayload.TYPE,
             CobblebrainPayloads.OfflineSettingsPayload.CODEC
         )

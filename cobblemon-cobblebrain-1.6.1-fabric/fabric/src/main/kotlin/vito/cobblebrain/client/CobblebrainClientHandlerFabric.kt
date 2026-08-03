@@ -25,6 +25,14 @@ object CobblebrainClientHandlerFabric {
             )
         }
 
+        CobblebrainClientCommon.sendVoiceInputToServer = { text ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(
+                    CobblebrainPayloads.VoiceInputPayload(text)
+                )
+            }
+        }
+
         CobblebrainClientCommon.sendNicknameToServer = { nickname ->
             if (net.minecraft.client.Minecraft.getInstance().player != null) {
                 ClientPlayNetworking.send(

@@ -12,7 +12,7 @@ import kotlin.math.sin
 object HudSystem {
 
     // Lista de comandos disponíveis
-    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT")
+    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "SIT")
     private var selectedActionIndex = 0
     private var isVisible = true
     private val cooldowns = mutableMapOf<String, Long>()
@@ -32,6 +32,9 @@ object HudSystem {
     private fun isCommandAvailable(
         command: String
     ): Boolean {
+        if (!vito.cobblebrain.config.SyncedConfig.isActionActive(command)) {
+            return false
+        }
 
         val requiredType =
             actionRequirements[

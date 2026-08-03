@@ -146,15 +146,39 @@ class AIHandler {
         Generate exactly one memory at the end of each conversation.
         """
 
-        const val ACTION = """
-        ACTION FORMAT
-        Use actions only when appropriate to the dialogue, environment, or situation.
-        Format: #<PokemonName>:<action_code>
-        Action codes:
-        A (attack a mob), E (eat/ask for food), B (buff owner), D (debuff enemy), S (sit), P (protect owner/attack agressive mobs), I (idle)
-        fire type: C (cook/smelt ores) | steel type: R (repair tools) | grass type: G (grow crops/saplings) | ghost type: SH (shift)
-        | dark type: N (nightmare aura) | fly type: SC (scout) | eletric type: L (light)
-        """
+        fun getActionSection(): String {
+            val available = mutableListOf<String>()
+
+            if (SyncedConfig.isActionActive("attack")) available += "A (attack a mob)"
+            if (SyncedConfig.isActionActive("eat")) available += "E (eat/ask for food)"
+            if (SyncedConfig.isActionActive("buff")) available += "B (buff owner)"
+            if (SyncedConfig.isActionActive("debuff_enemy")) available += "D (debuff enemy)"
+            if (SyncedConfig.isActionActive("sit")) available += "S (sit)"
+            if (SyncedConfig.isActionActive("protect")) available += "P (protect owner/attack agressive mobs)"
+            if (SyncedConfig.isActionActive("idle")) available += "I (idle)"
+
+            val typeActions = mutableListOf<String>()
+            if (SyncedConfig.isActionActive("cook")) typeActions += "fire type: C (cook/smelt ores)"
+            if (SyncedConfig.isActionActive("repair")) typeActions += "steel type: R (repair tools)"
+            if (SyncedConfig.isActionActive("grow")) typeActions += "grass type: G (grow crops/saplings)"
+            if (SyncedConfig.isActionActive("shift")) typeActions += "ghost type: SH (shift)"
+            if (SyncedConfig.isActionActive("nightmare")) typeActions += "dark type: N (nightmare aura)"
+            if (SyncedConfig.isActionActive("scout")) typeActions += "fly type: SC (scout)"
+            if (SyncedConfig.isActionActive("light")) typeActions += "electric type: L (light)"
+            if (SyncedConfig.isActionActive("fish")) typeActions += "water type: F (fish)"
+            //if (vito.cobblebrain.config.SyncedConfig.isActionActive("teleport")) typeActions += "psychic type: T (teleport)"
+
+            if (available.isEmpty() && typeActions.isEmpty()) return ""
+
+            return buildString {
+                appendLine("ACTION FORMAT")
+                appendLine("Use actions only when appropriate to the dialogue, environment, or situation.")
+                appendLine("Format: #<PokemonName>:<action_code>")
+                appendLine("Action codes:")
+                if (available.isNotEmpty()) appendLine(available.joinToString(", "))
+                if (typeActions.isNotEmpty()) appendLine(typeActions.joinToString(" | "))
+            }.trim()
+        }
 
         const val CATCH = """
         GUARANTEED CATCH FORMAT
@@ -277,7 +301,10 @@ class AIHandler {
 
         if (friendship) sections += FRIENDSHIP
         if (memories) sections += MEMORY
-        if (actions) sections += ACTION
+        if (actions) {
+            val actionSec = getActionSection()
+            if (actionSec.isNotBlank()) sections += actionSec
+        }
         if (psychicTranslation) sections += PSYCHIC_TRANSLATION
         
         if (guaranteedCatch && dialogue) {

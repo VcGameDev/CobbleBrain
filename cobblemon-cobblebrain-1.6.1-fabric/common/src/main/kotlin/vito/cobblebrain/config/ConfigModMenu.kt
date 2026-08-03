@@ -115,6 +115,429 @@ object CobblebrainConfigScreen {
         }
     }
 
+    fun makeButtonEntry(text: Component, onClick: () -> Unit): AbstractConfigListEntry<Unit> {
+        return object : AbstractConfigListEntry<Unit>(text, false) {
+            private val button: net.minecraft.client.gui.components.Button =
+                net.minecraft.client.gui.components.Button.builder(text) {
+                    Minecraft.getInstance().player?.playSound(SoundEvents.UI_BUTTON_CLICK.value(), 1.0f, 1.0f)
+                    onClick()
+                }.bounds(0, 0, 260, 20).build()
+
+            override fun getValue(): Unit? = null
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+            override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+            override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+                button.x = x + (listWidth / 2) - 130
+                button.y = y
+                button.render(guiGraphics, mouseX, mouseY, delta)
+            }
+
+            override fun getItemHeight(): Int = 24
+        }
+    }
+
+    fun createActionManagerScreen(parentScreen: Screen?): Screen {
+        val mc = Minecraft.getInstance()
+        if (mc.level == null || mc.player == null) {
+            val builder = ConfigBuilder.create()
+                .setParentScreen(parentScreen)
+                .setTitle(Component.translatable("cobblebrain.config.action_manager.title"))
+
+            val category = builder.getOrCreateCategory(Component.literal("Actions"))
+            category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFF5555))
+            category.entries.add(makeSpacer(10))
+            category.entries.add(makeDescriptionEntry(Component.translatable("cobblebrain.config.action_manager.no_world_line1").string, 0xFF5555, 14))
+            category.entries.add(makeDescriptionEntry(Component.translatable("cobblebrain.config.action_manager.no_world_line2").string, 0xAAAAAA, 12))
+            return builder.build()
+        }
+
+        val builder = ConfigBuilder.create()
+            .setParentScreen(parentScreen)
+            .setTitle(Component.translatable("cobblebrain.config.action_manager.title"))
+
+        val category = builder.getOrCreateCategory(Component.literal("Actions"))
+        val actionKeys = listOf(
+            "cook", "grow", "repair", "shift", "fish", "nightmare", "light", "scout",
+            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "sit", "idle"
+        )
+
+        category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFFFF00))
+        category.entries.add(makeDescriptionEntry("Configure active state and custom options for each action.", 0xAAAAAA, 14))
+        category.entries.add(makeSpacer(8))
+
+        for (key in actionKeys) {
+            val actionTransName = Component.translatable("cobblebrain.action.$key").string
+            val isActive = SyncedConfig.isActionActive(key)
+            val statusText = if (isActive) "✔ [ACTIVE]" else "❌ [DISABLED]"
+            val buttonText = Component.literal("$statusText $actionTransName")
+
+            val entry = makeButtonEntry(buttonText) {
+                val detailScreen = createActionDetailScreen(parentScreen, key)
+                Minecraft.getInstance().setScreen(detailScreen)
+            }
+            category.entries.add(entry)
+        }
+
+        return builder.build()
+    }
+
+    fun createActionDetailScreen(mainConfigParent: Screen?, actionKey: String): Screen {
+        val actionTransName = Component.translatable("cobblebrain.action.$actionKey").string
+        val builder = ConfigBuilder.create()
+            .setParentScreen(createActionManagerScreen(mainConfigParent))
+            .setTitle(Component.literal("Action Settings: $actionTransName"))
+
+        val entryBuilder = builder.entryBuilder()
+        val category = builder.getOrCreateCategory(Component.literal("Action Options"))
+
+        val mc = Minecraft.getInstance()
+        val actionSettings = if (mc.isLocalServer) config.actionSettings else SyncedConfig.actionSettings
+
+        var activeVal = when (actionKey) {
+            "cook" -> actionSettings.cook.active
+            "grow" -> actionSettings.grow.active
+            "repair" -> actionSettings.repair.active
+            "shift" -> actionSettings.shift.active
+            "fish" -> actionSettings.fish.active
+            "nightmare" -> actionSettings.nightmare.active
+            "light" -> actionSettings.light.active
+            "scout" -> actionSettings.scout.active
+            "teleport" -> actionSettings.teleport.active
+            "attack" -> actionSettings.attack.active
+            "protect" -> actionSettings.protect.active
+            "eat" -> actionSettings.eat.active
+            "buff" -> actionSettings.buff.active
+            "debuff_enemy" -> actionSettings.debuffEnemy.active
+            "sit" -> actionSettings.sit.active
+            "idle" -> actionSettings.idle.active
+            else -> true
+        }
+
+        var maxFishRewardsVal = actionSettings.fish.maxFishRewardCount
+        var fishLuckBonusVal = actionSettings.fish.luckBonus
+        var fishAllowTreasureVal = actionSettings.fish.allowTreasureLoot
+
+        var lightIntensityVal = actionSettings.light.lightIntensity
+
+        var charcoalChanceVal = actionSettings.cook.charcoalChancePercent
+        var cookCooldownTicksVal = actionSettings.cook.cooldownTicks
+
+        var maxRepairVal = actionSettings.repair.maxRepairPercent
+        var repairCooldownTicksVal = actionSettings.repair.cooldownTicks
+
+        var scoutRadiusVal = actionSettings.scout.scoutRadius
+        var scoutFindStructuresVal = actionSettings.scout.scoutFindStructures
+        var scoutHighlightMobsVal = actionSettings.scout.scoutHighlightMobs
+
+        var nightmareRadiusVal = actionSettings.nightmare.nightmareRadius
+        var nightmareDurationVal = actionSettings.nightmare.durationSeconds
+        var nightmareEffectLevelVal = actionSettings.nightmare.effectLevel
+        var nightmareCooldownVal = actionSettings.nightmare.cooldownSeconds
+
+        var shiftDurationVal = actionSettings.shift.shiftDurationSeconds
+        var shiftEffectLevelVal = actionSettings.shift.effectLevel
+        var shiftCooldownVal = actionSettings.shift.cooldownSeconds
+
+        var growIntervalTicksVal = actionSettings.grow.growIntervalTicks
+
+        var attackDamageMultVal = actionSettings.attack.damageMultiplier
+        var protectDamageMultVal = actionSettings.protect.damageMultiplier
+
+        var buffDurationVal = actionSettings.buff.durationSeconds
+        var buffEffectLevelVal = actionSettings.buff.effectLevel
+
+        var debuffDurationVal = actionSettings.debuffEnemy.durationSeconds
+        var debuffEffectLevelVal = actionSettings.debuffEnemy.effectLevel
+
+        val activeEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.action.active"),
+            activeVal
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> activeVal = value }
+            .setTooltip(Component.translatable("cobblebrain.config.action.active.tooltip"))
+            .build()
+
+        category.entries.add(makeSubtitleEntry("ACTION: $actionTransName (SERVER)", 0xFFFF00))
+        category.entries.add(activeEntry)
+
+        when (actionKey) {
+            "fish" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.fish.max_rewards"),
+                    maxFishRewardsVal
+                ).setDefaultValue(5).setMin(1).setMax(64)
+                    .setSaveConsumer { value -> maxFishRewardsVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.fish.max_rewards.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.fish.luck_bonus"),
+                    fishLuckBonusVal
+                ).setDefaultValue(0).setMin(0).setMax(10)
+                    .setSaveConsumer { value -> fishLuckBonusVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.fish.luck_bonus.tooltip")).build())
+
+                category.entries.add(entryBuilder.startBooleanToggle(
+                    Component.translatable("cobblebrain.config.action.fish.allow_treasure"),
+                    fishAllowTreasureVal
+                ).setDefaultValue(true)
+                    .setSaveConsumer { value -> fishAllowTreasureVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.fish.allow_treasure.tooltip")).build())
+            }
+            "light" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.light.intensity"),
+                    lightIntensityVal
+                ).setDefaultValue(15).setMin(1).setMax(15)
+                    .setSaveConsumer { value -> lightIntensityVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.light.intensity.tooltip")).build())
+            }
+            "cook" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.cook.charcoal_chance"),
+                    charcoalChanceVal
+                ).setDefaultValue(5).setMin(0).setMax(100)
+                    .setSaveConsumer { value -> charcoalChanceVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.cook.charcoal_chance.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.cook.cooldown_ticks"),
+                    cookCooldownTicksVal
+                ).setDefaultValue(22).setMin(1).setMax(1200)
+                    .setSaveConsumer { value -> cookCooldownTicksVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.cook.cooldown_ticks.tooltip")).build())
+            }
+            "repair" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.repair.max_percent"),
+                    maxRepairVal
+                ).setDefaultValue(100).setMin(1).setMax(100)
+                    .setSaveConsumer { value -> maxRepairVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.repair.max_percent.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.repair.cooldown_ticks"),
+                    repairCooldownTicksVal
+                ).setDefaultValue(40).setMin(1).setMax(1200)
+                    .setSaveConsumer { value -> repairCooldownTicksVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.repair.cooldown_ticks.tooltip")).build())
+            }
+            "scout" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.scout.radius"),
+                    scoutRadiusVal
+                ).setDefaultValue(50).setMin(5).setMax(200)
+                    .setSaveConsumer { value -> scoutRadiusVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.scout.radius.tooltip")).build())
+
+                category.entries.add(entryBuilder.startBooleanToggle(
+                    Component.translatable("cobblebrain.config.action.scout.find_structures"),
+                    scoutFindStructuresVal
+                ).setDefaultValue(true)
+                    .setSaveConsumer { value -> scoutFindStructuresVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.scout.find_structures.tooltip")).build())
+
+                category.entries.add(entryBuilder.startBooleanToggle(
+                    Component.translatable("cobblebrain.config.action.scout.highlight_mobs"),
+                    scoutHighlightMobsVal
+                ).setDefaultValue(true)
+                    .setSaveConsumer { value -> scoutHighlightMobsVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.scout.highlight_mobs.tooltip")).build())
+            }
+            "nightmare" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.nightmare.radius"),
+                    nightmareRadiusVal
+                ).setDefaultValue(10).setMin(1).setMax(50)
+                    .setSaveConsumer { value -> nightmareRadiusVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.nightmare.radius.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.duration"),
+                    nightmareDurationVal
+                ).setDefaultValue(8).setMin(1).setMax(120)
+                    .setSaveConsumer { value -> nightmareDurationVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.duration.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.effect_level"),
+                    nightmareEffectLevelVal
+                ).setDefaultValue(1).setMin(1).setMax(5)
+                    .setSaveConsumer { value -> nightmareEffectLevelVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.effect_level.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.cooldown"),
+                    nightmareCooldownVal
+                ).setDefaultValue(120).setMin(1).setMax(600)
+                    .setSaveConsumer { value -> nightmareCooldownVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.cooldown.tooltip")).build())
+            }
+            "shift" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.shift.duration"),
+                    shiftDurationVal
+                ).setDefaultValue(30).setMin(5).setMax(300)
+                    .setSaveConsumer { value -> shiftDurationVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.shift.duration.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.effect_level"),
+                    shiftEffectLevelVal
+                ).setDefaultValue(1).setMin(1).setMax(5)
+                    .setSaveConsumer { value -> shiftEffectLevelVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.effect_level.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.cooldown"),
+                    shiftCooldownVal
+                ).setDefaultValue(240).setMin(1).setMax(600)
+                    .setSaveConsumer { value -> shiftCooldownVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.cooldown.tooltip")).build())
+            }
+            "grow" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.grow.interval_ticks"),
+                    growIntervalTicksVal
+                ).setDefaultValue(20).setMin(1).setMax(200)
+                    .setSaveConsumer { value -> growIntervalTicksVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.grow.interval_ticks.tooltip")).build())
+            }
+            "attack" -> {
+                category.entries.add(entryBuilder.startDoubleField(
+                    Component.translatable("cobblebrain.config.action.damage_multiplier"),
+                    attackDamageMultVal
+                ).setDefaultValue(1.0).setMin(0.1).setMax(10.0)
+                    .setSaveConsumer { value -> attackDamageMultVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.damage_multiplier.tooltip")).build())
+            }
+            "protect" -> {
+                category.entries.add(entryBuilder.startDoubleField(
+                    Component.translatable("cobblebrain.config.action.damage_multiplier"),
+                    protectDamageMultVal
+                ).setDefaultValue(1.0).setMin(0.1).setMax(10.0)
+                    .setSaveConsumer { value -> protectDamageMultVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.damage_multiplier.tooltip")).build())
+            }
+            "buff" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.duration"),
+                    buffDurationVal
+                ).setDefaultValue(30).setMin(1).setMax(300)
+                    .setSaveConsumer { value -> buffDurationVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.duration.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.effect_level"),
+                    buffEffectLevelVal
+                ).setDefaultValue(1).setMin(1).setMax(5)
+                    .setSaveConsumer { value -> buffEffectLevelVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.effect_level.tooltip")).build())
+            }
+            "debuff_enemy" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.duration"),
+                    debuffDurationVal
+                ).setDefaultValue(15).setMin(1).setMax(300)
+                    .setSaveConsumer { value -> debuffDurationVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.duration.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.effect_level"),
+                    debuffEffectLevelVal
+                ).setDefaultValue(1).setMin(1).setMax(5)
+                    .setSaveConsumer { value -> debuffEffectLevelVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.effect_level.tooltip")).build())
+            }
+        }
+
+        builder.setSavingRunnable {
+            val cfg = config
+            when (actionKey) {
+                "cook" -> {
+                    cfg.actionSettings.cook.active = activeVal
+                    cfg.actionSettings.cook.charcoalChancePercent = charcoalChanceVal
+                    cfg.actionSettings.cook.cooldownTicks = cookCooldownTicksVal
+                }
+                "grow" -> {
+                    cfg.actionSettings.grow.active = activeVal
+                    cfg.actionSettings.grow.growIntervalTicks = growIntervalTicksVal
+                }
+                "repair" -> {
+                    cfg.actionSettings.repair.active = activeVal
+                    cfg.actionSettings.repair.maxRepairPercent = maxRepairVal
+                    cfg.actionSettings.repair.cooldownTicks = repairCooldownTicksVal
+                }
+                "shift" -> {
+                    cfg.actionSettings.shift.active = activeVal
+                    cfg.actionSettings.shift.shiftDurationSeconds = shiftDurationVal
+                    cfg.actionSettings.shift.effectLevel = shiftEffectLevelVal
+                    cfg.actionSettings.shift.cooldownSeconds = shiftCooldownVal
+                }
+                "fish" -> {
+                    cfg.actionSettings.fish.active = activeVal
+                    cfg.actionSettings.fish.maxFishRewardCount = maxFishRewardsVal
+                    cfg.actionSettings.fish.luckBonus = fishLuckBonusVal
+                    cfg.actionSettings.fish.allowTreasureLoot = fishAllowTreasureVal
+                }
+                "nightmare" -> {
+                    cfg.actionSettings.nightmare.active = activeVal
+                    cfg.actionSettings.nightmare.nightmareRadius = nightmareRadiusVal
+                    cfg.actionSettings.nightmare.durationSeconds = nightmareDurationVal
+                    cfg.actionSettings.nightmare.effectLevel = nightmareEffectLevelVal
+                    cfg.actionSettings.nightmare.cooldownSeconds = nightmareCooldownVal
+                }
+                "light" -> {
+                    cfg.actionSettings.light.active = activeVal
+                    cfg.actionSettings.light.lightIntensity = lightIntensityVal
+                }
+                "scout" -> {
+                    cfg.actionSettings.scout.active = activeVal
+                    cfg.actionSettings.scout.scoutRadius = scoutRadiusVal
+                    cfg.actionSettings.scout.scoutFindStructures = scoutFindStructuresVal
+                    cfg.actionSettings.scout.scoutHighlightMobs = scoutHighlightMobsVal
+                }
+                "teleport" -> cfg.actionSettings.teleport.active = activeVal
+                "attack" -> {
+                    cfg.actionSettings.attack.active = activeVal
+                    cfg.actionSettings.attack.damageMultiplier = attackDamageMultVal
+                }
+                "protect" -> {
+                    cfg.actionSettings.protect.active = activeVal
+                    cfg.actionSettings.protect.damageMultiplier = protectDamageMultVal
+                }
+                "eat" -> cfg.actionSettings.eat.active = activeVal
+                "buff" -> {
+                    cfg.actionSettings.buff.active = activeVal
+                    cfg.actionSettings.buff.durationSeconds = buffDurationVal
+                    cfg.actionSettings.buff.effectLevel = buffEffectLevelVal
+                }
+                "debuff_enemy" -> {
+                    cfg.actionSettings.debuffEnemy.active = activeVal
+                    cfg.actionSettings.debuffEnemy.durationSeconds = debuffDurationVal
+                    cfg.actionSettings.debuffEnemy.effectLevel = debuffEffectLevelVal
+                }
+                "sit" -> cfg.actionSettings.sit.active = activeVal
+                "idle" -> cfg.actionSettings.idle.active = activeVal
+            }
+            ConfigHandler.save()
+        }
+
+        return builder.build()
+    }
+
     private fun <T> getConfigValue(
         synced: T,
         local: T
@@ -682,6 +1105,59 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.psychic_translation.tooltip"))
             .build()
 
+        val sttEntry: AbstractConfigListEntry<*> = if (!CobblebrainClientCommon.isMcmtiInstalled()) {
+            object : AbstractConfigListEntry<Boolean>(
+                Component.literal("Speech-to-Text (STT)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFF00))),
+                false
+            ) {
+                private var button: net.minecraft.client.gui.components.Button =
+                    net.minecraft.client.gui.components.Button.builder(
+                        Component.literal("Disabled").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFF5555)))
+                    ) {
+                        val currentScreen = Minecraft.getInstance().screen
+                        Minecraft.getInstance().setScreen(vito.cobblebrain.client.McmtiNotInstalledNoticeScreen(currentScreen))
+                    }.bounds(0, 0, 112, 20).build()
+
+                override fun getValue(): Boolean = false
+                override fun getDefaultValue(): Optional<Boolean> = Optional.of(false)
+                override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+                override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+                override fun render(
+                    guiGraphics: GuiGraphics,
+                    index: Int,
+                    y: Int,
+                    x: Int,
+                    listWidth: Int,
+                    itemHeight: Int,
+                    mouseX: Int,
+                    mouseY: Int,
+                    isSelected: Boolean,
+                    delta: Float
+                ) {
+                    val labelText = Component.literal("Speech-to-Text (STT)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFF00)))
+                    guiGraphics.drawString(Minecraft.getInstance().font, labelText, x, y + 6, 0xFFFF00)
+                    button.x = x + listWidth - 150
+                    button.y = y
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
+
+                fun getTooltip(): Optional<Array<Component>> {
+                    return Optional.of(arrayOf(Component.translatable("cobblebrain.config.enable_stt.tooltip")))
+                }
+
+                override fun getItemHeight(): Int = 24
+            }
+        } else {
+            entryBuilder.startBooleanToggle(
+                Component.literal("Speech-to-Text (STT)").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+                clientConfig.enableStt
+            ).setDefaultValue(false)
+                .setSaveConsumer { value -> clientConfig.enableStt = value }
+                .setTooltip(Component.translatable("cobblebrain.config.enable_stt.tooltip"))
+                .build()
+        }
+
         val maxInteractionSavesEntry = entryBuilder.startIntField(
             Component.literal("Recent Context Limit").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             clientConfig.maxInteractionSaves
@@ -1147,6 +1623,11 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.output_memories.tooltip"))
             .build()
 
+        val actionManagerButton = makeButtonEntry(Component.translatable("cobblebrain.button.action_manager")) {
+            val screen = createActionManagerScreen(Minecraft.getInstance().screen)
+            Minecraft.getInstance().setScreen(screen)
+        }
+
         category.entries.add(recommendedPromptButton)
         category.entries.add(personalityEditorButton)
         category.entries.add(reportBugsButton)
@@ -1171,6 +1652,7 @@ object CobblebrainConfigScreen {
         category.entries.add(offlineModeEntry)
         category.entries.add(offlineTalkModeEntry)
         category.entries.add(psychicTranslationEntry)
+        category.entries.add(sttEntry)
         category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(needsPokemonTranslatorEntry)
         category.entries.add(listenToChatEntry)
@@ -1197,7 +1679,10 @@ object CobblebrainConfigScreen {
         category.entries.add(instructEntry)
         category.entries.add(makeSpacer(10))
         category.entries.add(outputFormatEntry)
-        category.entries.add(makeSpacer(20))
+        category.entries.add(makeSpacer(15))
+        category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFFFF00))
+        category.entries.add(actionManagerButton)
+        category.entries.add(makeSpacer(15))
         category.entries.add(makeSubtitleEntry("AI CAPABILITIES (SERVER)", 0xFFFF00))
         category.entries.add(makeDescriptionEntry("Controls if the AI is allowed to trigger/use these systems.", 0xFFFF00, 10))
         category.entries.add(makeDescriptionEntry("Some of them can be active without AI.", 0xFFFF00, 10))

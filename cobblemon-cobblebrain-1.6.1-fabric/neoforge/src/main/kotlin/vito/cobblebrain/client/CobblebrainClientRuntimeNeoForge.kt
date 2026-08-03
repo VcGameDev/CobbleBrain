@@ -48,6 +48,12 @@ object CobblebrainClientRuntimeNeoForge {
                 CobblebrainNetworkingNeoForge.sendRequestPromptWithMemory(memoryText)
             }
         }
+
+        CobblebrainClientCommon.sendVoiceInputToServer = { text ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                CobblebrainNetworkingNeoForge.sendVoiceInputToServer(text)
+            }
+        }
         PingClient.sendPingToServer = { pos, direction ->
 
             if (

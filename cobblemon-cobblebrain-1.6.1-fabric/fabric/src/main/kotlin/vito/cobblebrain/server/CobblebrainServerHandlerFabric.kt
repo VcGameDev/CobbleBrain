@@ -65,6 +65,14 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
+        // Recebimento de Entrada de Voz (STT)
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.VoiceInputPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                vito.cobblebrain.social.PokemonTalkCommand.processTalk(player, payload.text, isStt = true)
+            }
+        }
+
         // Recebimento de Ping do jogador
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PingPayload.TYPE) { payload, context ->
             context.server().execute {

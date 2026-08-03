@@ -17,6 +17,8 @@ object CobblebrainClientCommon {
     var savePersonality: ((String, String) -> Unit)? = null
     var deletePersonality: ((String) -> Unit)? = null
     var sendRequestPromptWithMemory: ((String) -> Unit)? = null
+    var sendVoiceInputToServer: ((String) -> Unit)? = null
+    var isMcmtiInstalled: (() -> Boolean) = { false }
 
     // Callback ao receber do servidor
     var onPersonalityListReceived: ((String) -> Unit)? = null
@@ -30,6 +32,7 @@ object CobblebrainClientCommon {
     var keyExecute: KeyMapping? = null
     var keyToggle: KeyMapping? = null
     var keyPing: KeyMapping? = null
+    var keyVoice: KeyMapping? = null
 
     fun onQuestsSynced(json: String) {
         currentQuestsJson = json

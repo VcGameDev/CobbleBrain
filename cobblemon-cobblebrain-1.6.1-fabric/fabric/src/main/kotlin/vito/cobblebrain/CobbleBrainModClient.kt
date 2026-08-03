@@ -39,6 +39,14 @@ object CobbleBrainModClient : ClientModInitializer {
             )
         }
 
+        CobblebrainClientCommon.isMcmtiInstalled = {
+            net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("mcmti")
+        }
+
+        if (CobblebrainClientCommon.isMcmtiInstalled()) {
+            vito.cobblebrain.client.mcmti.McmtiFabricHandler.register()
+        }
+
         val openConfig = KeyMapping(
             "key.cobblebrain.open_config",
             InputConstants.Type.KEYSYM,
@@ -77,6 +85,12 @@ object CobbleBrainModClient : ClientModInitializer {
             "category.cobblebrain"
         )
 
+        val keyVoice = KeyMapping(
+            "key.cobblebrain.voice_input",
+            GLFW.GLFW_KEY_H,
+            "category.cobblebrain"
+        )
+
         // keybinds
         KeyBindingHelper.registerKeyBinding(openConfig)
         KeyBindingHelper.registerKeyBinding(commandKeyQ)
@@ -84,6 +98,7 @@ object CobbleBrainModClient : ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(commandKeyR)
         KeyBindingHelper.registerKeyBinding(commandKeyToggle)
         KeyBindingHelper.registerKeyBinding(keyPing)
+        KeyBindingHelper.registerKeyBinding(keyVoice)
 
         // Passa as referências para a HUD dinâmica
         CobblebrainClientCommon.keyUp = commandKeyQ
@@ -91,6 +106,7 @@ object CobbleBrainModClient : ClientModInitializer {
         CobblebrainClientCommon.keyExecute = commandKeyR
         CobblebrainClientCommon.keyToggle = commandKeyToggle
         CobblebrainClientCommon.keyPing = keyPing
+        CobblebrainClientCommon.keyVoice = keyVoice
 
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick { client ->
             MigrationNoticeChecker.checkAndShow(client)
@@ -111,6 +127,22 @@ object CobbleBrainModClient : ClientModInitializer {
             }
             while (keyPing.consumeClick()) {
                 vito.cobblebrain.client.PingClient.triggerPingRaycast()
+            }
+            while (keyVoice.consumeClick()) {
+                if (!CobblebrainClientCommon.isMcmtiInstalled()) {
+                    Minecraft.getInstance().setScreen(
+                        vito.cobblebrain.client.McmtiNotInstalledNoticeScreen(Minecraft.getInstance().screen)
+                    )
+                } else if (!ClientConfigHandler.clientConfig.enableStt) {
+                    client.player?.sendSystemMessage(
+                        net.minecraft.network.chat.Component.literal("[CobbleBrain] Speech-to-Text (STT) está desativado nas configurações.")
+                    )
+                } else {
+                    vito.cobblebrain.client.mcmti.McmtiFabricHandler.awaitingPokemonVoice = true
+                    client.player?.sendSystemMessage(
+                        net.minecraft.network.chat.Component.literal("[CobbleBrain STT] Fale no microfone para conversar com seu Pokémon...")
+                    )
+                }
             }
         })
 

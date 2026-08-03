@@ -20,6 +20,32 @@ object CobblebrainServerHandler {
     fun processAction(player: ServerPlayer, action: String) {
         val command: PokemonCommand? = parseCommand(action)
         if (command != null) {
+            val actionKey = command.action.lowercase().replace(" ", "_")
+            val isActionActiveOnServer = when (actionKey) {
+                "cook" -> ConfigHandler.config.actionSettings.cook.active
+                "grow" -> ConfigHandler.config.actionSettings.grow.active
+                "repair" -> ConfigHandler.config.actionSettings.repair.active
+                "shift" -> ConfigHandler.config.actionSettings.shift.active
+                "fish" -> ConfigHandler.config.actionSettings.fish.active
+                "nightmare" -> ConfigHandler.config.actionSettings.nightmare.active
+                "light" -> ConfigHandler.config.actionSettings.light.active
+                "scout" -> ConfigHandler.config.actionSettings.scout.active
+                "teleport" -> ConfigHandler.config.actionSettings.teleport.active
+                "attack" -> ConfigHandler.config.actionSettings.attack.active
+                "protect" -> ConfigHandler.config.actionSettings.protect.active
+                "eat" -> ConfigHandler.config.actionSettings.eat.active
+                "buff" -> ConfigHandler.config.actionSettings.buff.active
+                "debuff", "debuff_enemy" -> ConfigHandler.config.actionSettings.debuffEnemy.active
+                "sit" -> ConfigHandler.config.actionSettings.sit.active
+                "idle" -> ConfigHandler.config.actionSettings.idle.active
+                else -> true
+            }
+
+            if (!isActionActiveOnServer) {
+                player.sendSystemMessage(Component.translatable("cobblebrain.feedback.action_disabled", command.action))
+                return
+            }
+
             val ativos: List<Pokemon> = PokemonQuery.findActivePokemon(player)
             
             if (command.pokemonName.equals("ALL", ignoreCase = true)) {

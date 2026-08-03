@@ -43,6 +43,37 @@ object SyncedConfig {
         private set
     var enableAiMemoryRetrieval = false
         private set
+    var actionSettings: ActionSettings = ActionSettings()
+        private set
+
+    fun isActionActive(actionName: String): Boolean {
+        val client = Minecraft.getInstance()
+        val settings = try {
+            if (client.isLocalServer) ConfigHandler.config.actionSettings else actionSettings
+        } catch (_: Throwable) {
+            actionSettings
+        }
+        val key = actionName.lowercase().trim().replace(" ", "_")
+        return when (key) {
+            "cook" -> settings.cook.active
+            "grow" -> settings.grow.active
+            "repair" -> settings.repair.active
+            "shift" -> settings.shift.active
+            "fish" -> settings.fish.active
+            "nightmare" -> settings.nightmare.active
+            "light" -> settings.light.active
+            "scout" -> settings.scout.active
+            "teleport" -> settings.teleport.active
+            "attack" -> settings.attack.active
+            "protect" -> settings.protect.active
+            "eat" -> settings.eat.active
+            "buff" -> settings.buff.active
+            "debuff", "debuff_enemy" -> settings.debuffEnemy.active
+            "sit" -> settings.sit.active
+            "idle" -> settings.idle.active
+            else -> true
+        }
+    }
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
         useDefaultOutput = payload.useDefaultOutput
@@ -62,6 +93,11 @@ object SyncedConfig {
         allowClientPersonalityEditing = payload.allowClientPersonalityEditing
         forceOfflineMode = payload.forceOfflineMode
         enableAiMemoryRetrieval = payload.enableAiMemoryRetrieval
+        if (payload.actionSettingsJson.isNotBlank()) {
+            try {
+                actionSettings = com.google.gson.Gson().fromJson(payload.actionSettingsJson, ActionSettings::class.java) ?: ActionSettings()
+            } catch (_: Exception) {}
+        }
         received = true
 
         val client = Minecraft.getInstance()
