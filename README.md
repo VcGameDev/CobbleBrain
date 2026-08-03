@@ -1,6 +1,6 @@
 # CobbleBrain – AI Dialogue System for Cobblemon
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MPL_2.0-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
@@ -11,8 +11,6 @@
 **Discord: join the official <span style="color:#3598db"><a href="https://discord.gg/cobblemon" target="_blank" rel="nofollow">Cobblemon server</a></span>, check mods-and-plugins → CobbleBrain.**
 
 ❗**Report Bugs and Submit Suggestions [here](https://docs.google.com/forms/d/e/1FAIpQLSddvxnQP-E2gUZYEmuqquldpSFkkhLScfkcNrCm-ZeMpjIRuw/viewform?usp=dialog)!**
-
-Disable the Catch indicator mod (present in Cobbleverse) when playing with CobbleBrain.
 
 ## 📖 Table of Contents
 - [About](#about)
@@ -120,7 +118,7 @@ WARNING: LOCAL MODELS MAY CAUSE PROBLEMS IF YOU RUN/INSTALL MODELS THAT ARE TOO 
 6. Open the Config menu and set:
    - `apiBaseUrl`: local server address (Example: `http://127.0.0.1:1234`)
    - `aiModel`: ID or name of the model running in the server
-   - `localApiProvider`: `"lmstudio"`
+   - `customApiProvider`: `"lmstudio"`
 
   </details>
 
@@ -184,7 +182,7 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `keyRotation` | Boolean | Enables API key rotation when errors occur. Useful for handling invalid or expired keys. |
 | `keyRotationTrigger` | List[Int] | List of HTTP status codes that trigger key rotation. Defines error conditions for switching keys. |
 | `apiBaseUrl` | String | The base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local LM Studio server. |
-| `localApiProvider` | String | If apiBaseUrl is a local address (127.0.0.1), The system uses the provider name to adapt messages for the correct provider. Officially supported providers: player2, lmstudio |
+| `Custom API Provider (customApiProvider)` | String | If apiBaseUrl is a local address (127.0.0.1), The system uses the provider name to adapt messages for the correct provider. Officially supported providers: player2, lmstudio |
 | `aiModel` | List of Strings | The names of the AI models to use. Examples are gemini-2.5-flash, gemma-3-12b-it |
 | `modelRotation` | Boolean | Enables model rotation when errors occur. Useful for fallback to alternative models. |
 | `modelRotationTrigger` | List[Int] | List of HTTP status codes that trigger model rotation. Defines error conditions for switching models. |
@@ -196,6 +194,8 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `Recent Memories Limit (maxInteractionSaves)` | Integer | The max number of recent memories the AI/Pokémon can create. Higher values improve conversation flow but use more tokens or time to generate responses. |
 | `maxStoredMemories` | Integer | Maximum number of memories permanently stored for each Pokémon. |
 | `maxRelevantMemories` | Integer | Maximum number of relevant memories retrieved and sent to the AI during a conversation. |
+| `Base Candidate Memories (baseCandidateMemories)` | Integer | Sets the initial number of candidate memories gathered before they are sent to the AI. |
+| `AI-Driven Memory Retrieval (enableAiMemoryRetrieval)` | Boolean | Lets the AI model decide which previously stored memories should be retrieved for the current conversation. |
 | `lastRetrievedMemoryCount` | Integer | Number of recently retrieved memories temporarily cached to reduce repetition. |
 | `lastRetrievedMemoryLifetime` | Integer | Number of conversations before cached retrieved memories expire. |
 | `useDefaultOutput` | Boolean | Uses the recommended and updated OUTPUT FORMAT of the mod version. Only disable it if you want to apply your own CUSTOM OUTPUT, Which is not recommended. |
@@ -227,7 +227,7 @@ Advanced users can still edit the generated configuration files in the `/config`
 | `showFriendship` | Boolean | Displays friendship values in chat. Players can see relationship changes. |
 | `instruct` | List of Strings | The Instructs as a whole works as a global prompt. Defines how the AI or Pokemon behave, think and responds. Each instruct (item on the list) shapes how the response is sent. |
 | `Custom Output (outputFormat)` | String | Only editable via config/cobblebrain.json5 |
-| `Ignore hunger` | Boolean | Makes the AI ignore any information about the Pokémon's hunger. Adding a new rule to the AI's instructions |
+| `Show Hunger (showHunger)` | Boolean | Shows or hides Pokémon hunger information from the AI. |
 | `offlineMode` | Boolean | Disables AI requests while keeping supported gameplay systems active. |
 | `offlineTalkMode` | Boolean | Enables built-in Pokémon dialogue and reactions when Offline Mode is active. |
 | `Enable Dialogue (outputDialogue)` | Boolean | Enables the Pokémon to generate natural language dialogue, Allowing them to dialogue with the player. |
