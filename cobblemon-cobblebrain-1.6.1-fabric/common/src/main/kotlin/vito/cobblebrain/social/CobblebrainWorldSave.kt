@@ -485,41 +485,20 @@ object CobblebrainWorldSave {
 
     fun createTreasureQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
         ensureQuestsInitialized()
-        val level = player.serverLevel()
         val rand = java.util.Random()
 
-        // 1. Sorteia local
-        val targetX = player.blockX + rand.nextInt(800) - 400
-        val targetZ = player.blockZ + rand.nextInt(800) - 400
-        val surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, targetX, targetZ)
-        
-        val targetY = surfaceY
-        val barrelPos = BlockPos(targetX, targetY, targetZ)
-
-        // 2. Coloca o barril e itens
-        level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), 3)
-        val barrelEntity = level.getBlockEntity(barrelPos) as? BarrelBlockEntity
-        if (barrelEntity != null) {
-            val lootItems = listOf(
-                Items.STICK, Items.APPLE, Items.WHEAT_SEEDS, Items.OAK_SAPLING, 
-                Items.SWEET_BERRIES, Items.COAL, Items.FLINT, Items.BONE
-            )
-            // Adiciona 3 a 6 itens aleatórios
-            val itemCount = rand.nextInt(4) + 3
-            for (i in 0 until itemCount) {
-                val slot = rand.nextInt(barrelEntity.containerSize)
-                val stack = ItemStack(lootItems.random(), rand.nextInt(3) + 1)
-                barrelEntity.setItem(slot, stack)
-            }
-        }
+        // 1. Sorteia local X Z apenas (o barril só spawnará quando o player se aproximar do chunk carregado)
+        val targetX = player.blockX + rand.nextInt(400) - 200
+        val targetZ = player.blockZ + rand.nextInt(400) - 200
 
         val questObj = JsonObject().apply {
             addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
             addProperty("type", "TREASURE")
             addProperty("targetX", targetX)
-            addProperty("targetY", targetY)
+            addProperty("targetY", 0)
             addProperty("targetZ", targetZ)
+            addProperty("spawned", false)
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
             addProperty("questSummary", "Find the hidden barrel near ($targetX, $targetZ)")
@@ -540,7 +519,7 @@ object CobblebrainWorldSave {
         val quest = Quest(player, "TREASURE", true, storyId = storyId)
         quests.add(quest)
 
-        println("IMPORTANT: A treasure is hidden at $targetX $targetY $targetZ")
+        println("IMPORTANT: A treasure is hidden near coordinates: $targetX $targetZ")
         startFollowingPlayer(giver, player)
 
         return quest

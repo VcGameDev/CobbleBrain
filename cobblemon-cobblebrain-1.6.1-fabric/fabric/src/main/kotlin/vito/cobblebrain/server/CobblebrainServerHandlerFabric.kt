@@ -39,6 +39,14 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
+        // Requisição de Rebuild de Prompt com Memória
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestPromptWithMemoryPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                vito.cobblebrain.social.DialogueSystem.rebuildPromptForPlayer(player, payload.memoryText)
+            }
+        }
+
         // Recebimento de Nickname Preferido do jogador
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PlayerNicknamePayload.TYPE) { payload, context ->
             context.server().execute {

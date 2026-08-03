@@ -48,6 +48,11 @@ class ConfigBuilder<T> private constructor(
             userJson = defaultJson.deepCopy()
             writeFile(configFile, gson, userJson)
         } else {
+            // Migração de chaves renomeadas (ex: localApiProvider -> customApiProvider)
+            if (userJson.has("localApiProvider") && !userJson.has("customApiProvider")) {
+                userJson.add("customApiProvider", userJson.get("localApiProvider"))
+            }
+
             // existe → mantém valores do jogador e adiciona apenas os novos
             var changed = false
             for ((key, value) in defaultJson.entrySet()) {
@@ -87,7 +92,7 @@ class ConfigBuilder<T> private constructor(
             "\"reasoningEffort\"" to "\n// Defines the reasoning effort for supported models. Options include high, medium, low, auto or none.",
             "\"requestTimeoutSeconds\"" to "\n// Maximum time to wait for an AI response before cancelling the request.",
             "\"debugLogging\"" to "\n// Enables debug logging. Logs are stored in the cobblebrain-ai/logs folder.",
-            "\"localApiProvider\"" to "\n// If apiBaseUrl points to a local server (127.0.0.1), this tells CobbleBrain how to format requests. Supported: player2, lmstudio.",
+            "\"customApiProvider\"" to "\n// Tells CobbleBrain how to format requests for specific providers. Supported: player2, lmstudio, novelai.",
             "\"selectedLanguage\"" to "\n// Language used for Pokémon dialogue and AI responses.",
             "\"preferredName\"" to "\n// Preferred name Pokémon will use instead of your Minecraft username.",
             "\"offlineMode\"" to "\n// Enables Offline Mode. Pokémon responses are generated locally without internet access.",
@@ -115,6 +120,7 @@ class ConfigBuilder<T> private constructor(
             "\"maxInteractionSaves\"" to "\n// Number of recent interaction summaries kept for conversation continuity.",
             "\"maxStoredMemories\"" to "\n// Maximum number of stored memories per Pokémon.",
             "\"maxRelevantMemories\"" to "\n// Maximum relevant memories retrieved for each prompt.",
+            "\"maxFriendship\"" to "\n// Maximum friendship level achievable with Pokémon.",
             "\"decreaseFriendship\"" to "\n// Allows dialogue to decrease friendship.",
             "\"increaseFriendship\"" to "\n// Allows dialogue to increase friendship.",
             "\"showFriendship\"" to "\n// Displays friendship changes in chat.",
@@ -125,13 +131,22 @@ class ConfigBuilder<T> private constructor(
             "\"modelRotation\"" to "\n// Automatically switches AI models when configured errors occur.",
             "\"keyRotationTrigger\"" to "\n// HTTP status codes that trigger API key rotation.",
             "\"modelRotationTrigger\"" to "\n// HTTP status codes that trigger model rotation.",
+            "\"baseCandidateMemories\"" to "\n// Base number of candidate memories retrieved for initial search. Increases dynamically based on active party size.",
+            "\"enableAiMemoryRetrieval\"" to "\n// Enables AI-driven memory retrieval for broader candidate selection.",
             "\"outputDialogue\"" to "\n// Enables dialogue generation.",
             "\"outputActions\"" to "\n// Enables AI-controlled Pokémon actions.",
             "\"outputFriendship\"" to "\n// Enables friendship changes.",
             "\"outputMemories\"" to "\n// Enables Pokémon memories.",
             "\"outputQuests\"" to "\n// Enables the quest system.",
+            "\"outputWorldContext\"" to "\n// Provides the AI with information about the current environment (time, biome, weather).",
+            "\"outputMobsContext\"" to "\n// Gives the AI awareness of nearby non-Pokémon entities.",
+            "\"outputLastContext\"" to "\n// Sends recent interaction history to maintain conversation context.",
+            "\"outputBlockSensors\"" to "\n// Provides the AI with awareness of nearby specific blocks.",
             "\"outputPokemonLanguage\"" to "\n// Makes Pokémon communicate using creature vocalizations instead of human language.",
-            "\"outputGuaranteedCatch\"" to "\n// Enables the Guaranteed Catch mechanic after exceptional interactions."
+            "\"outputGuaranteedCatch\"" to "\n// Enables the Guaranteed Catch mechanic after exceptional interactions.",
+            "\"outputApril1\"" to "\n// Activates special April Fools actions. Only enable this if you want chaos!",
+            "\"allowClientPersonalityEditing\"" to "\n// Allows clients to edit Pokémon personality characteristics.",
+            "\"enableTraits\"" to "\n// Enables Pokémon personality traits and behavioral characteristics."
         )
 
 
@@ -157,8 +172,14 @@ object ConfigHandler {
         val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
         val json = JsonParser.parseString(gson.toJson(config)).asJsonObject
         val file = File("config/cobblebrain.json5")
-        PrintWriter(file).use { pw ->
-            pw.print(gson.toJson(json))
+        vito.cobblebrain.social.DiskWriteExecutor.submit {
+            try {
+                PrintWriter(file).use { pw ->
+                    pw.print(gson.toJson(json))
+                }
+            } catch (e: Exception) {
+                println("Error saving cobblebrain.json5: ${e.message}")
+            }
         }
     }
 }
@@ -174,8 +195,14 @@ object ClientConfigHandler {
         val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
         val json = JsonParser.parseString(gson.toJson(clientConfig)).asJsonObject
         val file = File("config/cobblebrain_client.json5")
-        PrintWriter(file).use { pw ->
-            pw.print(gson.toJson(json))
+        vito.cobblebrain.social.DiskWriteExecutor.submit {
+            try {
+                PrintWriter(file).use { pw ->
+                    pw.print(gson.toJson(json))
+                }
+            } catch (e: Exception) {
+                println("Error saving cobblebrain_client.json5: ${e.message}")
+            }
         }
     }
 }

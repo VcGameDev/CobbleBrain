@@ -17,6 +17,10 @@ object CobblebrainServerHandlers {
         )
      }
 
+    fun onRequestPromptWithMemory(player: ServerPlayer, payload: CobblebrainPayloads.RequestPromptWithMemoryPayload) {
+        vito.cobblebrain.social.DialogueSystem.rebuildPromptForPlayer(player, payload.memoryText)
+    }
+
     fun onRequestPersonalityList(player: ServerPlayer) {
         CobblebrainServerHandler.handleRequestPersonalityList(player)
     }

@@ -50,11 +50,14 @@ object ConversationMemory {
     private val memory = mutableListOf<String>()
 
     fun save(text: String) {
-        memory.add(text)
         val max = clientConfig.maxInteractionSaves
+        println("[DEBUG] Saving to ConversationMemory (max limit: $max): \"$text\"")
+        memory.add(text)
         while (memory.size > max) {
-            memory.removeAt(0)
+            val removed = memory.removeAt(0)
+            println("[DEBUG] ConversationMemory limit reached. Removed oldest: \"$removed\"")
         }
+        println("[DEBUG] Current ConversationMemory size: ${memory.size}. Items: $memory")
     }
 
     fun get(): List<String> = memory
@@ -81,7 +84,7 @@ class AIHandler {
             .filterNotNull()
             .joinToString("\n")
         private val TEMPERATURE get() = clientConfig.temperature
-        private val IGNORE_HUNGER get() = clientConfig.ignoreHunger
+        private val SHOW_HUNGER get() = clientConfig.showHunger
         private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
         private val REASONING get() = clientConfig.reasoningEffort.trim().lowercase()
         private val DEBUG get(
@@ -207,8 +210,9 @@ class AIHandler {
             appendLine("- nearby Pokémon do not know the player's name")
             appendLine("- player IDs belong to players, not Pokémon")
 
-            if (IGNORE_HUNGER) {
-                appendLine("- ignore any hunger/fullness information and never mention hunger in dialogue")
+            if (!SHOW_HUNGER) {
+                appendLine("- never initiate conversations about hunger, food, eating, or fullness. Only discuss them if the player explicitly asks.")
+                appendLine("- STRICTLY IGNORE any past memories or context regarding food, eating, fullness, or hunger unless the player explicitly asks in their current message.")
             }
         }
     }
@@ -368,7 +372,7 @@ class AIHandler {
 
         // Executor para rodar o pingHealth a cada 60s
         if (
-            clientConfig.localApiProvider.equals("player2", ignoreCase = true)
+            clientConfig.customApiProvider.equals("player2", ignoreCase = true)
             && isLocalAddress(clientConfig.apiBaseUrl)
         ) {
             val scheduler = Executors.newSingleThreadScheduledExecutor()
@@ -558,8 +562,45 @@ class AIHandler {
         return apiBase.contains("127.0.0.1") || apiBase.contains("localhost")
     }
 
+    fun executeMemoryRetrieval(playerMessage: String, candidateMemories: List<String>): String {
+        val memorySearchPrompt = buildString {
+            appendLine("[MEMORY SEARCH]")
+            appendLine("Player message: $playerMessage")
+            appendLine()
+            if (candidateMemories.isNotEmpty()) {
+                appendLine("Candidate memories:")
+                candidateMemories.forEachIndexed { idx, mem ->
+                    appendLine("${idx + 1}. $mem")
+                }
+            } else {
+                appendLine("No candidate memories available.")
+            }
+            appendLine()
+            appendLine("Decide whether past memories are needed to answer the player's message.")
+            appendLine("If no memories are relevant or needed, reply ONLY with NO_MEMORY.")
+            appendLine("If memories are needed, reply ONLY with the exact text of the selected memory/memories (one per line). Select at most 2 memories per involved Pokémon if there are 4 or fewer Pokémon, or at most 1 memory per involved Pokémon if there are more than 4 Pokémon.")
+            appendLine("Do NOT generate any dialogue or additional text.")
+        }
+
+        val systemOverride = "You are a memory retrieval assistant. Your job is to decide if memories are needed to answer the player's message, and select only the relevant memories. If no memories are needed, reply ONLY with NO_MEMORY. Otherwise, output only the selected memory text."
+
+        val response = try {
+            when {
+                apiBase.contains("generativelanguage.googleapis.com") -> callGoogleGemma(memorySearchPrompt, systemOverride)
+                isLocalApi(apiBase) -> callOpenAISchema(memorySearchPrompt, systemOverride)
+                else -> callOpenAISchema(memorySearchPrompt, systemOverride)
+            }
+        } catch (e: Exception) {
+            "NO_MEMORY"
+        }
+        println("[MemoryRetrievalAI] Decision/Selection response:\n$response")
+        return response.trim()
+    }
+
     fun respostaNormal(prompt: String): String {
         println("respostaNormal activated")
+
+        val cleanPrompt = prompt
 
         // Injeta LAST INTERACTIONS no prompt vindo do servidor
         val interactions = ConversationMemory.get()
@@ -568,10 +609,10 @@ class AIHandler {
                 appendLine("[LAST INTERACTIONS]")
                 interactions.forEach { appendLine("- $it") }
                 appendLine()
-                append(prompt)
+                append(cleanPrompt)
             }
         } else {
-            prompt
+            cleanPrompt
         }
 
         val responseText = try {
@@ -610,15 +651,18 @@ class AIHandler {
             .replace("\n", "|")
             .replace("\\", "")
 
-        historico.add(Mensagem("user", prompt))
+        historico.add(Mensagem("user", cleanPrompt))
         historico.add(Mensagem("assistant", responseText))
         limitarHistorico()
 
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
 
         // Processa !RESUME para a memória local
-        formatted.split("|").forEach { line ->
+        val parts = formatted.split("|")
+        println("[DEBUG] Parsing AI response lines for resumes. Total parts: ${parts.size}")
+        parts.forEach { line ->
             val trimmed = line.trim()
+            println("[DEBUG] Checking line: \"$trimmed\"")
             if (trimmed.startsWith("!RESUME", ignoreCase = true)) {
                 val resumeText = trimmed.substringAfter("!RESUME")
                     .removePrefix(":")
@@ -671,7 +715,7 @@ class AIHandler {
 
     private fun callOpenAISchema(prompt: String, systemOverride: String? = null): String {
         log("===== OPENAI REQUEST =====")
-        log("Local Provider: ${clientConfig.localApiProvider}")
+        log("Custom Provider: ${clientConfig.customApiProvider}")
         log("ApiBaseUrl: ${clientConfig.apiBaseUrl}")
         log("Model: ${clientConfig.aiModel}")
 
@@ -684,10 +728,14 @@ class AIHandler {
         log("\n--- REQUEST JSON ---")
         log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
-        val url = if (clientConfig.useChatEndpoint)
-            "$apiBase/v1/chat/completions"
-        else
-            apiBase
+        val url = when {
+            isNovelAI() -> {
+                val cleanBase = apiBase.replace(Regex("""/v1/chat/completions.*$"""), "").trimEnd('/')
+                if (cleanBase.endsWith("/ai/generate")) cleanBase else "$cleanBase/ai/generate"
+            }
+            clientConfig.useChatEndpoint -> "$apiBase/v1/chat/completions"
+            else -> apiBase
+        }
 
         val builder = HttpRequest.newBuilder()
             .uri(URI.create(url))
@@ -697,7 +745,7 @@ class AIHandler {
 
         // Autenticação
         if (
-            clientConfig.localApiProvider.equals("player2", ignoreCase = true)
+            clientConfig.customApiProvider.equals("player2", ignoreCase = true)
             && isLocalAddress(clientConfig.apiBaseUrl)
         ) {
             builder.header("player2-game-key", "019bfb65-9ed4-79af-a348-90d86bbb6cbb")
@@ -749,7 +797,7 @@ class AIHandler {
             log("Time: $time")
             log("Side: $getEnvironment")
             log("Thread: $thread")
-            log("Provider: ${clientConfig.localApiProvider}")
+            log("Provider: ${clientConfig.customApiProvider}")
             log("API Base: $apiBase")
             log("Exception: ${e::class.qualifiedName}")
             log("Message: ${e.message}")
@@ -757,7 +805,7 @@ class AIHandler {
             log("Stacktrace:")
             e.printStackTrace()
 
-            "Erro API (${clientConfig.localApiProvider} | $getEnvironment): ${e.message}"
+            "Erro API (${clientConfig.customApiProvider} | $getEnvironment): ${e.message}"
         }
     }
 
@@ -766,7 +814,11 @@ class AIHandler {
 
     private fun isLMStudio() =
         // ajuste conforme sua URL local do LM Studio
-        clientConfig.localApiProvider.contains("lmstudio", ignoreCase = true)
+        clientConfig.customApiProvider.contains("lmstudio", ignoreCase = true)
+
+    private fun isNovelAI() =
+        clientConfig.customApiProvider.contains("novelai", ignoreCase = true) ||
+                apiBase.contains("novelai.net", ignoreCase = true)
 
     //private fun usesMaxTokens(apiBase: String) =
     //isOpenRouter(apiBase) || isLMStudio(apiBase)
@@ -822,8 +874,22 @@ class AIHandler {
 
         val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
 
+        if (isNovelAI()) {
+            val fullPromptText = "[System: ${escape(systemContent)}]\n\n" + tempHistory.joinToString("\n") { "${it.role}: ${escape(it.text)}" }
+            return """
+        {
+          "input": "$fullPromptText",
+          "model": "${modelRotator.current()}",
+          "parameters": {
+            "max_length": 300,
+            "temperature": $TEMPERATURE
+          }
+        }
+        """.trimIndent()
+        }
+
         return if (
-            clientConfig.localApiProvider.equals("player2", ignoreCase = true) &&
+            clientConfig.customApiProvider.equals("player2", ignoreCase = true) &&
             isLocalAddress(clientConfig.apiBaseUrl)
         ) {
             """
@@ -852,6 +918,12 @@ class AIHandler {
         return try {
             println(body)
             val json = gson.fromJson(body, Map::class.java)
+            // Formato NovelAI
+            val outputText = json["output"] as? String
+            if (!outputText.isNullOrBlank()) {
+                return removeThinkBlocks(outputText)
+            }
+
             val choices = json["choices"] as? List<*> ?: return "Erro parsing resposta"
             val first = choices.firstOrNull() as? Map<*, *> ?: return "Erro parsing resposta"
 

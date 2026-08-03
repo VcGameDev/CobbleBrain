@@ -80,6 +80,8 @@ object DialogueSystem {
     private val pendingInterruption = mutableMapOf<UUID, Boolean>()
     private val questResponseTimeout = mutableMapOf<UUID, Long>() // Player -> Tick limite
     private val serverLastInteractions = ConcurrentHashMap<UUID, MutableList<String>>()
+    // Stores (Pokémon, moreText) so we can rebuild a prompt for a player after memory search
+    private val lastPromptContext = ConcurrentHashMap<UUID, Pair<List<Pokemon>, String>>()
 
     val scheduledMessages: MutableMap<UUID, MutableList<ScheduledMessage>> = ConcurrentHashMap()
 
@@ -122,7 +124,8 @@ object DialogueSystem {
     private var currentSpeaker: Pokemon? = null
     private var speakerUntilTick: Long = 0L
     private val currentViewers = mutableListOf<Pokemon>()
-
+    private val playerSleepingState = mutableMapOf<UUID, Boolean>()
+ 
     // guarda o último momento em que cada jogador disparou a lógica
     private val lastPrompt: MutableMap<UUID, Long> = ConcurrentHashMap()
 
@@ -158,6 +161,7 @@ object DialogueSystem {
     private val bubbleProgress = mutableMapOf<UUID, Int>()          // standUuid -> chars revelados
     private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> texto completo
     private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars por tick
+    private val bubbleLevelMap = mutableMapOf<UUID, ServerLevel>()   // standUuid -> dimensão ServerLevel
 
     fun onPlayerJoin(player: ServerPlayer) {
         isWaitingForQuestResponse[player.uuid] = false
@@ -283,10 +287,24 @@ object DialogueSystem {
     }
 
     fun onDamage(entity: LivingEntity, source: DamageSource, amount: Float, newHealth: Float) {
+        // Record damage events in RecentEventsSystem
+        val attacker = source.entity
+        val attackerName = attacker?.type?.descriptionId?.substringAfterLast(".") ?: source.msgId
         when (entity) {
             is ServerPlayer -> {
-                if (OfflinePlayers.isOffline(entity.uuid)) return
                 val ativos = PokemonQuery.findActivePokemon(entity)
+                ativos.forEach { p ->
+                    RecentEventsSystem.recordEvent(
+                        p.uuid,
+                        RecentEventsSystem.DamageEvent(
+                            targetName = entity.name.string,
+                            attackerType = attackerName,
+                            timestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+
+                if (OfflinePlayers.isOffline(entity.uuid)) return
                 if (ativos.isEmpty()) return
 
                 val now = System.currentTimeMillis()
@@ -308,6 +326,16 @@ object DialogueSystem {
             }
 
             is PokemonEntity -> {
+                val targetName = entity.pokemon.nickname?.string ?: entity.pokemon.species.name
+                RecentEventsSystem.recordEvent(
+                    entity.pokemon.uuid,
+                    RecentEventsSystem.DamageEvent(
+                        targetName = targetName,
+                        attackerType = attackerName,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+
                 val ownerUuid = entity.pokemon.getOwnerUUID()
                 if (ownerUuid != null && config.dialogueOnDamage) {
                     if (OfflinePlayers.isOffline(ownerUuid)) return
@@ -352,7 +380,7 @@ object DialogueSystem {
 
         maintainLookAt(server)
 
-        if (server.tickCount % 200 == 0) {
+        if (server.tickCount % 240 == 0) {
             for (player in server.playerList.players) {
 
                 runSocialTick(player)
@@ -411,6 +439,26 @@ object DialogueSystem {
                     isWaitingForQuestResponse[playerUuid] = false
                     pendingInterruption[playerUuid] = false
                 }
+            }
+        }
+
+        // Check for players starting to sleep (every 20 ticks = 1 second)
+        if (server.tickCount % 20 == 0) {
+            for (player in server.playerList.players) {
+                val isSleeping = player.isSleeping
+                val wasSleeping = playerSleepingState.getOrDefault(player.uuid, false)
+                if (isSleeping && !wasSleeping) {
+                    val ativos = PokemonQuery.findActivePokemon(player)
+                    ativos.forEach { p ->
+                        RecentEventsSystem.recordEvent(
+                            p.uuid,
+                            RecentEventsSystem.PlayerSleepEvent(
+                                timestamp = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
+                playerSleepingState[player.uuid] = isSleeping
             }
         }
     }
@@ -513,14 +561,30 @@ object DialogueSystem {
 
         val server = currentServer ?: return
 
+        val battle = event.battle
+        val opponents = battle.actors.filter { it != actor }
+        val opponentName = opponents.joinToString(", ") { it.getName().string }
+        val isWild = opponents.all { false }
+
         uuids.forEach { uuid ->
             val player = server.playerList.getPlayer(uuid) ?: return@forEach
+
+            val ativos = PokemonQuery.findActivePokemon(player)
+            ativos.forEach { p ->
+                RecentEventsSystem.recordEvent(
+                    p.uuid,
+                    RecentEventsSystem.BattleEvent(
+                        opponent = opponentName,
+                        result = "fled",
+                        isWild = isWild,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
 
             if (OfflinePlayers.isOffline(player.uuid)) return@forEach
 
             scheduledMessages[player.uuid]?.clear()
-
-            val ativos = PokemonQuery.findActivePokemon(player)
 
             val prompt = buildPrompt(
                 player,
@@ -539,9 +603,28 @@ object DialogueSystem {
         for (player in battle.players) {
             val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
 
+            // Record battle result event for all active Pokémon
+            val opponents = battle.actors.filter { it != myActor }
+            val opponentName = opponents.joinToString(", ") { it.getName().string }
+            val isWild = opponents.all { false }
+            val won = event.winners.contains(myActor)
+            val battleResult = if (won) "won" else "lost"
+            val ativos0 = PokemonQuery.findActivePokemon(player)
+            ativos0.forEach { p ->
+                RecentEventsSystem.recordEvent(
+                    p.uuid,
+                    RecentEventsSystem.BattleEvent(
+                        opponent = opponentName,
+                        result = battleResult,
+                        isWild = isWild,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
+
             scheduledMessages[player.uuid]?.clear()
 
-            if (event.winners.contains(myActor)) {
+            if (won) {
                 var sent = false
 
                 for (loser in event.losers) {
@@ -706,11 +789,23 @@ object DialogueSystem {
         scheduledMessages[player.uuid]?.clear()
         justSentMessage[player.uuid] = true
         val ativos = PokemonQuery.findActivePokemon(player)
+        // Store context for possible rebuildPromptForPlayer after memory search
+        lastPromptContext[player.uuid] = Pair(ativos, "\n\n$text")
         val prompt = buildPrompt(player, ativos, "\n\n$text")
 
         // envia prompt para o cliente processar
         sendToPlayer?.invoke(player, prompt)
         return true
+    }
+
+    /**
+     * Rebuilds and sends a prompt for a player using the last known context plus a forced memory.
+     * Called by the server after the client intercepts BEGIN_MEMORY_SEARCH and selects a memory.
+     */
+    fun rebuildPromptForPlayer(player: ServerPlayer, forcedMemory: String) {
+        val (pokemons, moreText) = lastPromptContext[player.uuid] ?: return
+        val prompt = buildPrompt(player, pokemons, moreText, forcedRelevantMemory = forcedMemory.ifBlank { null })
+        sendToPlayer?.invoke(player, prompt)
     }
 
 
@@ -872,6 +967,7 @@ object DialogueSystem {
         stand.isNoGravity = true
         stand.isCustomNameVisible = true
         stand.addTag("Marker")
+        stand.addTag("cobblebrain_chat_bubble")
         stand.moveTo(entity.x, getBubbleY(entity), entity.z)
 
         // começa vazio (ou com um cursor, se quiser)
@@ -881,6 +977,7 @@ object DialogueSystem {
 
         bubbleUntilTick[stand.uuid] = server.tickCount.toLong() + durationTicks
         bubbleStands[entity.uuid] = stand.uuid
+        (level as? ServerLevel)?.let { bubbleLevelMap[stand.uuid] = it }
 
         bubbleText[stand.uuid] = text
         bubbleProgress[stand.uuid] = 0
@@ -889,71 +986,82 @@ object DialogueSystem {
 
 
     fun tickBubbles(server: MinecraftServer) {
+        if (bubbleUntilTick.isEmpty() && bubbleStands.isEmpty()) return
         val current = server.tickCount.toLong()
-        val expired = bubbleUntilTick.filterValues { it <= current }.keys
 
-        // remove stands expirados
+        // 1. Remove stands expirados
+        val expired = bubbleUntilTick.filterValues { it <= current }.keys
         expired.forEach { standUuid ->
-            server.allLevels.forEach { level ->
-                val stand = level.getEntity(standUuid)
-                if (stand is ArmorStand) {
-                    stand.discard()
-                }
+            val level = bubbleLevelMap.remove(standUuid)
+            val stand = level?.getEntity(standUuid)
+            if (stand is ArmorStand) {
+                stand.discard()
             }
             bubbleUntilTick.remove(standUuid)
+            bubbleText.remove(standUuid)
+            bubbleProgress.remove(standUuid)
+            bubbleSpeed.remove(standUuid)
             bubbleStands.entries.removeIf { it.value == standUuid }
         }
 
-        // atualizar posição dos stands ativos para seguir o pokémon
+        // 2. Atualizar posição e typewriter dos stands ativos
         val toRemove = mutableListOf<UUID>()
-
         bubbleStands.forEach { (pokemonUuid, standUuid) ->
-            var pokeFound = false
-            server.allLevels.forEach { level ->
-                val poke = level.getEntity(pokemonUuid)
-                val stand = level.getEntity(standUuid)
+            val level = bubbleLevelMap[standUuid]
+            val poke = level?.getEntity(pokemonUuid)
+            val stand = level?.getEntity(standUuid)
 
-                if (poke != null && stand is ArmorStand) {
-                    pokeFound = true
-                    stand.moveTo(poke.x, getBubbleY(poke), poke.z)
+            if (poke != null && stand is ArmorStand) {
+                stand.moveTo(poke.x, getBubbleY(poke), poke.z)
+
+                // typewriter
+                val text = bubbleText[standUuid]
+                if (text != null) {
+                    val speed = bubbleSpeed[standUuid] ?: 1
+                    val prog = bubbleProgress[standUuid] ?: 0
+                    val newProgress = (prog + speed).coerceAtMost(text.length)
+                    bubbleProgress[standUuid] = newProgress
+                    stand.customName = Component.literal(text.take(newProgress))
                 }
-            }
-
-            // avançar texto tipo "typewriter"
-            bubbleProgress.keys.forEach { standUuid ->
-                val text = bubbleText[standUuid] ?: return@forEach
-                val speed = bubbleSpeed[standUuid] ?: 1
-                val current = bubbleProgress[standUuid] ?: 0
-
-                val newProgress = (current + speed).coerceAtMost(text.length)
-                bubbleProgress[standUuid] = newProgress
-
-                // atualizar nome visível
-                server.allLevels.forEach { level ->
-                    val stand = level.getEntity(standUuid)
-                    if (stand is ArmorStand) {
-                        val shown = text.take(newProgress)
-                        stand.customName = Component.literal(shown)
-                    }
-                }
-            }
-
-
-            // se o pokémon não existe mais, remove o stand
-            if (!pokeFound) {
-                server.allLevels.forEach { level ->
-                    val stand = level.getEntity(standUuid)
-                    if (stand is ArmorStand) {
-                        stand.discard()
-                    }
+            } else {
+                // se o pokémon não existe mais na dimensão, remove o stand
+                if (stand is ArmorStand) {
+                    stand.discard()
                 }
                 toRemove.add(pokemonUuid)
                 bubbleUntilTick.remove(standUuid)
+                bubbleLevelMap.remove(standUuid)
+                bubbleText.remove(standUuid)
+                bubbleProgress.remove(standUuid)
+                bubbleSpeed.remove(standUuid)
             }
         }
 
-        // limpa vínculos órfãos
         toRemove.forEach { bubbleStands.remove(it) }
+    }
+
+    fun clearChatBubbles(server: MinecraftServer, strongMode: Boolean = false): Int {
+        var count = 0
+        server.allLevels.forEach { level ->
+            val filter = java.util.function.Predicate<ArmorStand> { entity ->
+                val isTagged = entity.tags.contains("cobblebrain_chat_bubble")
+                val isLegacyBubble = strongMode && entity.isInvisible && entity.isNoGravity && entity.tags.contains("Marker")
+                isTagged || isLegacyBubble
+            }
+            val box = net.minecraft.world.phys.AABB(-30000000.0, -64.0, -30000000.0, 30000000.0, 320.0, 30000000.0)
+            val stands = level.getEntitiesOfClass(ArmorStand::class.java, box, filter)
+            stands.forEach { stand ->
+                stand.discard()
+                count++
+            }
+        }
+        bubbleUntilTick.clear()
+        bubbleStands.clear()
+        bubbleText.clear()
+        bubbleProgress.clear()
+        bubbleSpeed.clear()
+        bubbleLevelMap.clear()
+        return count
     }
 
     // ---------------         QUEST SECTION            -----------------------
@@ -1253,15 +1361,48 @@ object DialogueSystem {
 
     fun handleTreasureQuestTick(player: ServerPlayer, quest: JsonObject) {
         val tx = quest.get("targetX").asInt
-        val ty = quest.get("targetY").asInt
+        var ty = quest.get("targetY").asInt
         val tz = quest.get("targetZ").asInt
-        
+        val spawned = quest.get("spawned")?.asBoolean ?: true
+        val level = player.serverLevel()
+
+        // Lazy Spawning: quando o jogador chega a menos de 60 blocos, calcula o Y seguro no chão e gera o barril
+        if (!spawned) {
+            val approxDistance = kotlin.math.abs(player.blockX - tx) + kotlin.math.abs(player.blockZ - tz)
+            if (approxDistance <= 60) {
+                val surfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, tx, tz)
+                ty = if (surfaceY > level.minBuildHeight) surfaceY else player.blockY
+                
+                val barrelPos = BlockPos(tx, ty, tz)
+                level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), 3)
+                val barrelEntity = level.getBlockEntity(barrelPos) as? net.minecraft.world.level.block.entity.BarrelBlockEntity
+                if (barrelEntity != null) {
+                    val rand = java.util.Random()
+                    val lootItems = listOf(
+                        Items.STICK, Items.APPLE, Items.WHEAT_SEEDS, Items.OAK_SAPLING, 
+                        Items.SWEET_BERRIES, Items.COAL, Items.FLINT, Items.BONE
+                    )
+                    val itemCount = rand.nextInt(4) + 3
+                    for (i in 0 until itemCount) {
+                        val slot = rand.nextInt(barrelEntity.containerSize)
+                        val stack = ItemStack(lootItems.random(), rand.nextInt(3) + 1)
+                        barrelEntity.setItem(slot, stack)
+                    }
+                }
+
+                quest.addProperty("targetY", ty)
+                quest.addProperty("spawned", true)
+                CobblebrainWorldSave.save()
+            } else {
+                return // ainda está muito longe e não gerou o barril
+            }
+        }
+
         val pos = BlockPos(tx, ty, tz)
         val distance = player.blockPosition().distManhattan(pos)
 
         // 1. Efeito visual: Círculo de partículas na superfície quando perto
         if (distance < 30) {
-            val level = player.serverLevel()
             // Desenha um círculo de partículas a cada 2 ticks para poupar performance
             if (player.tickCount % 2 == 0) {
                 val radius = 4.0
@@ -1270,7 +1411,7 @@ object DialogueSystem {
                     val px = tx + 0.5 + kotlin.math.cos(angle) * radius
                     val pz = tz + 0.5 + kotlin.math.sin(angle) * radius
                     // Pega a altura do chão naquele ponto das partículas
-                    val py = level.getHeight(Heightmap.Types.MOTION_BLOCKING, px.toInt(), pz.toInt()).toDouble()
+                    val py = level.getHeight(Heightmap.Types.WORLD_SURFACE, px.toInt(), pz.toInt()).toDouble()
                     
                     level.sendParticles(
                         ParticleTypes.HAPPY_VILLAGER,
@@ -1721,7 +1862,6 @@ object DialogueSystem {
         )
     }
 
-
     fun expressPokemon(pokemon: Pokemon, basePitch: Float = 1.0f) {
         val entity = pokemon.entity ?: return
         val level = entity.level() as? ServerLevel ?: return
@@ -1799,7 +1939,7 @@ object DialogueSystem {
         reversePokemonAliasMap[player.uuid] = reverseMap
     }
 
-    fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String): String {
+    fun buildPrompt(player: ServerPlayer, pokemons: List<Pokemon>, moreText: String, forcedRelevantMemory: String? = null): String {
         val shoulderPokemon = PokemonQuery.getAllPokemon(player)
             .filter { it.currentHealth > 0 && PokemonQuery.isShoulderMounted(player, it) }
         val activePokemon = (pokemons + shoulderPokemon).distinctBy { it.uuid }
@@ -1852,27 +1992,32 @@ object DialogueSystem {
         }
 
         val nearbyPlayers = player.server.playerList.players
-            .filter { it.distanceTo(player) <= 20 && it != player }
-
         // --- RETRIEVAL AND MEMORIES LOGIC ---
         val keywords = moreText.lowercase()
             .split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+"))
             .filter { it.length >= 3 }
             .toSet()
 
-        val participatingPokemon = allPokemon.filter { it.currentHealth > 0 }
+        val teamPokemon = activePokemon.filter { it.currentHealth > 0 }
+        val nearbyPokemon = context.nearbyPokemonEntities.map { it.pokemon }.filter { it.currentHealth > 0 && it.uuid !in activePokemon.map { a -> a.uuid } }
+        val participatingPokemon = (teamPokemon + nearbyPokemon).take(8)
         val participantsUuids = participatingPokemon.map { it.uuid.toString() }.toSet()
 
-        val candidateMemories = mutableSetOf<Memory>()
+        val pokemonCount = participatingPokemon.size.coerceAtLeast(1)
+        val maxTotalCandidates = config.baseCandidateMemories + ((pokemonCount - 1) * 7)
+        val quotaPerPokemon = maxTotalCandidates / pokemonCount
+
+        val candidateMemoriesPerPoke = mutableMapOf<String, MutableList<Memory>>()
         participatingPokemon.forEach { p ->
             val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
-            candidateMemories.addAll(MemorySystem.loadMemories(p.uuid.toString(), displayName))
+            val loaded = MemorySystem.loadMemories(p.uuid.toString(), displayName)
+            candidateMemoriesPerPoke[p.uuid.toString()] = loaded.toMutableList()
         }
 
         val recentInteractions = serverLastInteractions[player.uuid] ?: emptyList()
         val currentTick = player.server.tickCount
 
-        val scoredMemories = candidateMemories.map { m ->
+        fun scoreMemory(m: Memory): Int {
             var score = 0
             val matchCount = m.keywords.count { it.lowercase() in keywords }
             score += matchCount
@@ -1917,34 +2062,74 @@ object DialogueSystem {
             }
 
             if (overlapWithLastInteractions) {
-                println("repetição detectada")//score -= 10
+                println("repetição detectada")
+                score -= 10
             }
 
-            m to score
-        }.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+            return score
+        }
+
+        // Ranqueia memórias individualmente por Pokémon e aplica a cota igualitária
+        val equalizedCandidates = mutableListOf<Pair<Memory, Int>>()
+        val leftoverMemories = mutableListOf<Pair<Memory, Int>>()
+
+        candidateMemoriesPerPoke.values.forEach { pokeMemories ->
+            val sorted = pokeMemories.map { it to scoreMemory(it) }
+                .sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+
+            val taken = sorted.take(quotaPerPokemon)
+            val left = sorted.drop(quotaPerPokemon)
+
+            equalizedCandidates.addAll(taken)
+            leftoverMemories.addAll(left)
+        }
+
+        // Se sobrou espaço no total (ex: algum Pokémon tinha menos memórias que sua cota), preenche com as melhores sobras
+        if (equalizedCandidates.size < maxTotalCandidates && leftoverMemories.isNotEmpty()) {
+            val remainingSlots = maxTotalCandidates - equalizedCandidates.size
+            val sortedLeftovers = leftoverMemories.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+            equalizedCandidates.addAll(sortedLeftovers.take(remainingSlots))
+        }
+
+        val scoredMemories = equalizedCandidates.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+
+        // Stopwords comuns em PT/EN para evitar falsa similaridade
+        val stopWords = setOf(
+            "para", "com", "que", "como", "mais", "sobre", "quando", "depois", "eles", "elas", "essa", "esse",
+            "esta", "este", "muito", "mesmo", "ainda", "assim", "agora", "aqui", "onde", "quem", "qual",
+            "with", "from", "that", "this", "they", "them", "then", "there", "where", "when", "about", "more"
+        )
+
+        // Nomes de participantes ativos a serem filtrados das comparações de texto
+        val participantNames = participatingPokemon.map { (it.nickname?.string?.takeIf { s -> s.isNotBlank() } ?: it.species.name).lowercase() }.toSet() +
+                setOf(player.name.string.lowercase())
+
+        fun extractMeaningfulWords(text: String): Set<String> {
+            return text.lowercase()
+                .split(Regex("\\W+"))
+                .filter { it.length > 2 && it !in stopWords && it !in participantNames }
+                .toSet()
+        }
 
         // 2. Diversity filter
         val selectedMemories = mutableListOf<Memory>()
-        val skippedForDiversity = mutableListOf<Memory>()
         val selectedKeywords = mutableSetOf<String>()
         val selectedTexts = mutableListOf<String>()
 
-        for ((m, score) in scoredMemories) {
-            val words2 = m.memory.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+        for ((m, score) in scoredMemories.filter { it.second >= 2 }) {
+            val words2 = extractMeaningfulWords(m.memory)
             val isTooSimilarText = selectedTexts.any { existingText ->
-                val words1 = existingText.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+                val words1 = extractMeaningfulWords(existingText)
                 val intersection = words1.intersect(words2).size
                 val union = words1.union(words2).size
                 val jaccard = if (union > 0) intersection.toDouble() / union else 0.0
-                jaccard > 0.5
+                jaccard > 0.38
             }
 
             val overlapCount = m.keywords.count { it in selectedKeywords }
-            val isTooSimilarKeywords = m.keywords.isNotEmpty() && (overlapCount.toDouble() / m.keywords.size > 0.6 || overlapCount >= 3)
+            val isTooSimilarKeywords = m.keywords.isNotEmpty() && (overlapCount.toDouble() / m.keywords.size > 0.7)
 
-            if (isTooSimilarText || isTooSimilarKeywords) {
-                skippedForDiversity.add(m)
-            } else {
+            if (!isTooSimilarText && !isTooSimilarKeywords) {
                 if (selectedMemories.size < config.maxRelevantMemories) {
                     selectedMemories.add(m)
                     selectedKeywords.addAll(m.keywords)
@@ -1952,13 +2137,6 @@ object DialogueSystem {
                 }
             }
         }
-
-        // Fill remaining slots from skipped if we haven't reached the limit
-        for (m in skippedForDiversity) {
-            if (selectedMemories.size >= config.maxRelevantMemories) break
-            selectedMemories.add(m)
-        }
-
 
         fun resolveParticipantName(uuidStr: String): String {
             val uuid = try { UUID.fromString(uuidStr) } catch (e: Exception) { null } ?: return uuidStr.take(5)
@@ -1981,13 +2159,34 @@ object DialogueSystem {
         }
 
         return buildString {
-            if (selectedMemories.isNotEmpty()) {
-                appendLine("[RELEVANT MEMORIES]")
-                selectedMemories.forEach { m ->
-                    val partsStr = m.participants.joinToString(", ") { resolveParticipantName(it) }
-                    appendLine("- Memory: ${m.memory} (Participants: $partsStr) | Keywords: ${m.keywords.joinToString(", ")}")
+            when {
+                forcedRelevantMemory != null -> {
+                    appendLine("[RELEVANT MEMORIES]")
+                    if (forcedRelevantMemory == "NO_MEMORY") {
+                        appendLine("NO_MEMORY")
+                    } else {
+                        appendLine("- Memory: $forcedRelevantMemory")
+                    }
+                    appendLine()
                 }
-                appendLine()
+                config.enableAiMemoryRetrieval -> {
+                    val aiCandidates = scoredMemories.take(maxTotalCandidates)
+                    appendLine("[CANDIDATE_MEMORIES]")
+                    appendLine("PLAYER_MESSAGE:${moreText.trim()}")
+                    aiCandidates.forEachIndexed { idx, (m, _) ->
+                        appendLine("${idx + 1}. ${m.memory}")
+                    }
+                    appendLine("[/CANDIDATE_MEMORIES]")
+                    appendLine()
+                }
+                selectedMemories.isNotEmpty() -> {
+                    appendLine("[RELEVANT MEMORIES]")
+                    selectedMemories.forEach { m ->
+                        val partsStr = m.participants.joinToString(", ") { resolveParticipantName(it) }
+                        appendLine("- Memory: ${m.memory} (Participants: $partsStr) | Keywords: ${m.keywords.joinToString(", ")}")
+                    }
+                    appendLine()
+                }
             }
 
             fun String?.takeIfUseful(): String? {
@@ -2017,6 +2216,15 @@ object DialogueSystem {
                     appendLine()
                 }
 
+            // Inject recent events for all active Pokémon
+            val activeUuids = activePokemon.map { it.uuid }.toSet()
+            val recentEvents = RecentEventsSystem.getAndClearEvents(activeUuids.toList())
+            if (recentEvents.isNotEmpty()) {
+                appendLine("[RECENT EVENTS]")
+                recentEvents.forEach { appendLine("- $it") }
+                appendLine()
+            }
+
             appendLine("[PLAYER IDS]")
             val ownerPreferred = PlayerNicknameManager.get(player.uuid, player.name.string)
             appendLine("$ownerPreferred (${player.name.string}) [OWNER]")
@@ -2035,7 +2243,8 @@ object DialogueSystem {
                 appendLine()
             }
 
-            appendLine(moreText)
+            appendLine("[PLAYER_MESSAGE]")
+            appendLine(moreText.trim())
             appendLine()
 
             // Injeta nota pendente (ex: abandono de quest) se houver
@@ -2125,15 +2334,18 @@ object DialogueSystem {
                         parts += "HP: ${p.currentHealth}/${p.maxHealth}"
                     }
                     parts += "Lvl${p.level}"
-                    val fullnessPercent = ((p.currentFullness.toFloat() / p.getMaxFullness().toFloat()) * 100f).toInt()
-                    val hungerState = when {
-                        fullnessPercent < 10 -> "very hungry"
-                        fullnessPercent <= 30 -> "hungry"
-                        fullnessPercent <= 50 -> "normal"
-                        fullnessPercent <= 80 -> "satisfied"
-                        else -> "completely full"
+                    val clientConf = try { vito.cobblebrain.config.ClientConfigHandler.clientConfig } catch (_: Throwable) { null }
+                    if (clientConf?.showHunger == true) {
+                        val fullnessPercent = ((p.currentFullness.toFloat() / p.getMaxFullness().toFloat()) * 100f).toInt()
+                        val hungerState = when {
+                            fullnessPercent < 10 -> "very hungry"
+                            fullnessPercent <= 30 -> "hungry"
+                            fullnessPercent <= 50 -> "normal"
+                            fullnessPercent <= 80 -> "satisfied"
+                            else -> "completely full"
+                        }
+                        parts += "$hungerState ($fullnessPercent%)"
                     }
-                    parts += "$hungerState ($fullnessPercent%)"
                     parts += "Nature: ${p.effectiveNature.name.path}"
                     if (allMoves.isNotEmpty()) {
                         parts += "Moves: ${allMoves.joinToString(",")}"
@@ -2276,7 +2488,6 @@ object DialogueSystem {
             }
 
             appendLine("[UNAVAILABLE POKEMON]")
-            val activeUuids = activePokemon.map { it.uuid }.toSet()
             val allPartyPokemon = PokemonQuery.getAllPokemon(player)
             val unavailableCount = allPartyPokemon.count {
                 it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)
@@ -2691,6 +2902,7 @@ object DialogueSystem {
                 }.firstOrNull()
 
                 if (pokemon != null) {
+                    RecentEventsSystem.commandSources[pokemon.uuid] = RecentEventsSystem.CommandSource.AI
                     CommandState.activeCommands[pokemon.uuid] = cmd.action
                 }
             }

@@ -104,12 +104,62 @@ object DialogueSystemFabric {
             DialogueSystem.onBattleVictory(event)
         }
 
-        // Death
+        // Death - handles Pokémon fainted, player kills and Pokémon kills
         ServerLivingEntityEvents.AFTER_DEATH.register { entity, source ->
-            if (entity !is PokemonEntity) return@register
-            val killer = source.entity as? ServerPlayer ?: return@register
+            val killer = source.entity
+            val now = System.currentTimeMillis()
 
-            DialogueSystem.onPokemonDeath(entity, killer)
+            // 1. Pokémon Fainted: a player-owned Pokémon died
+            if (entity is PokemonEntity) {
+                val ownerUuid = entity.pokemon.getOwnerUUID()
+                if (ownerUuid != null) {
+                    val pokemonName = entity.pokemon.nickname?.string ?: entity.pokemon.species.name
+                    RecentEventsSystem.recordEvent(
+                        entity.pokemon.uuid,
+                        RecentEventsSystem.FaintEvent(
+                            pokemonName = pokemonName,
+                            cause = source.msgId,
+                            timestamp = now
+                        )
+                    )
+                }
+                // Player-killed a Pokémon (existing behaviour)
+                val playerKiller = killer as? ServerPlayer ?: return@register
+                DialogueSystem.onPokemonDeath(entity, playerKiller)
+                return@register
+            }
+
+            // 2. Player Kills: player killed a non-Pokémon entity
+            if (killer is ServerPlayer) {
+                val entityTypeName = entity.type.descriptionId.substringAfterLast(".")
+                val ativos = PokemonQuery.findActivePokemon(killer)
+                ativos.forEach { p ->
+                    RecentEventsSystem.recordEvent(
+                        p.uuid,
+                        RecentEventsSystem.PlayerKillEvent(
+                            entityType = entityTypeName,
+                            timestamp = now
+                        )
+                    )
+                }
+            }
+
+            // 3. Pokémon Kills: a player's Pokémon killed some entity
+            if (killer is PokemonEntity) {
+                val ownerUuid = killer.pokemon.getOwnerUUID() ?: return@register
+                val pokemonName = killer.pokemon.nickname?.string ?: killer.pokemon.species.name
+                val entityTypeName = entity.type.descriptionId.substringAfterLast(".")
+                val trigger = RecentEventsSystem.commandSources[killer.uuid] ?: RecentEventsSystem.CommandSource.HUD
+                RecentEventsSystem.recordEvent(
+                    killer.pokemon.uuid,
+                    RecentEventsSystem.PokemonKillEvent(
+                        pokemonName = pokemonName,
+                        entityType = entityTypeName,
+                        trigger = if (trigger == RecentEventsSystem.CommandSource.AI) "AI" else "Action HUD",
+                        timestamp = now
+                    )
+                )
+            }
         }
 
         // Block break (for treasure quests)

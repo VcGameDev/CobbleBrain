@@ -47,8 +47,10 @@ object CobblebrainNetworkingFabric {
             config.enableKarma,
             config.maxStoredMemories,
             config.maxRelevantMemories,
+            config.baseCandidateMemories,
             config.allowClientPersonalityEditing,
-            config.forceOfflineMode
+            config.forceOfflineMode,
+            config.enableAiMemoryRetrieval
         )
 
         ServerPlayNetworking.send(player, payload)

@@ -13,6 +13,7 @@ import vito.cobblebrain.social.DialogueSystem.checkIaResponse
 import vito.cobblebrain.social.MemorySystem
 import vito.cobblebrain.social.PokemonPersonality
 import vito.cobblebrain.social.PokemonQuery
+import vito.cobblebrain.social.RecentEventsSystem
 
 object CobblebrainServerHandler {
     // Função que processa o comando recebido de um player
@@ -25,6 +26,7 @@ object CobblebrainServerHandler {
                 // Aplica para TODOS os pokémons ativos
                 ativos.forEach { poke ->
                     poke.entity?.let { entity ->
+                        RecentEventsSystem.commandSources[entity.uuid] = RecentEventsSystem.CommandSource.HUD
                         CommandState.activeCommands[entity.uuid] = command.action
                     }
                 }
@@ -78,6 +80,7 @@ object CobblebrainServerHandler {
                 }
 
                 pokemon?.entity?.let { entity ->
+                    RecentEventsSystem.commandSources[entity.uuid] = RecentEventsSystem.CommandSource.HUD
                     CommandState.activeCommands[entity.uuid] = command.action
                     player.sendSystemMessage(Component.translatable("cobblebrain.feedback.command_applied", command.action, command.pokemonName))
 
