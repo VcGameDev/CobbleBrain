@@ -171,7 +171,7 @@ object CobblebrainConfigScreen {
         val category = builder.getOrCreateCategory(Component.literal("Actions"))
         val actionKeys = listOf(
             "cook", "grow", "repair", "shift", "fish", "nightmare", "light", "scout",
-            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "sit", "idle"
+            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "prospect", "rest", "idle"
         )
 
         category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFFFF00))
@@ -221,7 +221,9 @@ object CobblebrainConfigScreen {
             "eat" -> actionSettings.eat.active
             "buff" -> actionSettings.buff.active
             "debuff_enemy" -> actionSettings.debuffEnemy.active
-            "sit" -> actionSettings.sit.active
+            "excavate", "demolish" -> actionSettings.excavate.active
+            "prospect" -> actionSettings.prospect.active
+            "rest", "sit" -> actionSettings.rest.active
             "idle" -> actionSettings.idle.active
             else -> true
         }
@@ -529,7 +531,9 @@ object CobblebrainConfigScreen {
                     cfg.actionSettings.debuffEnemy.durationSeconds = debuffDurationVal
                     cfg.actionSettings.debuffEnemy.effectLevel = debuffEffectLevelVal
                 }
-                "sit" -> cfg.actionSettings.sit.active = activeVal
+                "excavate", "demolish" -> cfg.actionSettings.excavate.active = activeVal
+                "prospect" -> cfg.actionSettings.prospect.active = activeVal
+                "rest", "sit" -> cfg.actionSettings.rest.active = activeVal
                 "idle" -> cfg.actionSettings.idle.active = activeVal
             }
             ConfigHandler.save()
@@ -562,6 +566,7 @@ object CobblebrainConfigScreen {
         var enableKarma = true
         var maxStoredMemories = 100
         var maxRelevantMemories = 4
+        var favoriteMemorySlots = 5
         var baseCandidateMemories = 10
         var enableAiMemoryRetrieval = false
 
@@ -638,6 +643,7 @@ object CobblebrainConfigScreen {
                         enableKarma,
                         maxStoredMemories,
                         maxRelevantMemories,
+                        favoriteMemorySlots,
                         baseCandidateMemories,
                         config.allowClientPersonalityEditing,
                         enableAiMemoryRetrieval
@@ -1380,6 +1386,17 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.max_relevant_memories.tooltip"))
             .build()
 
+        val favoriteMemorySlotsEntry = entryBuilder.startIntField(
+            Component.literal("Favorite Memory Slots").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(
+                SyncedConfig.favoriteMemorySlots,
+                config.favoriteMemorySlots
+            )
+        ).setDefaultValue(5)
+            .setSaveConsumer { value -> favoriteMemorySlots = value }
+            .setTooltip(Component.translatable("cobblebrain.config.favorite_memory_slots.tooltip"))
+            .build()
+
         val baseCandidateMemoriesEntry = entryBuilder.startIntField(
             Component.literal("Base Candidate Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(
@@ -1702,6 +1719,7 @@ object CobblebrainConfigScreen {
         category.entries.add(makeSpacer(6))
         category.entries.add(makeSubtitleEntry("Local Retrieval", 0x55FFFF, bold = false, alignLeft = false))
         category.entries.add(maxRelevantMemoriesEntry)
+        category.entries.add(favoriteMemorySlotsEntry)
         category.entries.add(makeSpacer(6))
         category.entries.add(makeSubtitleEntry("AI-Driven Retrieval", 0x55FFFF, bold = false, alignLeft = false))
         category.entries.add(enableAiMemoryRetrievalEntry)
@@ -1734,6 +1752,7 @@ object CobblebrainConfigScreen {
                 enableKarma,
                 maxStoredMemories,
                 maxRelevantMemories,
+                favoriteMemorySlots,
                 baseCandidateMemories,
                 config.allowClientPersonalityEditing,
                 enableAiMemoryRetrieval

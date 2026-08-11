@@ -35,6 +35,8 @@ object SyncedConfig {
         private set
     var maxRelevantMemories = 4
         private set
+    var favoriteMemorySlots = 5
+        private set
     var baseCandidateMemories = 10
         private set
     var allowClientPersonalityEditing = true
@@ -69,7 +71,9 @@ object SyncedConfig {
             "eat" -> settings.eat.active
             "buff" -> settings.buff.active
             "debuff", "debuff_enemy" -> settings.debuffEnemy.active
-            "sit" -> settings.sit.active
+            "excavate", "demolish" -> settings.excavate.active
+            "prospect" -> settings.prospect.active
+            "rest", "sit" -> settings.rest.active
             "idle" -> settings.idle.active
             else -> true
         }
@@ -89,6 +93,7 @@ object SyncedConfig {
         enableKarma = payload.enableKarma
         maxStoredMemories = payload.maxStoredMemories
         maxRelevantMemories = payload.maxRelevantMemories
+        favoriteMemorySlots = payload.favoriteMemorySlots
         baseCandidateMemories = payload.baseCandidateMemories
         allowClientPersonalityEditing = payload.allowClientPersonalityEditing
         forceOfflineMode = payload.forceOfflineMode
@@ -120,6 +125,7 @@ object SyncedConfig {
         enableKarma: Boolean,
         maxStoredMemories: Int,
         maxRelevantMemories: Int,
+        favoriteMemorySlots: Int = 5,
         baseCandidateMemories: Int = 10,
         allowClientPersonalityEditing: Boolean,
         enableAiMemoryRetrieval: Boolean = false
@@ -142,6 +148,7 @@ object SyncedConfig {
         this.enableKarma = enableKarma
         this.maxStoredMemories = maxStoredMemories
         this.maxRelevantMemories = maxRelevantMemories
+        this.favoriteMemorySlots = favoriteMemorySlots
         this.baseCandidateMemories = baseCandidateMemories
         this.allowClientPersonalityEditing = allowClientPersonalityEditing
         this.enableAiMemoryRetrieval = enableAiMemoryRetrieval
@@ -161,6 +168,7 @@ object SyncedConfig {
         cfg.enableKarma = enableKarma
         cfg.maxStoredMemories = maxStoredMemories
         cfg.maxRelevantMemories = maxRelevantMemories
+        cfg.favoriteMemorySlots = favoriteMemorySlots
         cfg.baseCandidateMemories = baseCandidateMemories
         cfg.allowClientPersonalityEditing = allowClientPersonalityEditing
         cfg.enableAiMemoryRetrieval = enableAiMemoryRetrieval

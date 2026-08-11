@@ -115,7 +115,7 @@ object CobblebrainServerHandlerFabric {
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.SavePersonalityPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
-                CobblebrainServerHandler.handleSavePersonality(player, payload.pokemonUuid, payload.personalityJson)
+                CobblebrainServerHandler.handleSavePersonality(player, payload.pokemonUuid, payload.personalityJson, payload.memoriesJson)
             }
         }
 

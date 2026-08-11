@@ -29,6 +29,7 @@ data class CobblebrainConfig(
     var onlyNearbyChat: Boolean = false,
     var maxStoredMemories: Int = 100,
     var maxRelevantMemories: Int = 4,
+    var favoriteMemorySlots: Int = 5,
     var baseCandidateMemories: Int = 10,
     var enableAiMemoryRetrieval: Boolean = false,
     var useDefaultOutput: Boolean = true,
@@ -127,6 +128,21 @@ data class DebuffEnemyActionConfig(
     var effectLevel: Int = 1
 )
 
+data class ExcavateActionConfig(
+    var active: Boolean = true,
+    var maxBlocks: Int = 144,
+    var breakDelayTicks: Int = 3,
+    var dropChancePercent: Int = 30,
+    var workingDistance: Double = 32.0
+)
+
+data class ProspectActionConfig(
+    var active: Boolean = true,
+    var maxBlocks: Int = 48,
+    var breakDelayTicks: Int = 5,
+    var workingDistance: Double = 24.0
+)
+
 data class ActionSettings(
     var cook: CookActionConfig = CookActionConfig(),
     var grow: GrowActionConfig = GrowActionConfig(),
@@ -142,6 +158,13 @@ data class ActionSettings(
     var eat: BaseActionConfig = BaseActionConfig(),
     var buff: BuffActionConfig = BuffActionConfig(),
     var debuffEnemy: DebuffEnemyActionConfig = DebuffEnemyActionConfig(),
-    var sit: BaseActionConfig = BaseActionConfig(),
+    var excavate: ExcavateActionConfig = ExcavateActionConfig(),
+    var prospect: ProspectActionConfig = ProspectActionConfig(),
+    var demolish: ExcavateActionConfig = excavate,
+    var rest: BaseActionConfig = BaseActionConfig(),
     var idle: BaseActionConfig = BaseActionConfig()
-)
+) {
+    var sit: BaseActionConfig
+        get() = rest
+        set(value) { rest = value }
+}

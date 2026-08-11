@@ -42,16 +42,25 @@ object PingClient {
                 cameraEntity
             )
 
-        val hitResult =
-            cameraEntity.level().clip(context)
+        val hitResult = cameraEntity.level().clip(context)
 
-        if (
-            hitResult is BlockHitResult
-        ) {
-
+        if (hitResult is BlockHitResult && hitResult.type == HitResult.Type.BLOCK) {
             sendPingToServer?.invoke(
                 hitResult.blockPos,
                 hitResult.direction
+            )
+        } else {
+            // Support mid-air / sky pings when looking into open air
+            val airTargetPos = BlockPos.containing(
+                eyePosition.add(
+                    viewVector.x * 16.0,
+                    viewVector.y * 16.0,
+                    viewVector.z * 16.0
+                )
+            )
+            sendPingToServer?.invoke(
+                airTargetPos,
+                Direction.UP
             )
         }
     }

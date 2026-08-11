@@ -166,6 +166,8 @@ class AIHandler {
             if (SyncedConfig.isActionActive("scout")) typeActions += "fly type: SC (scout)"
             if (SyncedConfig.isActionActive("light")) typeActions += "electric type: L (light)"
             if (SyncedConfig.isActionActive("fish")) typeActions += "water type: F (fish)"
+            if (SyncedConfig.isActionActive("excavate")) typeActions += "steel type: EX (excavate tunnel)"
+            if (SyncedConfig.isActionActive("prospect")) typeActions += "rock type: PR (prospect mineral)"
             //if (vito.cobblebrain.config.SyncedConfig.isActionActive("teleport")) typeActions += "psychic type: T (teleport)"
 
             if (available.isEmpty() && typeActions.isEmpty()) return ""

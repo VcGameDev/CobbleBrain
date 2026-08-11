@@ -18,6 +18,7 @@ class PersonalityListScreen(
         val displayName: String,
         val species: String,
         val personalityJson: String,
+        val memoriesJson: String = "[]",
         val inParty: Boolean
     )
 
@@ -37,6 +38,7 @@ class PersonalityListScreen(
                             obj.get("displayName").asString,
                             obj.get("species").asString,
                             obj.get("personalityJson").asString,
+                            obj.get("memoriesJson")?.asString ?: "[]",
                             inParty
                         )
                         if (inParty) partyPokemons.add(entry) else pcPokemons.add(entry)
@@ -83,15 +85,17 @@ class PersonalityListScreen(
         init()
     }
 
-    fun updatePersonality(uuid: String, personality: vito.cobblebrain.social.PokemonPersonality) {
+    fun updatePersonality(uuid: String, personality: vito.cobblebrain.social.PokemonPersonality, memoriesJson: String = "") {
         val newJson = com.google.gson.Gson().toJson(personality)
         val partyIdx = partyPokemons.indexOfFirst { it.uuid == uuid }
         if (partyIdx >= 0) {
-            partyPokemons[partyIdx] = partyPokemons[partyIdx].copy(personalityJson = newJson)
+            val old = partyPokemons[partyIdx]
+            partyPokemons[partyIdx] = old.copy(personalityJson = newJson, memoriesJson = if (memoriesJson.isNotBlank()) memoriesJson else old.memoriesJson)
         }
         val pcIdx = pcPokemons.indexOfFirst { it.uuid == uuid }
         if (pcIdx >= 0) {
-            pcPokemons[pcIdx] = pcPokemons[pcIdx].copy(personalityJson = newJson)
+            val old = pcPokemons[pcIdx]
+            pcPokemons[pcIdx] = old.copy(personalityJson = newJson, memoriesJson = if (memoriesJson.isNotBlank()) memoriesJson else old.memoriesJson)
         }
     }
 
@@ -133,7 +137,7 @@ class PersonalityListScreen(
                 addRenderableWidget(
                     Button.builder(Component.translatable(buttonTextKey)) {
                         minecraft?.setScreen(
-                            PersonalityEditScreen(this, item.uuid, item.displayName, item.species, item.personalityJson)
+                            PersonalityEditScreen(this, item.uuid, item.displayName, item.species, item.personalityJson, item.memoriesJson)
                         )
                     }.bounds(x + 215, btnY + 2, 55, 18).build()
                 )
@@ -147,10 +151,10 @@ class PersonalityListScreen(
                                     if (capturedPoke.inParty) {
                                         val idx = partyPokemons.indexOfFirst { it.uuid == capturedPoke.uuid }
                                         if (idx >= 0) {
-                                            partyPokemons[idx] = PokemonEntry(
-                                                capturedPoke.uuid, capturedPoke.displayName, capturedPoke.species,
-                                                "{}", true
-                                            )
+                                             partyPokemons[idx] = capturedPoke.copy(
+                                                 personalityJson = "{}",
+                                                 memoriesJson = "[]"
+                                             )
                                         }
                                         clearWidgets(); init()
                                     } else {

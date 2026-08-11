@@ -29,7 +29,8 @@ object CobblebrainServerHandlers {
         CobblebrainServerHandler.handleSavePersonality(
             player,
             payload.pokemonUuid,
-            payload.personalityJson
+            payload.personalityJson,
+            payload.memoriesJson
         )
     }
 

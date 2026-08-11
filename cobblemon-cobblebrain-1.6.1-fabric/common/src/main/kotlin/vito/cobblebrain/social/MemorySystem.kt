@@ -21,7 +21,8 @@ data class Memory(
     val memory: String,
     val keywords: List<String>,
     val createdTick: Long,
-    val playerMessage: String = ""
+    val playerMessage: String = "",
+    val isFavorite: Boolean = false
 )
 
 data class PokemonPersonality(
@@ -132,7 +133,8 @@ object MemorySystem {
                     val keywords = obj.getAsJsonArray("keywords").map { it.asString }
                     val createdTick = obj.get("createdTick").asLong
                     val playerMessage = obj.get("playerMessage")?.asString ?: ""
-                    memories.add(Memory(participants, memory, keywords, createdTick, playerMessage))
+                    val isFavorite = obj.get("isFavorite")?.asBoolean ?: obj.get("favorite")?.asBoolean ?: false
+                    memories.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
                 }
             }
         } catch (e: Exception) {
@@ -168,12 +170,48 @@ object MemorySystem {
                             add("keywords", kwArr)
                             addProperty("createdTick", m.createdTick)
                             addProperty("playerMessage", m.playerMessage)
+                            addProperty("isFavorite", m.isFavorite)
                         }
                         writer.println(gson.toJson(obj))
                     }
                 }
             } catch (e: Exception) {
                 println("Error saving memory for $pokemonUuid: ${e.message}")
+            }
+        }
+    }
+
+    fun saveMemories(pokemonUuid: String, memories: List<Memory>) {
+        saveMemories(pokemonUuid, memories, null)
+    }
+
+    fun saveMemories(pokemonUuid: String, memories: List<Memory>, displayName: String?) {
+        val file = resolveMemoryFile(pokemonUuid, displayName)
+        val limit = config.maxStoredMemories
+        val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+
+        DiskWriteExecutor.submit {
+            try {
+                file.parentFile?.mkdirs()
+                PrintWriter(FileWriter(file, false)).use { writer ->
+                    toSave.forEach { m ->
+                        val obj = JsonObject().apply {
+                            val partsArr = com.google.gson.JsonArray()
+                            m.participants.forEach { partsArr.add(it) }
+                            add("participants", partsArr)
+                            addProperty("memory", m.memory)
+                            val kwArr = com.google.gson.JsonArray()
+                            m.keywords.forEach { kwArr.add(it.lowercase()) }
+                            add("keywords", kwArr)
+                            addProperty("createdTick", m.createdTick)
+                            addProperty("playerMessage", m.playerMessage)
+                            addProperty("isFavorite", m.isFavorite)
+                        }
+                        writer.println(gson.toJson(obj))
+                    }
+                }
+            } catch (e: Exception) {
+                println("Error saving memories for $pokemonUuid: ${e.message}")
             }
         }
     }

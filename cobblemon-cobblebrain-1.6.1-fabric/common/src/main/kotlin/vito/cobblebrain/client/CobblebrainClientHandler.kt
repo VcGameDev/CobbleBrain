@@ -14,7 +14,7 @@ object CobblebrainClientCommon {
     var sendNicknameToServer: ((String) -> Unit)? = null
     var sendOfflineSettingsToServer: ((Boolean, Boolean) -> Unit)? = null
     var requestPersonalityList: (() -> Unit)? = null
-    var savePersonality: ((String, String) -> Unit)? = null
+    var savePersonality: ((String, String, String) -> Unit)? = null
     var deletePersonality: ((String) -> Unit)? = null
     var sendRequestPromptWithMemory: ((String) -> Unit)? = null
     var sendVoiceInputToServer: ((String) -> Unit)? = null
@@ -31,6 +31,7 @@ object CobblebrainClientCommon {
     var keyDown: KeyMapping? = null
     var keyExecute: KeyMapping? = null
     var keyToggle: KeyMapping? = null
+    var keyMode: KeyMapping? = null
     var keyPing: KeyMapping? = null
     var keyVoice: KeyMapping? = null
 

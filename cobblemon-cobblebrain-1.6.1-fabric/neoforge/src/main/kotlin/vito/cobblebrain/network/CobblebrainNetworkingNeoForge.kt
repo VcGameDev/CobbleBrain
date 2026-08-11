@@ -81,6 +81,7 @@ object CobblebrainNetworkingNeoForge {
             cfg.enableKarma,
             cfg.maxStoredMemories,
             cfg.maxRelevantMemories,
+            cfg.favoriteMemorySlots,
             cfg.baseCandidateMemories,
             cfg.allowClientPersonalityEditing,
             cfg.forceOfflineMode,
@@ -142,8 +143,8 @@ object CobblebrainNetworkingNeoForge {
                 }
             }
 
-            CobblebrainClientCommon.savePersonality = { uuid, json ->
-                PacketDistributor.sendToServer(CobblebrainPayloads.SavePersonalityPayload(uuid, json))
+            CobblebrainClientCommon.savePersonality = { uuid, json, memoriesJson ->
+                PacketDistributor.sendToServer(CobblebrainPayloads.SavePersonalityPayload(uuid, json, memoriesJson))
             }
 
             CobblebrainClientCommon.deletePersonality = { uuid ->

@@ -65,6 +65,7 @@ object CobblebrainPayloads {
         val enableKarma: Boolean,
         val maxStoredMemories: Int,
         val maxRelevantMemories: Int,
+        val favoriteMemorySlots: Int = 5,
         val baseCandidateMemories: Int,
         val allowClientPersonalityEditing: Boolean,
         val forceOfflineMode: Boolean,
@@ -92,6 +93,7 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.enableKarma)
                         buf.writeInt(payload.maxStoredMemories)
                         buf.writeInt(payload.maxRelevantMemories)
+                        buf.writeInt(payload.favoriteMemorySlots)
                         buf.writeInt(payload.baseCandidateMemories)
                         buf.writeBoolean(payload.allowClientPersonalityEditing)
                         buf.writeBoolean(payload.forceOfflineMode)
@@ -111,6 +113,7 @@ object CobblebrainPayloads {
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
+                            buf.readInt(),
                             buf.readInt(),
                             buf.readInt(),
                             buf.readInt(),
@@ -334,7 +337,8 @@ object CobblebrainPayloads {
     /** Client → Server: save the edited personality for a specific Pokémon */
     data class SavePersonalityPayload(
         val pokemonUuid: String,
-        val personalityJson: String
+        val personalityJson: String,
+        val memoriesJson: String = ""
     ) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "save_personality")
@@ -345,9 +349,11 @@ object CobblebrainPayloads {
                     { buf, payload ->
                         buf.writeUtf(payload.pokemonUuid)
                         buf.writeUtf(payload.personalityJson)
+                        buf.writeUtf(payload.memoriesJson)
                     },
                     { buf ->
                         SavePersonalityPayload(
+                            buf.readUtf(),
                             buf.readUtf(),
                             buf.readUtf()
                         )

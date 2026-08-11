@@ -58,9 +58,9 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
-        CobblebrainClientCommon.savePersonality = { uuid, json ->
+        CobblebrainClientCommon.savePersonality = { uuid, json, memoriesJson ->
             if (net.minecraft.client.Minecraft.getInstance().player != null) {
-                ClientPlayNetworking.send(CobblebrainPayloads.SavePersonalityPayload(uuid, json))
+                ClientPlayNetworking.send(CobblebrainPayloads.SavePersonalityPayload(uuid, json, memoriesJson))
             }
         }
 

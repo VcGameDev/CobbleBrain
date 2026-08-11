@@ -36,7 +36,9 @@ object CobblebrainServerHandler {
                 "eat" -> ConfigHandler.config.actionSettings.eat.active
                 "buff" -> ConfigHandler.config.actionSettings.buff.active
                 "debuff", "debuff_enemy" -> ConfigHandler.config.actionSettings.debuffEnemy.active
-                "sit" -> ConfigHandler.config.actionSettings.sit.active
+                "excavate", "demolish" -> ConfigHandler.config.actionSettings.excavate.active
+                "prospect" -> ConfigHandler.config.actionSettings.prospect.active
+                "rest", "sit" -> ConfigHandler.config.actionSettings.rest.active
                 "idle" -> ConfigHandler.config.actionSettings.idle.active
                 else -> true
             }
@@ -138,12 +140,15 @@ object CobblebrainServerHandler {
             val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
             val personality = MemorySystem.loadPersonality(uuidStr, displayName)
             val personalityJson = gson.toJson(personality)
+            val memories = MemorySystem.loadMemories(uuidStr, displayName)
+            val memoriesJson = gson.toJson(memories)
 
             val entry = com.google.gson.JsonObject()
             entry.addProperty("uuid", uuidStr)
             entry.addProperty("displayName", displayName)
             entry.addProperty("species", p.species.name)
             entry.addProperty("personalityJson", personalityJson)
+            entry.addProperty("memoriesJson", memoriesJson)
             entry.addProperty("inParty", true)
             array.add(entry)
         }
@@ -160,12 +165,15 @@ object CobblebrainServerHandler {
                 if (!MemorySystem.hasStoredPersonality(uuidStr, displayName)) continue
                 val personality = MemorySystem.loadPersonality(uuidStr, displayName)
                 val personalityJson = gson.toJson(personality)
+                val memories = MemorySystem.loadMemories(uuidStr, displayName)
+                val memoriesJson = gson.toJson(memories)
 
                 val entry = com.google.gson.JsonObject()
                 entry.addProperty("uuid", uuidStr)
                 entry.addProperty("displayName", displayName)
                 entry.addProperty("species", p.species.name)
                 entry.addProperty("personalityJson", personalityJson)
+                entry.addProperty("memoriesJson", memoriesJson)
                 entry.addProperty("inParty", false)
                 array.add(entry)
             }
@@ -176,7 +184,7 @@ object CobblebrainServerHandler {
         DialogueSystem.sendPersonalityList?.invoke(player, array.toString())
     }
 
-    fun handleSavePersonality(player: ServerPlayer, pokemonUuid: String, personalityJson: String) {
+    fun handleSavePersonality(player: ServerPlayer, pokemonUuid: String, personalityJson: String, memoriesJson: String = "") {
         val cfg = ConfigHandler.config
         if (!cfg.allowClientPersonalityEditing) {
             player.sendSystemMessage(Component.literal("Client personality editing is disabled by the server.").withStyle(net.minecraft.ChatFormatting.RED))
@@ -189,6 +197,15 @@ object CobblebrainServerHandler {
             if (personality != null) {
                 MemorySystem.warnAboutFilenameConflict(player, pokemonUuid)
                 MemorySystem.savePersonality(pokemonUuid, personality)
+                if (memoriesJson.isNotBlank()) {
+                    try {
+                        val memoryType = object : com.google.gson.reflect.TypeToken<List<vito.cobblebrain.social.Memory>>() {}.type
+                        val memories: List<vito.cobblebrain.social.Memory> = gson.fromJson(memoriesJson, memoryType) ?: emptyList()
+                        MemorySystem.saveMemories(pokemonUuid, memories)
+                    } catch (ex: Exception) {
+                        println("Error parsing memoriesJson on save: ${ex.message}")
+                    }
+                }
                 player.sendSystemMessage(Component.literal("Personality saved successfully.").withStyle(net.minecraft.ChatFormatting.GREEN))
             }
         } catch (e: Exception) {

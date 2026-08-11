@@ -2007,8 +2007,8 @@ object DialogueSystem {
             .filter { it.length >= 3 }
             .toSet()
 
-        val teamPokemon = activePokemon.filter { it.currentHealth > 0 }
-        val nearbyPokemon = context.nearbyPokemonEntities.map { it.pokemon }.filter { it.currentHealth > 0 && it.uuid !in activePokemon.map { a -> a.uuid } }
+        val teamPokemon = activePokemon.filter { it.currentHealth > 0 && it.entity?.isSleeping != true }
+        val nearbyPokemon = context.nearbyPokemonEntities.filter { !it.isSleeping }.map { it.pokemon }.filter { it.currentHealth > 0 && it.uuid !in activePokemon.map { a -> a.uuid } }
         val participatingPokemon = (teamPokemon + nearbyPokemon).take(8)
         val participantsUuids = participatingPokemon.map { it.uuid.toString() }.toSet()
 
@@ -2022,6 +2022,10 @@ object DialogueSystem {
             val loaded = MemorySystem.loadMemories(p.uuid.toString(), displayName)
             candidateMemoriesPerPoke[p.uuid.toString()] = loaded.toMutableList()
         }
+
+        // Separate favorite memories and normal candidate memories
+        val allLoadedMemories = candidateMemoriesPerPoke.values.flatten()
+        val allFavoriteMemories = allLoadedMemories.filter { it.isFavorite }
 
         val recentInteractions = serverLastInteractions[player.uuid] ?: emptyList()
         val currentTick = player.server.tickCount
@@ -2078,11 +2082,23 @@ object DialogueSystem {
             return score
         }
 
+        // Rank favorite memories by context relevance score and select top N favorite slots
+        val selectedFavoriteMemories = allFavoriteMemories
+            .map { it to scoreMemory(it) }
+            .sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+            .take(config.favoriteMemorySlots)
+            .map { it.first }
+
+        // Normal memories (excluding favorites) enter standard quota & diversity scoring
+        val normalCandidateMemoriesPerPoke = candidateMemoriesPerPoke.mapValues { entry ->
+            entry.value.filter { !it.isFavorite }.toMutableList()
+        }
+
         // Ranqueia memórias individualmente por Pokémon e aplica a cota igualitária
         val equalizedCandidates = mutableListOf<Pair<Memory, Int>>()
         val leftoverMemories = mutableListOf<Pair<Memory, Int>>()
 
-        candidateMemoriesPerPoke.values.forEach { pokeMemories ->
+        normalCandidateMemoriesPerPoke.values.forEach { pokeMemories ->
             val sorted = pokeMemories.map { it to scoreMemory(it) }
                 .sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
 
@@ -2168,6 +2184,15 @@ object DialogueSystem {
         }
 
         return buildString {
+            if (selectedFavoriteMemories.isNotEmpty()) {
+                appendLine("[FAVORITE MEMORIES]")
+                selectedFavoriteMemories.forEach { m ->
+                    val partsStr = m.participants.joinToString(", ") { resolveParticipantName(it) }
+                    appendLine("- Memory: ${m.memory} (Participants: $partsStr) | Keywords: ${m.keywords.joinToString(", ")}")
+                }
+                appendLine()
+            }
+
             when {
                 forcedRelevantMemory != null -> {
                     appendLine("[RELEVANT MEMORIES]")
@@ -2499,16 +2524,20 @@ object DialogueSystem {
             appendLine("[UNAVAILABLE POKEMON]")
             val allPartyPokemon = PokemonQuery.getAllPokemon(player)
             val unavailableCount = allPartyPokemon.count {
-                it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)
+                (it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)) || it.entity?.isSleeping == true
             }
             if (unavailableCount == 0) {
                 appendLine("none")
             } else {
                 allPartyPokemon.forEach { p ->
+                    val name = p.nickname?.string ?: p.species.name
+                    if (p.entity?.isSleeping == true) {
+                        appendLine("$name is SLEEPING, unable to talk or interact.")
+                        return@forEach
+                    }
                     if (p.uuid in activeUuids || PokemonQuery.isShoulderMounted(player, p)) {
                         return@forEach
                     }
-                    val name = p.nickname?.string ?: p.species.name
                     when {
                         p.currentHealth <= 0 -> {
                             appendLine("$name is FAINTED, unable to talk or interact.")

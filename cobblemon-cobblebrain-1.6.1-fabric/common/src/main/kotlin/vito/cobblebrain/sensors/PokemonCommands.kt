@@ -30,10 +30,13 @@ import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.MobCategory
 import net.minecraft.world.entity.TamableAnimal
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal
 import net.minecraft.world.entity.ai.goal.Goal
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal
 import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.entity.monster.Ghast
@@ -90,7 +93,7 @@ fun parseCommand(line: String): PokemonCommand? {
         "e" -> "eat"
         "b" -> "buff"
         "d" -> "debuff enemy"
-        "s" -> "sit"
+        "s" -> "rest"
         "p" -> "protect"
         "i" -> "idle"
         "c" -> "cook"
@@ -102,6 +105,10 @@ fun parseCommand(line: String): PokemonCommand? {
         "l" -> "light"
         "sc" -> "scout"
         "t" -> "teleport"
+        "ex" -> "excavate"
+        "pr" -> "prospect"
+        "bu" -> "build"
+        "dm" -> "excavate"
         else -> action
     }
     
@@ -170,6 +177,119 @@ val nightmareCooldown = mutableMapOf<UUID, Int>()
 val nightmareFearTimer = mutableMapOf<UUID, Int>()
 
 val lightBlocks = mutableMapOf<UUID, BlockPos>()
+
+data class CarpetInfo(
+    val levelKey: net.minecraft.resources.ResourceKey<Level>,
+    val pos: BlockPos,
+    val previousState: net.minecraft.world.level.block.state.BlockState
+)
+
+val activeCarpets = java.util.concurrent.ConcurrentHashMap<UUID, CarpetInfo>()
+val restTicks = java.util.concurrent.ConcurrentHashMap<UUID, Int>()
+val restHealTimer = java.util.concurrent.ConcurrentHashMap<UUID, Int>()
+val sleepingState = java.util.concurrent.ConcurrentHashMap<UUID, Boolean>()
+
+fun getWoolCarpetForType(type: String): net.minecraft.world.level.block.Block {
+    return when (type.lowercase()) {
+        "fire" -> Blocks.RED_CARPET
+        "water" -> Blocks.BLUE_CARPET
+        "grass" -> Blocks.GREEN_CARPET
+        "electric" -> Blocks.YELLOW_CARPET
+        "ice" -> Blocks.LIGHT_BLUE_CARPET
+        "fighting" -> Blocks.ORANGE_CARPET
+        "poison" -> Blocks.PURPLE_CARPET
+        "ground" -> Blocks.BROWN_CARPET
+        "flying" -> Blocks.CYAN_CARPET
+        "psychic" -> Blocks.MAGENTA_CARPET
+        "bug" -> Blocks.LIME_CARPET
+        "rock" -> Blocks.GRAY_CARPET
+        "ghost" -> Blocks.BLACK_CARPET
+        "dragon" -> Blocks.PURPLE_CARPET
+        "steel" -> Blocks.LIGHT_GRAY_CARPET
+        "dark" -> Blocks.BLACK_CARPET
+        "fairy" -> Blocks.PINK_CARPET
+        else -> Blocks.WHITE_CARPET
+    }
+}
+
+fun updateWoolCarpet(pokemon: PokemonEntity, primaryType: String) {
+    val level = pokemon.level() as? ServerLevel ?: return
+    val targetPos = pokemon.blockPosition()
+    val currentInfo = activeCarpets[pokemon.uuid]
+
+    if (currentInfo != null && currentInfo.pos == targetPos && currentInfo.levelKey == level.dimension()) {
+        return
+    }
+
+    if (currentInfo != null) {
+        removeWoolCarpet(pokemon.uuid, level.server)
+    }
+
+    val currentState = level.getBlockState(targetPos)
+    if (currentState.isAir || currentState.canBeReplaced()) {
+        val carpetBlock = getWoolCarpetForType(primaryType)
+        activeCarpets[pokemon.uuid] = CarpetInfo(
+            levelKey = level.dimension(),
+            pos = targetPos,
+            previousState = currentState
+        )
+        level.setBlockAndUpdate(targetPos, carpetBlock.defaultBlockState())
+    }
+}
+
+fun removeWoolCarpet(pokemonId: UUID, server: MinecraftServer) {
+    val info = activeCarpets.remove(pokemonId) ?: return
+    val level = server.getLevel(info.levelKey) ?: return
+    val currentBlock = level.getBlockState(info.pos).block
+    val positionStillUsedByOther = activeCarpets.values.any { it.pos == info.pos && it.levelKey == info.levelKey }
+    if (!positionStillUsedByOther) {
+        if (currentBlock is net.minecraft.world.level.block.WoolCarpetBlock) {
+            level.setBlockAndUpdate(info.pos, info.previousState)
+        }
+    }
+}
+
+fun wakeUpPokemon(pokemon: Mob, owner: ServerPlayer?, reason: String) {
+    val pokemonId = pokemon.uuid
+    val pokeEntity = pokemon as? PokemonEntity
+    val wasSleeping = sleepingState.remove(pokemonId) == true || (pokemon.pose == Pose.SLEEPING)
+
+    // Complete pose & sitting state reset
+    pokemon.pose = Pose.STANDING
+    (pokemon as? TamableAnimal)?.isOrderedToSit = false
+    (pokemon as? TamableAnimal)?.isInSittingPose = false
+    restTicks.remove(pokemonId)
+    restoreFollowGoal(pokemon)
+
+    try {
+        val method = pokeEntity?.javaClass?.getMethod("setSleeping", Boolean::class.javaPrimitiveType)
+        method?.invoke(pokeEntity, false)
+    } catch (_: Throwable) {}
+
+    // Explicitly clear sleep status condition when leaving REST
+    try {
+        pokeEntity?.pokemon?.let { p ->
+            if (p.status?.status?.name?.path?.lowercase() == "sleep") {
+                p.status = null
+            }
+        }
+    } catch (_: Throwable) {}
+
+    if (wasSleeping) {
+        pokeEntity?.pokemon?.status = null
+        if (owner != null) {
+            sendMessage(owner, "${pokemon.displayName?.string} woke up.", ChatFormatting.YELLOW)
+        }
+        RecentEventsSystem.recordEvent(
+            pokemonId,
+            RecentEventsSystem.WakeUpEvent(
+                pokemonName = pokemon.displayName?.string ?: pokemon.name.string,
+                reason = reason,
+                timestamp = System.currentTimeMillis()
+            )
+        )
+    }
+}
 
 val scoutState = mutableMapOf<UUID, String>()
 val scoutTargetPos = mutableMapOf<UUID, BlockPos>()
@@ -262,6 +382,7 @@ object CommandTickHandler {
     fun processActiveCommands(server: MinecraftServer) {
         // Ping movement is independent of any active command
         PingManager.tickPingMovement(server)
+        GatheringActions.tick(server)
 
         server.allLevels.forEach { level ->
             handleNukeSystem(level)
@@ -301,6 +422,19 @@ object CommandTickHandler {
                             }
                         }
                     }
+                }
+            }
+
+        activeCarpets.keys
+            .toList()
+            .forEach { pokemonId ->
+                val exists = server.allLevels.any { it.getEntity(pokemonId) != null }
+                val currentAction = CommandState.activeCommands[pokemonId]
+                if (!exists || (currentAction != "rest" && currentAction != "sit")) {
+                    removeWoolCarpet(pokemonId, server)
+                    restTicks.remove(pokemonId)
+                    restHealTimer.remove(pokemonId)
+                    sleepingState.remove(pokemonId)
                 }
             }
 
@@ -416,7 +550,7 @@ object CommandTickHandler {
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed
             val scaledDamage = 2.0f + (atk * 0.03f)
-            val speed = 0.40 + (spd * 0.005)
+            val speed = 0.60 + (spd / 2.0) * 0.01
 
             // Record ActionEvent when a new action starts (announcedStates changed)
             val prevAnnounced = announcedStates[pokemonId]
@@ -434,7 +568,51 @@ object CommandTickHandler {
                 )
             }
 
+            if (action != "rest" && action != "sit") {
+                if (sleepingState.containsKey(pokemonId) || pokemon.pose == Pose.SLEEPING || activeCarpets.containsKey(
+                        pokemonId
+                    )
+                ) {
+                    val actionFormatted =
+                        action.lowercase().split(" ").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                    wakeUpPokemon(pokemon, owner, "the player used the $actionFormatted action.")
+                    removeWoolCarpet(pokemonId, server)
+                }
+            } else {
+                disableFollowGoal(pokemon)
+                pokemon.navigation.stop()
+                pokemon.pose = Pose.SLEEPING
+                pokemon.isOrderedToSit = true
+                (pokemon as? TamableAnimal)?.isInSittingPose = true
+                sleepingState[pokemonId] = true
+            }
+
             when (action) {
+                "excavate" -> {
+                    if (!GatheringActions.isGathering(pokemon.uuid)) {
+                        GatheringActions.startGatheringAction(pokemon, GatheringType.EXCAVATE, owner)
+                    }
+                }
+
+                "prospect" -> {
+                    if (!GatheringActions.isGathering(pokemon.uuid)) {
+                        GatheringActions.startGatheringAction(pokemon, GatheringType.PROSPECT, owner)
+                    }
+                }
+
+                "build" -> {
+                    disableFollowGoal(pokemon)
+                    if (!GatheringActions.isGathering(pokemon.uuid)) {
+                        GatheringActions.startGatheringAction(pokemon, GatheringType.BUILD, owner)
+                    }
+                }
+
+                "demolish" -> {
+                    if (!GatheringActions.isGathering(pokemon.uuid)) {
+                        GatheringActions.startGatheringAction(pokemon, GatheringType.EXCAVATE, owner)
+                    }
+                }
+
                 "grow" -> {
                     val primaryType = cobblemonPokemon.types.firstOrNull()?.name ?: "normal"
                     val pokemonId = pokemon.uuid
@@ -579,7 +757,8 @@ object CommandTickHandler {
                                             target.item = result
 
                                             // cooldown por Pokémon (configurado via cooldownTicks)
-                                            cookCooldown[pokemonId] = config.actionSettings.cook.cooldownTicks.coerceAtLeast(1)
+                                            cookCooldown[pokemonId] =
+                                                config.actionSettings.cook.cooldownTicks.coerceAtLeast(1)
 
                                             // partículas simples e confiáveis
                                             repeat(20) {
@@ -615,7 +794,11 @@ object CommandTickHandler {
                                             )
 
                                             // chance de transformar UM item em carvão
-                                            val charcoalChance = (config.actionSettings.cook.charcoalChancePercent / 100.0f).coerceIn(0.0f, 1.0f)
+                                            val charcoalChance =
+                                                (config.actionSettings.cook.charcoalChancePercent / 100.0f).coerceIn(
+                                                    0.0f,
+                                                    1.0f
+                                                )
                                             if (level.random.nextFloat() < charcoalChance && !target.item.isEmpty) {
                                                 val stack = target.item
                                                 stack.shrink(1)
@@ -814,7 +997,8 @@ object CommandTickHandler {
                             val p = pokemon.pokemon
 
                             // Verifica se é uma Berry do Cobblemon (Namespace E nome)
-                            val isBerry = id.namespace == "cobblemon" && (id.path.contains("berry") || id.path.contains("berries"))
+                            val isBerry =
+                                id.namespace == "cobblemon" && (id.path.contains("berry") || id.path.contains("berries"))
 
                             // Failsafe: Se estiver cheio e NÃO for uma berry, não come
                             if (p.currentFullness >= p.getMaxFullness() && !isBerry) {
@@ -857,8 +1041,10 @@ object CommandTickHandler {
                                 foodItem.owner != null && foodItem.owner !is ServerPlayer -> "an entity"
                                 else -> "the world"
                             }
-                            val eatTrigger = RecentEventsSystem.commandSources[pokemonId] ?: RecentEventsSystem.CommandSource.HUD
-                            val pokemonDisplayNameEat = cobblemonPokemon.nickname?.string ?: cobblemonPokemon.species.name
+                            val eatTrigger =
+                                RecentEventsSystem.commandSources[pokemonId] ?: RecentEventsSystem.CommandSource.HUD
+                            val pokemonDisplayNameEat =
+                                cobblemonPokemon.nickname?.string ?: cobblemonPokemon.species.name
                             RecentEventsSystem.recordEvent(
                                 cobblemonPokemon.uuid,
                                 RecentEventsSystem.EatEvent(
@@ -893,20 +1079,58 @@ object CommandTickHandler {
                     }
                 }
 
-                "sit" -> {
-                    // força estado idle/sit
+                "rest", "sit" -> {
+                    disableFollowGoal(pokemon)
+                    pokemon.navigation.stop()
+                    (pokemon as? TamableAnimal)?.isOrderedToSit = true
+                    (pokemon as? TamableAnimal)?.isInSittingPose = true
                     exitAttackMode(pokemon)
-                    pokemon.isOrderedToSit = true
-                    CommandState.activeTargets.remove(pokemonId)
-                    if (announcedStates[pokemonId] != "sit") {
-                        sendMessage(
-                            owner,
-                            "${pokemon.displayName?.string} SAT down.",
-                            ChatFormatting.YELLOW
-                        )
-                        announcedStates[pokemonId] = "sit"
+
+                    val restDuration = (restTicks[pokemonId] ?: 0) + 1
+                    restTicks[pokemonId] = restDuration
+
+                    // Only sleeps at night after 15 seconds (300 ticks). During the day, it only sits and never sleeps.
+                    val shouldSleepNow = level.isNight && restDuration >= 300
+
+                    if (shouldSleepNow) {
+                        pokemon.pose = Pose.SLEEPING
+                        sleepingState[pokemonId] = true
+                        if (cobblemonPokemon.status == null) {
+                            try {
+                                val sleepStatus = com.cobblemon.mod.common.api.pokemon.status.Statuses.SLEEP
+                                cobblemonPokemon.status = com.cobblemon.mod.common.pokemon.status.PersistentStatusContainer(sleepStatus, 999999)
+                            } catch (_: Throwable) {}
+                        }
+                    } else {
+                        pokemon.pose = Pose.STANDING
                     }
 
+                    val primaryType = cobblemonPokemon.primaryType.name.lowercase()
+                    updateWoolCarpet(pokemon, primaryType)
+
+                    if (announcedStates[pokemonId] != "rest") {
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} is RESTING.",
+                            ChatFormatting.YELLOW
+                        )
+                        announcedStates[pokemonId] = "rest"
+                    }
+
+                    // Slow HP regen (every 20 ticks = 1 sec)
+                    val healTick = (restHealTimer[pokemonId] ?: 0) + 1
+                    if (healTick >= 20) {
+                        restHealTimer[pokemonId] = 0
+                        if (cobblemonPokemon.currentHealth < cobblemonPokemon.maxHealth) {
+                            cobblemonPokemon.currentHealth =
+                                (cobblemonPokemon.currentHealth + 1).coerceAtMost(cobblemonPokemon.maxHealth)
+                        }
+                        if (pokemon.health < pokemon.maxHealth) {
+                            pokemon.heal(1.0f)
+                        }
+                    } else {
+                        restHealTimer[pokemonId] = healTick
+                    }
                 }
 
                 "debuff enemy" -> {
@@ -2760,10 +2984,10 @@ fun playFishingLootSound(
     }
 }
 
-private fun suspendFollowGoal(pokemon: Mob) {
+fun suspendFollowGoal(pokemon: Mob) {
     val getGoals = MobBridge.getGoals ?: return
     val toDisable = getGoals(pokemon)
-        .filterIsInstance<FollowOwnerGoal>()
+        .filter { it is FollowOwnerGoal || it is LookAtPlayerGoal || it is RandomLookAroundGoal }
 
     if (toDisable.isNotEmpty()) {
         disabledGoals[pokemon.uuid] = toDisable
@@ -2777,7 +3001,9 @@ private fun suspendFollowGoal(pokemon: Mob) {
     }
 }
 
-private fun restoreFollowGoal(
+fun disableFollowGoal(pokemon: Mob) = suspendFollowGoal(pokemon)
+
+fun restoreFollowGoal(
     pokemon: Mob
 ) {
     disabledGoals.remove(
@@ -2790,6 +3016,13 @@ private fun restoreFollowGoal(
             goal
         )
     }
+}
+
+fun isCobblemonPokemonResting(cobblemonPokemon: com.cobblemon.mod.common.pokemon.Pokemon): Boolean {
+    val entity = cobblemonPokemon.entity ?: return false
+    if (entity.isRemoved || !entity.isAlive) return false
+    val cmd = CommandState.activeCommands[entity.uuid]
+    return cmd == "rest" || cmd == "sit"
 }
 
 fun spawnNightmareParticles(

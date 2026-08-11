@@ -51,6 +51,7 @@ object CobblebrainNetworkingFabric {
             config.enableKarma,
             config.maxStoredMemories,
             config.maxRelevantMemories,
+            config.favoriteMemorySlots,
             config.baseCandidateMemories,
             config.allowClientPersonalityEditing,
             config.forceOfflineMode,

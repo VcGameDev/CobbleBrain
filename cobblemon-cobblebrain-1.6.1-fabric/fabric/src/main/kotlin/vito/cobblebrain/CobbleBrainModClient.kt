@@ -79,6 +79,12 @@ object CobbleBrainModClient : ClientModInitializer {
             "category.cobblebrain"
         )
 
+        val commandKeyMode = KeyMapping(
+            "key.cobblebrain.cmd_mode",
+            GLFW.GLFW_KEY_M,
+            "category.cobblebrain"
+        )
+
         val keyPing = KeyMapping(
             "key.cobblebrain.ping",
             GLFW.GLFW_KEY_G,
@@ -97,6 +103,7 @@ object CobbleBrainModClient : ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(commandKeyE)
         KeyBindingHelper.registerKeyBinding(commandKeyR)
         KeyBindingHelper.registerKeyBinding(commandKeyToggle)
+        KeyBindingHelper.registerKeyBinding(commandKeyMode)
         KeyBindingHelper.registerKeyBinding(keyPing)
         KeyBindingHelper.registerKeyBinding(keyVoice)
 
@@ -105,6 +112,7 @@ object CobbleBrainModClient : ClientModInitializer {
         CobblebrainClientCommon.keyDown = commandKeyE
         CobblebrainClientCommon.keyExecute = commandKeyR
         CobblebrainClientCommon.keyToggle = commandKeyToggle
+        CobblebrainClientCommon.keyMode = commandKeyMode
         CobblebrainClientCommon.keyPing = keyPing
         CobblebrainClientCommon.keyVoice = keyVoice
 
@@ -124,6 +132,9 @@ object CobbleBrainModClient : ClientModInitializer {
             }
             while (commandKeyToggle.consumeClick()) {
                 HudSystem.toggleVisibility()
+            }
+            while (commandKeyMode.consumeClick()) {
+                HudSystem.toggleTargetMode()
             }
             while (keyPing.consumeClick()) {
                 vito.cobblebrain.client.PingClient.triggerPingRaycast()
