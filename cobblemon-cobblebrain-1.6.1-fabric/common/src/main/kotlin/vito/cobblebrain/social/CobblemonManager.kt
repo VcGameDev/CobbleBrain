@@ -236,6 +236,38 @@ object ConfigCommands {
                 )
 
                 .then(
+                    Commands.literal("story")
+                        .then(
+                            Commands.literal("start")
+                                .then(
+                                    Commands.argument("id", StringArgumentType.string())
+                                        .executes { ctx ->
+                                            val player = ctx.source.playerOrException
+                                            val storyId = StringArgumentType.getString(ctx, "id")
+                                            val project = vito.cobblebrain.model.StorySerializer.loadByName(storyId)
+
+                                            if (project != null) {
+                                                vito.cobblebrain.engine.StoryExecutor.startStory(project, player)
+                                                player.sendSystemMessage(Component.literal("História '$storyId' iniciada com sucesso!"))
+                                            } else {
+                                                player.sendSystemMessage(Component.literal("Pacote de história '$storyId' não encontrado em storypacks!"))
+                                            }
+                                            1
+                                        }
+                                )
+                        )
+                        .then(
+                            Commands.literal("stop")
+                                .executes { ctx ->
+                                    val player = ctx.source.playerOrException
+                                    vito.cobblebrain.engine.StoryExecutor.stopAllStories(player)
+                                    player.sendSystemMessage(Component.literal("Todas as histórias ativas foram paradas."))
+                                    1
+                                }
+                        )
+                )
+
+                .then(
                     Commands.literal("karma")
 
                         // /cobblebrain karma

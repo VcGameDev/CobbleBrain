@@ -781,6 +781,48 @@ object CobblebrainConfigScreen {
             override fun getItemHeight(): Int = 24
         }
 
+        val storyEditorButton = object : AbstractConfigListEntry<Unit>(
+            Component.literal("Open Story Editor"),
+            false
+        ) {
+            private var button: net.minecraft.client.gui.components.Button =
+                net.minecraft.client.gui.components.Button.builder(
+                    Component.literal("Open Story Editor")
+                ) {
+                    Minecraft.getInstance().player?.playSound(
+                        SoundEvents.UI_BUTTON_CLICK.value(),
+                        1.0f,
+                        1.0f
+                    )
+                    val parentScreen = Minecraft.getInstance().screen
+                    Minecraft.getInstance().setScreen(vito.cobblebrain.client.gui.StoryEditorScreen(parentScreen))
+                }.bounds(0, 0, 260, 20).build()
+
+            override fun getValue(): Unit? = null
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+            override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+            override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+                button.x = x + (listWidth / 2) - 130
+                button.y = y
+                button.render(guiGraphics, mouseX, mouseY, delta)
+            }
+
+            override fun getItemHeight(): Int = 24
+        }
+
         val reportBugsButton = object : AbstractConfigListEntry<Unit>(
             Component.translatable("cobblebrain.button.report_bugs"),
             false
@@ -1647,6 +1689,7 @@ object CobblebrainConfigScreen {
 
         category.entries.add(recommendedPromptButton)
         category.entries.add(personalityEditorButton)
+        category.entries.add(storyEditorButton)
         category.entries.add(reportBugsButton)
         category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
