@@ -43,8 +43,11 @@ class DialogueSystemNeoForge {
                 DialogueSystem.onBattleFled(it)
             }
 
-            CobblemonEvents.BATTLE_VICTORY.subscribe {
-                DialogueSystem.onBattleVictory(it)
+            CobblemonEvents.BATTLE_VICTORY.subscribe { event ->
+                DialogueSystem.onBattleVictory(event)
+                event.battle.players.forEach { p ->
+                    vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p)
+                }
             }
 
             CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->

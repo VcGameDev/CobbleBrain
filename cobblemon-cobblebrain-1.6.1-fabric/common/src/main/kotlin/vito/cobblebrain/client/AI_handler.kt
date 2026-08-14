@@ -758,10 +758,6 @@ class AIHandler {
         log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
         val url = when {
-            isNovelAI() -> {
-                val cleanBase = apiBase.replace(Regex("""/v1/chat/completions.*$"""), "").trimEnd('/')
-                if (cleanBase.endsWith("/ai/generate")) cleanBase else "$cleanBase/ai/generate"
-            }
             clientConfig.useChatEndpoint -> "$apiBase/v1/chat/completions"
             else -> apiBase
         }
@@ -845,10 +841,6 @@ class AIHandler {
         // ajuste conforme sua URL local do LM Studio
         clientConfig.customApiProvider.contains("lmstudio", ignoreCase = true)
 
-    private fun isNovelAI() =
-        clientConfig.customApiProvider.contains("novelai", ignoreCase = true) ||
-                apiBase.contains("novelai.net", ignoreCase = true)
-
     //private fun usesMaxTokens(apiBase: String) =
     //isOpenRouter(apiBase) || isLMStudio(apiBase)
 
@@ -903,20 +895,6 @@ class AIHandler {
 
         val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
 
-        if (isNovelAI()) {
-            val fullPromptText = "[System: ${escape(systemContent)}]\n\n" + tempHistory.joinToString("\n") { "${it.role}: ${escape(it.text)}" }
-            return """
-        {
-          "input": "$fullPromptText",
-          "model": "${modelRotator.current()}",
-          "parameters": {
-            "max_length": 300,
-            "temperature": $TEMPERATURE
-          }
-        }
-        """.trimIndent()
-        }
-
         return if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true) &&
             isLocalAddress(clientConfig.apiBaseUrl)
@@ -947,11 +925,6 @@ class AIHandler {
         return try {
             println(body)
             val json = gson.fromJson(body, Map::class.java)
-            // Formato NovelAI
-            val outputText = json["output"] as? String
-            if (!outputText.isNullOrBlank()) {
-                return removeThinkBlocks(outputText)
-            }
 
             val choices = json["choices"] as? List<*> ?: return "Erro parsing resposta"
             val first = choices.firstOrNull() as? Map<*, *> ?: return "Erro parsing resposta"

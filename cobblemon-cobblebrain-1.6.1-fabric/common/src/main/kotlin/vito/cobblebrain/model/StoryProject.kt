@@ -6,11 +6,13 @@ import java.util.UUID
 data class StoryProject(
     var id: String = generateUniqueNewStoryId(),
     var name: String = id,
+    var author: String = "Criador",
     var description: String = "",
     var version: String = "1.0.0",
     var activeSceneId: String = "",
     val scenes: MutableList<SceneData> = mutableListOf(),
-    val sceneConnections: MutableList<ConnectionData> = mutableListOf()
+    val sceneConnections: MutableList<ConnectionData> = mutableListOf(),
+    val variables: MutableList<StoryVariable> = mutableListOf()
 ) {
     init {
         if (scenes.isEmpty()) {

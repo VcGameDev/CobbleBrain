@@ -18,44 +18,64 @@ class SceneInspectorWidget(
     val onClose: () -> Unit,
     val onDataChanged: () -> Unit
 ) {
+    private data class InspectorLabel(val text: String, val relY: Int)
+    private data class InspectorWidgetItem(val widget: GuiEventListener, val relY: Int, val height: Int)
+
     val childrenWidgets = mutableListOf<GuiEventListener>()
+    private val widgetItems = mutableListOf<InspectorWidgetItem>()
+    private val labels = mutableListOf<InspectorLabel>()
+
     private var focusedEditBox: EditBox? = null
+    private var scrollOffset: Double = 0.0
+    private var totalContentHeight: Double = 0.0
+
+    private val closeBtn: Button
 
     init {
+        closeBtn = Button.builder(Component.literal("✖")) {
+            onClose()
+        }.bounds(panelX + panelWidth - 20, panelY + 2, 16, 16).build()
+
         buildUi()
     }
 
     fun buildUi() {
         childrenWidgets.clear()
+        widgetItems.clear()
+        labels.clear()
 
         val inputX = panelX + 6
         val inputW = panelWidth - 12
-        var currentY = panelY + 24
+        var relY = 4
 
-        val closeBtn = Button.builder(Component.literal("✖")) {
-            onClose()
-        }.bounds(panelX + panelWidth - 20, panelY + 3, 16, 16).build()
-        childrenWidgets.add(closeBtn)
+        labels.add(InspectorLabel("Nome da Cena:", relY))
+        relY += 12
 
-        val tEdit = EditBox(font, inputX, currentY + 10, inputW, 16, Component.literal("Nome"))
+        val tEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Nome"))
         tEdit.setMaxLength(50)
         tEdit.value = scene.title
         tEdit.setResponder { valText ->
             scene.title = valText
             onDataChanged()
         }
-        childrenWidgets.add(tEdit)
-        currentY += 30
+        addWidgetItem(tEdit, relY, 16)
+        relY += 22
 
-        val descEdit = EditBox(font, inputX, currentY + 10, inputW, 36, Component.literal("Descrição"))
+        labels.add(InspectorLabel("Descrição:", relY))
+        relY += 12
+
+        val descEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 36, Component.literal("Descrição"))
         descEdit.setMaxLength(250)
         descEdit.value = scene.description
         descEdit.setResponder { valText ->
             scene.description = valText
             onDataChanged()
         }
-        childrenWidgets.add(descEdit)
-        currentY += 50
+        addWidgetItem(descEdit, relY, 36)
+        relY += 42
+
+        labels.add(InspectorLabel("Propriedades Globais:", relY))
+        relY += 12
 
         // Alternador de Cena Inicial da História
         val startLabel = if (scene.isStartScene) "🟢 Cena Inicial: SIM" else "⚪ Cena Inicial: NÃO"
@@ -63,9 +83,9 @@ class SceneInspectorWidget(
             scene.isStartScene = !scene.isStartScene
             buildUi()
             onDataChanged()
-        }.bounds(inputX, currentY + 10, inputW, 16).build()
-        childrenWidgets.add(startBtn)
-        currentY += 28
+        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+        addWidgetItem(startBtn, relY, 16)
+        relY += 22
 
         // Alternador de Cena Final da História
         val endLabel = if (scene.isEndScene) "🛑 Cena Final: SIM" else "⚪ Cena Final: NÃO"
@@ -73,30 +93,101 @@ class SceneInspectorWidget(
             scene.isEndScene = !scene.isEndScene
             buildUi()
             onDataChanged()
-        }.bounds(inputX, currentY + 10, inputW, 16).build()
-        childrenWidgets.add(endBtn)
-        currentY += 28
+        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+        addWidgetItem(endBtn, relY, 16)
+        relY += 22
+
+        totalContentHeight = relY.toDouble()
+        updateWidgetPositions()
+    }
+
+    private fun addWidgetItem(widget: GuiEventListener, relY: Int, height: Int) {
+        childrenWidgets.add(widget)
+        widgetItems.add(InspectorWidgetItem(widget, relY, height))
+    }
+
+    private fun updateWidgetPositions() {
+        val inputX = panelX + 6
+        widgetItems.forEach { item ->
+            val py = (panelY + 20 + item.relY - scrollOffset).toInt()
+            if (item.widget is Button) {
+                item.widget.y = py
+            } else if (item.widget is EditBox) {
+                item.widget.x = inputX
+                item.widget.y = py
+            }
+        }
     }
 
     fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        // Background do Painel Inspetor
         guiGraphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF0141418.toInt())
         guiGraphics.fill(panelX, panelY, panelX + 1, panelY + panelHeight, 0xFF3D5AFE.toInt())
+
+        val viewportTop = panelY + 20
+        val viewportBottom = panelY + panelHeight
+        val viewportHeight = panelHeight - 20
+
+        guiGraphics.enableScissor(panelX, viewportTop, panelX + panelWidth, viewportBottom)
+
+        labels.forEach { lbl ->
+            val ly = (viewportTop + lbl.relY - scrollOffset).toInt()
+            if (ly >= viewportTop - 12 && ly <= viewportBottom) {
+                guiGraphics.drawString(font, lbl.text, panelX + 6, ly, 0xFFA0A0A0.toInt(), false)
+            }
+        }
+
+        childrenWidgets.toList().forEach { widget ->
+            if (widget != closeBtn) {
+                val wy = when (widget) {
+                    is Button -> widget.y
+                    is EditBox -> widget.y
+                    else -> viewportTop
+                }
+                if (wy + 16 >= viewportTop && wy <= viewportBottom) {
+                    if (widget is Button) widget.render(guiGraphics, mouseX, mouseY, partialTick)
+                    if (widget is EditBox) widget.render(guiGraphics, mouseX, mouseY, partialTick)
+                }
+            }
+        }
+
+        guiGraphics.disableScissor()
+
+        val maxScroll = maxOf(0.0, totalContentHeight - viewportHeight)
+        if (maxScroll > 0) {
+            val sbX = panelX + panelWidth - 3
+            val thumbH = ((viewportHeight.toDouble() / totalContentHeight) * viewportHeight).toInt().coerceIn(12, viewportHeight)
+            val thumbY = viewportTop + ((scrollOffset / maxScroll) * (viewportHeight - thumbH)).toInt()
+
+            guiGraphics.fill(sbX, viewportTop, sbX + 2, viewportBottom, 0xFF1C1C24.toInt())
+            guiGraphics.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, 0xFF00FFCC.toInt())
+        }
+
+        // Cabeçalho Fixo no Topo
         guiGraphics.fill(panelX, panelY, panelX + panelWidth, panelY + 20, 0xFF22222A.toInt())
+        guiGraphics.fill(panelX, panelY + 19, panelX + panelWidth, panelY + 20, 0xFF3D5AFE.toInt())
 
         val headerTitle = font.plainSubstrByWidth("Cena: ${scene.title}", panelWidth - 26)
         guiGraphics.drawString(font, headerTitle, panelX + 6, panelY + 5, 0xFF00FFCC.toInt(), false)
 
-        var currentY = panelY + 24
-        guiGraphics.drawString(font, "Nome da Cena:", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
-        currentY += 30
-        guiGraphics.drawString(font, "Descrição:", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
-        currentY += 50
-        guiGraphics.drawString(font, "Propriedades Globais:", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
+        closeBtn.render(guiGraphics, mouseX, mouseY, partialTick)
+    }
 
-        childrenWidgets.toList().forEach { widget ->
-            if (widget is Button) widget.render(guiGraphics, mouseX, mouseY, partialTick)
-            if (widget is EditBox) widget.render(guiGraphics, mouseX, mouseY, partialTick)
+    fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
+        if (mouseX >= panelX && mouseX <= panelX + panelWidth && mouseY >= panelY + 20 && mouseY <= panelY + panelHeight) {
+            val viewportHeight = panelHeight - 20
+            val maxScroll = maxOf(0.0, totalContentHeight - viewportHeight)
+            if (maxScroll > 0) {
+                if (scrollY > 0) {
+                    scrollOffset = (scrollOffset - 18.0).coerceAtLeast(0.0)
+                } else if (scrollY < 0) {
+                    scrollOffset = (scrollOffset + 18.0).coerceAtMost(maxScroll)
+                }
+                updateWidgetPositions()
+                return true
+            }
         }
+        return false
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -105,20 +196,36 @@ class SceneInspectorWidget(
             focusedEditBox = null
             return false
         }
+
+        if (closeBtn.mouseClicked(mouseX, mouseY, button)) return true
+
+        val viewportTop = panelY + 20
+        val viewportBottom = panelY + panelHeight
+
         var handled = false
         val snapshot = childrenWidgets.toList()
         for (w in snapshot) {
-            if (w is EditBox) {
-                val clicked = w.mouseClicked(mouseX, mouseY, button)
-                if (clicked) {
-                    w.isFocused = true
-                    focusedEditBox = w
+            if (w == closeBtn) continue
+
+            val wy = when (w) {
+                is Button -> w.y
+                is EditBox -> w.y
+                else -> viewportTop
+            }
+
+            if (wy + 14 >= viewportTop && wy <= viewportBottom) {
+                if (w is EditBox) {
+                    val clicked = w.mouseClicked(mouseX, mouseY, button)
+                    if (clicked) {
+                        w.isFocused = true
+                        focusedEditBox = w
+                        handled = true
+                    } else {
+                        w.isFocused = false
+                    }
+                } else if (w.mouseClicked(mouseX, mouseY, button)) {
                     handled = true
-                } else {
-                    w.isFocused = false
                 }
-            } else if (w.mouseClicked(mouseX, mouseY, button)) {
-                handled = true
             }
         }
         return handled

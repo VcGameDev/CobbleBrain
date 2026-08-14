@@ -6,21 +6,27 @@ import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.client.gui.widgets.*
+import vito.cobblebrain.config.StoryEditorConfig
+import vito.cobblebrain.config.StoryEditorConfigData
 import vito.cobblebrain.engine.ActiveStoryInstance
 import vito.cobblebrain.engine.StoryContext
 import vito.cobblebrain.engine.StoryExecutor
 import vito.cobblebrain.model.*
 import java.io.File
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 
 class StoryEditorScreen(
     private val parentScreen: Screen? = null,
     initialProject: StoryProject? = null
 ) : Screen(Component.literal("CobbleBrain - Story Editor")) {
 
-    var project: StoryProject = initialProject ?: StoryProject()
+    var configData: StoryEditorConfigData = StoryEditorConfig.load()
+    var autoSaveEnabled: Boolean = configData.autoSaveEnabled
+    var autoSaveIntervalSeconds: Int = configData.autoSaveIntervalSeconds
+    var autoOpenLastProject: Boolean = configData.autoOpenLastProject
+    private var lastAutoSaveTime: Long = System.currentTimeMillis()
+
+    var project: StoryProject = initialProject ?: loadAutoOrNewProject()
     private val nodeWidgets = mutableListOf<NodeWidget>()
 
     // Controle de Alterações Pendentes (Dirty State)
@@ -35,7 +41,7 @@ class StoryEditorScreen(
     private val openConstructionNodes = mutableListOf<NodeData>()
     private var tabBarScrollOffset: Int = 0
 
-    // Transformações Pan & Zoom (Zoom-Out expandido em 50%: de 0.25 até 0.12)
+    // Transformações Pan & Zoom
     var panX: Double = 50.0
     var panY: Double = 50.0
     var zoom: Double = 1.0
@@ -66,11 +72,17 @@ class StoryEditorScreen(
     private var statusMessage: String = "Editor de Histórias CobbleBrain carregado."
     private var statusTimer: Int = 0
 
-    // Inspectors Laterais (150px compacto)
+    // Inspectors Laterais
     var activeInspector: NodeInspectorWidget? = null
     var activeSceneInspector: SceneInspectorWidget? = null
-    var activeMetadataInspector: StoryMetadataInspectorWidget? = null
+
+    // Modais Dedicados Exclusivos
+    var activeMetadataModal: StoryMetadataModalWidget? = null
     var activeDocModal: StoryDocumentationModalWidget? = null
+    var activeVariableModal: StoryVariableManagerModalWidget? = null
+    var activeVarSelectorModal: StoryVariableSelectorModalWidget? = null
+    var activeActionTriggerPickerModal: ActionTriggerPickerModalWidget? = null
+    var activePokemonConfigModal: PokemonConfigModalWidget? = null
 
     // Menu de Contexto (Clique Direito)
     var activeContextMenu: ContextMenuWidget? = null
@@ -78,33 +90,42 @@ class StoryEditorScreen(
     // Sistema de Posicionamento Interativo ("Ghost Placement")
     var activePlacementNode: NodeData? = null
 
-    // Configurações de Auto-Save Assíncrono
-    var autoSaveEnabled: Boolean = true
-    var autoSaveIntervalSeconds: Int = 600
-    private var lastAutoSaveTime: Long = System.currentTimeMillis()
+    // Mini-Modo de Teste de Intervalo (Seleção de Blocos Início e Fim)
+    var isRangeTestSelectionMode: Boolean = false
+    var rangeTestStartNode: NodeData? = null
+    var rangeTestEndNode: NodeData? = null
 
-    // Paleta de Blocos Dropdown com Suporte a Scroll
-    data class PaletteItem(val label: String, val type: NodeType, val subType: String = "")
-    private val paletteItems = listOf(
-        PaletteItem("🟢 Início da Cena", NodeType.BEGIN_SCENE),
-        PaletteItem("🟢 Trigger (Gatilho)", NodeType.TRIGGER),
-        PaletteItem("⚡ Ação", NodeType.ACTION),
-        PaletteItem("⏱ Timer", NodeType.TIMER),
-        PaletteItem("🔀 Ramificação", NodeType.BRANCH),
-        PaletteItem("💬 Diálogo", NodeType.DIALOGUE),
-        PaletteItem("🏗️ Construção", NodeType.CONSTRUCTION),
-        PaletteItem("📡 Transmissor Link", NodeType.LINK_SEND),
-        PaletteItem("📡 Receptor Link", NodeType.LINK_RECEIVE),
-        PaletteItem("🔄 Repetidor (Loop)", NodeType.LOOP),
-        PaletteItem("📝 Comentário", NodeType.COMMENT),
-        PaletteItem("🛑 Finalizar Cena", NodeType.END_SCENE),
-        PaletteItem("⚡ Portão (GATE)", NodeType.GATE),
-        PaletteItem("🎬 Criar Nova Cena", NodeType.TRIGGER, "CREATE_SCENE")
+    // Paleta de Blocos Dropdown Dividida em 3 SEÇÕES DISTINTAS
+    data class PaletteEntry(val isHeader: Boolean, val label: String, val type: NodeType = NodeType.DIALOGUE)
+    private val paletteEntries = listOf(
+        // SEÇÃO 1: Estrutura & Fluxo
+        PaletteEntry(true, "--- 1. ESTRUTURA & FLUXO ---"),
+        PaletteEntry(false, "🟢 Início da Cena", NodeType.BEGIN_SCENE),
+        PaletteEntry(false, "🛑 Finalizar Cena", NodeType.END_SCENE),
+        PaletteEntry(false, "⚡ Portão (GATE)", NodeType.GATE),
+        PaletteEntry(false, "🏗️ Construção", NodeType.CONSTRUCTION),
+        PaletteEntry(false, "📡 Transmissor Link", NodeType.LINK_SEND),
+        PaletteEntry(false, "📡 Receptor Link", NodeType.LINK_RECEIVE),
+        PaletteEntry(false, "🔄 Repetidor (Loop)", NodeType.LOOP),
+
+        // SEÇÃO 2: Variáveis & Decisões
+        PaletteEntry(true, "--- 2. VARIÁVEIS & DECISÕES ---"),
+        PaletteEntry(false, "🔹 Bloco Variável (Get)", NodeType.VARIABLE_GET),
+        PaletteEntry(false, "✏️ Bloco Modificador (Set)", NodeType.VARIABLE_SET),
+        PaletteEntry(false, "🔀 Ramificação (If/Else)", NodeType.BRANCH),
+        PaletteEntry(false, "🟢 Trigger (Gatilho)", NodeType.TRIGGER),
+
+        // SEÇÃO 3: Ações & Eventos
+        PaletteEntry(true, "--- 3. AÇÕES & EVENTOS ---"),
+        PaletteEntry(false, "💬 Diálogo", NodeType.DIALOGUE),
+        PaletteEntry(false, "⚡ Ação", NodeType.ACTION),
+        PaletteEntry(false, "⏱ Timer", NodeType.TIMER),
+        PaletteEntry(false, "📝 Comentário", NodeType.COMMENT)
     )
     private var isBlockPaletteOpen: Boolean = false
     private var paletteScrollOffset: Int = 0
 
-    // Menus Dropdown Categorizados da Barra Superior (Top Menu Bar)
+    // Menus Dropdown Categorizados da Barra Superior
     private var isFileMenuOpen: Boolean = false
     private var isAddMenuOpen: Boolean = false
     private var isSystemMenuOpen: Boolean = false
@@ -118,13 +139,24 @@ class StoryEditorScreen(
     private var testBtnX: Int = 0
     private var testBtnY: Int = 0
 
-    // Dimensões da TopBar (Linha 1: Título Y=4, Linha 2: Menus Y=18) e Barra de Abas
     private val toolbarHeight = 36
     private val sceneBarHeight = 16
 
     init {
         project.scenes.forEach { openSceneIds.add(it.id) }
         rebuildNodeWidgets()
+    }
+
+    private fun loadAutoOrNewProject(): StoryProject {
+        val cfg = StoryEditorConfig.load()
+        if (cfg.autoOpenLastProject && cfg.lastProjectPath.isNotBlank()) {
+            val file = File(cfg.lastProjectPath)
+            if (file.exists()) {
+                val loaded = StorySerializer.load(file)
+                if (loaded != null) return loaded
+            }
+        }
+        return StoryProject()
     }
 
     fun markDirty() {
@@ -147,6 +179,15 @@ class StoryEditorScreen(
                centerY >= scene.y && centerY <= scene.y + scene.height
     }
 
+    private fun updateVariableSceneBinding(node: NodeData, targetSceneId: String?) {
+        val varKey = node.params["varKey"] ?: return
+        val variable = project.variables.find { it.id == varKey } ?: return
+        if (variable.scope == VariableScope.SCENE_LOCAL && targetSceneId != null) {
+            variable.sceneId = targetSceneId
+            markDirty()
+        }
+    }
+
     fun getActiveNodes(): MutableList<NodeData> {
         val construction = editingConstructionNode
         if (construction != null) return construction.innerNodes
@@ -162,11 +203,19 @@ class StoryEditorScreen(
     private fun rebuildNodeWidgets() {
         nodeWidgets.clear()
         if (editingConstructionNode != null) {
-            editingConstructionNode?.innerNodes?.forEach { nodeWidgets.add(NodeWidget(it)) }
+            editingConstructionNode?.innerNodes?.forEach { node ->
+                val widget = NodeWidget(node)
+                widget.isStartTestNode = (rangeTestStartNode?.id == node.id)
+                widget.isEndTestNode = (rangeTestEndNode?.id == node.id)
+                nodeWidgets.add(widget)
+            }
         } else {
             project.scenes.forEach { scene ->
                 scene.nodes.forEach { node ->
-                    nodeWidgets.add(NodeWidget(node))
+                    val widget = NodeWidget(node)
+                    widget.isStartTestNode = (rangeTestStartNode?.id == node.id)
+                    widget.isEndTestNode = (rangeTestEndNode?.id == node.id)
+                    nodeWidgets.add(widget)
                 }
             }
         }
@@ -183,9 +232,6 @@ class StoryEditorScreen(
         showStatus("Foco centralizado na ${scene.title}")
     }
 
-    // ==========================================
-    // Conversão de Coordenadas (Mouse <-> Canvas)
-    // ==========================================
     fun screenToWorldX(screenX: Double): Double = (screenX - panX) / zoom
     fun screenToWorldY(screenY: Double): Double = (screenY - panY) / zoom
     fun worldToScreenX(worldX: Double): Double = worldX * zoom + panX
@@ -199,12 +245,8 @@ class StoryEditorScreen(
 
         val spacing = 4
         val btnH = 14
-        val row2Y = 18 // Linha 2: Menus Dropdown (Y = 18)
+        val row2Y = 18
         var currentX = 10
-
-        // ----------------------------------------------------
-        // LINHA 2 (Y = 18): BARRA DE MENUS DROPDOWN CATEGORIZADA
-        // ----------------------------------------------------
 
         // 1. Menu [📁 Arquivo ▾]
         val fileLabel = "📁 Arquivo ▾"
@@ -248,7 +290,6 @@ class StoryEditorScreen(
         )
         currentX += sysW + spacing
 
-        // 4. [← Voltar ao Estúdio] (Exibido apenas dentro de construção)
         if (editingConstructionNode != null) {
             val backLabel = "← Voltar ao Estúdio"
             val backW = getBtnWidth(backLabel)
@@ -259,15 +300,12 @@ class StoryEditorScreen(
                     rebuildNodeWidgets()
                     activeInspector = null
                     activeSceneInspector = null
-                    activeMetadataInspector = null
-                    showStatus("Retornado ao Estúdio principal (Aba mantida aberta).")
+                    showStatus("Retornado ao Estúdio principal.")
                 }.bounds(currentX, row2Y, backW, btnH).build()
             )
         }
 
-        // ----------------------------------------------------
-        // BOTÃO [▶ Testar ▾] (CANTO INFERIOR DIREITO DA TELA)
-        // ----------------------------------------------------
+        // Botão [▶ Testar ▾] (Canto Inferior Direito)
         val testLabel = "▶ Testar ▾"
         val testW = getBtnWidth(testLabel)
         val testH = 16
@@ -292,43 +330,19 @@ class StoryEditorScreen(
         }
     }
 
-    private fun openMetadataInspector() {
-        val inspectorW = 150
-        val inspectorX = width - inspectorW
-        val inspectorY = toolbarHeight + sceneBarHeight
-        val inspectorH = height - (toolbarHeight + sceneBarHeight)
-
-        activeInspector = null
-        activeSceneInspector = null
-        activeMetadataInspector = StoryMetadataInspectorWidget(
+    private fun openMetadataModal() {
+        closeAllTopMenus()
+        activeMetadataModal = StoryMetadataModalWidget(
             project = project,
-            panelX = inspectorX,
-            panelY = inspectorY,
-            panelWidth = inspectorW,
-            panelHeight = inspectorH,
             font = font,
-            onClose = { activeMetadataInspector = null },
-            onDataChanged = { markDirty() },
-            onDuplicateStory = { duplicateProject ->
-                project = duplicateProject
-                editingConstructionNode = null
-                openSceneIds.clear()
-                openConstructionNodes.clear()
-                duplicateProject.scenes.forEach { openSceneIds.add(it.id) }
-                markDirty()
-                init()
-                rebuildNodeWidgets()
-            },
-            onStatus = { msg -> showStatus(msg) }
+            screenWidth = width,
+            screenHeight = height,
+            onClose = { activeMetadataModal = null },
+            onDataChanged = { markDirty() }
         )
     }
 
-    private fun addNode(type: NodeType, subType: String = "") {
-        if (subType == "CREATE_SCENE") {
-            createNewSceneFrame()
-            return
-        }
-
+    private fun addNode(type: NodeType) {
         val title = when (type) {
             NodeType.BEGIN_SCENE -> "Início da Cena"
             NodeType.TRIGGER -> "Trigger"
@@ -343,62 +357,73 @@ class StoryEditorScreen(
             NodeType.COMMENT -> "Nota"
             NodeType.END_SCENE -> "Finalizar Cena"
             NodeType.GATE -> "Portão (GATE)"
+            NodeType.VARIABLE_GET -> "Var (Get)"
+            NodeType.VARIABLE_SET -> "Var (Set)"
         }
 
         val inputs = mutableListOf<PortData>()
         val outputs = mutableListOf<PortData>()
 
         var w = 160.0
-        var h = 90.0
+        var h = 55.0
 
         when (type) {
+            NodeType.VARIABLE_GET -> {
+                outputs.add(PortData(name = "Val", type = PortType.OUTPUT))
+                w = 160.0; h = 55.0
+            }
+            NodeType.VARIABLE_SET -> {
+                inputs.add(PortData(name = "In", type = PortType.INPUT))
+                outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
+                w = 90.0; h = 90.0
+            }
             NodeType.COMMENT -> {
-                w = 200.0
-                h = 50.0
+                w = 90.0; h = 90.0
             }
             NodeType.BEGIN_SCENE -> {
                 outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
+                w = 160.0; h = 55.0
             }
             NodeType.TRIGGER -> {
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
                 outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
+                w = 130.0; h = 100.0
             }
             NodeType.BRANCH -> {
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
                 outputs.add(PortData(name = "IF (Saída 1)", type = PortType.OUTPUT))
                 outputs.add(PortData(name = "IF (Saída 2)", type = PortType.OUTPUT))
+                w = 130.0; h = 100.0
             }
             NodeType.END_SCENE -> {
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
+                w = 160.0; h = 55.0
             }
             NodeType.GATE -> {
                 inputs.add(PortData(name = "IN 1", type = PortType.INPUT))
                 inputs.add(PortData(name = "IN 2", type = PortType.INPUT))
                 outputs.add(PortData(name = "OUT", type = PortType.OUTPUT))
-                w = 180.0
-                h = 60.0
+                w = 160.0; h = 55.0
             }
             NodeType.LINK_SEND -> {
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
-                w = 160.0
-                h = 55.0
+                w = 160.0; h = 55.0
             }
             NodeType.LINK_RECEIVE -> {
                 outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
-                w = 160.0
-                h = 55.0
+                w = 160.0; h = 55.0
             }
             NodeType.LOOP -> {
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
                 inputs.add(PortData(name = "Stop", type = PortType.INPUT))
                 outputs.add(PortData(name = "Cycle", type = PortType.OUTPUT))
                 outputs.add(PortData(name = "Done", type = PortType.OUTPUT))
-                w = 180.0
-                h = 70.0
+                w = 90.0; h = 90.0
             }
             else -> {
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
                 outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
+                w = 130.0; h = 100.0
             }
         }
 
@@ -416,7 +441,14 @@ class StoryEditorScreen(
             params = mutableMapOf()
         )
 
-        if (type == NodeType.TRIGGER) {
+        if (type == NodeType.VARIABLE_GET || type == NodeType.VARIABLE_SET) {
+            val firstVarKey = project.variables.firstOrNull()?.id ?: "var_nova"
+            ghostNode.params["varKey"] = firstVarKey
+            ghostNode.params["varOp"] = "="
+            ghostNode.params["varValue"] = "1"
+            if (type == NodeType.VARIABLE_GET) ghostNode.title = "Get: $firstVarKey"
+            if (type == NodeType.VARIABLE_SET) ghostNode.title = "Set: $firstVarKey"
+        } else if (type == NodeType.TRIGGER) {
             ghostNode.params["requireInputSignal"] = "true"
         } else if (type == NodeType.LINK_SEND || type == NodeType.LINK_RECEIVE) {
             ghostNode.params["channelTag"] = "canal_1"
@@ -426,7 +458,6 @@ class StoryEditorScreen(
             ghostNode.params["loopIntervalSec"] = "1.0"
         }
 
-        // Ativar Modo de Posicionamento Interativo ("Ghost Placement")
         activePlacementNode = ghostNode
         isBlockPaletteOpen = false
         closeAllTopMenus()
@@ -467,7 +498,6 @@ class StoryEditorScreen(
         val inspectorH = height - (toolbarHeight + sceneBarHeight)
 
         activeSceneInspector = null
-        activeMetadataInspector = null
         activeInspector = NodeInspectorWidget(
             node = node,
             panelX = inspectorX,
@@ -495,9 +525,49 @@ class StoryEditorScreen(
                 rebuildNodeWidgets()
                 activeInspector = null
                 activeSceneInspector = null
-                activeMetadataInspector = null
                 showStatus("Sub-canvas da Construção aberto: ${constrNode.title}")
-            }
+            },
+            onOpenVariableSelector = { onSelect ->
+                activeVarSelectorModal = StoryVariableSelectorModalWidget(
+                    project = project,
+                    font = font,
+                    screenWidth = width,
+                    screenHeight = height,
+                    onSelect = { selectedVar ->
+                        onSelect(selectedVar)
+                        activeVarSelectorModal = null
+                    },
+                    onClose = { activeVarSelectorModal = null }
+                )
+            },
+            onOpenActionTriggerPicker = { isAction, onSelect ->
+                val curId = if (isAction) (node.params["actionSubtype"] ?: "MESSAGE") else (node.params["triggerType"] ?: "START")
+                activeActionTriggerPickerModal = ActionTriggerPickerModalWidget(
+                    isAction = isAction,
+                    font = font,
+                    screenWidth = width,
+                    screenHeight = height,
+                    currentSelectedId = curId,
+                    onSelect = { chosenId ->
+                        onSelect(chosenId)
+                    },
+                    onClose = { activeActionTriggerPickerModal = null }
+                )
+            },
+            onOpenPokemonConfig = { targetNode ->
+                activePokemonConfigModal = PokemonConfigModalWidget(
+                    node = targetNode,
+                    font = font,
+                    screenWidth = width,
+                    screenHeight = height,
+                    onClose = { activePokemonConfigModal = null },
+                    onDataChanged = {
+                        markDirty()
+                        activeInspector?.buildUi()
+                    }
+                )
+            },
+            projectVariables = project.variables
         )
     }
 
@@ -508,7 +578,6 @@ class StoryEditorScreen(
         val inspectorH = height - (toolbarHeight + sceneBarHeight)
 
         activeInspector = null
-        activeMetadataInspector = null
         activeSceneInspector = SceneInspectorWidget(
             scene = scene,
             panelX = inspectorX,
@@ -528,6 +597,8 @@ class StoryEditorScreen(
         val file = StorySerializer.save(project)
         if (file != null) {
             isDirty = false
+            configData.lastProjectPath = file.absolutePath
+            StoryEditorConfig.save(configData)
             showStatus("Salvo em: ${file.name}")
         } else {
             showStatus("Erro ao salvar projeto!")
@@ -549,16 +620,73 @@ class StoryEditorScreen(
         statusTimer = 100
     }
 
+    private fun startRangeTestExecution() {
+        val startNode = rangeTestStartNode
+        if (startNode == null) return
+
+        saveProject()
+
+        val serverPlayer = minecraft?.player?.uuid?.let { minecraft?.singleplayerServer?.playerList?.getPlayer(it) }
+        val instance = ActiveStoryInstance(storyId = project.id, project = project, context = StoryContext(player = serverPlayer))
+        StoryExecutor.activeStories[project.id] = instance
+
+        StoryExecutor.executeNodeChain(instance, startNode)
+
+        isRangeTestSelectionMode = false
+        rangeTestStartNode = null
+        rangeTestEndNode = null
+        rebuildNodeWidgets()
+
+        minecraft?.setScreen(null)
+    }
+
+    private data class ScreenRect(val x: Double, val y: Double, val w: Double, val h: Double)
+
+    // Teste AABB para ocultar o texto APENAS nos nós que colidem com menus ou inspetores sobrepostos
+    private fun isNodeCollidingWithOverlays(widget: NodeWidget): Boolean {
+        val nodeX = worldToScreenX(widget.node.x)
+        val nodeY = worldToScreenY(widget.node.y)
+        val nodeW = widget.node.width * zoom
+        val nodeH = widget.node.height * zoom
+
+        val overlayRects = mutableListOf<ScreenRect>()
+
+        if (activeInspector != null || activeSceneInspector != null) {
+            val inspW = 140.0
+            val topOffset = (toolbarHeight + sceneBarHeight).toDouble()
+            overlayRects.add(ScreenRect(width - inspW, topOffset, inspW, height - topOffset))
+        }
+
+        val dropY = (toolbarHeight + sceneBarHeight + 2).toDouble()
+        if (isFileMenuOpen) overlayRects.add(ScreenRect(fileMenuX.toDouble(), dropY, 140.0, 76.0))
+        if (isAddMenuOpen) overlayRects.add(ScreenRect(addMenuX.toDouble(), dropY, 160.0, 94.0))
+        if (isSystemMenuOpen) overlayRects.add(ScreenRect(systemMenuX.toDouble(), dropY, 155.0, 40.0))
+        if (isBlockPaletteOpen) overlayRects.add(ScreenRect(10.0, dropY, 185.0, 184.0))
+
+        if (isTestMenuOpen) {
+            val dropdownH = 44.0
+            val testW = 195.0
+            val testX = (testBtnX + getBtnWidth("▶ Testar ▾") - testW).coerceAtMost(width - testW - 5.0).coerceAtLeast(5.0)
+            val testY = testBtnY - dropdownH - 4.0
+            overlayRects.add(ScreenRect(testX, testY, testW, dropdownH))
+        }
+
+        for (rect in overlayRects) {
+            if (nodeX < rect.x + rect.w && nodeX + nodeW > rect.x &&
+                nodeY < rect.y + rect.h && nodeY + nodeH > rect.y) {
+                return true
+            }
+        }
+        return false
+    }
+
     override fun renderBackground(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {}
 
-    // ==========================================
-    // Renderização do Canvas & Interface (Com Flush, Scissor & Z=1000f Matrix Elevation)
-    // ==========================================
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         currentMouseWorldX = screenToWorldX(mouseX.toDouble())
         currentMouseWorldY = screenToWorldY(mouseY.toDouble())
 
-        val isModalOpen = activeDocModal != null || showExitConfirmModal
+        val isModalOpen = activeDocModal != null || showExitConfirmModal || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null || activeActionTriggerPickerModal != null || activePokemonConfigModal != null
 
         // 1. Fundo do Canvas e Grade
         guiGraphics.fill(0, 0, width, height, 0xFF141418.toInt())
@@ -582,62 +710,19 @@ class StoryEditorScreen(
             hoveredPort = null
         }
 
+        // Renderizar nós do canvas (com checagem seletiva de colisão AABB para cada nó)
         nodeWidgets.toList().forEach { widget ->
-            widget.render(guiGraphics, font, if (isModalOpen) null else hoveredPort, isModalOpen)
+            val isColliding = isNodeCollidingWithOverlays(widget)
+            widget.render(guiGraphics, font, if (isModalOpen || isColliding) null else hoveredPort, isModalOpen, isColliding)
         }
         renderGhostPlacementNode(guiGraphics)
 
         guiGraphics.pose().popPose()
         guiGraphics.disableScissor()
 
-        // Descarregar buffer do canvas na GPU imediatamente após disableScissor()
         guiGraphics.flush()
 
-        // 3. Notificações Toast e Inspectors Laterais
-        renderNodeLabelsAndInspector(guiGraphics, mouseX, mouseY, partialTick, isModalOpen)
-
-        // 4. Desenha componentes nativos e Widgets Filhos do Screen (incluindo botão ▶ Testar)
-        val mX = if (isModalOpen) -9999 else mouseX
-        val mY = if (isModalOpen) -9999 else mouseY
-        super.render(guiGraphics, mX, mY, partialTick)
-        guiGraphics.flush()
-
-        // 5. Barra Superior (TopBar), Abas e Menus Dropdown (incluindo o menu ▶ Testar que abre para CIMA)
-        renderTopBarAndMenus(guiGraphics, mouseX, mouseY, partialTick, isModalOpen)
-        guiGraphics.flush()
-
-        // 6. RENDERIZAÇÃO DOS MODAIS COM DEPTH TEST & ELEVAÇÃO MATRICIAL Z = 1000f
-        if (isModalOpen) {
-            renderModalOverlay(guiGraphics, mouseX, mouseY, partialTick)
-            guiGraphics.flush()
-        }
-
-        // Processar Auto-Save Assíncrono em Segundo Plano
-        if (autoSaveEnabled) {
-            val now = System.currentTimeMillis()
-            if (now - lastAutoSaveTime >= autoSaveIntervalSeconds * 1000L) {
-                lastAutoSaveTime = now
-                val projectSnapshot = project
-                java.util.concurrent.CompletableFuture.runAsync {
-                    StorySerializer.save(projectSnapshot)
-                }.thenAccept { file ->
-                    if (file != null) {
-                        isDirty = false
-                        showStatus("Auto-save salvo em segundo plano.")
-                    }
-                }
-            }
-        }
-    }
-
-    // Renderizar Notificações e Painéis Inspector Laterais
-    private fun renderNodeLabelsAndInspector(
-        guiGraphics: GuiGraphics,
-        mouseX: Int,
-        mouseY: Int,
-        partialTick: Float,
-        isModalOpen: Boolean
-    ) {
+        // 3. Notificações Toast
         if (statusTimer > 0) {
             statusTimer--
             val toastY = height - 16
@@ -646,29 +731,62 @@ class StoryEditorScreen(
             guiGraphics.drawString(font, statusMessage, 12, toastY, 0xFFFFD700.toInt(), false)
         }
 
+        // 4. Componentes nativos do Screen
         val mX = if (isModalOpen) -9999 else mouseX
         val mY = if (isModalOpen) -9999 else mouseY
+        super.render(guiGraphics, mX, mY, partialTick)
+        guiGraphics.flush()
+
+        // 5. Barra Superior (TopBar) e Abas
+        renderTopBarAndMenus(guiGraphics, mX, mY)
+        guiGraphics.flush()
+
+        // 6. RENDERIZAÇÃO DE MENUS CATEGORIZADOS, PALETA DE BLOCOS E INSPECTORS COM ELEVAÇÃO MATRICIAL Z = 500f
+        RenderSystem.enableDepthTest()
+        guiGraphics.pose().pushPose()
+        guiGraphics.pose().translate(0.0f, 0.0f, 500.0f)
 
         activeInspector?.render(guiGraphics, mX, mY, partialTick)
         activeSceneInspector?.render(guiGraphics, mX, mY, partialTick)
-        activeMetadataInspector?.render(guiGraphics, mX, mY, partialTick)
+
+        renderCategoryMenusDropdowns(guiGraphics, mX, mY)
+        if (isBlockPaletteOpen) renderBlockPalette(guiGraphics, mX, mY)
+        if (isTestMenuOpen) renderTestMenu(guiGraphics, mX, mY)
+        activeContextMenu?.render(guiGraphics, mX, mY, width, height)
+
+        guiGraphics.flush()
+        guiGraphics.pose().popPose()
+
+        // 7. RENDERIZAÇÃO DOS MODAIS COM DEPTH TEST & ELEVAÇÃO MATRICIAL Z = 1000f
+        if (isModalOpen) {
+            renderModalOverlay(guiGraphics, mouseX, mouseY, partialTick)
+            guiGraphics.flush()
+        }
+
+        // Auto-Save Assíncrono em Segundo Plano
+        if (autoSaveEnabled) {
+            val now = System.currentTimeMillis()
+            if (now - lastAutoSaveTime >= autoSaveIntervalSeconds * 1000L) {
+                lastAutoSaveTime = now
+                val projectSnapshot = project
+                java.util.concurrent.CompletableFuture.runAsync {
+                    val file = StorySerializer.save(projectSnapshot)
+                    if (file != null) {
+                        configData.lastProjectPath = file.absolutePath
+                        StoryEditorConfig.save(configData)
+                    }
+                }.thenAccept {
+                    isDirty = false
+                    showStatus("Auto-save salvo em segundo plano.")
+                }
+            }
+        }
     }
 
-    // Renderizar TopBar de 2 Linhas, Menus Dropdown, Barra de Abas e Menu ▶ Testar (aberto para CIMA)
-    private fun renderTopBarAndMenus(
-        guiGraphics: GuiGraphics,
-        mouseX: Int,
-        mouseY: Int,
-        partialTick: Float,
-        isModalOpen: Boolean
-    ) {
-        val mX = if (isModalOpen) -9999 else mouseX
-        val mY = if (isModalOpen) -9999 else mouseY
-
+    private fun renderTopBarAndMenus(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         guiGraphics.fill(0, 0, width, toolbarHeight, 0xFF18181C.toInt())
         guiGraphics.fill(0, toolbarHeight - 1, width, toolbarHeight, 0xFF2F2F38.toInt())
 
-        // LINHA 1 (Y = 4): Título do Projeto & Cena/Construção CENTRALIZADOS na tela
         val construction = editingConstructionNode
         val dirtyIndicator = if (isDirty) " *" else ""
         val titleText = if (construction != null) {
@@ -680,54 +798,41 @@ class StoryEditorScreen(
         val centerX = (width - titleW) / 2
         guiGraphics.drawString(font, titleText, centerX, 4, 0xFF00FFCC.toInt(), false)
 
-        // Barra de Navegação por Abas Fecháveis com Scroll Horizontal
-        renderSceneTabBar(guiGraphics, mX, mY)
-
-        // Flush de texto antes dos dropdowns
-        guiGraphics.flush()
-
-        // Dropdowns dos Menus Categorizados
-        renderCategoryMenusDropdowns(guiGraphics, mX, mY)
-
-        if (isBlockPaletteOpen) {
-            renderBlockPalette(guiGraphics, mX, mY)
+        if (isRangeTestSelectionMode) {
+            val modeMsg = if (rangeTestStartNode == null) {
+                "🎯 MODO DE SELEÇÃO: Clique no 1º Bloco (INÍCIO DO TESTE) - Arraste/Pan livre"
+            } else {
+                "🎯 MODO DE SELEÇÃO: Clique no 2º Bloco (FIM DO TESTE) - Arraste/Pan livre"
+            }
+            guiGraphics.fill(0, toolbarHeight, width, toolbarHeight + 14, 0xEE00838F.toInt())
+            guiGraphics.drawCenteredString(font, modeMsg, width / 2, toolbarHeight + 3, 0xFFFFD700.toInt())
+        } else {
+            renderSceneTabBar(guiGraphics, mouseX, mouseY)
         }
-
-        // Renderizar Menu Suspenso ▶ Testar (Aberto para CIMA no canto inferior direito)
-        if (isTestMenuOpen) {
-            renderTestMenu(guiGraphics, mX, mY)
-        }
-
-        activeContextMenu?.render(guiGraphics, mX, mY, width, height)
     }
 
-    // RENDERIZAÇÃO DOS MODAIS COM DEPTH TEST & ELEVAÇÃO MATRICIAL Z = 1000f
     private fun renderModalOverlay(
         guiGraphics: GuiGraphics,
         mouseX: Int,
         mouseY: Int,
         partialTick: Float
     ) {
-        // 1. Limpeza e Flush de todos os vertices de texto emitidos anteriormente
         guiGraphics.flush()
 
-        // 2. Ativar Depth Test e Elevação da Matriz do PoseStack para Z = 1000f
         RenderSystem.enableDepthTest()
         guiGraphics.pose().pushPose()
         guiGraphics.pose().translate(0.0f, 0.0f, 1000.0f)
 
-        // Fundo escurecido translúcido cobrindo 100% da tela antes do modal (0xF0101014)
         guiGraphics.fill(0, 0, width, height, 0xF0101014.toInt())
 
-        // Modal de Guia Integrado dos Nós
         activeDocModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+        if (showExitConfirmModal) renderExitConfirmModal(guiGraphics, mouseX, mouseY)
+        activeVariableModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+        activeMetadataModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+        activeVarSelectorModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+        activeActionTriggerPickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+        activePokemonConfigModal?.render(guiGraphics, mouseX, mouseY, partialTick)
 
-        // Modal de Confirmação de Alterações Não Salvas ao Sair
-        if (showExitConfirmModal) {
-            renderExitConfirmModal(guiGraphics, mouseX, mouseY)
-        }
-
-        // 3. Flush dos textos internos do Modal na camada elevada Z = 1000f antes de restaurar a matriz
         guiGraphics.flush()
         guiGraphics.pose().popPose()
     }
@@ -736,7 +841,6 @@ class StoryEditorScreen(
         val dropY = toolbarHeight + sceneBarHeight + 2
         val itemH = 18
 
-        // Menu Dropdown 📁 Arquivo
         if (isFileMenuOpen) {
             val dropW = 140
             val dropX = fileMenuX
@@ -754,16 +858,17 @@ class StoryEditorScreen(
             }
         }
 
-        // Menu Dropdown ➕ Adicionar
         if (isAddMenuOpen) {
-            val dropW = 140
+            val dropW = 160
             val dropX = addMenuX
-            guiGraphics.fill(dropX, dropY, dropX + dropW, dropY + itemH * 2 + 4, 0xF018181C.toInt())
-            guiGraphics.fill(dropX, dropY, dropX + 1, dropY + itemH * 2 + 4, 0xFF3D5AFE.toInt())
-            guiGraphics.fill(dropX + dropW - 1, dropY, dropX + dropW, dropY + itemH * 2 + 4, 0xFF3D5AFE.toInt())
-            guiGraphics.fill(dropX, dropY + itemH * 2 + 3, dropX + dropW, dropY + itemH * 2 + 4, 0xFF3D5AFE.toInt())
+            val items = listOf("🎬 Nova Cena", "📋 Gerenciar Catálogo", "🔹 Bloco Variável (Get)", "✏️ Bloco Modificador (Set)", "+ Blocos")
+            val dropH = itemH * items.size + 4
 
-            val items = listOf("+ Blocos", "+ Variáveis")
+            guiGraphics.fill(dropX, dropY, dropX + dropW, dropY + dropH, 0xF018181C.toInt())
+            guiGraphics.fill(dropX, dropY, dropX + 1, dropY + dropH, 0xFF3D5AFE.toInt())
+            guiGraphics.fill(dropX + dropW - 1, dropY, dropX + dropW, dropY + dropH, 0xFF3D5AFE.toInt())
+            guiGraphics.fill(dropX, dropY + dropH - 1, dropX + dropW, dropY + dropH, 0xFF3D5AFE.toInt())
+
             items.forEachIndexed { idx, label ->
                 val iy = dropY + 2 + idx * itemH
                 val isHovered = mouseX >= dropX && mouseX <= dropX + dropW && mouseY >= iy && mouseY < iy + itemH
@@ -772,7 +877,6 @@ class StoryEditorScreen(
             }
         }
 
-        // Menu Dropdown ⚙ Sistema
         if (isSystemMenuOpen) {
             val dropW = 155
             val dropX = systemMenuX
@@ -803,7 +907,6 @@ class StoryEditorScreen(
 
         var currentX = 10 - tabBarScrollOffset
 
-        // Renderizar Abas de Construções Abertas (Persistem na barra)
         openConstructionNodes.toList().forEach { constr ->
             val isSelected = editingConstructionNode?.id == constr.id
             val label = "🏗️ ${constr.title}"
@@ -830,7 +933,6 @@ class StoryEditorScreen(
             currentX += tabW + 4
         }
 
-        // Renderizar Abas de Cenas Abertas (Ocultar visualmente ao fechar com X sem deletar dados)
         val visibleScenes = project.scenes.filter { openSceneIds.contains(it.id) }
         visibleScenes.forEach { scene ->
             val isSelected = project.activeSceneId == scene.id && editingConstructionNode == null
@@ -862,7 +964,7 @@ class StoryEditorScreen(
     private fun renderBlockPalette(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         val palX = 10
         val palY = toolbarHeight + sceneBarHeight + 2
-        val palW = 155
+        val palW = 185
         val itemH = 18
 
         val maxVisibleItems = 10
@@ -873,26 +975,31 @@ class StoryEditorScreen(
         guiGraphics.fill(palX + palW - 1, palY, palX + palW, palY + visibleHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(palX, palY + visibleHeight - 1, palX + palW, palY + visibleHeight, 0xFF3D5AFE.toInt())
 
-        val startIndex = paletteScrollOffset.coerceIn(0, maxOf(0, paletteItems.size - maxVisibleItems))
-        val endIndex = (startIndex + maxVisibleItems).coerceAtMost(paletteItems.size)
+        val startIndex = paletteScrollOffset.coerceIn(0, maxOf(0, paletteEntries.size - maxVisibleItems))
+        val endIndex = (startIndex + maxVisibleItems).coerceAtMost(paletteEntries.size)
 
         for (i in startIndex until endIndex) {
             val idx = i - startIndex
-            val item = paletteItems[i]
+            val entry = paletteEntries[i]
             val iy = palY + 2 + idx * itemH
-            val isHovered = mouseX >= palX && mouseX <= palX + palW && mouseY >= iy && mouseY < iy + itemH
-            val bg = if (isHovered) 0xFF3D5AFE.toInt() else 0xFF222228.toInt()
 
-            guiGraphics.fill(palX + 3, iy, palX + palW - 3, iy + itemH - 2, bg)
-            guiGraphics.drawString(font, item.label, palX + 8, iy + 4, 0xFFFFFFFF.toInt(), false)
+            if (entry.isHeader) {
+                guiGraphics.fill(palX + 3, iy, palX + palW - 3, iy + itemH - 2, 0xFF2A2A38.toInt())
+                guiGraphics.drawString(font, entry.label, palX + 6, iy + 5, 0xFFFFD700.toInt(), false)
+            } else {
+                val isHovered = mouseX >= palX && mouseX <= palX + palW && mouseY >= iy && mouseY < iy + itemH
+                val bg = if (isHovered) 0xFF3D5AFE.toInt() else 0xFF222228.toInt()
+
+                guiGraphics.fill(palX + 3, iy, palX + palW - 3, iy + itemH - 2, bg)
+                guiGraphics.drawString(font, entry.label, palX + 10, iy + 4, 0xFFFFFFFF.toInt(), false)
+            }
         }
 
-        // Renderizar Barra de Rolagem Visual se houver estouro
-        if (paletteItems.size > maxVisibleItems) {
+        if (paletteEntries.size > maxVisibleItems) {
             val sbX = palX + palW - 5
-            val scrollRatio = maxVisibleItems.toFloat() / paletteItems.size
+            val scrollRatio = maxVisibleItems.toFloat() / paletteEntries.size
             val thumbH = (visibleHeight * scrollRatio).toInt().coerceAtLeast(10)
-            val maxScrollable = paletteItems.size - maxVisibleItems
+            val maxScrollable = paletteEntries.size - maxVisibleItems
             val thumbY = palY + (paletteScrollOffset.toFloat() / maxScrollable * (visibleHeight - thumbH)).toInt()
 
             guiGraphics.fill(sbX, palY + 2, sbX + 3, palY + visibleHeight - 2, 0xFF2A2A36.toInt())
@@ -901,11 +1008,10 @@ class StoryEditorScreen(
     }
 
     private fun renderTestMenu(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int) {
-        val testW = 175
+        val testW = 195
         val itemH = 20
         val dropdownH = itemH * 2 + 4
 
-        // Ancorar o menu suspenso para abrir PARA CIMA do botão [▶ Testar ▾] no canto inferior direito
         val testX = (testBtnX + getBtnWidth("▶ Testar ▾") - testW).coerceAtMost(width - testW - 5).coerceAtLeast(5)
         val testY = testBtnY - dropdownH - 4
 
@@ -915,15 +1021,13 @@ class StoryEditorScreen(
         guiGraphics.fill(testX, testY, testX + testW, testY + 1, 0xFF4CAF50.toInt())
         guiGraphics.fill(testX, testY + dropdownH - 1, testX + testW, testY + dropdownH, 0xFF4CAF50.toInt())
 
-        // Opção 1: Testar do Início
         val h1 = mouseX >= testX && mouseX <= testX + testW && mouseY >= testY + 2 && mouseY < testY + 2 + itemH
         guiGraphics.fill(testX + 3, testY + 2, testX + testW - 3, testY + itemH, if (h1) 0xFF4CAF50.toInt() else 0xFF222228.toInt())
         guiGraphics.drawString(font, "▶ Testar do Início", testX + 8, testY + 6, 0xFFFFFFFF.toInt(), false)
 
-        // Opção 2: Testar do Bloco Selecionado
         val h2 = mouseX >= testX && mouseX <= testX + testW && mouseY >= testY + 2 + itemH && mouseY < testY + 2 + itemH * 2
         guiGraphics.fill(testX + 3, testY + 2 + itemH, testX + testW - 3, testY + itemH * 2, if (h2) 0xFF4CAF50.toInt() else 0xFF222228.toInt())
-        guiGraphics.drawString(font, "🎯 Testar do Bloco Selecionado", testX + 8, testY + 6 + itemH, 0xFFFFFFFF.toInt(), false)
+        guiGraphics.drawString(font, "🎯 Testar por Intervalo (Blocos)", testX + 8, testY + 6 + itemH, 0xFFFFFFFF.toInt(), false)
     }
 
     private fun renderExitConfirmModal(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int) {
@@ -999,7 +1103,7 @@ class StoryEditorScreen(
                 else -> 0xFF3D5AFE.toInt()
             }
 
-            guiGraphics.fill(sx, sy, sx + sw, sy + sh, 0x1A1E1E28.toInt())
+            guiGraphics.fill(sx, sy, sx + sw, sy + sh, 0x1A1E1E28)
             guiGraphics.fill(sx - 1, sy - 1, sx + sw + 1, sy, borderColor)
             guiGraphics.fill(sx - 1, sy + sh, sx + sw + 1, sy + sh + 1, borderColor)
             guiGraphics.fill(sx - 1, sy, sx, sy + sh, borderColor)
@@ -1043,7 +1147,7 @@ class StoryEditorScreen(
             guiGraphics.fill(rx + 10, ry + 4, rx + 12, ry + 6, handleColor)
 
             if (isHoveredResize && !isModalOpen) {
-                guiGraphics.drawString(font, "⤢", (sx + sw + 4).toInt(), (sy + sh - 12).toInt(), 0xFF00FFCC.toInt(), false)
+                guiGraphics.drawString(font, "⤢", (sx + sw + 4), (sy + sh - 12), 0xFF00FFCC.toInt(), false)
             }
         }
     }
@@ -1269,16 +1373,14 @@ class StoryEditorScreen(
         }
     }
 
-    // ==========================================
-    // Manipulação de Eventos do Mouse
-    // ==========================================
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        // Modal de Documentação
-        if (activeDocModal != null) {
-            return activeDocModal!!.mouseClicked(mouseX, mouseY, button)
-        }
+        if (activeDocModal != null) return activeDocModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeVariableModal != null) return activeVariableModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeMetadataModal != null) return activeMetadataModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeVarSelectorModal != null) return activeVarSelectorModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeActionTriggerPickerModal != null) return activeActionTriggerPickerModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activePokemonConfigModal != null) return activePokemonConfigModal!!.mouseClicked(mouseX, mouseY, button)
 
-        // Interceptação pelo Modal de Confirmação ao Sair
         if (showExitConfirmModal) {
             val modalW = 280
             val modalH = 100
@@ -1310,7 +1412,6 @@ class StoryEditorScreen(
             return true
         }
 
-        // Interceptação pelos Menus Dropdown Categorizados
         val dropY = toolbarHeight + sceneBarHeight + 2
         val itemH = 18
 
@@ -1335,7 +1436,7 @@ class StoryEditorScreen(
                         })
                     }
                     2 -> exportJson()
-                    3 -> openMetadataInspector()
+                    3 -> openMetadataModal()
                 }
                 isFileMenuOpen = false
                 return true
@@ -1345,13 +1446,36 @@ class StoryEditorScreen(
         }
 
         if (isAddMenuOpen) {
-            val dropW = 140
+            val dropW = 160
             val dropX = addMenuX
-            if (mouseX >= dropX && mouseX <= dropX + dropW && mouseY >= dropY && mouseY < dropY + itemH * 2) {
+            val itemsCount = 5
+            if (mouseX >= dropX && mouseX <= dropX + dropW && mouseY >= dropY && mouseY < dropY + itemH * itemsCount) {
                 val idx = ((mouseY - (dropY + 2)) / itemH).toInt()
                 when (idx) {
-                    0 -> { isBlockPaletteOpen = true; isAddMenuOpen = false }
-                    1 -> { showStatus("Gerenciador de Variáveis da História (Em breve)."); isAddMenuOpen = false }
+                    0 -> createNewSceneFrame()
+                    1 -> {
+                        activeVariableModal = StoryVariableManagerModalWidget(
+                            project = project,
+                            font = font,
+                            screenWidth = width,
+                            screenHeight = height,
+                            onClose = { activeVariableModal = null },
+                            onDataChanged = { markDirty() }
+                        )
+                        isAddMenuOpen = false
+                    }
+                    2 -> {
+                        addNode(NodeType.VARIABLE_GET)
+                        isAddMenuOpen = false
+                    }
+                    3 -> {
+                        addNode(NodeType.VARIABLE_SET)
+                        isAddMenuOpen = false
+                    }
+                    4 -> {
+                        isBlockPaletteOpen = true
+                        isAddMenuOpen = false
+                    }
                 }
                 return true
             } else if (mouseY > toolbarHeight + sceneBarHeight) {
@@ -1375,9 +1499,8 @@ class StoryEditorScreen(
             }
         }
 
-        // Interceptação pelo Menu Dropdown de Teste de História (Ancorado para CIMA do botão ▶ Testar ▾ no Canto Inferior Direito)
         if (isTestMenuOpen) {
-            val testW = 175
+            val testW = 195
             val dropdownH = itemH * 2 + 4
 
             val testX = (testBtnX + getBtnWidth("▶ Testar ▾") - testW).coerceAtMost(width - testW - 5).coerceAtLeast(5)
@@ -1386,22 +1509,16 @@ class StoryEditorScreen(
             if (mouseX >= testX && mouseX <= testX + testW && mouseY >= testY && mouseY <= testY + dropdownH) {
                 val relY = mouseY - (testY + 2)
                 if (relY >= 0 && relY < itemH) {
-                    // Testar do Início
+                    saveProject()
                     val serverPlayer = minecraft?.player?.uuid?.let { minecraft?.singleplayerServer?.playerList?.getPlayer(it) }
                     StoryExecutor.startStory(project, serverPlayer)
-                    showStatus("▶ Teste iniciado do ponto inicial!")
+                    minecraft?.setScreen(null)
                 } else if (relY >= itemH && relY < itemH * 2) {
-                    // Testar do Bloco Selecionado
-                    val sel = selectedWidget
-                    if (sel != null) {
-                        val serverPlayer = minecraft?.player?.uuid?.let { minecraft?.singleplayerServer?.playerList?.getPlayer(it) }
-                        val instance = ActiveStoryInstance(storyId = project.id, project = project, context = StoryContext(player = serverPlayer))
-                        StoryExecutor.activeStories[project.id] = instance
-                        StoryExecutor.executeNodeChain(instance, sel.node)
-                        showStatus("🎯 Teste iniciado do bloco: ${sel.node.title}")
-                    } else {
-                        showStatus("Selecione um bloco na tela para testar!")
-                    }
+                    isRangeTestSelectionMode = true
+                    rangeTestStartNode = null
+                    rangeTestEndNode = null
+                    rebuildNodeWidgets()
+                    showStatus("🎯 Clique no 1º bloco para definir o INÍCIO do teste. (Mova/Pan livre na tela)")
                 }
                 isTestMenuOpen = false
                 return true
@@ -1414,24 +1531,24 @@ class StoryEditorScreen(
             }
         }
 
-        // Interceptação pelo Menu de Contexto (se aberto)
         if (activeContextMenu?.mouseClicked(mouseX, mouseY, button, width, height) == true) {
             return true
         }
 
-        // Paleta de Blocos Dropdown com Scroll
         if (isBlockPaletteOpen) {
             val palX = 10
             val palY = toolbarHeight + sceneBarHeight + 2
-            val palW = 155
+            val palW = 185
             val maxVisibleItems = 10
             val visibleHeight = maxVisibleItems * itemH + 4
 
             if (mouseX >= palX && mouseX <= palX + palW && mouseY >= palY && mouseY < palY + visibleHeight) {
                 val idx = ((mouseY - (palY + 2)) / itemH).toInt() + paletteScrollOffset
-                if (idx in paletteItems.indices) {
-                    val item = paletteItems[idx]
-                    addNode(item.type, item.subType)
+                if (idx in paletteEntries.indices) {
+                    val entry = paletteEntries[idx]
+                    if (!entry.isHeader) {
+                        addNode(entry.type)
+                    }
                 }
                 isBlockPaletteOpen = false
                 return true
@@ -1440,13 +1557,11 @@ class StoryEditorScreen(
             }
         }
 
-        // Interceptação pelo Clique nas Abas de Cena Fecháveis & Navegação
-        if (mouseY >= toolbarHeight && mouseY <= toolbarHeight + sceneBarHeight) {
+        if (mouseY >= toolbarHeight && mouseY <= toolbarHeight + sceneBarHeight && !isRangeTestSelectionMode) {
             val barY = toolbarHeight
             val tabH = 14
             var currentX = 10 - tabBarScrollOffset
 
-            // Checar clique nas Abas de Construções Abertas (Persistem na barra)
             val constrSnapshot = openConstructionNodes.toList()
             for (constr in constrSnapshot) {
                 val label = "🏗️ ${constr.title}"
@@ -1455,7 +1570,6 @@ class StoryEditorScreen(
                 val tabX = currentX
 
                 if (mouseX >= tabX && mouseX <= tabX + tabW && mouseY >= barY + 2 && mouseY <= barY + 2 + tabH) {
-                    // Checar clique no botão Fechar (x) da aba de construção
                     if (mouseX >= tabX + tabW - 14 && mouseX <= tabX + tabW - 2) {
                         openConstructionNodes.remove(constr)
                         if (editingConstructionNode?.id == constr.id) {
@@ -1465,7 +1579,6 @@ class StoryEditorScreen(
                         }
                         showStatus("Aba da construção ${constr.title} fechada.")
                     } else {
-                        // Ativar visualização da construção
                         editingConstructionNode = constr
                         init()
                         rebuildNodeWidgets()
@@ -1476,7 +1589,6 @@ class StoryEditorScreen(
                 currentX += tabW + 4
             }
 
-            // Checar clique nas Abas de Cenas Abertas (Visualmente fecháveis sem deletar dados)
             val visibleScenes = project.scenes.filter { openSceneIds.contains(it.id) }
             for (scene in visibleScenes) {
                 val label = "🎬 ${scene.title}"
@@ -1485,7 +1597,6 @@ class StoryEditorScreen(
                 val tabX = currentX
 
                 if (mouseX >= tabX && mouseX <= tabX + tabW && mouseY >= barY + 2 && mouseY <= barY + 2 + tabH) {
-                    // Checar se clicou no botão discreto Fechar (x) da aba de cena
                     if (mouseX >= tabX + tabW - 14 && mouseX <= tabX + tabW - 2) {
                         if (openSceneIds.size > 1) {
                             openSceneIds.remove(scene.id)
@@ -1494,12 +1605,11 @@ class StoryEditorScreen(
                                 project.activeSceneId = remainingId
                             }
                             rebuildNodeWidgets()
-                            showStatus("Aba da cena ${scene.title} fechada (dados mantidos no projeto).")
+                            showStatus("Aba da cena ${scene.title} fechada.")
                         } else {
                             showStatus("Não é possível fechar a única aba de cena visível!")
                         }
                     } else {
-                        // Selecionar e teleportar câmera para a cena
                         editingConstructionNode = null
                         centerCameraOnScene(scene)
                     }
@@ -1512,7 +1622,6 @@ class StoryEditorScreen(
 
         if (activeInspector?.mouseClicked(mouseX, mouseY, button) == true) return true
         if (activeSceneInspector?.mouseClicked(mouseX, mouseY, button) == true) return true
-        if (activeMetadataInspector?.mouseClicked(mouseX, mouseY, button) == true) return true
 
         if (mouseY < toolbarHeight + sceneBarHeight) {
             return super.mouseClicked(mouseX, mouseY, button)
@@ -1521,7 +1630,30 @@ class StoryEditorScreen(
         val worldX = screenToWorldX(mouseX)
         val worldY = screenToWorldY(mouseY)
 
-        // MODO FANTASMA ("GHOST PLACEMENT")
+        // MINI-MODO DE SELEÇÃO DE INTERVALO DE TESTE (Permite Panning / Mover a tela se clicar no espaço vazio!)
+        if (isRangeTestSelectionMode && button == 0) {
+            val clickedWidget = nodeWidgets.reversed().find { it.isWorldPosInside(worldX, worldY) }
+            if (clickedWidget != null) {
+                if (rangeTestStartNode == null) {
+                    rangeTestStartNode = clickedWidget.node
+                    rebuildNodeWidgets()
+                    showStatus("▶ Início definido: ${clickedWidget.node.title}. Clique no 2º bloco (FIM DO TESTE).")
+                } else {
+                    rangeTestEndNode = clickedWidget.node
+                    rebuildNodeWidgets()
+                    showStatus("🛑 Fim definido: ${clickedWidget.node.title}. Executando teste do intervalo...")
+                    startRangeTestExecution()
+                }
+                return true
+            } else {
+                // Clicou fora dos blocos: ativa o panning da câmera
+                isPanning = true
+                lastMouseX = mouseX
+                lastMouseY = mouseY
+                return true
+            }
+        }
+
         val ghost = activePlacementNode
         if (ghost != null && button == 0) {
             val targetConstructionWidget = nodeWidgets.find { it.node.nodeType == NodeType.CONSTRUCTION && it.isWorldPosInside(worldX, worldY) }
@@ -1547,6 +1679,7 @@ class StoryEditorScreen(
                 if (!targetScene.nodes.contains(ghost)) {
                     targetScene.nodes.add(ghost)
                 }
+                updateVariableSceneBinding(ghost, targetScene.id)
                 showStatus("Bloco vinculado à cena: ${targetScene.title}")
             } else {
                 ghost.parentSceneId = null
@@ -1554,6 +1687,9 @@ class StoryEditorScreen(
                 val targetList = if (editingConstructionNode != null) editingConstructionNode!!.innerNodes else activeScene?.nodes
                 if (targetList != null && !targetList.contains(ghost)) {
                     targetList.add(ghost)
+                }
+                if (activeScene != null) {
+                    updateVariableSceneBinding(ghost, activeScene.id)
                 }
                 showStatus("Bloco posicionado como nó livre no Estúdio.")
             }
@@ -1565,7 +1701,6 @@ class StoryEditorScreen(
             return true
         }
 
-        // CLIQUE DIREITO -> MENU DE CONTEXTO
         if (button == 1) {
             for (widget in nodeWidgets.reversed()) {
                 if (widget.isWorldPosInside(worldX, worldY)) {
@@ -1584,7 +1719,6 @@ class StoryEditorScreen(
             return true
         }
 
-        // Verificar portas de Cenas
         if (editingConstructionNode == null) {
             for (scene in project.scenes) {
                 val sx = scene.x
@@ -1634,7 +1768,6 @@ class StoryEditorScreen(
             }
         }
 
-        // Verificar portas de Nós
         for (widget in nodeWidgets.reversed()) {
             val portPair = widget.getPortAtWorldPos(worldX, worldY)
             if (portPair != null) {
@@ -1665,7 +1798,6 @@ class StoryEditorScreen(
             }
         }
 
-        // Corpo do Nó
         var clickedOnNode = false
         for (widget in nodeWidgets.reversed()) {
             if (widget.isWorldPosInside(worldX, worldY)) {
@@ -1680,7 +1812,6 @@ class StoryEditorScreen(
             }
         }
 
-        // Redimensionamento e Cabeçalho da Cena
         if (!clickedOnNode && editingConstructionNode == null) {
             for (scene in project.scenes) {
                 val sx = scene.x
@@ -1710,7 +1841,6 @@ class StoryEditorScreen(
             selectedWidget = null
             activeInspector = null
             activeSceneInspector = null
-            activeMetadataInspector = null
             activeContextMenu = null
             closeAllTopMenus()
             isPanning = true
@@ -1795,7 +1925,7 @@ class StoryEditorScreen(
                 activeContextMenu = null
                 activeInspector = null
                 markDirty()
-                showStatus("Bloco desvinculado e movido para fora da cena!")
+                showStatus("Bloco desvinculado!")
             }
             ContextMenuAction.COPY_DATA -> {
                 BlockDataClipboard.copyFrom(node)
@@ -1843,7 +1973,6 @@ class StoryEditorScreen(
                     selectedWidget = null
                     activeInspector = null
                     activeSceneInspector = null
-                    activeMetadataInspector = null
                     activeContextMenu = null
                     markDirty()
                     rebuildNodeWidgets()
@@ -1896,19 +2025,18 @@ class StoryEditorScreen(
                 selectedWidget = null
                 activeInspector = null
                 activeSceneInspector = null
-                activeMetadataInspector = null
                 activeContextMenu = null
                 markDirty()
                 rebuildNodeWidgets()
                 openSceneInspector(scene)
-                showStatus("Cena resetada (nós e conexões limpos)!")
+                showStatus("Cena resetada!")
             }
             else -> {}
         }
     }
 
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
-        if (showExitConfirmModal || activeDocModal != null) return true
+        if (showExitConfirmModal || activeDocModal != null || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null) return true
 
         val targetResizeScene = resizingScene
         if (targetResizeScene != null) {
@@ -1952,7 +2080,7 @@ class StoryEditorScreen(
     }
 
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (showExitConfirmModal || activeDocModal != null) return true
+        if (showExitConfirmModal || activeDocModal != null || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null) return true
 
         isPanning = false
         draggedScene = null
@@ -1967,6 +2095,7 @@ class StoryEditorScreen(
                 if (!targetScene.nodes.contains(node)) {
                     targetScene.nodes.add(node)
                 }
+                updateVariableSceneBinding(node, targetScene.id)
             } else {
                 node.parentSceneId = null
             }
@@ -2061,7 +2190,12 @@ class StoryEditorScreen(
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
         if (showExitConfirmModal || activeDocModal != null) return true
 
-        // Rolagem na Barra de Abas (Horizontal Scroll)
+        if (activeVariableModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeVarSelectorModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeActionTriggerPickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeInspector?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeSceneInspector?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+
         if (mouseY >= toolbarHeight && mouseY <= toolbarHeight + sceneBarHeight) {
             if (scrollY < 0) {
                 tabBarScrollOffset = (tabBarScrollOffset + 25).coerceAtMost(maxOf(0, (openConstructionNodes.size + openSceneIds.size) * 110 - width + 100))
@@ -2071,11 +2205,10 @@ class StoryEditorScreen(
             return true
         }
 
-        // Rolagem de Mouse na Lista de Blocos Dropdown
         if (isBlockPaletteOpen) {
             val palX = 10
             val palY = toolbarHeight + sceneBarHeight + 2
-            val palW = 155
+            val palW = 185
             val maxVisible = 10
             val visibleH = maxVisible * 18 + 4
 
@@ -2083,13 +2216,12 @@ class StoryEditorScreen(
                 if (scrollY > 0) {
                     paletteScrollOffset = (paletteScrollOffset - 1).coerceAtLeast(0)
                 } else if (scrollY < 0) {
-                    paletteScrollOffset = (paletteScrollOffset + 1).coerceAtMost(maxOf(0, paletteItems.size - maxVisible))
+                    paletteScrollOffset = (paletteScrollOffset + 1).coerceAtMost(maxOf(0, paletteEntries.size - maxVisible))
                 }
                 return true
             }
         }
 
-        // Limite de Zoom-out Expandido em 50%: de 0.25 até 0.12
         val zoomFactor = if (scrollY > 0) 1.1 else 0.9
         val oldZoom = zoom
         val newZoom = (zoom * zoomFactor).coerceIn(0.12, 3.0)
@@ -2109,30 +2241,66 @@ class StoryEditorScreen(
 
     override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
         if (showExitConfirmModal || activeDocModal != null) return true
+        if (activeVariableModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeMetadataModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeVarSelectorModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeActionTriggerPickerModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activePokemonConfigModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeInspector?.charTyped(codePoint, modifiers) == true) return true
         if (activeSceneInspector?.charTyped(codePoint, modifiers) == true) return true
-        if (activeMetadataInspector?.charTyped(codePoint, modifiers) == true) return true
         return super.charTyped(codePoint, modifiers)
     }
 
     override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
         if (activeDocModal != null) {
-            if (keyCode == 256) {
-                activeDocModal = null
-                return true
-            }
+            if (keyCode == 256) { activeDocModal = null; return true }
+            return true
+        }
+
+        if (activeVariableModal != null) {
+            if (keyCode == 256) { activeVariableModal = null; return true }
+            if (activeVariableModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            return true
+        }
+
+        if (activeMetadataModal != null) {
+            if (keyCode == 256) { activeMetadataModal = null; return true }
+            if (activeMetadataModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            return true
+        }
+
+        if (activeVarSelectorModal != null) {
+            if (keyCode == 256) { activeVarSelectorModal = null; return true }
+            if (activeVarSelectorModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            return true
+        }
+
+        if (activeActionTriggerPickerModal != null) {
+            if (keyCode == 256) { activeActionTriggerPickerModal = null; return true }
+            if (activeActionTriggerPickerModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            return true
+        }
+
+        if (activePokemonConfigModal != null) {
+            if (keyCode == 256) { activePokemonConfigModal = null; return true }
+            if (activePokemonConfigModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
             return true
         }
 
         if (showExitConfirmModal) {
-            if (keyCode == 256) {
-                showExitConfirmModal = false
-                return true
-            }
+            if (keyCode == 256) { showExitConfirmModal = false; return true }
             return true
         }
 
-        if (keyCode == 256) { // ESC
+        if (keyCode == 256) {
+            if (isRangeTestSelectionMode) {
+                isRangeTestSelectionMode = false
+                rangeTestStartNode = null
+                rangeTestEndNode = null
+                rebuildNodeWidgets()
+                showStatus("Modo de teste por intervalo cancelado.")
+                return true
+            }
             if (activePlacementNode != null) {
                 activePlacementNode = null
                 showStatus("Posicionamento cancelado.")
@@ -2147,10 +2315,9 @@ class StoryEditorScreen(
                 isTestMenuOpen = false
                 return true
             }
-            if (activeInspector != null || activeSceneInspector != null || activeMetadataInspector != null) {
+            if (activeInspector != null || activeSceneInspector != null) {
                 activeInspector = null
                 activeSceneInspector = null
-                activeMetadataInspector = null
                 return true
             }
             checkDirtyBeforeAction {
@@ -2161,7 +2328,6 @@ class StoryEditorScreen(
 
         if (activeInspector?.keyPressed(keyCode, scanCode, modifiers) == true) return true
         if (activeSceneInspector?.keyPressed(keyCode, scanCode, modifiers) == true) return true
-        if (activeMetadataInspector?.keyPressed(keyCode, scanCode, modifiers) == true) return true
         return super.keyPressed(keyCode, scanCode, modifiers)
     }
 

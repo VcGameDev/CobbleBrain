@@ -6,6 +6,7 @@ import vito.cobblebrain.blocks.impl.*
 import vito.cobblebrain.model.NodeData
 import vito.cobblebrain.model.NodeType
 import vito.cobblebrain.model.StoryProject
+import vito.cobblebrain.model.VariableType
 
 data class ActiveStoryInstance(
     val storyId: String,
@@ -19,6 +20,12 @@ object StoryExecutor {
 
     fun startStory(project: StoryProject, player: ServerPlayer? = null, server: MinecraftServer? = null): ActiveStoryInstance {
         val context = StoryContext(player = player, server = server ?: player?.server)
+
+        // Instanciar todas as variáveis cadastradas no catálogo do projeto
+        project.variables.forEach { variable ->
+            context.variables[variable.id] = variable.parseTypedDefaultValue()
+        }
+
         val instance = ActiveStoryInstance(storyId = project.id, project = project, context = context)
         activeStories[project.id] = instance
 
@@ -181,13 +188,108 @@ object StoryExecutor {
             return
         }
 
-        // 4. BLOCO DE FINALIZAÇÃO DE CENA (END_SCENE)
+        // 4. BLOCO MODIFICADOR DE VARIÁVEL (VARIABLE_SET - EXECUTION SETTER)
+        if (currentNode.nodeType == NodeType.VARIABLE_SET) {
+            val varKey = currentNode.params["varKey"] ?: "var_nova"
+            val op = currentNode.params["varOp"] ?: "="
+            val valStr = currentNode.params["varValue"] ?: ""
+
+            val varDecl = instance.project.variables.find { it.id == varKey }
+            val varType = varDecl?.type ?: VariableType.STRING
+            val currentVal = instance.context.variables[varKey] ?: varDecl?.parseTypedDefaultValue() ?: ""
+
+            val newVal: Any = when (varType) {
+                VariableType.NUMBER -> {
+                    val curNum = (currentVal as? Number)?.toDouble() ?: currentVal.toString().toDoubleOrNull() ?: 0.0
+                    val inputNum = valStr.toDoubleOrNull() ?: 0.0
+                    when (op) {
+                        "+" -> curNum + inputNum
+                        "-" -> curNum - inputNum
+                        "*" -> curNum * inputNum
+                        else -> inputNum // "="
+                    }
+                }
+                VariableType.BOOLEAN -> {
+                    val curBool = (currentVal as? Boolean) ?: currentVal.toString().toBoolean()
+                    when (op) {
+                        "NOT" -> !curBool
+                        else -> valStr.toBoolean() // "="
+                    }
+                }
+                VariableType.STRING -> {
+                    val curStr = currentVal.toString()
+                    when (op) {
+                        "+" -> curStr + valStr
+                        else -> valStr // "="
+                    }
+                }
+                VariableType.LIST -> {
+                    val list = when (currentVal) {
+                        is MutableList<*> -> (currentVal as MutableList<Any?>).map { it.toString() }.toMutableList()
+                        is List<*> -> currentVal.map { it.toString() }.toMutableList()
+                        null -> {
+                            val registeredVar = instance.project.variables.find { it.id == varKey }
+                            (registeredVar?.parseTypedDefaultValue() as? MutableList<String>) ?: mutableListOf()
+                        }
+                        else -> currentVal.toString().split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                    }
+
+                    when (op) {
+                        "ADD", "+=" -> list.add(valStr)
+                        "REMOVE", "-=" -> list.remove(valStr)
+                        "REMOVE_AT" -> {
+                            val idx = valStr.toIntOrNull() ?: 0
+                            if (idx in list.indices) list.removeAt(idx)
+                        }
+                        "CLEAR" -> list.clear()
+                        "SET", "=" -> {
+                            list.clear()
+                            if (valStr.isNotBlank()) {
+                                list.addAll(valStr.split(",").map { it.trim() }.filter { it.isNotBlank() })
+                            }
+                        }
+                    }
+                    list
+                }
+            }
+            instance.context.variables[varKey] = newVal
+            continueOutgoingConnections(instance, currentNode, stepCount + 1)
+            return
+        }
+
+        // 5. BLOCO LEITOR DE VARIÁVEL (VARIABLE_GET - DATA GETTER)
+        if (currentNode.nodeType == NodeType.VARIABLE_GET) {
+            continueOutgoingConnections(instance, currentNode, stepCount + 1)
+            return
+        }
+
+        // 6. BLOCO DE RAMIFICAÇÃO (BRANCH - IF/ELSE)
+        if (currentNode.nodeType == NodeType.BRANCH) {
+            val varKey = currentNode.params["varKey"] ?: "var_nova"
+            val op = currentNode.params["varOp"] ?: "=="
+            val targetValStr = currentNode.params["varValue"] ?: "true"
+
+            val actualVal = instance.context.variables[varKey]
+            val evalResult = evaluateVariableCondition(actualVal, op, targetValStr)
+
+            val scene = instance.project.getActiveScene()
+            if (scene != null) {
+                val targetPortIdx = if (evalResult) 0 else 1
+                val targetPort = currentNode.outputs.getOrNull(targetPortIdx) ?: currentNode.outputs.firstOrNull()
+                if (targetPort != null) {
+                    continuePortConnections(instance, currentNode, targetPort.id, stepCount + 1)
+                }
+            }
+            return
+        }
+
+        // 7. BLOCO DE FINALIZAÇÃO DE CENA (END_SCENE)
         if (currentNode.nodeType == NodeType.END_SCENE) {
             finishSceneExecution(instance, stepCount)
             return
         }
 
-        // 5. BLOCO PORTÃO SINCRONIZADOR (GATE)
+        // 8. BLOCO PORTÃO SINCRONIZADOR (GATE)
         if (currentNode.nodeType == NodeType.GATE) {
             val scene = instance.project.getActiveScene()
             if (scene != null) {
@@ -227,6 +329,71 @@ object StoryExecutor {
             return
         } else {
             continueOutgoingConnections(instance, currentNode, stepCount)
+        }
+    }
+
+    private fun evaluateVariableCondition(actualVal: Any?, op: String, targetValStr: String): Boolean {
+        if (actualVal is List<*> || op in listOf("CONTAINS", "SIZE", "IS_EMPTY", "GET_INDEX")) {
+            val list = when (actualVal) {
+                is List<*> -> actualVal.map { it?.toString() ?: "" }
+                null -> emptyList()
+                else -> actualVal.toString().split(",").map { it.trim() }.filter { it.isNotBlank() }
+            }
+
+            return when (op) {
+                "CONTAINS" -> list.any { it.equals(targetValStr, ignoreCase = true) }
+                "SIZE" -> {
+                    val expectedSize = targetValStr.toIntOrNull() ?: 0
+                    list.size == expectedSize
+                }
+                "IS_EMPTY" -> list.isEmpty()
+                "GET_INDEX" -> {
+                    if (targetValStr.contains(":")) {
+                        val parts = targetValStr.split(":", limit = 2)
+                        val idx = parts[0].trim().toIntOrNull() ?: 0
+                        val expectedVal = parts[1].trim()
+                        if (idx in list.indices) list[idx].equals(expectedVal, ignoreCase = true) else false
+                    } else {
+                        val idx = targetValStr.toIntOrNull() ?: 0
+                        idx in list.indices
+                    }
+                }
+                "==" -> list.joinToString(",").equals(targetValStr, ignoreCase = true)
+                "!=" -> !list.joinToString(",").equals(targetValStr, ignoreCase = true)
+                else -> list.any { it.equals(targetValStr, ignoreCase = true) }
+            }
+        }
+
+        val actualStr = actualVal?.toString() ?: ""
+        val actualNum = (actualVal as? Number)?.toDouble() ?: actualStr.toDoubleOrNull()
+        val targetNum = targetValStr.toDoubleOrNull()
+
+        if (actualNum != null && targetNum != null) {
+            return when (op) {
+                "==" -> actualNum == targetNum
+                "!=" -> actualNum != targetNum
+                ">" -> actualNum > targetNum
+                "<" -> actualNum < targetNum
+                ">=" -> actualNum >= targetNum
+                "<=" -> actualNum <= targetNum
+                else -> actualNum == targetNum
+            }
+        }
+
+        val actualBool = actualVal as? Boolean ?: actualStr.toBooleanStrictOrNull()
+        val targetBool = targetValStr.toBooleanStrictOrNull()
+        if (actualBool != null && targetBool != null) {
+            return when (op) {
+                "==" -> actualBool == targetBool
+                "!=" -> actualBool != targetBool
+                else -> actualBool == targetBool
+            }
+        }
+
+        return when (op) {
+            "==" -> actualStr.equals(targetValStr, ignoreCase = true)
+            "!=" -> !actualStr.equals(targetValStr, ignoreCase = true)
+            else -> actualStr.equals(targetValStr, ignoreCase = true)
         }
     }
 
@@ -331,13 +498,67 @@ object StoryExecutor {
             NodeType.ACTION -> {
                 val actionSubtype = node.params["actionSubtype"] ?: "MESSAGE"
                 when (actionSubtype) {
+                    "VAR_MODIFY" -> {
+                        val varKey = node.params["varKey"] ?: "var_nova"
+                        val op = node.params["varOp"] ?: "="
+                        val valStr = node.params["varValue"] ?: ""
+
+                        val currentVal = context.variables[varKey]
+                        val newVal: Any = when (op) {
+                            "+=" -> {
+                                val curNum = (currentVal as? Number)?.toDouble() ?: currentVal?.toString()?.toDoubleOrNull() ?: 0.0
+                                val addNum = valStr.toDoubleOrNull() ?: 0.0
+                                curNum + addNum
+                            }
+                            "-=" -> {
+                                val curNum = (currentVal as? Number)?.toDouble() ?: currentVal?.toString()?.toDoubleOrNull() ?: 0.0
+                                val subNum = valStr.toDoubleOrNull() ?: 0.0
+                                curNum - subNum
+                            }
+                            "TOGGLE" -> {
+                                val curBool = (currentVal as? Boolean) ?: currentVal?.toString()?.toBoolean() ?: false
+                                !curBool
+                            }
+                            else -> { // "="
+                                if (valStr.equals("true", true) || valStr.equals("false", true)) {
+                                    valStr.toBoolean()
+                                } else if (valStr.toDoubleOrNull() != null) {
+                                    valStr.toDouble()
+                                } else {
+                                    valStr
+                                }
+                            }
+                        }
+                        context.variables[varKey] = newVal
+                    }
                     "TELEPORT" -> TeleportAction().execute(context, node)
-                    "SPAWN" -> SpawnCobblemonAction().execute(context, node)
-                    "SOUND" -> PlaySoundAction().execute(context, node)
+                    "CHANGE_WEATHER" -> ChangeWeatherAction().execute(context, node)
+                    "SET_TIME_OF_DAY" -> SetTimeOfDayAction().execute(context, node)
+                    "SPAWN_BLOCK" -> SpawnBlockAction().execute(context, node)
+                    "MODIFY_BLOCK_PROPERTY" -> ModifyBlockPropertyAction().execute(context, node)
+                    "SPAWN_ENTITY" -> SpawnEntityAction().execute(context, node)
+                    "KILL_ENTITY" -> KillEntityAction().execute(context, node)
+                    "MODIFY_ENTITY_PROPERTIES" -> ModifyEntityPropertiesAction().execute(context, node)
+                    "ADD_ENTITY_EFFECT" -> ApplyEffectAction().execute(context, node)
+                    "ADD_AREA_EFFECT" -> AreaEffectAction().execute(context, node)
+                    "SPAWN_COBBLEMON", "SPAWN_POKEMON", "SPAWN" -> SpawnCobblemonAction().execute(context, node)
+                    "GIVE_POKEMON" -> GivePokemonAction().execute(context, node)
+                    "MODIFY_POKEMON_PROPERTIES" -> ModifyPokemonPropertiesAction().execute(context, node)
+                    "KILL_PLAYER" -> KillPlayerAction().execute(context, node)
+                    "DAMAGE_PLAYER" -> DamagePlayerAction().execute(context, node)
+                    "GIVE_ITEM" -> GiveItemAction().execute(context, node)
+                    "REMOVE_ITEM" -> RemoveItemAction().execute(context, node)
+                    "ADD_PLAYER_EFFECT", "EFFECT" -> ApplyEffectAction().execute(context, node)
+                    "SPAWN_ITEM" -> SpawnItemAction().execute(context, node)
+                    "SEND_CHAT_MESSAGE", "MESSAGE" -> SendMessageAction().execute(context, node)
+                    "SHOW_TITLE_SCREEN" -> ShowTitleAction().execute(context, node)
+                    "SPAWN_PARTICLES" -> SpawnParticlesAction().execute(context, node)
+                    "PLAY_SOUND", "SOUND" -> PlaySoundAction().execute(context, node)
+                    "PLAY_MUSIC" -> PlayMusicAction().execute(context, node)
                     else -> SendMessageAction().execute(context, node)
                 }
             }
-            NodeType.TIMER, NodeType.BRANCH, NodeType.CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT -> {
+            NodeType.TIMER, NodeType.BRANCH, NodeType.CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT, NodeType.VARIABLE_GET, NodeType.VARIABLE_SET -> {
                 // Executados pela lógica de controle de fluxo do grafo
             }
             else -> {}

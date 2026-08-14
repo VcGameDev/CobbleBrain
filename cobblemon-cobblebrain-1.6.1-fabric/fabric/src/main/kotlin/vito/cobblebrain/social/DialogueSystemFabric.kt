@@ -41,6 +41,7 @@ object DialogueSystemFabric {
         // SERVER TICK
         ServerTickEvents.END_SERVER_TICK.register { server: MinecraftServer ->
             DialogueSystem.onServerTick(server)
+            vito.cobblebrain.engine.StoryListenerManager.onServerTick()
         }
 
         // connects to network
@@ -102,12 +103,16 @@ object DialogueSystemFabric {
         // Victory
         CobblemonEvents.BATTLE_VICTORY.subscribe { event ->
             DialogueSystem.onBattleVictory(event)
+            event.battle.players.forEach { p ->
+                vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p)
+            }
         }
 
         // Death - handles Pokémon fainted, player kills and Pokémon kills
         ServerLivingEntityEvents.AFTER_DEATH.register { entity, source ->
             val killer = source.entity
             val now = System.currentTimeMillis()
+            vito.cobblebrain.engine.StoryListenerManager.onEntityDied(entity, killer)
 
             // 1. Pokémon Fainted: a player-owned Pokémon died
             if (entity is PokemonEntity) {

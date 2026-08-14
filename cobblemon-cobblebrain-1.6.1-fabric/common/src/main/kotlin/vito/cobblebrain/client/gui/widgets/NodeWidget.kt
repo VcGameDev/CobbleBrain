@@ -8,29 +8,62 @@ import vito.cobblebrain.model.PortData
 import vito.cobblebrain.model.PortType
 import kotlin.math.sqrt
 
+enum class NodeRectShape {
+    HORIZONTAL_RECTANGLE, // Retângulo Horizontal (Padrão: 160x55)
+    SQUARE,               // Quadrado (Padrão: 90x90)
+    VERTICAL_RECTANGLE    // Retângulo Vertical (Padrão: 130x100)
+}
+
 class NodeWidget(val node: NodeData) {
 
     var isSelected: Boolean = false
     var isDragging: Boolean = false
 
+    // Destaque do Mini-Modo de Teste por Intervalo
+    var isStartTestNode: Boolean = false
+    var isEndTestNode: Boolean = false
+
     private val headerHeight = 20
     private val portRadius = 5.0
 
+    fun getRectShape(): NodeRectShape {
+        return when (node.nodeType) {
+            NodeType.BEGIN_SCENE, NodeType.END_SCENE, NodeType.GATE,
+            NodeType.LINK_SEND, NodeType.LINK_RECEIVE,
+            NodeType.VARIABLE_GET -> NodeRectShape.HORIZONTAL_RECTANGLE
+
+            NodeType.COMMENT, NodeType.VARIABLE_SET,
+            NodeType.LOOP -> NodeRectShape.SQUARE
+
+            NodeType.CONSTRUCTION, NodeType.BRANCH, NodeType.TRIGGER,
+            NodeType.DIALOGUE, NodeType.ACTION,
+            NodeType.TIMER -> NodeRectShape.VERTICAL_RECTANGLE
+        }
+    }
+
+    // Cores Harmonizadas por Categoria
     fun getHeaderColor(): Int {
         return when (node.nodeType) {
-            NodeType.BEGIN_SCENE -> 0xFF388E3C.toInt()  // Verde Início (Ponto de Entrada da Cena)
-            NodeType.TRIGGER -> 0xFF2E7D32.toInt()      // Verde (Gatilho)
-            NodeType.ACTION -> 0xFFC62828.toInt()       // Vermelho (Ação)
-            NodeType.TIMER -> 0xFF6A1B9A.toInt()        // Roxo (Timer)
-            NodeType.BRANCH -> 0xFFF57F17.toInt()       // Laranja (Ramificação)
-            NodeType.DIALOGUE -> 0xFF1565C0.toInt()     // Azul (Diálogo)
-            NodeType.CONSTRUCTION -> 0xFF00838F.toInt() // Teal (Construção)
-            NodeType.END_SCENE -> 0xFFD32F2F.toInt()   // Vermelho Escuro (Finalizar Cena)
-            NodeType.GATE -> 0xFF00B0FF.toInt()        // Ciano (Portão Sincronizador)
-            NodeType.LINK_SEND -> 0xFF00E676.toInt()   // Verde Ciano (Emissor Link)
-            NodeType.LINK_RECEIVE -> 0xFF0288D1.toInt()// Azul Ciano (Receptor Link)
-            NodeType.LOOP -> 0xFFFF6D00.toInt()        // Laranja Vibrante (Repetidor Loop)
-            NodeType.COMMENT -> 0xFFFBC02D.toInt()     // Amarelo Nota (Bloco de Comentário)
+            // SEÇÃO 1: Estrutura & Fluxo (Tons de Verde & Teal)
+            NodeType.BEGIN_SCENE -> 0xFF2E7D32.toInt()  // Verde Esmeralda
+            NodeType.END_SCENE -> 0xFF1B5E20.toInt()    // Verde Escuro
+            NodeType.GATE -> 0xFF00838F.toInt()         // Teal Sincronizador
+            NodeType.CONSTRUCTION -> 0xFF00695C.toInt()  // Teal Escuro Sub-grafo
+            NodeType.LINK_SEND -> 0xFF009688.toInt()    // Verde Água Transmissor
+            NodeType.LINK_RECEIVE -> 0xFF00796B.toInt() // Verde Água Receptor
+            NodeType.LOOP -> 0xFF388E3C.toInt()         // Verde Repetidor
+
+            // SEÇÃO 2: Variáveis & Decisões (Tons de Azul & Ciano Vibrante)
+            NodeType.VARIABLE_GET -> 0xFF0288D1.toInt() // Azul Ciano Getter
+            NodeType.VARIABLE_SET -> 0xFF0277BD.toInt() // Azul Oceano Setter
+            NodeType.BRANCH -> 0xFF1565C0.toInt()       // Azul Safira If/Else
+            NodeType.TRIGGER -> 0xFF0D47A1.toInt()      // Azul Cobalto Gatilho
+
+            // SEÇÃO 3: Ações & Eventos (Tons de Vermelho, Laranja, Roxo & Amarelo)
+            NodeType.DIALOGUE -> 0xFFC62828.toInt()     // Vermelho Vivo Diálogo
+            NodeType.ACTION -> 0xFFD32F2F.toInt()       // Vermelho Carmim Ação
+            NodeType.TIMER -> 0xFF8E24AA.toInt()        // Roxo Vibrante Timer
+            NodeType.COMMENT -> 0xFFFBC02D.toInt()     // Amarelo Nota
         }
     }
 
@@ -82,27 +115,22 @@ class NodeWidget(val node: NodeData) {
         guiGraphics: GuiGraphics,
         font: Font,
         hoveredPort: PortData? = null,
-        isModalOpen: Boolean = false
+        isModalOpen: Boolean = false,
+        isCollidingWithOverlay: Boolean = false
     ) {
-        // Formatos compactos e estilizados por tipo
-        when (node.nodeType) {
-            NodeType.GATE -> {
-                node.width = 180.0
-                node.height = 60.0
-            }
-            NodeType.LINK_SEND, NodeType.LINK_RECEIVE -> {
+        when (getRectShape()) {
+            NodeRectShape.HORIZONTAL_RECTANGLE -> {
                 node.width = 160.0
                 node.height = 55.0
             }
-            NodeType.LOOP -> {
-                node.width = 180.0
-                node.height = 70.0
+            NodeRectShape.SQUARE -> {
+                node.width = 90.0
+                node.height = 90.0
             }
-            NodeType.COMMENT -> {
-                node.width = 200.0
-                node.height = 50.0
+            NodeRectShape.VERTICAL_RECTANGLE -> {
+                node.width = 130.0
+                node.height = 100.0
             }
-            else -> {}
         }
 
         val x = node.x.toInt()
@@ -110,38 +138,38 @@ class NodeWidget(val node: NodeData) {
         val w = node.width.toInt()
         val h = node.height.toInt()
 
-        // Estilo Especial para Bloco de Comentário (Estilo Post-It/Nota Plana)
+        val shouldHideText = isModalOpen || isCollidingWithOverlay
+
+        // Bloco de Comentário (Estilo Post-It)
         if (node.nodeType == NodeType.COMMENT) {
             val noteBorder = if (isSelected) 0xFFFFD700.toInt() else 0xFFFBC02D.toInt()
             guiGraphics.fill(x - 1, y - 1, x + w + 1, y + h + 1, noteBorder)
             guiGraphics.fill(x, y, x + w, y + h, 0xEE222016.toInt())
-
             guiGraphics.fill(x, y, x + w, y + 16, 0xFF3D3820.toInt())
-            if (!isModalOpen) {
+
+            if (!shouldHideText) {
                 guiGraphics.drawString(font, "📝 ${node.title}", x + 6, y + 4, 0xFFFBC02D.toInt(), false)
-                val commentText = font.plainSubstrByWidth(node.content.ifBlank { "Sua nota / explicação..." }, w - 12)
+                val commentText = font.plainSubstrByWidth(node.content.ifBlank { "Sua nota..." }, w - 12)
                 guiGraphics.drawString(font, commentText, x + 6, y + 24, 0xFFE0E0D0.toInt(), false)
             }
             return
         }
 
-        // Sombra / Borda de seleção
-        if (isSelected) {
-            guiGraphics.fill(x - 2, y - 2, x + w + 2, y + h + 2, 0xFFFFD700.toInt())
-        } else {
-            guiGraphics.fill(x - 1, y - 1, x + w + 1, y + h + 1, 0xFF333338.toInt())
+        val borderColor = when {
+            isStartTestNode -> 0xFF00FFCC.toInt()
+            isEndTestNode -> 0xFFFF5555.toInt()
+            isSelected -> 0xFFFFD700.toInt()
+            else -> 0xFF333338.toInt()
         }
 
-        // Fundo do nó
-        guiGraphics.fill(x, y, x + w, y + h, 0xFF1E1E24.toInt())
-
-        // Cabeçalho
         val headerColor = getHeaderColor()
+
+        guiGraphics.fill(x - 2, y - 2, x + w + 2, y + h + 2, borderColor)
+        guiGraphics.fill(x, y, x + w, y + h, 0xFF1E1E24.toInt())
         guiGraphics.fill(x, y, x + w, y + headerHeight, headerColor)
 
-        // Se o modal estiver aberto, bloqueia 100% a emissão de textos do nó no canvas
-        if (!isModalOpen) {
-            // Título e Ícone no cabeçalho
+        // Ocultar o texto do nó APENAS se ele estiver em colisão AABB com um menu/inspector sobreposto
+        if (!shouldHideText) {
             val isBoundToScene = !node.parentSceneId.isNullOrEmpty()
             val maxTitleW = if (isBoundToScene) w - 24 else w - 8
             val titleText = font.plainSubstrByWidth(node.title, maxTitleW)
@@ -151,7 +179,6 @@ class NodeWidget(val node: NodeData) {
                 guiGraphics.drawString(font, "🎬", x + w - 16, y + 5, 0xFF00FFCC.toInt(), false)
             }
 
-            // Resumo do Conteúdo/Texto do nó
             val contentY = y + headerHeight + 4
             val rawSummary = when (node.nodeType) {
                 NodeType.BEGIN_SCENE -> "🟢 Início da Cena"
@@ -164,6 +191,7 @@ class NodeWidget(val node: NodeData) {
                 NodeType.ACTION -> {
                     val actionType = node.params["actionSubtype"] ?: "MESSAGE"
                     when (actionType) {
+                        "VAR_MODIFY" -> "Var: ${node.params["varKey"] ?: "var"} ${node.params["varOp"] ?: "="} ${node.params["varValue"] ?: "1"}"
                         "TELEPORT" -> "TP: ${node.params["destX"] ?: "0"}, ${node.params["destY"] ?: "64"}, ${node.params["destZ"] ?: "0"}"
                         "SPAWN" -> "Spawn: ${node.params["species"] ?: "Pikachu"} Lvl ${node.params["level"] ?: "5"}"
                         "SOUND" -> "Som: ${node.params["soundId"] ?: "click"}"
@@ -171,30 +199,33 @@ class NodeWidget(val node: NodeData) {
                     }
                 }
                 NodeType.TIMER -> "Timer: ${node.params["timerSeconds"] ?: "5"}s"
-                NodeType.BRANCH -> "Ramificação (${node.outputs.size} saídas)"
+                NodeType.BRANCH -> "If: ${node.params["varKey"] ?: "var"} ${node.params["varOp"] ?: "=="} ${node.params["varValue"] ?: "true"}"
                 NodeType.CONSTRUCTION -> "Construção (${node.innerNodes.size} nós)"
                 NodeType.END_SCENE -> "🛑 Finalizar Cena"
-                NodeType.GATE -> "⚡ Portão Sincronizador (${node.inputs.size} in)"
-                NodeType.LINK_SEND -> "📡 Transmitir: [${node.params["channelTag"] ?: "canal_1"}]"
-                NodeType.LINK_RECEIVE -> "📡 Receber: [${node.params["channelTag"] ?: "canal_1"}]"
+                NodeType.GATE -> "⚡ Portão GATE (${node.inputs.size} in)"
+                NodeType.LINK_SEND -> "📡 Link: [${node.params["channelTag"] ?: "canal_1"}]"
+                NodeType.LINK_RECEIVE -> "📡 Rec: [${node.params["channelTag"] ?: "canal_1"}]"
                 NodeType.LOOP -> {
-                    val mode = if (node.params["loopMode"] == "TIME") "Tempo" else "Contagem"
+                    val mode = if (node.params["loopMode"] == "TIME") "Tempo" else "Qtd"
                     val detail = if (node.params["loopMode"] == "TIME") "${node.params["loopIntervalSec"] ?: "1.0"}s" else "${node.params["loopCount"] ?: "5"}x"
                     "🔄 Loop ($mode: $detail)"
                 }
                 NodeType.COMMENT -> "📝 ${node.content}"
+                NodeType.VARIABLE_GET -> "🔹 Var: [${node.params["varKey"] ?: "var_nova"}]"
+                NodeType.VARIABLE_SET -> "✏️ Set: ${node.params["varKey"] ?: "var_nova"} ${node.params["varOp"] ?: "="} ${node.params["varValue"] ?: "1"}"
             }
 
             val previewText = font.plainSubstrByWidth(rawSummary, w - 12)
             guiGraphics.drawString(font, previewText, x + 6, contentY, 0xFFA0A0A0.toInt(), false)
 
-            if (node.params.containsKey("messageType")) {
-                val subText = font.plainSubstrByWidth("Modo: ${node.params["messageType"]}", w - 12)
-                guiGraphics.drawString(font, subText, x + 6, contentY + font.lineHeight + 2, 0xFF777788.toInt(), false)
+            if (isStartTestNode) {
+                guiGraphics.drawString(font, "[▶ INÍCIO]", x + 6, y + h - 12, 0xFF00FFCC.toInt(), false)
+            } else if (isEndTestNode) {
+                guiGraphics.drawString(font, "[🛑 FIM]", x + 6, y + h - 12, 0xFFFF5555.toInt(), false)
             }
         }
 
-        // Renderizar Portas de Entrada (Esquerda)
+        // Renderizar Portas de Entrada
         node.inputs.forEachIndexed { idx, port ->
             val (px, py) = getInputPortWorldPos(idx)
             val ipx = px.toInt()
@@ -206,13 +237,13 @@ class NodeWidget(val node: NodeData) {
             guiGraphics.fill(ipx - r + 1, ipy - r + 1, ipx + r - 1, ipy + r - 1, 0xFF1E1E24.toInt())
             guiGraphics.fill(ipx - r + 2, ipy - r + 2, ipx + r - 2, ipy + r - 2, color)
 
-            if (!isModalOpen) {
-                val pName = font.plainSubstrByWidth(port.name, 45)
+            if (!shouldHideText) {
+                val pName = font.plainSubstrByWidth(port.name, 40)
                 guiGraphics.drawString(font, pName, ipx + r + 3, ipy - 4, 0xFFCCCCCC.toInt(), false)
             }
         }
 
-        // Renderizar Portas de Saída (Direita)
+        // Renderizar Portas de Saída
         node.outputs.forEachIndexed { idx, port ->
             val (px, py) = getOutputPortWorldPos(idx)
             val opx = px.toInt()
@@ -224,8 +255,8 @@ class NodeWidget(val node: NodeData) {
             guiGraphics.fill(opx - r + 1, opy - r + 1, opx + r - 1, opy + r - 1, 0xFF1E1E24.toInt())
             guiGraphics.fill(opx - r + 2, opy - r + 2, opx + r - 2, opy + r - 2, color)
 
-            if (!isModalOpen) {
-                val pName = font.plainSubstrByWidth(port.name, 45)
+            if (!shouldHideText) {
+                val pName = font.plainSubstrByWidth(port.name, 40)
                 val textW = font.width(pName)
                 guiGraphics.drawString(font, pName, opx - r - 3 - textW, opy - 4, 0xFFCCCCCC.toInt(), false)
             }

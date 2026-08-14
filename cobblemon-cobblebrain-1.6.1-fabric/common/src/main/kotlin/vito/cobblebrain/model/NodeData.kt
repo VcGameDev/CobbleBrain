@@ -15,7 +15,9 @@ enum class NodeType {
     LINK_SEND,
     LINK_RECEIVE,
     LOOP,
-    COMMENT
+    COMMENT,
+    VARIABLE_GET,
+    VARIABLE_SET
 }
 
 data class NodeData(

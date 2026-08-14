@@ -92,7 +92,7 @@ class ConfigBuilder<T> private constructor(
             "\"reasoningEffort\"" to "\n// Defines the reasoning effort for supported models. Options include high, medium, low, auto or none.",
             "\"requestTimeoutSeconds\"" to "\n// Maximum time to wait for an AI response before cancelling the request.",
             "\"debugLogging\"" to "\n// Enables debug logging. Logs are stored in the cobblebrain-ai/logs folder.",
-            "\"customApiProvider\"" to "\n// Tells CobbleBrain how to format requests for specific providers. Supported: player2, lmstudio, novelai.",
+            "\"customApiProvider\"" to "\n// Tells CobbleBrain how to format requests for specific providers. Supported: player2, lmstudio.",
             "\"selectedLanguage\"" to "\n// Language used for Pokémon dialogue and AI responses.",
             "\"preferredName\"" to "\n// Preferred name Pokémon will use instead of your Minecraft username.",
             "\"offlineMode\"" to "\n// Enables Offline Mode. Pokémon responses are generated locally without internet access.",
