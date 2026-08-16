@@ -9,9 +9,9 @@ import vito.cobblebrain.model.PortType
 import kotlin.math.sqrt
 
 enum class NodeRectShape {
-    HORIZONTAL_RECTANGLE, // Retângulo Horizontal (Padrão: 160x55)
-    SQUARE,               // Quadrado (Padrão: 90x90)
-    VERTICAL_RECTANGLE    // Retângulo Vertical (Padrão: 130x100)
+    HORIZONTAL_RECTANGLE, // Horizontal Rectangle (Default: 160x55)
+    SQUARE,               // Square (Default: 90x90)
+    VERTICAL_RECTANGLE    // Vertical Rectangle (Default: 130x100)
 }
 
 class NodeWidget(val node: NodeData) {
@@ -19,7 +19,7 @@ class NodeWidget(val node: NodeData) {
     var isSelected: Boolean = false
     var isDragging: Boolean = false
 
-    // Destaque do Mini-Modo de Teste por Intervalo
+    // Range Test Selection Mini-Mode Highlights
     var isStartTestNode: Boolean = false
     var isEndTestNode: Boolean = false
 
@@ -35,35 +35,38 @@ class NodeWidget(val node: NodeData) {
             NodeType.COMMENT, NodeType.VARIABLE_SET,
             NodeType.LOOP -> NodeRectShape.SQUARE
 
-            NodeType.CONSTRUCTION, NodeType.BRANCH, NodeType.TRIGGER,
-            NodeType.DIALOGUE, NodeType.ACTION,
-            NodeType.TIMER -> NodeRectShape.VERTICAL_RECTANGLE
+            NodeType.CONSTRUCTION, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.TRIGGER,
+            NodeType.DIALOGUE, NodeType.ACTION, NodeType.TIMER,
+            NodeType.QUEST, NodeType.AUDIO -> NodeRectShape.VERTICAL_RECTANGLE
         }
     }
 
-    // Cores Harmonizadas por Categoria
+    // Harmonized Category Colors
     fun getHeaderColor(): Int {
         return when (node.nodeType) {
-            // SEÇÃO 1: Estrutura & Fluxo (Tons de Verde & Teal)
-            NodeType.BEGIN_SCENE -> 0xFF2E7D32.toInt()  // Verde Esmeralda
-            NodeType.END_SCENE -> 0xFF1B5E20.toInt()    // Verde Escuro
-            NodeType.GATE -> 0xFF00838F.toInt()         // Teal Sincronizador
-            NodeType.CONSTRUCTION -> 0xFF00695C.toInt()  // Teal Escuro Sub-grafo
-            NodeType.LINK_SEND -> 0xFF009688.toInt()    // Verde Água Transmissor
-            NodeType.LINK_RECEIVE -> 0xFF00796B.toInt() // Verde Água Receptor
-            NodeType.LOOP -> 0xFF388E3C.toInt()         // Verde Repetidor
+            // SECTION 1: Structure & Flow (Emerald Green & Teal Shades)
+            NodeType.BEGIN_SCENE -> 0xFF2E7D32.toInt()  // Emerald Green
+            NodeType.END_SCENE -> 0xFF1B5E20.toInt()    // Dark Green
+            NodeType.GATE -> 0xFF00838F.toInt()         // Synchronizer Teal
+            NodeType.CONSTRUCTION -> 0xFF00695C.toInt()  // Sub-graph Dark Teal
+            NodeType.LINK_SEND -> 0xFF009688.toInt()    // Transmitter Sea Green
+            NodeType.LINK_RECEIVE -> 0xFF00796B.toInt() // Receiver Sea Green
+            NodeType.LOOP -> 0xFF388E3C.toInt()         // Repeater Green
+            NodeType.QUEST -> 0xFFFF8F00.toInt()        // Quest Amber Gold
 
-            // SEÇÃO 2: Variáveis & Decisões (Tons de Azul & Ciano Vibrante)
-            NodeType.VARIABLE_GET -> 0xFF0288D1.toInt() // Azul Ciano Getter
-            NodeType.VARIABLE_SET -> 0xFF0277BD.toInt() // Azul Oceano Setter
-            NodeType.BRANCH -> 0xFF1565C0.toInt()       // Azul Safira If/Else
-            NodeType.TRIGGER -> 0xFF0D47A1.toInt()      // Azul Cobalto Gatilho
+            // SECTION 2: Variables & Decisions (Ocean Blue & Vibrant Cyan Shades)
+            NodeType.VARIABLE_GET -> 0xFF0288D1.toInt() // Cyan Getter Blue
+            NodeType.VARIABLE_SET -> 0xFF0277BD.toInt() // Ocean Setter Blue
+            NodeType.CONDITION_NODE -> 0xFF1565C0.toInt() // Sapphire If/Else Blue
+            NodeType.TRIGGER -> 0xFF0D47A1.toInt()      // Cobalt Trigger Blue
 
-            // SEÇÃO 3: Ações & Eventos (Tons de Vermelho, Laranja, Roxo & Amarelo)
-            NodeType.DIALOGUE -> 0xFFC62828.toInt()     // Vermelho Vivo Diálogo
-            NodeType.ACTION -> 0xFFD32F2F.toInt()       // Vermelho Carmim Ação
-            NodeType.TIMER -> 0xFF8E24AA.toInt()        // Roxo Vibrante Timer
-            NodeType.COMMENT -> 0xFFFBC02D.toInt()     // Amarelo Nota
+            // SECTION 3: Actions & Events (Red, Orange, Purple & Yellow Shades)
+            NodeType.DIALOGUE -> 0xFFC62828.toInt()     // Bright Red Dialogue
+            NodeType.ACTION -> 0xFFD32F2F.toInt()       // Crimson Action Red
+            NodeType.COMMAND_NODE -> 0xFFD84315.toInt()  // Rust Orange Command
+            NodeType.TIMER -> 0xFF8E24AA.toInt()        // Vibrant Purple Timer
+            NodeType.COMMENT -> 0xFFFBC02D.toInt()     // Note Yellow
+            NodeType.AUDIO -> 0xFF6A1B9A.toInt()       // Dark Purple Audio
         }
     }
 
@@ -133,6 +136,14 @@ class NodeWidget(val node: NodeData) {
             }
         }
 
+        if (node.nodeType == NodeType.CONDITION_NODE) {
+            node.width = 140.0
+            node.height = maxOf(100.0, 30.0 + node.outputs.size * 22.0)
+        } else if (node.nodeType == NodeType.COMMAND_NODE) {
+            node.width = 140.0
+            node.height = 100.0
+        }
+
         val x = node.x.toInt()
         val y = node.y.toInt()
         val w = node.width.toInt()
@@ -140,7 +151,7 @@ class NodeWidget(val node: NodeData) {
 
         val shouldHideText = isModalOpen || isCollidingWithOverlay
 
-        // Bloco de Comentário (Estilo Post-It)
+        // Post-It Comment Block
         if (node.nodeType == NodeType.COMMENT) {
             val noteBorder = if (isSelected) 0xFFFFD700.toInt() else 0xFFFBC02D.toInt()
             guiGraphics.fill(x - 1, y - 1, x + w + 1, y + h + 1, noteBorder)
@@ -149,7 +160,7 @@ class NodeWidget(val node: NodeData) {
 
             if (!shouldHideText) {
                 guiGraphics.drawString(font, "📝 ${node.title}", x + 6, y + 4, 0xFFFBC02D.toInt(), false)
-                val commentText = font.plainSubstrByWidth(node.content.ifBlank { "Sua nota..." }, w - 12)
+                val commentText = font.plainSubstrByWidth(node.content.ifBlank { "Your note..." }, w - 12)
                 guiGraphics.drawString(font, commentText, x + 6, y + 24, 0xFFE0E0D0.toInt(), false)
             }
             return
@@ -168,7 +179,7 @@ class NodeWidget(val node: NodeData) {
         guiGraphics.fill(x, y, x + w, y + h, 0xFF1E1E24.toInt())
         guiGraphics.fill(x, y, x + w, y + headerHeight, headerColor)
 
-        // Ocultar o texto do nó APENAS se ele estiver em colisão AABB com um menu/inspector sobreposto
+        // Hide node text ONLY if colliding with overlay menu/inspector
         if (!shouldHideText) {
             val isBoundToScene = !node.parentSceneId.isNullOrEmpty()
             val maxTitleW = if (isBoundToScene) w - 24 else w - 8
@@ -181,51 +192,57 @@ class NodeWidget(val node: NodeData) {
 
             val contentY = y + headerHeight + 4
             val rawSummary = when (node.nodeType) {
-                NodeType.BEGIN_SCENE -> "🟢 Início da Cena"
+                NodeType.BEGIN_SCENE -> "🟢 Scene Start"
                 NodeType.TRIGGER -> {
                     val condMode = if (node.params["triggerCondition"] == "IF_NOT") "IF NOT" else "IF"
-                    val trigType = node.params["triggerType"] ?: "INÍCIO"
+                    val trigType = node.params["triggerType"] ?: "START"
                     "$condMode: $trigType"
                 }
-                NodeType.DIALOGUE -> node.content.ifBlank { "Sem fala..." }
+                NodeType.DIALOGUE -> node.content.ifBlank { "No dialogue..." }
                 NodeType.ACTION -> {
                     val actionType = node.params["actionSubtype"] ?: "MESSAGE"
                     when (actionType) {
                         "VAR_MODIFY" -> "Var: ${node.params["varKey"] ?: "var"} ${node.params["varOp"] ?: "="} ${node.params["varValue"] ?: "1"}"
                         "TELEPORT" -> "TP: ${node.params["destX"] ?: "0"}, ${node.params["destY"] ?: "64"}, ${node.params["destZ"] ?: "0"}"
                         "SPAWN" -> "Spawn: ${node.params["species"] ?: "Pikachu"} Lvl ${node.params["level"] ?: "5"}"
-                        "SOUND" -> "Som: ${node.params["soundId"] ?: "click"}"
+                        "SOUND" -> "Sound: ${node.params["soundId"] ?: "click"}"
                         else -> "Msg: ${node.content}"
                     }
                 }
                 NodeType.TIMER -> "Timer: ${node.params["timerSeconds"] ?: "5"}s"
-                NodeType.BRANCH -> "If: ${node.params["varKey"] ?: "var"} ${node.params["varOp"] ?: "=="} ${node.params["varValue"] ?: "true"}"
-                NodeType.CONSTRUCTION -> "Construção (${node.innerNodes.size} nós)"
-                NodeType.END_SCENE -> "🛑 Finalizar Cena"
-                NodeType.GATE -> "⚡ Portão GATE (${node.inputs.size} in)"
-                NodeType.LINK_SEND -> "📡 Link: [${node.params["channelTag"] ?: "canal_1"}]"
-                NodeType.LINK_RECEIVE -> "📡 Rec: [${node.params["channelTag"] ?: "canal_1"}]"
+                NodeType.CONDITION_NODE -> "Se: ${node.params["varKey_0"] ?: node.params["varKey"] ?: "var"} ${node.params["varOp_0"] ?: node.params["varOp"] ?: "=="} ${node.params["varValue_0"] ?: node.params["varValue"] ?: "true"}"
+                NodeType.COMMAND_NODE -> {
+                    val firstCmd = node.content.lines().firstOrNull { it.isNotBlank() } ?: (node.params["commands"]?.lines()?.firstOrNull { it.isNotBlank() } ?: "say Hello")
+                    "Cmd: $firstCmd"
+                }
+                NodeType.CONSTRUCTION -> "Construction (${node.innerNodes.size} nodes)"
+                NodeType.END_SCENE -> "🛑 Finish Scene"
+                NodeType.GATE -> "⚡ GATE Gate (${node.inputs.size} in)"
+                NodeType.LINK_SEND -> "📡 Link: [${node.params["channelTag"] ?: "channel_1"}]"
+                NodeType.LINK_RECEIVE -> "📡 Rec: [${node.params["channelTag"] ?: "channel_1"}]"
                 NodeType.LOOP -> {
-                    val mode = if (node.params["loopMode"] == "TIME") "Tempo" else "Qtd"
+                    val mode = if (node.params["loopMode"] == "TIME") "Time" else "Count"
                     val detail = if (node.params["loopMode"] == "TIME") "${node.params["loopIntervalSec"] ?: "1.0"}s" else "${node.params["loopCount"] ?: "5"}x"
                     "🔄 Loop ($mode: $detail)"
                 }
                 NodeType.COMMENT -> "📝 ${node.content}"
-                NodeType.VARIABLE_GET -> "🔹 Var: [${node.params["varKey"] ?: "var_nova"}]"
-                NodeType.VARIABLE_SET -> "✏️ Set: ${node.params["varKey"] ?: "var_nova"} ${node.params["varOp"] ?: "="} ${node.params["varValue"] ?: "1"}"
+                NodeType.VARIABLE_GET -> "🔹 Var: [${node.params["varKey"] ?: "new_var"}]"
+                NodeType.VARIABLE_SET -> "✏️ Set: ${node.params["varKey"] ?: "new_var"} ${node.params["varOp"] ?: "="} ${node.params["varValue"] ?: "1"}"
+                NodeType.QUEST -> "🏆 Quest: ${node.params["questTitle"] ?: node.title}"
+                NodeType.AUDIO -> "🎵 Audio: ${node.params["audioId"] ?: "sound"}"
             }
 
             val previewText = font.plainSubstrByWidth(rawSummary, w - 12)
             guiGraphics.drawString(font, previewText, x + 6, contentY, 0xFFA0A0A0.toInt(), false)
 
             if (isStartTestNode) {
-                guiGraphics.drawString(font, "[▶ INÍCIO]", x + 6, y + h - 12, 0xFF00FFCC.toInt(), false)
+                guiGraphics.drawString(font, "[▶ START]", x + 6, y + h - 12, 0xFF00FFCC.toInt(), false)
             } else if (isEndTestNode) {
-                guiGraphics.drawString(font, "[🛑 FIM]", x + 6, y + h - 12, 0xFFFF5555.toInt(), false)
+                guiGraphics.drawString(font, "[🛑 END]", x + 6, y + h - 12, 0xFFFF5555.toInt(), false)
             }
         }
 
-        // Renderizar Portas de Entrada
+        // Render Input Ports
         node.inputs.forEachIndexed { idx, port ->
             val (px, py) = getInputPortWorldPos(idx)
             val ipx = px.toInt()
@@ -243,20 +260,31 @@ class NodeWidget(val node: NodeData) {
             }
         }
 
-        // Renderizar Portas de Saída
+        // Render Output Ports
         node.outputs.forEachIndexed { idx, port ->
             val (px, py) = getOutputPortWorldPos(idx)
             val opx = px.toInt()
             val opy = py.toInt()
             val r = portRadius.toInt()
-            val color = if (hoveredPort?.id == port.id) 0xFFFFB74D.toInt() else 0xFFFF9800.toInt()
+            val color = if (hoveredPort?.id == port.id) {
+                0xFFFFB74D.toInt()
+            } else when {
+                port.id == "ON_CHANGED_OUT" || port.name.contains("Changed", true) -> 0xFF00E5FF.toInt()
+                port.id == "OUT_IF" || port.name.equals("SE", true) || port.name.equals("IF", true) -> 0xFF4CAF50.toInt()
+                port.name.contains("SENÃO SE", true) || port.name.contains("SENAO SE", true) || port.name.contains("ELSE IF", true) -> 0xFFFFB74D.toInt()
+                port.id == "OUT_ELSE" || port.name.equals("SENÃO", true) || port.name.equals("SENAO", true) || port.name.equals("ELSE", true) -> 0xFFF44336.toInt()
+                port.name.contains("Success", true) || port.id.contains("SUCCESS", true) -> 0xFF4CAF50.toInt()
+                port.name.contains("Fail", true) || port.id.contains("FAIL", true) -> 0xFFF44336.toInt()
+                port.name.contains("Progress", true) || port.id.contains("PROGRESS", true) -> 0xFFFFEB3B.toInt()
+                else -> 0xFFFF9800.toInt()
+            }
 
             guiGraphics.fill(opx - r, opy - r, opx + r, opy + r, color)
             guiGraphics.fill(opx - r + 1, opy - r + 1, opx + r - 1, opy + r - 1, 0xFF1E1E24.toInt())
             guiGraphics.fill(opx - r + 2, opy - r + 2, opx + r - 2, opy + r - 2, color)
 
             if (!shouldHideText) {
-                val pName = font.plainSubstrByWidth(port.name, 40)
+                val pName = font.plainSubstrByWidth(port.name, 50)
                 val textW = font.width(pName)
                 guiGraphics.drawString(font, pName, opx - r - 3 - textW, opy - 4, 0xFFCCCCCC.toInt(), false)
             }

@@ -16,20 +16,22 @@ class StoryVariableSelectorModalWidget(
     val onSelect: (StoryVariable) -> Unit,
     val onClose: () -> Unit
 ) {
-    private val modalWidth = 320
-    private val modalHeight = 240
-    private val modalX = (screenWidth - modalWidth) / 2
-    private val modalY = (screenHeight - modalHeight) / 2
+    private val modalWidth = 340.coerceAtMost(screenWidth - 20)
+    private val modalHeight = 250.coerceAtMost(screenHeight - 20)
+    private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
+    private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
     private val searchBox: EditBox
     private var scrollOffset = 0
     private val closeButton: Button
 
     init {
-        searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Buscar Variável"))
-        searchBox.setHint(Component.literal("🔍 Digite para filtrar..."))
+        searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Search Variable"))
+        searchBox.setHint(Component.literal("🔍 Type to filter..."))
+        searchBox.setEditable(true)
+        searchBox.active = true
 
-        closeButton = Button.builder(Component.literal("✖ Fechar")) {
+        closeButton = Button.builder(Component.literal("✖ Close")) {
             onClose()
         }.bounds(modalX + modalWidth - 75, modalY + 5, 65, 16).build()
     }
@@ -41,14 +43,14 @@ class StoryVariableSelectorModalWidget(
     }
 
     fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        // Moldura do modal
+        // Modal Frame
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF181820.toInt())
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + 24, 0xFF22222E.toInt())
         guiGraphics.fill(modalX, modalY, modalX + 1, modalY + modalHeight, 0xFF00ACC1.toInt())
         guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF00ACC1.toInt())
         guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0xFF00ACC1.toInt())
 
-        guiGraphics.drawString(font, "📦 Selecionar Variável do Catálogo", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
+        guiGraphics.drawString(font, "📦 Select Catalog Variable", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
         closeButton.render(guiGraphics, mouseX, mouseY, partialTick)
 
         searchBox.render(guiGraphics, mouseX, mouseY, partialTick)
@@ -64,7 +66,7 @@ class StoryVariableSelectorModalWidget(
 
         val filtered = getFilteredVariables()
         if (filtered.isEmpty()) {
-            guiGraphics.drawString(font, "Nenhuma variável cadastrada ou encontrada.", listX + 10, listY + 30, 0xFF777788.toInt(), false)
+            guiGraphics.drawString(font, "No variable registered or found.", listX + 10, listY + 30, 0xFF777788.toInt(), false)
             return
         }
 
@@ -104,7 +106,9 @@ class StoryVariableSelectorModalWidget(
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (closeButton.mouseClicked(mouseX, mouseY, button)) return true
-        if (searchBox.mouseClicked(mouseX, mouseY, button)) return true
+        val clickedSearch = searchBox.mouseClicked(mouseX, mouseY, button)
+        searchBox.isFocused = clickedSearch
+        if (clickedSearch) return true
 
         val listX = modalX + 15
         val listY = modalY + 52

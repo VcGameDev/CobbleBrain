@@ -1,12 +1,14 @@
 package vito.cobblebrain.model
 
+import com.google.gson.annotations.SerializedName
 import java.util.UUID
 
 enum class NodeType {
     TRIGGER,
     ACTION,
     TIMER,
-    BRANCH,
+    @SerializedName(value = "CONDITION_NODE", alternate = ["BRANCH", "CONDITION"])
+    CONDITION_NODE,
     DIALOGUE,
     CONSTRUCTION,
     BEGIN_SCENE,
@@ -17,7 +19,11 @@ enum class NodeType {
     LOOP,
     COMMENT,
     VARIABLE_GET,
-    VARIABLE_SET
+    VARIABLE_SET,
+    QUEST,
+    AUDIO,
+    @SerializedName(value = "COMMAND_NODE", alternate = ["COMMAND"])
+    COMMAND_NODE
 }
 
 data class NodeData(

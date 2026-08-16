@@ -1,13 +1,13 @@
 package vito.cobblebrain.model
 
 enum class TriggerCategory(val displayName: String, val icon: String) {
-    STORY("📖 História & Missões", "📖"),
-    TIME("⏱️ Tempo & Horário", "⏱️"),
-    PLAYER("🧍 Jogador & Inventário", "🧍"),
-    POKEMON("🐾 Cobblemon & Equipe", "🐾"),
-    COMBAT("⚔️ Combate & Batalhas", "⚔️"),
-    WORLD("🌍 Mundo & Blocos", "🌍"),
-    COBBLEBRAIN("🧠 CobbleBrain & IA", "🧠")
+    STORY("📖 Story & Quests", "📖"),
+    TIME("⏱️ Time & Schedule", "⏱️"),
+    PLAYER("🧍 Player & Inventory", "🧍"),
+    POKEMON("🐾 Cobblemon & Party", "🐾"),
+    COMBAT("⚔️ Combat & Battles", "⚔️"),
+    WORLD("🌍 World & Blocks", "🌍"),
+    COBBLEBRAIN("🧠 CobbleBrain & AI", "🧠")
 }
 
 data class TriggerDefinition(
@@ -21,129 +21,137 @@ data class TriggerDefinition(
 
 object TriggerRegistry {
     val triggers = listOf(
-        // 📖 HISTÓRIA
+        // 📖 STORY
         TriggerDefinition(
             id = "STORY_STARTED",
             category = TriggerCategory.STORY,
-            name = "Início da História",
+            name = "Story Started",
             icon = "🟢",
-            description = "Dispara imediatamente quando a cena ou história é iniciada.",
+            description = "Triggers immediately when the scene or story starts.",
             defaultParams = emptyMap()
         ),
         TriggerDefinition(
             id = "STORY_ENDED",
             category = TriggerCategory.STORY,
-            name = "Fim da História",
+            name = "Story Ended",
             icon = "🛑",
-            description = "Dispara quando a cena anterior ou história for finalizada.",
+            description = "Triggers when the previous scene or story finishes.",
             defaultParams = emptyMap()
         ),
         TriggerDefinition(
             id = "PREVIOUS_MISSION_COMPLETED",
             category = TriggerCategory.STORY,
-            name = "Missão Concluída",
+            name = "Quest Completed",
             icon = "📜",
-            description = "Dispara quando uma missão/objetivo específico for concluído.",
-            defaultParams = mapOf("missionId" to "missao_1")
+            description = "Triggers when a specific quest/objective is completed.",
+            defaultParams = mapOf("missionId" to "mission_1")
         ),
         TriggerDefinition(
             id = "PREVIOUS_EVENT_EXECUTED",
             category = TriggerCategory.STORY,
-            name = "Evento Executado",
+            name = "Event Executed",
             icon = "⚡",
-            description = "Dispara quando um evento/tag de gatilho for disparado anteriormente.",
-            defaultParams = mapOf("eventTag" to "evento_chave")
+            description = "Triggers when a specific event tag was previously executed.",
+            defaultParams = mapOf("eventTag" to "key_event")
+        ),
+        TriggerDefinition(
+            id = "VARIABLE_VALUE_CHECK",
+            category = TriggerCategory.STORY,
+            name = "Variable Value Check",
+            icon = "🔢",
+            description = "Triggers when a variable reaches a specific condition (e.g. coins >= 100).",
+            defaultParams = mapOf("varKey" to "var_1", "varOp" to ">=", "varValue" to "100")
         ),
 
-        // ⏱️ TEMPO
+        // ⏱️ TIME
         TriggerDefinition(
             id = "TIME_ELAPSED",
             category = TriggerCategory.TIME,
-            name = "Tempo Decorrido",
+            name = "Time Elapsed",
             icon = "⏱️",
-            description = "Dispara após a passagem de uma quantidade de segundos ou ticks.",
+            description = "Triggers after a specified amount of seconds or ticks.",
             defaultParams = mapOf("timeSeconds" to "10")
         ),
         TriggerDefinition(
             id = "TIME_OF_DAY",
             category = TriggerCategory.TIME,
-            name = "Horário do Dia",
+            name = "Time of Day",
             icon = "🌅",
-            description = "Dispara quando o horário do mundo atingir o valor definido (0=Amanhecer, 6000=Meio-dia, 18000=Meia-noite).",
+            description = "Triggers when world time reaches value (0=Dawn, 6000=Noon, 18000=Midnight).",
             defaultParams = mapOf("timeOfDayTicks" to "6000")
         ),
         TriggerDefinition(
             id = "DAYS_PASSED",
             category = TriggerCategory.TIME,
-            name = "Dias Passados",
+            name = "Days Passed",
             icon = "📅",
-            description = "Dispara após um número específico de dias no jogo.",
+            description = "Triggers after a specific number of in-game days.",
             defaultParams = mapOf("daysCount" to "1")
         ),
         TriggerDefinition(
             id = "DAY_NIGHT_CHECK",
             category = TriggerCategory.TIME,
-            name = "Checagem Dia / Noite",
+            name = "Day / Night Check",
             icon = "☀️",
-            description = "Dispara conforme o período do dia (DAY ou NIGHT).",
+            description = "Triggers based on day period (DAY or NIGHT).",
             defaultParams = mapOf("timePeriod" to "DAY")
         ),
 
-        // 🧍 JOGADOR
+        // 🧍 PLAYER
         TriggerDefinition(
             id = "PLAYER_LEVEL",
             category = TriggerCategory.PLAYER,
-            name = "Nível de EXP do Jogador",
+            name = "Player EXP Level",
             icon = "⭐",
-            description = "Dispara quando o nível de experiência do jogador atingir o alvo.",
+            description = "Triggers when player experience level reaches target.",
             defaultParams = mapOf("minLevel" to "10", "comparisonOp" to ">=")
         ),
         TriggerDefinition(
             id = "PLAYER_COORDINATES",
             category = TriggerCategory.PLAYER,
-            name = "Chegada em Coordenadas",
+            name = "Coordinates Reached",
             icon = "📍",
-            description = "Dispara quando o jogador entra no raio das coordenadas X, Y, Z.",
+            description = "Triggers when player enters radius of X, Y, Z coordinates.",
             defaultParams = mapOf("targetX" to "0", "targetY" to "64", "targetZ" to "0", "radius" to "5")
         ),
         TriggerDefinition(
             id = "PLAYER_BIOME",
             category = TriggerCategory.PLAYER,
-            name = "Bioma do Jogador",
+            name = "Player Biome",
             icon = "🌲",
-            description = "Dispara quando o jogador estiver em um bioma específico.",
+            description = "Triggers when player is inside a specific biome.",
             defaultParams = mapOf("biomeId" to "minecraft:plains")
         ),
         TriggerDefinition(
             id = "PLAYER_HELD_ITEM",
             category = TriggerCategory.PLAYER,
-            name = "Item na Mão",
+            name = "Held Item",
             icon = "🗡️",
-            description = "Dispara quando o jogador estiver segurando o item especificado na mão principal.",
+            description = "Triggers when player holds specified item in main hand.",
             defaultParams = mapOf("heldItemId" to "minecraft:diamond_sword")
         ),
         TriggerDefinition(
             id = "PLAYER_INVENTORY_HAS_ITEM",
             category = TriggerCategory.PLAYER,
-            name = "Possui Item no Inventário",
+            name = "Has Item in Inventory",
             icon = "🎒",
-            description = "Dispara quando o inventário do jogador contiver o item especificado.",
+            description = "Triggers when player inventory contains specified item.",
             defaultParams = mapOf("requiredItem" to "cobblemon:potion", "requiredCount" to "1")
         ),
         TriggerDefinition(
             id = "PLAYER_INVENTORY_ITEM_REMOVED",
             category = TriggerCategory.PLAYER,
-            name = "Item Removido",
+            name = "Item Removed",
             icon = "🗑️",
-            description = "Dispara quando o jogador descarta ou perde um item específico.",
+            description = "Triggers when player drops or loses specified item.",
             defaultParams = mapOf("removedItemId" to "cobblemon:poke_ball")
         ),
         TriggerDefinition(
             id = "PLAYER_ITEM_COUNT",
             category = TriggerCategory.PLAYER,
-            name = "Quantidade de Itens",
+            name = "Item Quantity",
             icon = "🔢",
-            description = "Dispara quando a quantidade de um item no inventário satisfizer a condição.",
+            description = "Triggers when inventory item count meets condition.",
             defaultParams = mapOf("checkItemId" to "cobblemon:poke_ball", "minCount" to "10", "comparisonOp" to ">=")
         ),
 
@@ -151,133 +159,133 @@ object TriggerRegistry {
         TriggerDefinition(
             id = "TALK_TO_POKEMON",
             category = TriggerCategory.POKEMON,
-            name = "Conversar com Pokémon",
+            name = "Talk to Pokémon",
             icon = "💬",
-            description = "Dispara quando o jogador dialoga ou abre chat com um Pokémon.",
+            description = "Triggers when player talks or opens chat with a Pokémon.",
             defaultParams = mapOf("targetSpecies" to "Pikachu")
         ),
         TriggerDefinition(
             id = "INTERACT_POKEMON",
             category = TriggerCategory.POKEMON,
-            name = "Interagir com Pokémon",
+            name = "Interact with Pokémon",
             icon = "🐾",
-            description = "Dispara ao clicar com botão direito em um Pokémon selvagem ou da equipe.",
+            description = "Triggers when right clicking a wild or party Pokémon.",
             defaultParams = mapOf("targetSpecies" to "Eevee")
         ),
         TriggerDefinition(
             id = "POKEMON_CATCH",
             category = TriggerCategory.POKEMON,
-            name = "Captura de Pokémon",
+            name = "Catch Pokémon",
             icon = "🔴",
-            description = "Dispara quando o jogador captura com sucesso uma espécie de Pokémon.",
+            description = "Triggers when player successfully catches a Pokémon species.",
             defaultParams = mapOf("targetSpecies" to "Pikachu")
         ),
         TriggerDefinition(
             id = "HIGHEST_POKEMON_LEVEL",
             category = TriggerCategory.POKEMON,
-            name = "Maior Nível na Equipe",
+            name = "Highest Level in Party",
             icon = "🏆",
-            description = "Dispara quando o Pokémon de maior nível na equipe do jogador atingir o alvo.",
+            description = "Triggers when highest level Pokémon in party reaches target.",
             defaultParams = mapOf("targetLevel" to "20", "comparisonOp" to ">=")
         ),
         TriggerDefinition(
             id = "SPECIFIC_POKEMON_IN_PARTY",
             category = TriggerCategory.POKEMON,
-            name = "Pokémon na Equipe",
+            name = "Pokémon in Party",
             icon = "👥",
-            description = "Dispara quando uma determinada espécie de Pokémon estiver na equipe do jogador.",
+            description = "Triggers when a specific Pokémon species is in party.",
             defaultParams = mapOf("targetSpecies" to "Charizard")
         ),
         TriggerDefinition(
             id = "POKEMON_FRIENDSHIP",
             category = TriggerCategory.POKEMON,
-            name = "Amizade do Pokémon",
+            name = "Pokémon Friendship",
             icon = "❤️",
-            description = "Dispara quando o nível de amizade/felicidade do Pokémon atingir o valor alvo (0-255).",
+            description = "Triggers when Pokémon friendship/happiness reaches target (0-255).",
             defaultParams = mapOf("targetSpecies" to "Pikachu", "minFriendship" to "220")
         ),
 
-        // ⚔️ COMBATE
+        // ⚔️ COMBAT
         TriggerDefinition(
             id = "BATTLE_START",
             category = TriggerCategory.COMBAT,
-            name = "Início de Batalha",
+            name = "Battle Start",
             icon = "⚔️",
-            description = "Dispara quando o jogador inicia uma batalha contra treinador ou selvagem.",
+            description = "Triggers when player starts battle against trainer or wild Pokémon.",
             defaultParams = mapOf("battleType" to "ANY")
         ),
         TriggerDefinition(
             id = "BATTLE_VICTORY",
             category = TriggerCategory.COMBAT,
-            name = "Vitória em Batalha",
+            name = "Battle Victory",
             icon = "🏆",
-            description = "Dispara quando o jogador vence uma batalha Pokémon.",
+            description = "Triggers when player wins a Pokémon battle.",
             defaultParams = mapOf("targetSpecies" to "")
         ),
         TriggerDefinition(
             id = "BATTLE_DEFEAT",
             category = TriggerCategory.COMBAT,
-            name = "Derrota em Batalha",
+            name = "Battle Defeat",
             icon = "💀",
-            description = "Dispara quando toda a equipe do jogador desmaia em batalha.",
+            description = "Triggers when entire player party faints in battle.",
             defaultParams = emptyMap()
         ),
         TriggerDefinition(
             id = "ENTITY_DIED",
             category = TriggerCategory.COMBAT,
-            name = "Morte de Entidade",
+            name = "Entity Death",
             icon = "☠️",
-            description = "Dispara quando uma entidade com ID ou Tag específica for derrotada/morta.",
+            description = "Triggers when an entity with specified ID/Tag dies.",
             defaultParams = mapOf("entityType" to "minecraft:zombie", "entityTag" to "")
         ),
         TriggerDefinition(
             id = "ENTITY_DAMAGED",
             category = TriggerCategory.COMBAT,
-            name = "Entidade Sofreu Dano",
+            name = "Entity Took Damage",
             icon = "💥",
-            description = "Dispara quando uma entidade específica sofrer dano.",
+            description = "Triggers when a specific entity takes damage.",
             defaultParams = mapOf("entityType" to "minecraft:player", "minDamage" to "1.0")
         ),
 
-        // 🌍 MUNDO
+        // 🌍 WORLD
         TriggerDefinition(
             id = "WEATHER_CHECK",
             category = TriggerCategory.WORLD,
-            name = "Checagem de Clima",
+            name = "Weather Check",
             icon = "🌧️",
-            description = "Dispara conforme a condição climática (CLEAR, RAIN, THUNDER).",
+            description = "Triggers based on weather condition (CLEAR, RAIN, THUNDER).",
             defaultParams = mapOf("weatherType" to "RAIN")
         ),
         TriggerDefinition(
             id = "BLOCK_INTERACTED",
             category = TriggerCategory.WORLD,
-            name = "Interação com Bloco",
+            name = "Block Interacted",
             icon = "🧱",
-            description = "Dispara quando o jogador clica em um bloco de tipo ou posição específica.",
+            description = "Triggers when player clicks block of specific type or position.",
             defaultParams = mapOf("blockId" to "minecraft:chest", "blockPos" to "")
         ),
         TriggerDefinition(
             id = "BLOCK_PLACED",
             category = TriggerCategory.WORLD,
-            name = "Bloco Posicionado",
+            name = "Block Placed",
             icon = "📦",
-            description = "Dispara quando o jogador colocar um bloco específico no mundo.",
+            description = "Triggers when player places a specific block in the world.",
             defaultParams = mapOf("blockId" to "minecraft:stone")
         ),
         TriggerDefinition(
             id = "ENTITY_SPAWNED",
             category = TriggerCategory.WORLD,
-            name = "Entidade Gerada",
+            name = "Entity Spawned",
             icon = "👾",
-            description = "Dispara quando uma entidade do tipo informado surgir no mundo.",
+            description = "Triggers when entity of specified type spawns in the world.",
             defaultParams = mapOf("entityType" to "cobblemon:pokemon")
         ),
         TriggerDefinition(
             id = "ENTER_STRUCTURE_OR_ZONE",
             category = TriggerCategory.WORLD,
-            name = "Entrada em Zona / Estrutura",
+            name = "Entered Zone / Structure",
             icon = "🏛️",
-            description = "Dispara quando o jogador entrar em uma estrutura (vila, templo) ou zona delimitada.",
+            description = "Triggers when player enters structure or defined zone.",
             defaultParams = mapOf("structureId" to "minecraft:village_plains")
         ),
 
@@ -285,24 +293,23 @@ object TriggerRegistry {
         TriggerDefinition(
             id = "KARMA_CHECK",
             category = TriggerCategory.COBBLEBRAIN,
-            name = "Checagem de Karma",
+            name = "Karma Check",
             icon = "⚖️",
-            description = "Dispara com base na pontuação de Karma/Moral do jogador na história.",
+            description = "Triggers based on player Karma/Moral score in story.",
             defaultParams = mapOf("targetKarma" to "0", "comparisonOp" to ">=")
         ),
         TriggerDefinition(
             id = "AI_EVALUATION",
             category = TriggerCategory.COBBLEBRAIN,
-            name = "Avaliação da IA",
+            name = "AI Decision Evaluation",
             icon = "🧠",
-            description = "Dispara quando a resposta ou decisão gerada pela IA coincidir com uma intenção.",
+            description = "Triggers when AI response or decision matches intention.",
             defaultParams = mapOf("aiIntent" to "AGREE")
         )
     )
 
     fun find(id: String?): TriggerDefinition {
         if (id == null) return triggers.first()
-        // Mapeamentos de compatibilidade com IDs legados
         val normalized = when (id) {
             "START" -> "STORY_STARTED"
             "LOCATION" -> "PLAYER_COORDINATES"

@@ -17,7 +17,7 @@ class StoryDocumentationModalWidget(
     val modalX = (screenW - modalW) / 2
     val modalY = (screenH - modalH) / 2
 
-    private var activeTab: Int = 0 // 0: Estrutura, 1: Lógica, 2: Links & Loops
+    private var activeTab: Int = 0 // 0: Structure, 1: Logic, 2: Links & Loops
     val childrenWidgets = mutableListOf<GuiEventListener>()
 
     init {
@@ -35,13 +35,13 @@ class StoryDocumentationModalWidget(
         val tabW = 110
         val tabY = modalY + 26
 
-        val t1 = Button.builder(Component.literal("Estrutura & Cenas")) {
+        val t1 = Button.builder(Component.literal("Structure & Scenes")) {
             activeTab = 0
             buildUi()
         }.bounds(modalX + 10, tabY, tabW, 16).build()
         if (activeTab == 0) t1.active = false
 
-        val t2 = Button.builder(Component.literal("Lógica & Fluxo")) {
+        val t2 = Button.builder(Component.literal("Logic & Flow")) {
             activeTab = 1
             buildUi()
         }.bounds(modalX + 125, tabY, tabW, 16).build()
@@ -59,16 +59,16 @@ class StoryDocumentationModalWidget(
     }
 
     fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        // Fundo escurecido translúcido 100% da tela (0xF0101014)
+        // Translucent dark background over 100% of the screen
         guiGraphics.fill(0, 0, screenW, screenH, 0xF0101014.toInt())
 
-        // Janela do Modal sólida e opaca (0xFF121216) para bloquear 100% de visão dos elementos atrás
+        // Solid modal window
         guiGraphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xFF121216.toInt())
         guiGraphics.fill(modalX, modalY, modalX + modalW, modalY + 22, 0xFF282836.toInt())
         guiGraphics.fill(modalX, modalY, modalX + modalW, modalY + 1, 0xFF3D5AFE.toInt())
         guiGraphics.fill(modalX, modalY + modalH - 1, modalX + modalW, modalY + modalH, 0xFF3D5AFE.toInt())
 
-        guiGraphics.drawString(font, "📖 Guia Integrado dos Nós do Editor", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
+        guiGraphics.drawString(font, "📖 Integrated Editor Nodes Guide", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
 
         childrenWidgets.toList().forEach { w ->
             if (w is Button) w.render(guiGraphics, mouseX, mouseY, partialTick)
@@ -78,32 +78,34 @@ class StoryDocumentationModalWidget(
         var currentY = modalY + 48
 
         when (activeTab) {
-            0 -> { // Estrutura & Cenas
-                drawDocItem(guiGraphics, contentX, currentY, "🟢 BEGIN_SCENE (Início da Cena)", "Entradas: Nenhuma | Saídas: OUT", "Ponto de entrada único obrigatório dentro de cada cena.")
+            0 -> { // Structure & Scenes
+                drawDocItem(guiGraphics, contentX, currentY, "🟢 BEGIN_SCENE (Scene Start)", "Inputs: None | Outputs: OUT", "Mandatory single entry point inside each scene graph.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "🛑 END_SCENE (Finalizar Cena)", "Entradas: IN | Saídas: Nenhuma", "Encerra a cena atual e dispara a saída OUT da cena no grafo.")
+                drawDocItem(guiGraphics, contentX, currentY, "🛑 END_SCENE (Finish Scene)", "Inputs: IN | Outputs: None", "Terminates current scene and fires scene OUT signal.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "⚡ GATE (Portão Sincronizador)", "Entradas: 2 a 5 IN | Saídas: OUT", "Só dispara a saída OUT quando TODAS as portas IN receberem o sinal.")
+                drawDocItem(guiGraphics, contentX, currentY, "⚡ GATE (Synchronizer Gate)", "Inputs: 2 to 5 IN | Outputs: OUT", "Fires OUT output only when ALL IN ports receive signal.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "🏗️ CONSTRUCTION (Sub-Grafo)", "Entradas: IN | Saídas: OUT", "Encapsula um sub-canvas interno reutilizável para grafos complexos.")
+                drawDocItem(guiGraphics, contentX, currentY, "🏗️ CONSTRUCTION (Sub-Graph)", "Inputs: IN | Outputs: OUT", "Encapsulates reusable internal sub-canvas for complex logic.")
             }
-            1 -> { // Lógica & Fluxo
-                drawDocItem(guiGraphics, contentX, currentY, "🟢 TRIGGER (Gatilho)", "Entradas: IN (opcional) | Saídas: OUT", "Dispara por início de história ou por colisão/posição X,Y,Z.")
+            1 -> { // Logic & Flow
+                drawDocItem(guiGraphics, contentX, currentY, "🟢 TRIGGER", "Inputs: IN (optional) | Outputs: OUT", "Triggers on story start, coordinates, day/night, weather, level, or variable check.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "⚡ ACTION (Ação do Mundo)", "Entradas: IN | Saídas: OUT", "Executa mensagens de chat/title, teleporte, spawn ou sons.")
+                drawDocItem(guiGraphics, contentX, currentY, "⚡ ACTION", "Inputs: IN | Outputs: OUT", "Executes chat/title messages, teleport, spawn, or audio.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "⏱ TIMER (Temporizador)", "Entradas: IN | Saídas: OUT", "Aguarde rigorosamente N segundos de forma assíncrona antes do OUT.")
+                drawDocItem(guiGraphics, contentX, currentY, "⌨️ COMMAND_NODE", "Inputs: IN | Outputs: OUT", "Executes commands via Server (OP 4) or Local Player with token interpolation.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "🔀 BRANCH (Ramificação IF)", "Entradas: IN | Saídas: 2 a 5 IFs", "Avalia condições e desvia o fluxo pela saída correspondente.")
+                drawDocItem(guiGraphics, contentX, currentY, "⏱ TIMER", "Inputs: IN | Outputs: OUT", "Waits specified N seconds asynchronously before OUT.")
+                currentY += 45
+                drawDocItem(guiGraphics, contentX, currentY, "🔀 CONDITION_NODE", "Inputs: IN | Outputs: IF, ELSE IF 1..N, ELSE", "Evaluates conditions in cascade and routes signal to the first true branch or ELSE.")
             }
             2 -> { // Links & Loops
-                drawDocItem(guiGraphics, contentX, currentY, "📡 LINK_SEND (Transmissor)", "Entradas: IN | Saídas: Nenhuma", "Transmite o sinal sem fio via canal nomeado (channelTag).")
+                drawDocItem(guiGraphics, contentX, currentY, "📡 LINK_SEND (Sender)", "Inputs: IN | Outputs: None", "Transmits wireless signal via named channel (channelTag).")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "📡 LINK_RECEIVE (Receptor)", "Entradas: Nenhuma | Saídas: OUT", "Recebe o salto sem fio e dispara a saída OUT imediatamente.")
+                drawDocItem(guiGraphics, contentX, currentY, "📡 LINK_RECEIVE (Receiver)", "Inputs: None | Outputs: OUT", "Receives wireless jump signal and fires OUT immediately.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "🔄 LOOP (Repetidor)", "Entradas: IN, STOP | Saídas: CYCLE, DONE", "Itera por contagem (N vezes) ou tempo continuo sem travar a thread.")
+                drawDocItem(guiGraphics, contentX, currentY, "🔄 LOOP (Repeater)", "Inputs: IN, STOP | Outputs: CYCLE, DONE", "Iterates by count (N times) or continuous interval without blocking.")
                 currentY += 45
-                drawDocItem(guiGraphics, contentX, currentY, "📝 COMMENT (Comentário)", "Entradas: Nenhuma | Saídas: Nenhuma", "Bloco visual discreto para notas e documentação no canvas.")
+                drawDocItem(guiGraphics, contentX, currentY, "📝 COMMENT (Note)", "Inputs: None | Outputs: None", "Discrete visual note block for canvas documentation.")
             }
         }
     }

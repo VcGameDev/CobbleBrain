@@ -1,19 +1,28 @@
 package vito.cobblebrain.blocks.impl
 
+import com.cobblemon.mod.common.Cobblemon
+import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
+import com.cobblemon.mod.common.pokemon.Pokemon
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import vito.cobblebrain.blocks.interfaces.IAction
 import vito.cobblebrain.blocks.interfaces.ITrigger
 import vito.cobblebrain.engine.StoryContext
+import vito.cobblebrain.engine.StoryTextFormatter
 import vito.cobblebrain.model.NodeData
 import vito.cobblebrain.model.NodeType
+import vito.cobblebrain.social.DialogueSystem
+import vito.cobblebrain.social.PokemonQuery
 import kotlin.math.sqrt
 
 // ==========================================================
-// AÇÕES (ACTIONS)
+// ACTIONS
 // ==========================================================
 
 class SendMessageAction : IAction {
@@ -21,52 +30,230 @@ class SendMessageAction : IAction {
         val rawText = node.params["messageText"]?.ifBlank { node.content.ifBlank { node.title } }
             ?: node.content.ifBlank { node.title }
 
-        var messageText = rawText
-        context.variables.forEach { (k, v) ->
-            messageText = messageText.replace("{$k}", v.toString())
+        val speakerMode = node.params["speakerMode"] ?: "STANDARD"
+        if (speakerMode == "COBBLEBRAIN") {
+            executeCobblebrainSpeech(context, node, rawText)
+            return
         }
 
         val player = context.player
         val messageType = node.params["messageType"] ?: "CHAT"
-        val comp = Component.literal(messageText)
+        val formattedComp = StoryTextFormatter.format(rawText, context)
 
-        if (player != null) {
+        val players = if (player != null) listOf(player) else context.server?.playerList?.players ?: emptyList()
+
+        for (p in players) {
             when (messageType) {
                 "TITLE" -> {
-                    val sub = node.params["subTitle"] ?: ""
-                    player.sendSystemMessage(Component.literal("=== $messageText ==="), false)
-                    if (sub.isNotBlank()) player.sendSystemMessage(Component.literal(sub), false)
+                    val rawSub = node.params["subTitle"] ?: ""
+                    val titleColor = node.params["titleColor"]?.trim() ?: ""
+                    val formattedMain = if (titleColor.isNotBlank() && !rawText.startsWith("&") && !rawText.startsWith("#") && !rawText.startsWith("§")) {
+                        "$titleColor$rawText"
+                    } else {
+                        rawText
+                    }
+                    val mainComp = StoryTextFormatter.format(formattedMain, context)
+                    val subComp = if (rawSub.isNotBlank()) StoryTextFormatter.format(rawSub, context) else null
+
+                    val fadeIn = (node.params["fadeIn"]?.toIntOrNull() ?: 10).coerceAtLeast(0)
+                    val stay = (node.params["stay"]?.toIntOrNull() ?: 70).coerceAtLeast(0)
+                    val fadeOut = (node.params["fadeOut"]?.toIntOrNull() ?: 20).coerceAtLeast(0)
+
+                    p.connection.send(ClientboundSetTitlesAnimationPacket(fadeIn, stay, fadeOut))
+                    p.connection.send(ClientboundSetTitleTextPacket(mainComp))
+                    if (subComp != null) {
+                        p.connection.send(ClientboundSetSubtitleTextPacket(subComp))
+                    } else {
+                        p.connection.send(ClientboundSetSubtitleTextPacket(Component.empty()))
+                    }
                 }
-                "ACTION_BAR" -> player.sendSystemMessage(comp, true)
-                else -> player.sendSystemMessage(comp, false)
+                "ACTION_BAR" -> p.sendSystemMessage(formattedComp, true)
+                else -> p.sendSystemMessage(formattedComp, false)
             }
-        } else {
-            context.server?.playerList?.players?.forEach { p ->
-                p.sendSystemMessage(comp, false)
+        }
+    }
+
+    private fun executeCobblebrainSpeech(context: StoryContext, node: NodeData, rawText: String) {
+        val player = context.player
+        val server = context.server ?: player?.server
+        val speakerType = node.params["speakerType"] ?: "PARTY_FIRST"
+        val enableChatBubble = node.params["enableChatBubble"] != "false"
+        val playCry = node.params["playCry"] != "false"
+        val socialLook = node.params["socialLook"] != "false"
+        val jumpEffect = node.params["jumpEffect"] != "false"
+        val sendToChat = node.params["sendToChat"] != "false"
+        val bubbleDuration = node.params["bubbleDuration"]?.toIntOrNull() ?: 100
+        val nameFormat = node.params["nameFormat"] ?: "PREFIX"
+
+        val emotion = node.params["emotionPitch"] ?: "NEUTRAL"
+        val basePitch = when (emotion) {
+            "HAPPY" -> 1.25f
+            "SAD" -> 0.75f
+            "EXCITED" -> 1.4f
+            "CUSTOM" -> node.params["customPitch"]?.toFloatOrNull() ?: 1.0f
+            else -> 1.0f
+        }
+
+        var resolvedPokemon: Pokemon? = null
+        var resolvedName: String? = null
+
+        if (player != null) {
+            val partyList = try {
+                val party = Cobblemon.storage.getParty(player)
+                (0..5).mapNotNull { party.get(it) }
+            } catch (e: Exception) {
+                emptyList()
             }
+            val activeList = try {
+                PokemonQuery.findActivePokemon(player)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            when (speakerType) {
+                "PARTY_FIRST" -> {
+                    resolvedPokemon = activeList.firstOrNull() ?: partyList.firstOrNull()
+                }
+                "PARTY_SLOT" -> {
+                    val slot = (node.params["partySlot"]?.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
+                    resolvedPokemon = try {
+                        Cobblemon.storage.getParty(player).get(slot)
+                    } catch (e: Exception) {
+                        partyList.getOrNull(slot)
+                    }
+                }
+                "PARTY_RANDOM" -> {
+                    resolvedPokemon = activeList.randomOrNull() ?: partyList.randomOrNull()
+                }
+                "NEAREST_WILD" -> {
+                    try {
+                        val pLevel = player.level()
+                        val radius = 25.0
+                        val aabb = player.boundingBox.inflate(radius)
+                        val nearbyEntities = pLevel.getEntitiesOfClass(PokemonEntity::class.java, aabb)
+                        resolvedPokemon = nearbyEntities.minByOrNull { it.distanceToSqr(player) }?.pokemon
+                    } catch (e: Exception) {
+                    }
+                }
+                "BY_SPECIES" -> {
+                    val query = (node.params["targetSpecies"] ?: "").trim().lowercase()
+                    if (query.isNotBlank()) {
+                        resolvedPokemon = activeList.find {
+                            it.species.name.lowercase() == query ||
+                            it.species.resourceIdentifier.path.lowercase() == query ||
+                            it.nickname?.string?.lowercase() == query
+                        } ?: partyList.find {
+                            it.species.name.lowercase() == query ||
+                            it.species.resourceIdentifier.path.lowercase() == query ||
+                            it.nickname?.string?.lowercase() == query
+                        }
+                        if (resolvedPokemon == null) {
+                            try {
+                                val pLevel = player.level()
+                                val aabb = player.boundingBox.inflate(30.0)
+                                val nearbyEntities = pLevel.getEntitiesOfClass(PokemonEntity::class.java, aabb)
+                                resolvedPokemon = nearbyEntities.find {
+                                    val p = it.pokemon
+                                    p.species.name.lowercase() == query ||
+                                    p.species.resourceIdentifier.path.lowercase() == query ||
+                                    p.nickname?.string?.lowercase() == query
+                                }?.pokemon
+                            } catch (e: Exception) {
+                            }
+                        }
+                    }
+                    if (resolvedPokemon == null) {
+                        resolvedPokemon = activeList.firstOrNull() ?: partyList.firstOrNull()
+                    }
+                }
+                "CUSTOM_NAME" -> {
+                    resolvedName = node.params["customSpeakerName"]?.ifBlank { "Pokémon" } ?: "Pokémon"
+                    resolvedPokemon = activeList.firstOrNull() ?: partyList.firstOrNull()
+                }
+            }
+        }
+
+        if (resolvedName == null) {
+            resolvedName = resolvedPokemon?.nickname?.string?.takeIf { it.isNotBlank() }
+                ?: resolvedPokemon?.species?.name
+                ?: node.params["customSpeakerName"]?.takeIf { it.isNotBlank() }
+                ?: "Pokémon"
+        }
+
+        val interpolatedText = StoryTextFormatter.interpolate(rawText, context)
+
+        // Handle in-game Entity actions
+        resolvedPokemon?.let { poke ->
+            val entity = poke.entity
+            if (playCry) {
+                try {
+                    DialogueSystem.expressPokemon(poke, basePitch)
+                } catch (e: Exception) {
+                }
+            } else if (jumpEffect && entity != null && entity.onGround()) {
+                entity.jumpFromGround()
+            }
+
+            if (socialLook && entity != null && player != null) {
+                try {
+                    entity.lookControl.setLookAt(player.x, player.eyeY, player.z, 30f, 30f)
+                } catch (e: Exception) {
+                }
+            }
+
+            if (enableChatBubble && server != null && entity != null) {
+                try {
+                    DialogueSystem.spawnSpeechBubble(server, poke, interpolatedText, bubbleDuration)
+                } catch (e: Exception) {
+                }
+            }
+        }
+
+        // Handle Text Chat
+        if (sendToChat) {
+            val finalMessageString = if (nameFormat == "NO_PREFIX") {
+                interpolatedText
+            } else {
+                "§b[$resolvedName]§r $interpolatedText"
+            }
+            val formattedComp = StoryTextFormatter.format(finalMessageString, context)
+            val players = if (player != null) listOf(player) else server?.playerList?.players ?: emptyList()
+            players.forEach { it.sendSystemMessage(formattedComp, false) }
         }
     }
 }
 
 class ShowTitleAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
-        val player = context.player ?: return
-        val mainTitle = node.params["mainTitle"] ?: "Missão Concluída!"
-        val subTitle = node.params["subTitle"] ?: ""
-        val fadeIn = node.params["fadeIn"]?.toIntOrNull() ?: 10
-        val stay = node.params["stay"]?.toIntOrNull() ?: 40
-        val fadeOut = node.params["fadeOut"]?.toIntOrNull() ?: 10
+        val player = context.player
+        val rawMainTitle = node.params["mainTitle"]?.ifBlank { node.content.ifBlank { node.title } }
+            ?: node.content.ifBlank { node.title }
+        val rawSubTitle = node.params["subTitle"] ?: ""
+        val titleColor = node.params["titleColor"]?.trim() ?: ""
 
-        try {
-            val server = context.server ?: player.server
-            val name = player.scoreboardName
-            server?.commands?.performPrefixedCommand(server.createCommandSourceStack().withPermission(4).withSuppressedOutput(), "title $name times $fadeIn $stay $fadeOut")
-            if (subTitle.isNotBlank()) {
-                server?.commands?.performPrefixedCommand(server.createCommandSourceStack().withPermission(4).withSuppressedOutput(), "title $name subtitle {\"text\":\"$subTitle\"}")
+        val formattedMainTitle = if (titleColor.isNotBlank() && !rawMainTitle.startsWith("&") && !rawMainTitle.startsWith("#") && !rawMainTitle.startsWith("§")) {
+            "$titleColor$rawMainTitle"
+        } else {
+            rawMainTitle
+        }
+
+        val fadeIn = (node.params["fadeIn"]?.toIntOrNull() ?: 10).coerceAtLeast(0)
+        val stay = (node.params["stay"]?.toIntOrNull() ?: 70).coerceAtLeast(0)
+        val fadeOut = (node.params["fadeOut"]?.toIntOrNull() ?: 20).coerceAtLeast(0)
+
+        val mainTitleComp = StoryTextFormatter.format(formattedMainTitle, context)
+        val subTitleComp = if (rawSubTitle.isNotBlank()) StoryTextFormatter.format(rawSubTitle, context) else null
+
+        val players = if (player != null) listOf(player) else context.server?.playerList?.players ?: emptyList()
+
+        for (p in players) {
+            p.connection.send(ClientboundSetTitlesAnimationPacket(fadeIn, stay, fadeOut))
+            p.connection.send(ClientboundSetTitleTextPacket(mainTitleComp))
+            if (subTitleComp != null) {
+                p.connection.send(ClientboundSetSubtitleTextPacket(subTitleComp))
+            } else {
+                p.connection.send(ClientboundSetSubtitleTextPacket(Component.empty()))
             }
-            server?.commands?.performPrefixedCommand(server.createCommandSourceStack().withPermission(4).withSuppressedOutput(), "title $name title {\"text\":\"$mainTitle\"}")
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 }
@@ -79,7 +266,7 @@ class TeleportAction : IAction {
         val destZ = node.params["destZ"]?.toDoubleOrNull() ?: player.z
 
         player.teleportTo(destX, destY, destZ)
-        player.sendSystemMessage(Component.literal("Teleportado para: $destX, $destY, $destZ"))
+        player.sendSystemMessage(Component.literal("Teleported to: $destX, $destY, $destZ"))
     }
 }
 
@@ -156,12 +343,70 @@ class SpawnEntityAction : IAction {
         val player = context.player
         val server = context.server ?: player?.server ?: return
         val entityId = node.params["entityId"]?.ifBlank { "minecraft:villager" } ?: "minecraft:villager"
-        val customName = node.params["customName"]
+        val customName = node.params["entity_customName"]?.ifBlank { node.params["customName"] ?: "" } ?: ""
+        val nameVisible = node.params["entity_nameVisible"] == "true"
+        val noGravity = node.params["entity_noGravity"] == "true"
+        val invulnerable = node.params["entity_invulnerable"] == "true"
+        val noAi = node.params["entity_noAi"] == "true" || node.params["noAi"] == "true"
+        val glowing = node.params["entity_glowing"] == "true"
+        val silent = node.params["entity_silent"] == "true"
+
+        val maxHealth = node.params["entity_maxHealth"]?.toDoubleOrNull()
+        val speed = node.params["entity_speed"]?.toDoubleOrNull()
+        val damage = node.params["entity_damage"]?.toDoubleOrNull()
+        val armor = node.params["entity_armor"]?.toDoubleOrNull()
+
+        val helmet = node.params["entity_helmet"]?.trim()?.takeIf { it.isNotBlank() }
+        val chest = node.params["entity_chest"]?.trim()?.takeIf { it.isNotBlank() }
+        val legs = node.params["entity_legs"]?.trim()?.takeIf { it.isNotBlank() }
+        val feet = node.params["entity_feet"]?.trim()?.takeIf { it.isNotBlank() }
+        val mainhand = node.params["entity_mainhand"]?.trim()?.takeIf { it.isNotBlank() }
+        val offhand = node.params["entity_offhand"]?.trim()?.takeIf { it.isNotBlank() }
+
         val px = node.params["posX"]?.ifBlank { "~" } ?: "~"
         val py = node.params["posY"]?.ifBlank { "~" } ?: "~"
         val pz = node.params["posZ"]?.ifBlank { "~" } ?: "~"
+
         try {
-            val tag = if (!customName.isNullOrBlank()) " {CustomName:'{\"text\":\"$customName\"}'}" else ""
+            val nbtParts = mutableListOf<String>()
+            if (customName.isNotBlank()) {
+                nbtParts.add("CustomName:'{\"text\":\"$customName\"}'")
+                if (nameVisible) nbtParts.add("CustomNameVisible:1b")
+            }
+            if (noGravity) nbtParts.add("NoGravity:1b")
+            if (invulnerable) nbtParts.add("Invulnerable:1b")
+            if (noAi) nbtParts.add("NoAI:1b")
+            if (glowing) nbtParts.add("Glowing:1b")
+            if (silent) nbtParts.add("Silent:1b")
+
+            val attrParts = mutableListOf<String>()
+            if (maxHealth != null) attrParts.add("{Name:\"generic.max_health\",Base:${maxHealth}d}")
+            if (speed != null) attrParts.add("{Name:\"generic.movement_speed\",Base:${speed}d}")
+            if (damage != null) attrParts.add("{Name:\"generic.attack_damage\",Base:${damage}d}")
+            if (armor != null) attrParts.add("{Name:\"generic.armor\",Base:${armor}d}")
+
+            if (attrParts.isNotEmpty()) {
+                nbtParts.add("Attributes:[${attrParts.joinToString(",")}]")
+            }
+            if (maxHealth != null) {
+                nbtParts.add("Health:${maxHealth}f")
+            }
+
+            if (feet != null || legs != null || chest != null || helmet != null) {
+                val fStr = feet?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val lStr = legs?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val cStr = chest?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val hStr = helmet?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                nbtParts.add("ArmorItems:[$fStr,$lStr,$cStr,$hStr]")
+            }
+
+            if (mainhand != null || offhand != null) {
+                val mStr = mainhand?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val oStr = offhand?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                nbtParts.add("HandItems:[$mStr,$oStr]")
+            }
+
+            val tag = if (nbtParts.isNotEmpty()) " {${nbtParts.joinToString(",")}}" else ""
             val cmd = "summon $entityId $px $py $pz$tag"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
@@ -196,18 +441,76 @@ class ModifyEntityPropertiesAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         val player = context.player
         val server = context.server ?: player?.server ?: return
-        val customName = node.params["customName"] ?: ""
-        val noAi = node.params["noAi"] == "true"
-        val selector = node.params["entitySelector"] ?: "@e[type=!player,distance=..5,limit=1]"
+        val selector = node.params["entitySelector"]?.ifBlank { "@e[type=!player,distance=..5,limit=1]" } ?: "@e[type=!player,distance=..5,limit=1]"
+
+        val customName = node.params["entity_customName"]?.ifBlank { node.params["customName"] ?: "" } ?: ""
+        val nameVisible = node.params["entity_nameVisible"] == "true"
+        val noGravity = node.params["entity_noGravity"] == "true"
+        val invulnerable = node.params["entity_invulnerable"] == "true"
+        val noAi = node.params["entity_noAi"] == "true" || node.params["noAi"] == "true"
+        val glowing = node.params["entity_glowing"] == "true"
+        val silent = node.params["entity_silent"] == "true"
+
+        val maxHealth = node.params["entity_maxHealth"]?.toDoubleOrNull()
+        val speed = node.params["entity_speed"]?.toDoubleOrNull()
+        val damage = node.params["entity_damage"]?.toDoubleOrNull()
+        val armor = node.params["entity_armor"]?.toDoubleOrNull()
+
+        val helmet = node.params["entity_helmet"]?.trim()?.takeIf { it.isNotBlank() }
+        val chest = node.params["entity_chest"]?.trim()?.takeIf { it.isNotBlank() }
+        val legs = node.params["entity_legs"]?.trim()?.takeIf { it.isNotBlank() }
+        val feet = node.params["entity_feet"]?.trim()?.takeIf { it.isNotBlank() }
+        val mainhand = node.params["entity_mainhand"]?.trim()?.takeIf { it.isNotBlank() }
+        val offhand = node.params["entity_offhand"]?.trim()?.takeIf { it.isNotBlank() }
+
         try {
-            val noAiVal = if (noAi) "1b" else "0b"
-            val nbt = "{NoAI:$noAiVal" + (if (customName.isNotBlank()) ",CustomName:'{\"text\":\"$customName\"}'" else "") + "}"
-            val cmd = "data merge entity $selector $nbt"
-            server.commands.performPrefixedCommand(
-                player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
-                    ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
-                cmd
-            )
+            val nbtParts = mutableListOf<String>()
+            if (customName.isNotBlank()) {
+                nbtParts.add("CustomName:'{\"text\":\"$customName\"}'")
+                nbtParts.add("CustomNameVisible:${if (nameVisible) "1b" else "0b"}")
+            }
+            if (node.params.containsKey("entity_noGravity")) nbtParts.add("NoGravity:${if (noGravity) "1b" else "0b"}")
+            if (node.params.containsKey("entity_invulnerable")) nbtParts.add("Invulnerable:${if (invulnerable) "1b" else "0b"}")
+            if (node.params.containsKey("entity_noAi") || node.params.containsKey("noAi")) nbtParts.add("NoAI:${if (noAi) "1b" else "0b"}")
+            if (node.params.containsKey("entity_glowing")) nbtParts.add("Glowing:${if (glowing) "1b" else "0b"}")
+            if (node.params.containsKey("entity_silent")) nbtParts.add("Silent:${if (silent) "1b" else "0b"}")
+
+            val attrParts = mutableListOf<String>()
+            if (maxHealth != null) attrParts.add("{Name:\"generic.max_health\",Base:${maxHealth}d}")
+            if (speed != null) attrParts.add("{Name:\"generic.movement_speed\",Base:${speed}d}")
+            if (damage != null) attrParts.add("{Name:\"generic.attack_damage\",Base:${damage}d}")
+            if (armor != null) attrParts.add("{Name:\"generic.armor\",Base:${armor}d}")
+
+            if (attrParts.isNotEmpty()) {
+                nbtParts.add("Attributes:[${attrParts.joinToString(",")}]")
+            }
+            if (maxHealth != null) {
+                nbtParts.add("Health:${maxHealth}f")
+            }
+
+            if (feet != null || legs != null || chest != null || helmet != null) {
+                val fStr = feet?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val lStr = legs?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val cStr = chest?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val hStr = helmet?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                nbtParts.add("ArmorItems:[$fStr,$lStr,$cStr,$hStr]")
+            }
+
+            if (mainhand != null || offhand != null) {
+                val mStr = mainhand?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                val oStr = offhand?.let { "{id:\"$it\",Count:1b}" } ?: "{}"
+                nbtParts.add("HandItems:[$mStr,$oStr]")
+            }
+
+            if (nbtParts.isNotEmpty()) {
+                val nbt = "{${nbtParts.joinToString(",")}}"
+                val cmd = "data merge entity $selector $nbt"
+                server.commands.performPrefixedCommand(
+                    player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
+                        ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                    cmd
+                )
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

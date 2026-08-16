@@ -10,7 +10,7 @@ import vito.cobblebrain.config.StoryEditorConfigData
 
 class EditorSettingsScreen(
     private val parentEditor: StoryEditorScreen
-) : Screen(Component.literal("Configurações do Editor")) {
+) : Screen(Component.literal("Editor Settings")) {
 
     private var configData: StoryEditorConfigData = StoryEditorConfig.load()
     private var intervalEditBox: EditBox? = null
@@ -22,8 +22,8 @@ class EditorSettingsScreen(
         val cx = width / 2
         val cy = height / 2
 
-        // 1. Botão Alternar Auto-Save
-        val autoSaveText = if (configData.autoSaveEnabled) "Auto-Save: ATIVADO" else "Auto-Save: DESATIVADO"
+        // 1. Toggle Auto-Save Button
+        val autoSaveText = if (configData.autoSaveEnabled) "Auto-Save: ENABLED" else "Auto-Save: DISABLED"
         addRenderableWidget(
             Button.builder(Component.literal(autoSaveText)) {
                 configData.autoSaveEnabled = !configData.autoSaveEnabled
@@ -31,15 +31,15 @@ class EditorSettingsScreen(
             }.bounds(cx - 110, cy - 50, 220, 20).build()
         )
 
-        // 2. Campo para editar Intervalo (em segundos)
-        val intervalBox = EditBox(font, cx - 110, cy - 10, 220, 20, Component.literal("Intervalo (segundos)"))
+        // 2. Interval Edit Box (in seconds)
+        val intervalBox = EditBox(font, cx - 110, cy - 10, 220, 20, Component.literal("Interval (seconds)"))
         intervalBox.value = configData.autoSaveIntervalSeconds.toString()
         intervalBox.setFilter { text -> text.isEmpty() || text.all { it.isDigit() } }
         intervalEditBox = intervalBox
         addRenderableWidget(intervalBox)
 
-        // 3. Botão Alternar Auto-Abrir Último Projeto
-        val autoOpenText = if (configData.autoOpenLastProject) "Auto-Abrir Último Projeto: ATIVADO" else "Auto-Abrir Último Projeto: DESATIVADO"
+        // 3. Toggle Auto-Open Last Project Button
+        val autoOpenText = if (configData.autoOpenLastProject) "Auto-Open Last Project: ENABLED" else "Auto-Open Last Project: DISABLED"
         addRenderableWidget(
             Button.builder(Component.literal(autoOpenText)) {
                 configData.autoOpenLastProject = !configData.autoOpenLastProject
@@ -47,9 +47,9 @@ class EditorSettingsScreen(
             }.bounds(cx - 110, cy + 30, 220, 20).build()
         )
 
-        // 4. Botão Salvar e Fechar
+        // 4. Save and Close Button
         addRenderableWidget(
-            Button.builder(Component.literal("Salvar Configurações")) {
+            Button.builder(Component.literal("Save Settings")) {
                 val inputSec = intervalEditBox?.value?.toIntOrNull()
                 if (inputSec != null && inputSec >= 10) {
                     configData.autoSaveIntervalSeconds = inputSec
@@ -69,10 +69,10 @@ class EditorSettingsScreen(
         val cx = width / 2
         val cy = height / 2
 
-        // Moldura do modal
+        // Modal Frame
         guiGraphics.fill(cx - 130, cy - 75, cx + 130, cy + 105, 0xFF1E1E24.toInt())
-        guiGraphics.drawCenteredString(font, "Configurações do Editor", cx, cy - 67, 0xFF00FFCC.toInt())
-        guiGraphics.drawString(font, "Intervalo Auto-Save (segundos):", cx - 110, cy - 23, 0xFFCCCCCC.toInt(), false)
+        guiGraphics.drawCenteredString(font, "Editor Settings", cx, cy - 67, 0xFF00FFCC.toInt())
+        guiGraphics.drawString(font, "Auto-Save Interval (seconds):", cx - 110, cy - 23, 0xFFCCCCCC.toInt(), false)
 
         super.render(guiGraphics, mouseX, mouseY, partialTick)
     }

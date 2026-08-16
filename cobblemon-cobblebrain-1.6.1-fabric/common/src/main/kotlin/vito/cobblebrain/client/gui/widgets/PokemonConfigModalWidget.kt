@@ -15,10 +15,10 @@ class PokemonConfigModalWidget(
     val onClose: () -> Unit,
     val onDataChanged: () -> Unit
 ) {
-    private val modalWidth = 320
-    private val modalHeight = 240
-    private val modalX = (screenWidth - modalWidth) / 2
-    private val modalY = (screenHeight - modalHeight) / 2
+    private val modalWidth = 340.coerceAtMost(screenWidth - 20)
+    private val modalHeight = 250.coerceAtMost(screenHeight - 20)
+    private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
+    private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
     private val speciesBox: EditBox
     private val levelBox: EditBox
@@ -29,7 +29,7 @@ class PokemonConfigModalWidget(
 
     private var isShiny: Boolean
     private var genderIndex: Int = 0 // 0=Random, 1=Male, 2=Female, 3=Genderless
-    private val genderOptions = listOf("Aleatório 🎲", "Macho ♂", "Fêmea ♀", "Sem Gênero ⚪")
+    private val genderOptions = listOf("Random 🎲", "Male ♂", "Female ♀", "Genderless ⚪")
 
     private val shinyBtn: Button
     private val genderBtn: Button
@@ -53,52 +53,57 @@ class PokemonConfigModalWidget(
         val rightX = modalX + 165
         val colW = 140
 
-        // Linha 1: Espécie e Nível
-        speciesBox = EditBox(font, leftX, modalY + 42, colW, 16, Component.literal("Espécie"))
+        // Row 1: Species and Level
+        speciesBox = EditBox(font, leftX, modalY + 42, colW, 16, Component.literal("Species"))
         speciesBox.value = node.params["species"] ?: "Pikachu"
         editBoxes.add(speciesBox)
 
-        levelBox = EditBox(font, rightX, modalY + 42, colW, 16, Component.literal("Nível"))
+        levelBox = EditBox(font, rightX, modalY + 42, colW, 16, Component.literal("Level"))
         levelBox.value = node.params["level"] ?: "5"
         levelBox.setFilter { text -> text.isEmpty() || text.all { it.isDigit() } }
         editBoxes.add(levelBox)
 
-        // Linha 2: Shiny e Gênero
-        val shinyLabel = if (isShiny) "✨ Shiny: SIM" else "⚪ Shiny: NÃO"
+        // Row 2: Shiny and Gender
+        val shinyLabel = if (isShiny) "✨ Shiny: YES" else "⚪ Shiny: NO"
         shinyBtn = Button.builder(Component.literal(shinyLabel)) {
             isShiny = !isShiny
-            shinyBtn.message = Component.literal(if (isShiny) "✨ Shiny: SIM" else "⚪ Shiny: NÃO")
+            shinyBtn.message = Component.literal(if (isShiny) "✨ Shiny: YES" else "⚪ Shiny: NO")
         }.bounds(leftX, modalY + 80, colW, 16).build()
 
-        genderBtn = Button.builder(Component.literal("Gênero: ${genderOptions[genderIndex]}")) {
+        genderBtn = Button.builder(Component.literal("Gender: ${genderOptions[genderIndex]}")) {
             genderIndex = (genderIndex + 1) % genderOptions.size
-            genderBtn.message = Component.literal("Gênero: ${genderOptions[genderIndex]}")
+            genderBtn.message = Component.literal("Gender: ${genderOptions[genderIndex]}")
         }.bounds(rightX, modalY + 80, colW, 16).build()
 
-        // Linha 3: Natureza e Habilidade
-        natureBox = EditBox(font, leftX, modalY + 118, colW, 16, Component.literal("Natureza"))
+        // Row 3: Nature and Ability
+        natureBox = EditBox(font, leftX, modalY + 118, colW, 16, Component.literal("Nature"))
         natureBox.value = node.params["nature"] ?: ""
-        natureBox.setHint(Component.literal("ex: Adamant, Jolly..."))
+        natureBox.setHint(Component.literal("e.g. Adamant, Jolly..."))
         editBoxes.add(natureBox)
 
-        abilityBox = EditBox(font, rightX, modalY + 118, colW, 16, Component.literal("Habilidade"))
+        abilityBox = EditBox(font, rightX, modalY + 118, colW, 16, Component.literal("Ability"))
         abilityBox.value = node.params["ability"] ?: ""
-        abilityBox.setHint(Component.literal("Habilidade Cobblemon"))
+        abilityBox.setHint(Component.literal("Cobblemon Ability"))
         editBoxes.add(abilityBox)
 
-        // Linha 4: Forma / Textura e Golpes
-        formBox = EditBox(font, leftX, modalY + 156, colW, 16, Component.literal("Forma/Variante"))
+        // Row 4: Form / Variant and Moves
+        formBox = EditBox(font, leftX, modalY + 156, colW, 16, Component.literal("Form/Variant"))
         formBox.value = node.params["form"] ?: ""
-        formBox.setHint(Component.literal("ex: alolan, hisuian..."))
+        formBox.setHint(Component.literal("e.g. alolan, hisuian..."))
         editBoxes.add(formBox)
 
-        move1Box = EditBox(font, rightX, modalY + 156, colW, 16, Component.literal("Golpe Personalizado"))
-        move1Box.value = node.params["move1"] ?: ""
-        move1Box.setHint(Component.literal("Golpe 1 (ex: thunderbolt)"))
+        move1Box = EditBox(font, rightX, modalY + 156, colW, 16, Component.literal("Special Move"))
+        move1Box.value = node.params["specialMove"] ?: ""
         editBoxes.add(move1Box)
 
-        // Botões de Ação
-        saveBtn = Button.builder(Component.literal("💾 Salvar Atributos")) {
+        editBoxes.forEach {
+            it.setEditable(true)
+            it.active = true
+        }
+        move1Box.setHint(Component.literal("Move 1 (e.g. thunderbolt)"))
+
+        // Action Buttons
+        saveBtn = Button.builder(Component.literal("💾 Save Attributes")) {
             node.params["species"] = speciesBox.value.ifBlank { "Pikachu" }
             node.params["level"] = levelBox.value.ifBlank { "5" }
             node.params["shiny"] = isShiny.toString()
@@ -117,7 +122,7 @@ class PokemonConfigModalWidget(
             onClose()
         }.bounds(modalX + modalWidth - 145, modalY + modalHeight - 26, 130, 18).build()
 
-        closeBtn = Button.builder(Component.literal("✖ Cancelar")) {
+        closeBtn = Button.builder(Component.literal("✖ Cancel")) {
             onClose()
         }.bounds(modalX + 15, modalY + modalHeight - 26, 80, 18).build()
     }
@@ -129,22 +134,22 @@ class PokemonConfigModalWidget(
         guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
 
-        guiGraphics.drawString(font, "🐾 Configuração Detalhada do Pokémon", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
+        guiGraphics.drawString(font, "🐾 Detailed Pokémon Configuration", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
 
         val leftX = modalX + 15
         val rightX = modalX + 165
 
-        guiGraphics.drawString(font, "Espécie:", leftX, modalY + 30, 0xFFA0A0A0.toInt(), false)
-        guiGraphics.drawString(font, "Nível (1-100):", rightX, modalY + 30, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Species:", leftX, modalY + 30, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Level (1-100):", rightX, modalY + 30, 0xFFA0A0A0.toInt(), false)
 
-        guiGraphics.drawString(font, "Variação Shiny:", leftX, modalY + 68, 0xFFA0A0A0.toInt(), false)
-        guiGraphics.drawString(font, "Gênero:", rightX, modalY + 68, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Shiny Variant:", leftX, modalY + 68, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Gender:", rightX, modalY + 68, 0xFFA0A0A0.toInt(), false)
 
-        guiGraphics.drawString(font, "Natureza (Opcional):", leftX, modalY + 106, 0xFFA0A0A0.toInt(), false)
-        guiGraphics.drawString(font, "Habilidade (Opcional):", rightX, modalY + 106, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Nature (Optional):", leftX, modalY + 106, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Ability (Optional):", rightX, modalY + 106, 0xFFA0A0A0.toInt(), false)
 
-        guiGraphics.drawString(font, "Forma / Variante:", leftX, modalY + 144, 0xFFA0A0A0.toInt(), false)
-        guiGraphics.drawString(font, "Golpe Especial (Move):", rightX, modalY + 144, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Form / Variant:", leftX, modalY + 144, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Special Move:", rightX, modalY + 144, 0xFFA0A0A0.toInt(), false)
 
         editBoxes.forEach { it.render(guiGraphics, mouseX, mouseY, partialTick) }
         shinyBtn.render(guiGraphics, mouseX, mouseY, partialTick)

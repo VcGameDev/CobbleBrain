@@ -11,7 +11,7 @@ import java.io.File
 class LoadStoryScreen(
     private val parentEditor: StoryEditorScreen,
     private val onStoryLoaded: (StoryProject) -> Unit
-) : Screen(Component.literal("Carregar Pacote de História")) {
+) : Screen(Component.literal("Load Story Package")) {
 
     private var currentDirectory: File = StorySerializer.storageDir
     private val fileList = mutableListOf<File>()
@@ -26,9 +26,9 @@ class LoadStoryScreen(
         val cx = width / 2
         val bottomY = height - 32
 
-        // Botão Carregar Selecionado
+        // Load Selected Button
         addRenderableWidget(
-            Button.builder(Component.literal("Carregar Selecionado")) {
+            Button.builder(Component.literal("Load Selected")) {
                 val selected = selectedFile
                 if (selected != null && selected.isFile && selected.name.endsWith(".json")) {
                     val loaded = StorySerializer.load(selected)
@@ -40,9 +40,9 @@ class LoadStoryScreen(
             }.bounds(cx - 130, bottomY, 120, 20).build()
         )
 
-        // Botão Voltar/Cancelar
+        // Back/Cancel Button
         addRenderableWidget(
-            Button.builder(Component.literal("Voltar")) {
+            Button.builder(Component.literal("Back")) {
                 minecraft?.setScreen(parentEditor)
             }.bounds(cx + 10, bottomY, 120, 20).build()
         )
@@ -54,7 +54,7 @@ class LoadStoryScreen(
 
         val rootDir = StorySerializer.storageDir
         if (currentDirectory.canonicalPath != rootDir.canonicalPath && currentDirectory.parentFile != null) {
-            fileList.add(currentDirectory.parentFile) // [..] diretório pai
+            fileList.add(currentDirectory.parentFile) // [..] parent dir
         }
 
         val children = currentDirectory.listFiles()?.toList() ?: emptyList()
@@ -66,7 +66,7 @@ class LoadStoryScreen(
     }
 
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        // Fundo escuro do modal
+        // Dark background overlay
         guiGraphics.fill(0, 0, width, height, 0xCC000000.toInt())
 
         val boxW = 320
@@ -74,12 +74,12 @@ class LoadStoryScreen(
         val boxX = (width - boxW) / 2
         val boxY = 40
 
-        // Moldura do modal
+        // Modal Frame
         guiGraphics.fill(boxX, boxY, boxX + boxW, boxY + boxH, 0xFF1E1E24.toInt())
         guiGraphics.fill(boxX, boxY, boxX + boxW, boxY + 24, 0xFF2A2A34.toInt())
-        guiGraphics.drawCenteredString(font, "Carregar História - ${currentDirectory.name}", width / 2, boxY + 7, 0xFF00FFCC.toInt())
+        guiGraphics.drawCenteredString(font, "Load Story - ${currentDirectory.name}", width / 2, boxY + 7, 0xFF00FFCC.toInt())
 
-        // Renderizar lista de arquivos
+        // Render File List
         val listTop = boxY + 28
         val listBottom = boxY + boxH - 36
         val visibleItems = maxOf(1, (listBottom - listTop) / itemHeight)
@@ -96,7 +96,7 @@ class LoadStoryScreen(
 
             val isParentDir = file.canonicalPath == currentDirectory.parentFile?.canonicalPath
             val displayName = when {
-                isParentDir -> ".. [Voltar Pasta]"
+                isParentDir -> ".. [Parent Folder]"
                 file.isDirectory -> "📁 ${file.name}/"
                 else -> "📄 ${file.name}"
             }
@@ -130,7 +130,7 @@ class LoadStoryScreen(
             if (clickIdx in 0 until fileList.size) {
                 val file = fileList[clickIdx]
                 if (file == selectedFile) {
-                    // Clique duplo / ação rápida
+                    // Double click / quick action
                     if (file.isDirectory) {
                         currentDirectory = file
                         refreshFileList()

@@ -18,31 +18,37 @@ class StoryVariableManagerModalWidget(
     val onClose: () -> Unit,
     val onDataChanged: () -> Unit
 ) {
-
-    private val modalWidth = 340
-    private val modalHeight = 250
-    private val modalX = (screenWidth - modalWidth) / 2
-    private val modalY = (screenHeight - modalHeight) / 2
+    private val modalWidth = 470.coerceAtMost(screenWidth - 20)
+    private val modalHeight = 290.coerceAtMost(screenHeight - 20)
+    private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
+    private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
     private val closeButton: Button
     private val addVariableButton: Button
 
+    // Left Panel (Tree / List)
+    private val searchBox: EditBox
     private val expandedFolders = mutableSetOf<String>("GLOBAL_FOLDER")
-    private var activeSceneAssignPickerForVar: StoryVariable? = null
-    private var activeTypePickerForVar: StoryVariable? = null
+    private var scrollOffset: Double = 0.0
+    private var selectedVariable: StoryVariable? = project.variables.firstOrNull()
 
-    private val keyEditBoxes = mutableMapOf<String, EditBox>()
-    private val valEditBoxes = mutableMapOf<String, EditBox>()
+    // Right Panel (Detail Editor for Selected Variable)
+    private val nameBox: EditBox
+    private val valBox: EditBox
+    private val deleteVarBtn: Button
+    private val scopeBtn: Button
+    private val boolToggleBtn: Button
+    private val typeButtons = mutableListOf<Button>()
+
     private var focusedEditBox: EditBox? = null
-
-    private var scrollOffset = 0
+    private var isUpdatingFields = false
 
     init {
-        closeButton = Button.builder(Component.literal("✖ Fechar")) {
+        closeButton = Button.builder(Component.literal("✖ Close")) {
             onClose()
         }.bounds(modalX + modalWidth - 75, modalY + 5, 65, 16).build()
 
-        addVariableButton = Button.builder(Component.literal("➕ Nova Variável")) {
+        addVariableButton = Button.builder(Component.literal("➕ New Variable")) {
             var newId = "var_${project.variables.size + 1}"
             var count = 1
             while (project.variables.any { it.id == newId }) {
@@ -53,13 +59,154 @@ class StoryVariableManagerModalWidget(
                 id = newId,
                 name = newId,
                 type = VariableType.STRING,
-                defaultValue = "texto",
+                defaultValue = "text",
                 scope = VariableScope.GLOBAL,
                 sceneId = null
             )
             project.variables.add(newVar)
+            selectedVariable = newVar
+            syncEditorFields()
+            setFocus(nameBox)
             onDataChanged()
-        }.bounds(modalX + 15, modalY + 30, 110, 16).build()
+        }.bounds(modalX + 150, modalY + 5, 100, 16).build()
+
+        val listX = modalX + 12
+        val listY = modalY + 26
+        val listW = 175
+        val listH = modalHeight - 34
+
+        searchBox = EditBox(font, listX, listY, listW, 16, Component.literal("Search"))
+        searchBox.setHint(Component.literal("🔍 Filter variables..."))
+        searchBox.setEditable(true)
+        searchBox.active = true
+        searchBox.setResponder { scrollOffset = 0.0 }
+
+        val detailX = listX + listW + 8
+        val detailY = listY
+        val detailW = modalWidth - (listW + 28)
+
+        nameBox = EditBox(font, detailX + 8, detailY + 34, detailW - 16, 16, Component.literal("Variable ID"))
+        nameBox.setHint(Component.literal("Variable identifier (e.g. quest_step)"))
+        nameBox.setMaxLength(60)
+        nameBox.setEditable(true)
+        nameBox.active = true
+        nameBox.setResponder { valText ->
+            if (!isUpdatingFields) {
+                selectedVariable?.let { v ->
+                    v.id = valText
+                    v.name = valText
+                    onDataChanged()
+                }
+            }
+        }
+
+        val typeW = (detailW - 22) / 4
+        val types = listOf(
+            Pair(VariableType.BOOLEAN, "BOOL"),
+            Pair(VariableType.NUMBER, "NUM"),
+            Pair(VariableType.STRING, "TXT"),
+            Pair(VariableType.LIST, "LIST")
+        )
+
+        types.forEachIndexed { idx, (vType, label) ->
+            val btn = Button.builder(Component.literal(label)) {
+                selectedVariable?.let { v ->
+                    v.type = vType
+                    when (vType) {
+                        VariableType.BOOLEAN -> v.defaultValue = "true"
+                        VariableType.NUMBER -> if (v.defaultValue.toDoubleOrNull() == null) v.defaultValue = "0"
+                        VariableType.STRING -> if (v.defaultValue.isBlank()) v.defaultValue = "text"
+                        VariableType.LIST -> if (v.defaultValue.isBlank()) v.defaultValue = "item1, item2"
+                    }
+                    syncEditorFields()
+                    onDataChanged()
+                }
+            }.bounds(detailX + 8 + idx * (typeW + 2), detailY + 68, typeW, 16).build()
+            typeButtons.add(btn)
+        }
+
+        valBox = EditBox(font, detailX + 8, detailY + 102, detailW - 16, 16, Component.literal("Default Value"))
+        valBox.setHint(Component.literal("Initial default value"))
+        valBox.setMaxLength(100)
+        valBox.setEditable(true)
+        valBox.active = true
+        valBox.setResponder { valText ->
+            if (!isUpdatingFields) {
+                selectedVariable?.let { v ->
+                    if (v.type == VariableType.NUMBER) {
+                        val filtered = valText.filter { c -> c.isDigit() || c == '-' || c == '.' }
+                        if (filtered != valText) valBox.value = filtered
+                        v.defaultValue = filtered
+                    } else {
+                        v.defaultValue = valText
+                    }
+                    onDataChanged()
+                }
+            }
+        }
+
+        boolToggleBtn = Button.builder(Component.literal("✔ TRUE")) {
+            selectedVariable?.let { v ->
+                val isTrue = v.defaultValue.lowercase() == "true"
+                v.defaultValue = if (isTrue) "false" else "true"
+                syncEditorFields()
+                onDataChanged()
+            }
+        }.bounds(detailX + 8, detailY + 102, detailW - 16, 18).build()
+
+        scopeBtn = Button.builder(Component.literal("🌐 Global Scope")) {
+            selectedVariable?.let { v ->
+                // Cycle: Global -> Scene 0 -> Scene 1 -> ... -> Global
+                if (v.scope == VariableScope.GLOBAL) {
+                    val firstScene = project.scenes.firstOrNull()
+                    if (firstScene != null) {
+                        v.scope = VariableScope.SCENE_LOCAL
+                        v.sceneId = firstScene.id
+                    }
+                } else {
+                    val currentIdx = project.scenes.indexOfFirst { it.id == v.sceneId }
+                    if (currentIdx >= 0 && currentIdx < project.scenes.size - 1) {
+                        v.sceneId = project.scenes[currentIdx + 1].id
+                    } else {
+                        v.scope = VariableScope.GLOBAL
+                        v.sceneId = null
+                    }
+                }
+                syncEditorFields()
+                onDataChanged()
+            }
+        }.bounds(detailX + 8, detailY + 138, detailW - 16, 16).build()
+
+        deleteVarBtn = Button.builder(Component.literal("🗑️ Delete Variable")) {
+            selectedVariable?.let { v ->
+                project.variables.remove(v)
+                selectedVariable = project.variables.firstOrNull()
+                syncEditorFields()
+                onDataChanged()
+            }
+        }.bounds(detailX + 8, detailY + listH - 24, detailW - 16, 18).build()
+
+        syncEditorFields()
+    }
+
+    private fun syncEditorFields() {
+        isUpdatingFields = true
+        val v = selectedVariable
+        if (v != null) {
+            nameBox.value = v.id
+            valBox.value = v.defaultValue
+            val isTrue = v.defaultValue.lowercase() == "true"
+            boolToggleBtn.message = Component.literal(if (isTrue) "✔ TRUE" else "✖ FALSE")
+
+            val scopeText = if (v.scope == VariableScope.GLOBAL) {
+                "🌐 Scope: Global (All Scenes) ▾"
+            } else {
+                val sceneName = project.scenes.find { it.id == v.sceneId }?.title ?: "Scene"
+                "📁 Scope: Local (${font.plainSubstrByWidth(sceneName, 100)}) ▾"
+            }
+            scopeBtn.message = Component.literal(scopeText)
+        }
+        isUpdatingFields = false
     }
 
     private data class ListRow(
@@ -70,41 +217,35 @@ class StoryVariableManagerModalWidget(
     )
 
     private fun buildFlattenedRows(): List<ListRow> {
+        val query = searchBox.value.trim().lowercase()
         val rows = mutableListOf<ListRow>()
 
-        // 1. Pasta Global
-        val globalVars = project.variables.filter { it.scope == VariableScope.GLOBAL }
+        // 1. Global Folder
+        val globalVars = project.variables.filter {
+            it.scope == VariableScope.GLOBAL && (query.isEmpty() || it.id.lowercase().contains(query) || it.name.lowercase().contains(query))
+        }
         val globalHeaderKey = "GLOBAL_FOLDER"
-        val globalExpanded = expandedFolders.contains(globalHeaderKey)
-        rows.add(ListRow(true, globalHeaderKey, "🌐 Globais (${globalVars.size})"))
+        val globalExpanded = query.isNotEmpty() || expandedFolders.contains(globalHeaderKey)
+        rows.add(ListRow(true, globalHeaderKey, "🌐 Global (${globalVars.size})"))
 
         if (globalExpanded) {
             globalVars.forEach { rows.add(ListRow(false, globalHeaderKey, "", it)) }
         }
 
-        // 2. Pastas por Cena
+        // 2. Per-Scene Folders
         val localVars = project.variables.filter { it.scope == VariableScope.SCENE_LOCAL }
         val sceneGroups = localVars.groupBy { it.sceneId }
 
         project.scenes.forEach { scene ->
-            val sceneVars = sceneGroups[scene.id] ?: emptyList()
+            val sceneVars = (sceneGroups[scene.id] ?: emptyList()).filter {
+                query.isEmpty() || it.id.lowercase().contains(query) || it.name.lowercase().contains(query)
+            }
             val folderKey = "SCENE_${scene.id}"
-            val expanded = expandedFolders.contains(folderKey)
-            rows.add(ListRow(true, folderKey, "📁 ${scene.title} (${sceneVars.size} vars)"))
+            val expanded = query.isNotEmpty() || expandedFolders.contains(folderKey)
+            rows.add(ListRow(true, folderKey, "📁 ${scene.title} (${sceneVars.size})"))
 
             if (expanded) {
                 sceneVars.forEach { rows.add(ListRow(false, folderKey, "", it)) }
-            }
-        }
-
-        // Vars locais não atribuídas
-        val unassignedLocal = localVars.filter { varItem -> project.scenes.none { it.id == varItem.sceneId } }
-        if (unassignedLocal.isNotEmpty()) {
-            val folderKey = "UNASSIGNED_LOCAL"
-            val expanded = expandedFolders.contains(folderKey)
-            rows.add(ListRow(true, folderKey, "📁 Outras Locais (${unassignedLocal.size})"))
-            if (expanded) {
-                unassignedLocal.forEach { rows.add(ListRow(false, folderKey, "", it)) }
             }
         }
 
@@ -112,356 +253,228 @@ class StoryVariableManagerModalWidget(
     }
 
     fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        // Modal Background Frame
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF14141A.toInt())
-        guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + 24, 0xFF22222E.toInt())
+        guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + 22, 0xFF22222E.toInt())
         guiGraphics.fill(modalX, modalY, modalX + 1, modalY + modalHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
 
-        guiGraphics.drawString(font, "📋 Catálogo Central de Variáveis", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
+        guiGraphics.drawString(font, "📋 Variable Manager", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
 
         closeButton.render(guiGraphics, mouseX, mouseY, partialTick)
         addVariableButton.render(guiGraphics, mouseX, mouseY, partialTick)
 
-        val listX = modalX + 15
-        val listY = modalY + 52
-        val listW = modalWidth - 30
-        val itemH = 24
-        val maxVisible = 7
-        val listH = itemH * maxVisible
+        // --- LEFT PANEL (Tree / List) ---
+        val listX = modalX + 12
+        val listY = modalY + 26
+        val listW = 175
+        val listH = modalHeight - 34
 
-        guiGraphics.fill(listX, listY, listX + listW, listY + listH, 0xFF0D0D12.toInt())
+        searchBox.render(guiGraphics, mouseX, mouseY, partialTick)
+
+        val contentY = listY + 20
+        val contentH = listH - 20
+        guiGraphics.fill(listX, contentY, listX + listW, contentY + contentH, 0xFF0D0D12.toInt())
+        guiGraphics.fill(listX + listW, contentY, listX + listW + 1, contentY + contentH, 0xFF282836.toInt())
 
         val rows = buildFlattenedRows()
-        val startIndex = scrollOffset.coerceIn(0, maxOf(0, rows.size - maxVisible))
-        val endIndex = (startIndex + maxVisible).coerceAtMost(rows.size)
+        val itemH = 20
+        val totalListHeight = rows.size * itemH + 4
 
-        for (i in startIndex until endIndex) {
-            val idx = i - startIndex
-            val row = rows[i]
-            val iy = listY + idx * itemH
+        guiGraphics.enableScissor(listX, contentY, listX + listW, contentY + contentH)
+        rows.forEachIndexed { idx, row ->
+            val iy = (contentY + 4 + idx * itemH - scrollOffset).toInt()
+            if (iy + itemH >= contentY && iy <= contentY + contentH) {
+                if (row.isFolderHeader) {
+                    val isExpanded = searchBox.value.isNotBlank() || expandedFolders.contains(row.folderKey)
+                    val icon = if (isExpanded) "▼" else "▶"
+                    val isHovered = mouseX >= listX + 2 && mouseX <= listX + listW - 2 && mouseY >= iy && mouseY <= iy + itemH
+                    val bg = if (isHovered) 0xFF222232.toInt() else 0xFF181822.toInt()
 
-            if (row.isFolderHeader) {
-                val isHovered = mouseX >= listX && mouseX <= listX + listW && mouseY >= iy && mouseY < iy + itemH
-                val isExpanded = expandedFolders.contains(row.folderKey)
-                val icon = if (isExpanded) "▼" else "▶"
-                val bg = if (isHovered) 0xFF3D5AFE.toInt() else 0xFF1E1E2A.toInt()
-
-                guiGraphics.fill(listX + 2, iy + 1, listX + listW - 2, iy + itemH - 1, bg)
-                guiGraphics.drawString(font, "$icon ${row.folderLabel}", listX + 8, iy + 6, 0xFFFFD700.toInt(), false)
-            } else {
-                val v = row.variable ?: continue
-                val isHovered = mouseX >= listX && mouseX <= listX + listW && mouseY >= iy && mouseY < iy + itemH
-                val bg = if (isHovered) 0xFF2A2A38.toInt() else 0xFF161620.toInt()
-
-                guiGraphics.fill(listX + 2, iy + 1, listX + listW - 2, iy + itemH - 1, bg)
-
-                // 1. Campo ID da Chave
-                val keyBox = keyEditBoxes.getOrPut(v.id) {
-                    val eb = EditBox(font, listX + 6, iy + 4, 70, 14, Component.literal("ID"))
-                    eb.value = v.id
-                    eb.setMaxLength(60)
-                    eb.setResponder { valText ->
-                        v.id = valText
-                        v.name = valText
-                        onDataChanged()
-                    }
-                    eb
-                }
-                keyBox.x = listX + 6
-                keyBox.y = iy + 4
-                keyBox.render(guiGraphics, mouseX, mouseY, partialTick)
-
-                // 2. Botão Mini-Lista de Seleção de Tipo (BOOL / NUM / TXT / LIST)
-                val typeLabel = when (v.type) {
-                    VariableType.BOOLEAN -> "BOOL ▾"
-                    VariableType.NUMBER -> "NUM ▾"
-                    VariableType.STRING -> "TXT ▾"
-                    VariableType.LIST -> "LIST ▾"
-                }
-                val typeBtnX = listX + 80
-                val typeBtnW = 42
-                val isTypeHovered = mouseX >= typeBtnX && mouseX <= typeBtnX + typeBtnW && mouseY >= iy + 4 && mouseY <= iy + 18
-                guiGraphics.fill(typeBtnX, iy + 4, typeBtnX + typeBtnW, iy + 18, if (isTypeHovered) 0xFF00ACC1.toInt() else 0xFF00838F.toInt())
-                guiGraphics.drawString(font, typeLabel, typeBtnX + 4, iy + 6, 0xFFFFFFFF.toInt(), false)
-
-                // 3. Controle de Valor conforme o Tipo
-                val valX = listX + 126
-                val valW = 95
-
-                if (v.type == VariableType.BOOLEAN) {
-                    val isTrue = v.defaultValue.lowercase() == "true"
-                    val boolLabel = if (isTrue) "✔ TRUE" else "✖ FALSE"
-                    val boolBg = if (isTrue) 0xFF2E7D32.toInt() else 0xFFC62828.toInt()
-                    val isBoolHovered = mouseX >= valX && mouseX <= valX + valW && mouseY >= iy + 4 && mouseY <= iy + 18
-
-                    guiGraphics.fill(valX, iy + 4, valX + valW, iy + 18, if (isBoolHovered) boolBg or 0x404040 else boolBg)
-                    guiGraphics.drawString(font, boolLabel, valX + 22, iy + 6, 0xFFFFFFFF.toInt(), false)
+                    guiGraphics.fill(listX + 2, iy, listX + listW - 2, iy + itemH - 1, bg)
+                    val truncLabel = font.plainSubstrByWidth("$icon ${row.folderLabel}", listW - 8)
+                    guiGraphics.drawString(font, truncLabel, listX + 6, iy + 4, 0xFFFFD700.toInt(), false)
                 } else {
-                    val valBox = valEditBoxes.getOrPut("val_${v.id}") {
-                        val eb = EditBox(font, valX, iy + 4, valW, 14, Component.literal("Valor"))
-                        eb.value = v.defaultValue
-                        eb.setMaxLength(100)
-                        eb.setResponder { valText ->
-                            if (v.type == VariableType.NUMBER) {
-                                val filtered = valText.filter { char -> char.isDigit() || char == '-' || char == '.' }
-                                if (filtered != valText) eb.value = filtered
-                                v.defaultValue = filtered
-                            } else if (v.type == VariableType.STRING) {
-                                if (valText.matches(Regex("^-?\\d+(\\.\\d+)?$"))) {
-                                    val filtered = valText + "_txt"
-                                    eb.value = filtered
-                                    v.defaultValue = filtered
-                                } else {
-                                    v.defaultValue = valText
-                                }
-                            } else {
-                                v.defaultValue = valText
-                            }
-                            onDataChanged()
-                        }
-                        eb
+                    val v = row.variable ?: return@forEachIndexed
+                    val isSelected = (v == selectedVariable)
+                    val isHovered = mouseX >= listX + 2 && mouseX <= listX + listW - 2 && mouseY >= iy && mouseY <= iy + itemH
+                    val bg = if (isSelected) 0xFF1B3A4B.toInt() else if (isHovered) 0xFF1F1F2C.toInt() else 0xFF14141C.toInt()
+                    val border = if (isSelected) 0xFF00FFCC.toInt() else 0x00000000
+
+                    guiGraphics.fill(listX + 2, iy, listX + listW - 2, iy + itemH - 1, bg)
+                    if (border != 0) {
+                        guiGraphics.fill(listX + 2, iy, listX + listW - 2, iy + 1, border)
+                        guiGraphics.fill(listX + 2, iy + itemH - 2, listX + listW - 2, iy + itemH - 1, border)
                     }
-                    valBox.x = valX
-                    valBox.y = iy + 4
-                    valBox.render(guiGraphics, mouseX, mouseY, partialTick)
+
+                    val typeTag = when (v.type) {
+                        VariableType.BOOLEAN -> "B"
+                        VariableType.NUMBER -> "#"
+                        VariableType.STRING -> "T"
+                        VariableType.LIST -> "L"
+                    }
+                    val typeBg = when (v.type) {
+                        VariableType.BOOLEAN -> 0xFF2E7D32.toInt()
+                        VariableType.NUMBER -> 0xFFE65100.toInt()
+                        VariableType.STRING -> 0xFF00838F.toInt()
+                        VariableType.LIST -> 0xFF6A1B9A.toInt()
+                    }
+
+                    guiGraphics.fill(listX + 6, iy + 3, listX + 18, iy + 15, typeBg)
+                    guiGraphics.drawString(font, typeTag, listX + 9, iy + 4, 0xFFFFFFFF.toInt(), false)
+
+                    val varTitle = font.plainSubstrByWidth(v.id, listW - 32)
+                    guiGraphics.drawString(font, varTitle, listX + 22, iy + 4, if (isSelected) 0xFF00FFCC.toInt() else 0xFFCCCCCC.toInt(), false)
                 }
-
-                // 4. Botão Mover Pasta / Escopo (APENAS OS 2 EMOJIS, SEM TEXTO)
-                val assignBtnX = listX + 226
-                val assignBtnW = 42
-                val assignEmojis = if (v.scope == VariableScope.GLOBAL) "🌐 ⇄" else "📁 ⇄"
-
-                val isAssignHovered = mouseX >= assignBtnX && mouseX <= assignBtnX + assignBtnW && mouseY >= iy + 4 && mouseY <= iy + 18
-                val assignBg = if (isAssignHovered) 0xFF3D5AFE.toInt() else 0xFF1E1E2E.toInt()
-                guiGraphics.fill(assignBtnX, iy + 4, assignBtnX + assignBtnW, iy + 18, assignBg)
-                guiGraphics.drawString(font, assignEmojis, assignBtnX + 8, iy + 6, 0xFF00FFCC.toInt(), false)
-
-                // 5. Botão Excluir (🗑)
-                val delBtnX = listX + listW - 22
-                val isDelHovered = mouseX >= delBtnX && mouseX <= delBtnX + 18 && mouseY >= iy + 4 && mouseY <= iy + 18
-                guiGraphics.fill(delBtnX, iy + 4, delBtnX + 18, iy + 18, if (isDelHovered) 0xFFD32F2F.toInt() else 0xFFC62828.toInt())
-                guiGraphics.drawString(font, "🗑", delBtnX + 4, iy + 5, 0xFFFFFFFF.toInt(), false)
             }
         }
+        guiGraphics.disableScissor()
 
-        // Renderizar Mini-Lista Pop-up de Seleção de Tipo
-        val typeVar = activeTypePickerForVar
-        if (typeVar != null) {
-            renderTypePickerPopup(guiGraphics, typeVar, mouseX, mouseY)
-        }
+        // --- RIGHT PANEL (Detail Editor for Selected Variable) ---
+        val detailX = listX + listW + 8
+        val detailY = listY
+        val detailW = modalWidth - (listW + 28)
+        val detailH = listH
 
-        // Renderizar Pop-up de Atribuição de Cena
-        val pickerVar = activeSceneAssignPickerForVar
-        if (pickerVar != null) {
-            renderSceneAssignPickerPopup(guiGraphics, pickerVar, mouseX, mouseY)
-        }
-    }
+        guiGraphics.fill(detailX, detailY, detailX + detailW, detailY + detailH, 0xFF0F0F16.toInt())
+        guiGraphics.fill(detailX, detailY, detailX + detailW, detailY + 1, 0xFF282836.toInt())
+        guiGraphics.fill(detailX, detailY + detailH - 1, detailX + detailW, detailY + detailH, 0xFF282836.toInt())
+        guiGraphics.fill(detailX + detailW - 1, detailY, detailX + detailW, detailY + detailH, 0xFF282836.toInt())
 
-    private fun renderTypePickerPopup(guiGraphics: GuiGraphics, v: StoryVariable, mouseX: Int, mouseY: Int) {
-        val popW = 95
-        val itemH = 18
-        val popH = itemH * 4 + 4
-        val popX = (modalX + 90).coerceIn(10, screenWidth - popW - 10)
-        val popY = (modalY + 60).coerceIn(10, screenHeight - popH - 10)
+        val v = selectedVariable
+        if (v == null) {
+            guiGraphics.drawCenteredString(font, "No variable selected.", detailX + detailW / 2, detailY + detailH / 2 - 10, 0xFF888899.toInt())
+            guiGraphics.drawCenteredString(font, "Click [➕ New Variable] to create.", detailX + detailW / 2, detailY + detailH / 2 + 4, 0xFF666677.toInt())
+        } else {
+            // Header
+            guiGraphics.drawString(font, "✏️ Edit Variable", detailX + 8, detailY + 6, 0xFF00FFCC.toInt(), false)
 
-        guiGraphics.fill(popX, popY, popX + popW, popY + popH, 0xF0181824.toInt())
-        guiGraphics.fill(popX, popY, popX + 1, popY + popH, 0xFF00ACC1.toInt())
-        guiGraphics.fill(popX + popW - 1, popY, popX + popW, popY + popH, 0xFF00ACC1.toInt())
-        guiGraphics.fill(popX, popY + popH - 1, popX + popW, popY + popH, 0xFF00ACC1.toInt())
+            // 1. Variable Name / ID
+            guiGraphics.drawString(font, "Variable ID / Title:", detailX + 8, detailY + 22, 0xFFA0A0A0.toInt(), false)
+            nameBox.render(guiGraphics, mouseX, mouseY, partialTick)
 
-        val types = listOf(
-            Pair("BOOL (Lógico)", VariableType.BOOLEAN),
-            Pair("NUM (Número)", VariableType.NUMBER),
-            Pair("TXT (Texto)", VariableType.STRING),
-            Pair("LIST (Lista)", VariableType.LIST)
-        )
+            // 2. Type Selector
+            guiGraphics.drawString(font, "Type:", detailX + 8, detailY + 56, 0xFFA0A0A0.toInt(), false)
+            val types = listOf(VariableType.BOOLEAN, VariableType.NUMBER, VariableType.STRING, VariableType.LIST)
+            typeButtons.forEachIndexed { idx, btn ->
+                btn.render(guiGraphics, mouseX, mouseY, partialTick)
+                if (v.type == types[idx]) {
+                    guiGraphics.fill(btn.x, btn.y + btn.height - 2, btn.x + btn.width, btn.y + btn.height, 0xFF00FFCC.toInt())
+                }
+            }
 
-        types.forEachIndexed { idx, (label, t) ->
-            val iy = popY + 2 + idx * itemH
-            val isHovered = mouseX >= popX && mouseX <= popX + popW && mouseY >= iy && mouseY < iy + itemH
-            guiGraphics.fill(popX + 2, iy, popX + popW - 2, iy + itemH - 2, if (isHovered) 0xFF00ACC1.toInt() else 0xFF22222E.toInt())
-            guiGraphics.drawString(font, label, popX + 6, iy + 4, if (v.type == t) 0xFF00FFCC.toInt() else 0xFFFFFFFF.toInt(), false)
-        }
-    }
+            // 3. Default Value
+            guiGraphics.drawString(font, "Default Value:", detailX + 8, detailY + 90, 0xFFA0A0A0.toInt(), false)
+            if (v.type == VariableType.BOOLEAN) {
+                boolToggleBtn.render(guiGraphics, mouseX, mouseY, partialTick)
+            } else {
+                valBox.render(guiGraphics, mouseX, mouseY, partialTick)
+            }
 
-    private fun renderSceneAssignPickerPopup(guiGraphics: GuiGraphics, v: StoryVariable, mouseX: Int, mouseY: Int) {
-        val popW = 160
-        val optionsCount = project.scenes.size + 1
-        val itemH = 18
-        val popH = itemH * optionsCount + 4
-        val popX = (modalX + (modalWidth - popW) / 2).coerceIn(10, screenWidth - popW - 10)
-        val popY = (modalY + (modalHeight - popH) / 2).coerceIn(10, screenHeight - popH - 10)
+            // 4. Scope
+            guiGraphics.drawString(font, "Scope Assignment:", detailX + 8, detailY + 126, 0xFFA0A0A0.toInt(), false)
+            scopeBtn.render(guiGraphics, mouseX, mouseY, partialTick)
 
-        guiGraphics.fill(popX, popY, popX + popW, popY + popH, 0xF0181824.toInt())
-        guiGraphics.fill(popX, popY, popX + 1, popY + popH, 0xFF00FFCC.toInt())
-        guiGraphics.fill(popX + popW - 1, popY, popX + popW, popY + popH, 0xFF00FFCC.toInt())
-        guiGraphics.fill(popX, popY + popH - 1, popX + popW, popY + popH, 0xFF00FFCC.toInt())
-
-        // Opção 1: Global
-        val isGlobHovered = mouseX >= popX && mouseX <= popX + popW && mouseY >= popY + 2 && mouseY < popY + 2 + itemH
-        guiGraphics.fill(popX + 2, popY + 2, popX + popW - 2, popY + itemH, if (isGlobHovered) 0xFF3D5AFE.toInt() else 0xFF22222E.toInt())
-        guiGraphics.drawString(font, "🌐 Mover p/ Global", popX + 6, popY + 6, 0xFF00FFCC.toInt(), false)
-
-        // Opções das Cenas do Projeto
-        project.scenes.forEachIndexed { sIdx, scene ->
-            val iy = popY + 2 + (sIdx + 1) * itemH
-            val isHovered = mouseX >= popX && mouseX <= popX + popW && mouseY >= iy && mouseY < iy + itemH
-            guiGraphics.fill(popX + 2, iy, popX + popW - 2, iy + itemH - 2, if (isHovered) 0xFF3D5AFE.toInt() else 0xFF22222E.toInt())
-            guiGraphics.drawString(font, "📁 Mover p/ ${scene.title}", popX + 6, iy + 4, 0xFFFFFFFF.toInt(), false)
+            // 5. Delete Button
+            deleteVarBtn.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }
 
-    private fun setFocusedBox(target: EditBox?) {
-        keyEditBoxes.values.forEach { it.isFocused = (it == target) }
-        valEditBoxes.values.forEach { it.isFocused = (it == target) }
-        focusedEditBox = target
+    private fun setFocus(box: EditBox?) {
+        searchBox.isFocused = (searchBox == box)
+        nameBox.isFocused = (nameBox == box)
+        valBox.isFocused = (valBox == box)
+        focusedEditBox = box
+        box?.isFocused = true
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        val typeVar = activeTypePickerForVar
-        if (typeVar != null) {
-            val popW = 95
-            val itemH = 18
-            val popH = itemH * 4 + 4
-            val popX = (modalX + 90).coerceIn(10, screenWidth - popW - 10)
-            val popY = (modalY + 60).coerceIn(10, screenHeight - popH - 10)
-
-            if (mouseX >= popX && mouseX <= popX + popW && mouseY >= popY && mouseY <= popY + popH) {
-                val idx = ((mouseY - (popY + 2)) / itemH).toInt()
-                when (idx) {
-                    0 -> { typeVar.type = VariableType.BOOLEAN; typeVar.defaultValue = "true" }
-                    1 -> { typeVar.type = VariableType.NUMBER; typeVar.defaultValue = "0" }
-                    2 -> { typeVar.type = VariableType.STRING; typeVar.defaultValue = "texto" }
-                    3 -> { typeVar.type = VariableType.LIST; typeVar.defaultValue = "item1, item2" }
-                }
-                onDataChanged()
-                activeTypePickerForVar = null
-                return true
-            } else {
-                activeTypePickerForVar = null
-                return true
-            }
-        }
-
-        val pickerVar = activeSceneAssignPickerForVar
-        if (pickerVar != null) {
-            val popW = 160
-            val optionsCount = project.scenes.size + 1
-            val itemH = 18
-            val popH = itemH * optionsCount + 4
-            val popX = (modalX + (modalWidth - popW) / 2).coerceIn(10, screenWidth - popW - 10)
-            val popY = (modalY + (modalHeight - popH) / 2).coerceIn(10, screenHeight - popH - 10)
-
-            if (mouseX >= popX && mouseX <= popX + popW && mouseY >= popY && mouseY <= popY + popH) {
-                val idx = ((mouseY - (popY + 2)) / itemH).toInt()
-                if (idx == 0) {
-                    pickerVar.scope = VariableScope.GLOBAL
-                    pickerVar.sceneId = null
-                } else if (idx - 1 in project.scenes.indices) {
-                    val scene = project.scenes[idx - 1]
-                    pickerVar.scope = VariableScope.SCENE_LOCAL
-                    pickerVar.sceneId = scene.id
-                }
-                onDataChanged()
-                activeSceneAssignPickerForVar = null
-                return true
-            } else {
-                activeSceneAssignPickerForVar = null
-                return true
-            }
-        }
-
         if (closeButton.mouseClicked(mouseX, mouseY, button)) return true
         if (addVariableButton.mouseClicked(mouseX, mouseY, button)) return true
 
-        val listX = modalX + 15
-        val listY = modalY + 52
-        val listW = modalWidth - 30
-        val itemH = 22
-        val maxVisible = 7
+        val listX = modalX + 12
+        val listY = modalY + 26
+        val listW = 175
+        val listH = modalHeight - 34
+        val contentY = listY + 20
+        val contentH = listH - 20
 
-        val rows = buildFlattenedRows()
-        if (mouseX >= listX && mouseX <= listX + listW && mouseY >= listY && mouseY < listY + itemH * maxVisible) {
-            val idx = ((mouseY - listY) / itemH).toInt() + scrollOffset
-            if (idx in rows.indices) {
-                val row = rows[idx]
-                if (row.isFolderHeader) {
-                    if (expandedFolders.contains(row.folderKey)) {
-                        expandedFolders.remove(row.folderKey)
-                    } else {
-                        expandedFolders.add(row.folderKey)
+        // Search Box
+        if (searchBox.mouseClicked(mouseX, mouseY, button)) {
+            setFocus(searchBox)
+            return true
+        }
+
+        // Left List Click
+        if (mouseX >= listX && mouseX <= listX + listW && mouseY >= contentY && mouseY <= contentY + contentH) {
+            val rows = buildFlattenedRows()
+            val itemH = 20
+            rows.forEachIndexed { idx, row ->
+                val iy = contentY + 4 + idx * itemH - scrollOffset
+                if (mouseY >= iy && mouseY <= iy + itemH) {
+                    if (row.isFolderHeader) {
+                        if (expandedFolders.contains(row.folderKey)) {
+                            expandedFolders.remove(row.folderKey)
+                        } else {
+                            expandedFolders.add(row.folderKey)
+                        }
+                    } else if (row.variable != null) {
+                        selectedVariable = row.variable
+                        syncEditorFields()
+                        setFocus(nameBox)
                     }
                     return true
-                } else {
-                    val v = row.variable ?: return true
-                    val iy = listY + ((mouseY - listY) / itemH).toInt() * itemH
-
-                    // Clique no campo ID
-                    val keyBox = keyEditBoxes[v.id]
-                    if (keyBox != null && keyBox.mouseClicked(mouseX, mouseY, button)) {
-                        setFocusedBox(keyBox)
-                        return true
-                    }
-
-                    // Clique no Botão Mini-Lista de Tipo
-                    val typeBtnX = listX + 80
-                    val typeBtnW = 42
-                    if (mouseX >= typeBtnX && mouseX <= typeBtnX + typeBtnW && mouseY >= iy + 4 && mouseY <= iy + 18) {
-                        activeTypePickerForVar = v
-                        return true
-                    }
-
-                    // Clique no Controle de Valor
-                    val valX = listX + 126
-                    val valW = 95
-                    if (v.type == VariableType.BOOLEAN) {
-                        if (mouseX >= valX && mouseX <= valX + valW && mouseY >= iy + 4 && mouseY <= iy + 18) {
-                            val isTrue = v.defaultValue.lowercase() == "true"
-                            v.defaultValue = if (isTrue) "false" else "true"
-                            onDataChanged()
-                            return true
-                        }
-                    } else {
-                        val valBox = valEditBoxes["val_${v.id}"]
-                        if (valBox != null && valBox.mouseClicked(mouseX, mouseY, button)) {
-                            setFocusedBox(valBox)
-                            return true
-                        }
-                    }
-
-                    // Clique no Botão Escopo / Mover Pasta (Apenas os 2 Emojis)
-                    val assignBtnX = listX + 226
-                    val assignBtnW = 42
-                    if (mouseX >= assignBtnX && mouseX <= assignBtnX + assignBtnW && mouseY >= iy + 4 && mouseY <= iy + 18) {
-                        activeSceneAssignPickerForVar = v
-                        return true
-                    }
-
-                    // Clique no Botão Excluir (🗑)
-                    val delBtnX = listX + listW - 22
-                    if (mouseX >= delBtnX && mouseX <= delBtnX + 18 && mouseY >= iy + 4 && mouseY <= iy + 18) {
-                        project.variables.remove(v)
-                        keyEditBoxes.remove(v.id)
-                        valEditBoxes.remove("val_${v.id}")
-                        onDataChanged()
-                        return true
-                    }
                 }
             }
         }
-        setFocusedBox(null)
+
+        // Right Detail Panel Click
+        val v = selectedVariable
+        if (v != null) {
+            if (nameBox.mouseClicked(mouseX, mouseY, button)) {
+                setFocus(nameBox)
+                return true
+            }
+
+            typeButtons.forEach { btn ->
+                if (btn.mouseClicked(mouseX, mouseY, button)) return true
+            }
+
+            if (v.type == VariableType.BOOLEAN) {
+                if (boolToggleBtn.mouseClicked(mouseX, mouseY, button)) return true
+            } else {
+                if (valBox.mouseClicked(mouseX, mouseY, button)) {
+                    setFocus(valBox)
+                    return true
+                }
+            }
+
+            if (scopeBtn.mouseClicked(mouseX, mouseY, button)) return true
+            if (deleteVarBtn.mouseClicked(mouseX, mouseY, button)) return true
+        }
+
+        setFocus(null)
         return true
     }
 
     fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
-        val rows = buildFlattenedRows()
-        val maxVisible = 7
-        if (rows.size > maxVisible) {
-            if (scrollY > 0) {
-                scrollOffset = (scrollOffset - 1).coerceAtLeast(0)
-            } else if (scrollY < 0) {
-                scrollOffset = (scrollOffset + 1).coerceAtMost(rows.size - maxVisible)
+        val listX = modalX + 12
+        val listY = modalY + 26
+        val listW = 175
+        val listH = modalHeight - 34
+        val contentY = listY + 20
+        val contentH = listH - 20
+
+        if (mouseX >= listX && mouseX <= listX + listW && mouseY >= contentY && mouseY <= contentY + contentH) {
+            val rows = buildFlattenedRows()
+            val itemH = 20
+            val totalH = rows.size * itemH + 4
+            val maxScroll = maxOf(0.0, totalH.toDouble() - contentH)
+            if (scrollY < 0) {
+                scrollOffset = (scrollOffset + 24).coerceAtMost(maxScroll)
+            } else if (scrollY > 0) {
+                scrollOffset = (scrollOffset - 24).coerceAtLeast(0.0)
             }
             return true
         }
@@ -481,15 +494,7 @@ class StoryVariableManagerModalWidget(
         if (focus != null && focus.isFocused) {
             if (focus.keyPressed(keyCode, scanCode, modifiers)) return true
         }
-        if (keyCode == 256) {
-            if (activeTypePickerForVar != null) {
-                activeTypePickerForVar = null
-                return true
-            }
-            if (activeSceneAssignPickerForVar != null) {
-                activeSceneAssignPickerForVar = null
-                return true
-            }
+        if (keyCode == 256) { // ESC
             onClose()
             return true
         }

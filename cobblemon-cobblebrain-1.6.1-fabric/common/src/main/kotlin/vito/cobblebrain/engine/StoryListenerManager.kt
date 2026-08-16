@@ -7,8 +7,8 @@ import vito.cobblebrain.model.NodeType
 object StoryListenerManager {
 
     /**
-     * Chamado periodicamente (ex: a cada 10 ou 20 ticks) para checar gatilhos contínuos
-     * como tempo decorrido, coordenadas do jogador, bioma, dia/noite, clima, etc.
+     * Called periodically (e.g. every 10 or 20 ticks) to check continuous triggers
+     * such as elapsed time, player coordinates, biome, day/night, weather, etc.
      */
     fun onServerTick() {
         val activeList = StoryExecutor.activeStories.values.toList()
@@ -16,7 +16,7 @@ object StoryListenerManager {
             val player = instance.context.player ?: continue
             val scene = instance.project.getActiveScene() ?: continue
 
-            // Verificar gatilhos passivos/reativos que não dependem de sinal de entrada
+            // Check passive/reactive triggers that do not depend on input signal
             val reactiveTriggers = scene.nodes.filter { node ->
                 node.nodeType == NodeType.TRIGGER && node.params["requireInputSignal"] == "false"
             }
@@ -59,6 +59,13 @@ object StoryListenerManager {
                             else -> curLvl >= minLvl
                         }
                     }
+                    "VARIABLE_VALUE_CHECK" -> {
+                        val varKey = trigNode.params["varKey"] ?: "var_1"
+                        val op = trigNode.params["varOp"] ?: ">="
+                        val targetVal = trigNode.params["varValue"] ?: "100"
+                        val actualVal = instance.context.variables[varKey]
+                        StoryExecutor.evaluateVariableCondition(actualVal, op, targetVal)
+                    }
                     else -> false
                 }
 
@@ -82,6 +89,7 @@ object StoryListenerManager {
     }
 
     fun onBattleDefeat(player: ServerPlayer) {
+        StoryMissionManager.onPlayerDeath(player)
         dispatchReactiveTrigger(player, "BATTLE_DEFEAT", emptyMap())
     }
 
@@ -98,12 +106,17 @@ object StoryListenerManager {
     }
 
     fun onEntityDied(entity: Entity, killer: Entity?) {
+        if (entity is ServerPlayer) {
+            StoryMissionManager.onPlayerDeath(entity)
+        }
         val player = killer as? ServerPlayer ?: return
         val entityId = entity.type.toString()
         dispatchReactiveTrigger(player, "ENTITY_DIED", mapOf("entityType" to entityId))
     }
 
     private fun dispatchReactiveTrigger(player: ServerPlayer, triggerType: String, eventData: Map<String, String>) {
+        StoryMissionManager.onTriggerFired(player, triggerType)
+
         val activeList = StoryExecutor.activeStories.values.filter { it.context.player?.uuid == player.uuid }
         for (instance in activeList) {
             val scene = instance.project.getActiveScene() ?: continue

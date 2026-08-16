@@ -19,7 +19,7 @@ class SceneInspectorWidget(
     val onDataChanged: () -> Unit
 ) {
     private data class InspectorLabel(val text: String, val relY: Int)
-    private data class InspectorWidgetItem(val widget: GuiEventListener, val relY: Int, val height: Int)
+    private data class InspectorWidgetItem(val widget: GuiEventListener, val relX: Int, val relY: Int, val width: Int, val height: Int)
 
     val childrenWidgets = mutableListOf<GuiEventListener>()
     private val widgetItems = mutableListOf<InspectorWidgetItem>()
@@ -48,10 +48,10 @@ class SceneInspectorWidget(
         val inputW = panelWidth - 12
         var relY = 4
 
-        labels.add(InspectorLabel("Nome da Cena:", relY))
+        labels.add(InspectorLabel("Scene Name:", relY))
         relY += 12
 
-        val tEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Nome"))
+        val tEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Name"))
         tEdit.setMaxLength(50)
         tEdit.value = scene.title
         tEdit.setResponder { valText ->
@@ -61,10 +61,10 @@ class SceneInspectorWidget(
         addWidgetItem(tEdit, relY, 16)
         relY += 22
 
-        labels.add(InspectorLabel("Descrição:", relY))
+        labels.add(InspectorLabel("Description:", relY))
         relY += 12
 
-        val descEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 36, Component.literal("Descrição"))
+        val descEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 36, Component.literal("Description"))
         descEdit.setMaxLength(250)
         descEdit.value = scene.description
         descEdit.setResponder { valText ->
@@ -74,11 +74,11 @@ class SceneInspectorWidget(
         addWidgetItem(descEdit, relY, 36)
         relY += 42
 
-        labels.add(InspectorLabel("Propriedades Globais:", relY))
+        labels.add(InspectorLabel("Global Properties:", relY))
         relY += 12
 
-        // Alternador de Cena Inicial da História
-        val startLabel = if (scene.isStartScene) "🟢 Cena Inicial: SIM" else "⚪ Cena Inicial: NÃO"
+        // Toggle Start Scene
+        val startLabel = if (scene.isStartScene) "🟢 Start Scene: YES" else "⚪ Start Scene: NO"
         val startBtn = Button.builder(Component.literal(startLabel)) {
             scene.isStartScene = !scene.isStartScene
             buildUi()
@@ -87,8 +87,8 @@ class SceneInspectorWidget(
         addWidgetItem(startBtn, relY, 16)
         relY += 22
 
-        // Alternador de Cena Final da História
-        val endLabel = if (scene.isEndScene) "🛑 Cena Final: SIM" else "⚪ Cena Final: NÃO"
+        // Toggle End Scene
+        val endLabel = if (scene.isEndScene) "🛑 End Scene: YES" else "⚪ End Scene: NO"
         val endBtn = Button.builder(Component.literal(endLabel)) {
             scene.isEndScene = !scene.isEndScene
             buildUi()
@@ -102,25 +102,42 @@ class SceneInspectorWidget(
     }
 
     private fun addWidgetItem(widget: GuiEventListener, relY: Int, height: Int) {
+        if (widget is EditBox) {
+            widget.setEditable(true)
+            widget.active = true
+        }
         childrenWidgets.add(widget)
-        widgetItems.add(InspectorWidgetItem(widget, relY, height))
+        val relX = when (widget) {
+            is Button -> widget.x - panelX
+            is EditBox -> widget.x - panelX
+            else -> 6
+        }
+        val width = when (widget) {
+            is Button -> widget.width
+            is EditBox -> widget.width
+            else -> panelWidth - 12
+        }
+        widgetItems.add(InspectorWidgetItem(widget, relX, relY, width, height))
     }
 
     private fun updateWidgetPositions() {
-        val inputX = panelX + 6
         widgetItems.forEach { item ->
+            val px = panelX + item.relX
             val py = (panelY + 20 + item.relY - scrollOffset).toInt()
             if (item.widget is Button) {
+                item.widget.x = px
                 item.widget.y = py
+                item.widget.width = item.width
             } else if (item.widget is EditBox) {
-                item.widget.x = inputX
+                item.widget.x = px
                 item.widget.y = py
+                item.widget.width = item.width
             }
         }
     }
 
     fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        // Background do Painel Inspetor
+        // Inspector Panel Background
         guiGraphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xF0141418.toInt())
         guiGraphics.fill(panelX, panelY, panelX + 1, panelY + panelHeight, 0xFF3D5AFE.toInt())
 
@@ -163,11 +180,11 @@ class SceneInspectorWidget(
             guiGraphics.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, 0xFF00FFCC.toInt())
         }
 
-        // Cabeçalho Fixo no Topo
+        // Fixed Top Header
         guiGraphics.fill(panelX, panelY, panelX + panelWidth, panelY + 20, 0xFF22222A.toInt())
         guiGraphics.fill(panelX, panelY + 19, panelX + panelWidth, panelY + 20, 0xFF3D5AFE.toInt())
 
-        val headerTitle = font.plainSubstrByWidth("Cena: ${scene.title}", panelWidth - 26)
+        val headerTitle = font.plainSubstrByWidth("Scene: ${scene.title}", panelWidth - 26)
         guiGraphics.drawString(font, headerTitle, panelX + 6, panelY + 5, 0xFF00FFCC.toInt(), false)
 
         closeBtn.render(guiGraphics, mouseX, mouseY, partialTick)
@@ -228,7 +245,11 @@ class SceneInspectorWidget(
                 }
             }
         }
-        return handled
+        if (!handled) {
+            focusedEditBox?.isFocused = false
+            focusedEditBox = null
+        }
+        return true
     }
 
     fun charTyped(codePoint: Char, modifiers: Int): Boolean {

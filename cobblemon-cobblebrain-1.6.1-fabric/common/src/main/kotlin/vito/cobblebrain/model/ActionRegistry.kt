@@ -1,15 +1,15 @@
 package vito.cobblebrain.model
 
 enum class ActionCategory(val displayName: String, val icon: String) {
-    MAP("🗺️ Mapa & Ambiente", "🗺️"),
-    WORLD("🌎 Mundo & Blocos", "🌎"),
-    ENTITIES("👾 Entidades & Mobs", "👾"),
-    POKEMON("🐾 Cobblemon & Equipe", "🐾"),
-    PLAYER("🧍 Jogador & Status", "🧍"),
-    ITEMS("🎒 Itens & Drops", "🎒"),
-    FLOW("🧩 Fluxo da História", "🧩"),
-    INTERFACE("💬 Interface & Mensagens", "💬"),
-    EFFECTS("✨ Efeitos & Áudio", "✨")
+    MAP("🗺️ Map & Environment", "🗺️"),
+    WORLD("🌎 World & Blocks", "🌎"),
+    ENTITIES("👾 Entities & Mobs", "👾"),
+    POKEMON("🐾 Cobblemon & Party", "🐾"),
+    PLAYER("🧍 Player & Status", "🧍"),
+    ITEMS("🎒 Items & Drops", "🎒"),
+    FLOW("🧩 Story Flow", "🧩"),
+    INTERFACE("💬 Interface & Messages", "💬"),
+    EFFECTS("✨ Effects & Audio", "✨")
 }
 
 data class ActionDefinition(
@@ -23,97 +23,97 @@ data class ActionDefinition(
 
 object ActionRegistry {
     val actions = listOf(
-        // 🗺️ MAPA
+        // 🗺️ MAP
         ActionDefinition(
             id = "SPAWN_STRUCTURE",
             category = ActionCategory.MAP,
-            name = "Gerar Estrutura",
+            name = "Spawn Structure",
             icon = "🏛️",
-            description = "Posiciona uma estrutura NBT predefinida no mundo nas coordenadas indicadas.",
+            description = "Places a predefined NBT structure in the world at coordinates.",
             defaultParams = mapOf("structureId" to "minecraft:small_house", "posX" to "~", "posY" to "~", "posZ" to "~")
         ),
         ActionDefinition(
             id = "TELEPORT",
             category = ActionCategory.MAP,
-            name = "Teletransportar",
+            name = "Teleport",
             icon = "🌀",
-            description = "Teletransporta o jogador ou alvo para uma posição X, Y, Z ou cena.",
+            description = "Teleports player or target to specified X, Y, Z coordinates.",
             defaultParams = mapOf("destX" to "0", "destY" to "64", "destZ" to "0")
         ),
         ActionDefinition(
             id = "CHANGE_WEATHER",
             category = ActionCategory.MAP,
-            name = "Alterar Clima",
+            name = "Change Weather",
             icon = "🌧️",
-            description = "Modifica as condições climáticas atuais do mundo (Limpo, Chuva, Tempestade).",
+            description = "Modifies current world weather conditions (Clear, Rain, Thunder).",
             defaultParams = mapOf("weatherType" to "CLEAR", "durationTicks" to "6000")
         ),
         ActionDefinition(
             id = "SET_TIME_OF_DAY",
             category = ActionCategory.MAP,
-            name = "Definir Horário",
+            name = "Set Time of Day",
             icon = "⏰",
-            description = "Ajusta o horário do dia do mundo (0=Dia, 6000=Meio-dia, 13000=Noite, 18000=Meia-noite).",
+            description = "Adjusts world time of day (0=Day, 6000=Noon, 13000=Night, 18000=Midnight).",
             defaultParams = mapOf("timeTicks" to "1000")
         ),
 
-        // 🌎 MUNDO
+        // 🌎 WORLD
         ActionDefinition(
             id = "SPAWN_BLOCK",
             category = ActionCategory.WORLD,
-            name = "Colocar Bloco",
+            name = "Place Block",
             icon = "🧱",
-            description = "Coloca ou substitui um bloco nas coordenadas especificadas.",
+            description = "Places or replaces a block at specified coordinates.",
             defaultParams = mapOf("blockId" to "minecraft:stone", "posX" to "~", "posY" to "~", "posZ" to "~")
         ),
         ActionDefinition(
             id = "MODIFY_BLOCK_PROPERTY",
             category = ActionCategory.WORLD,
-            name = "Modificar Bloco",
+            name = "Modify Block",
             icon = "🔧",
-            description = "Altera propriedades de estado de um bloco (ex: powered=true, open=true).",
+            description = "Changes block state properties (e.g. powered=true, open=true).",
             defaultParams = mapOf("posX" to "~", "posY" to "~", "posZ" to "~", "propertyKey" to "open", "propertyValue" to "true")
         ),
 
-        // 👾 ENTIDADES
+        // 👾 ENTITIES
         ActionDefinition(
             id = "SPAWN_ENTITY",
             category = ActionCategory.ENTITIES,
-            name = "Gerar Entidade",
+            name = "Spawn Entity",
             icon = "👾",
-            description = "Gera uma entidade/mob (Vanilla ou mod) nas coordenadas especificadas.",
+            description = "Spawns an entity or mob (Vanilla or mod) at specified coordinates.",
             defaultParams = mapOf("entityId" to "minecraft:villager", "customName" to "", "posX" to "~", "posY" to "~", "posZ" to "~")
         ),
         ActionDefinition(
             id = "KILL_ENTITY",
             category = ActionCategory.ENTITIES,
-            name = "Eliminar Entidade",
+            name = "Kill Entity",
             icon = "☠️",
-            description = "Remove ou abate entidades em um raio ou com uma tag/nome específico.",
+            description = "Removes or slays entities in a radius or matching tag/name.",
             defaultParams = mapOf("entitySelector" to "@e[type=zombie,distance=..10]")
         ),
         ActionDefinition(
             id = "MODIFY_ENTITY_PROPERTIES",
             category = ActionCategory.ENTITIES,
-            name = "Propriedades da Entidade",
+            name = "Entity Properties",
             icon = "📊",
-            description = "Ajusta vida, escudo, velocidade, nome e inteligência artificial da entidade.",
+            description = "Adjusts health, armor, speed, custom name, and AI of target entity.",
             defaultParams = mapOf("health" to "20", "speedMultiplier" to "1.0", "customName" to "", "noAi" to "false")
         ),
         ActionDefinition(
             id = "ADD_ENTITY_EFFECT",
             category = ActionCategory.ENTITIES,
-            name = "Efeito na Entidade",
+            name = "Apply Entity Effect",
             icon = "🧪",
-            description = "Aplica um efeito de poção a uma entidade alvo específica.",
+            description = "Applies a potion effect to a specific target entity.",
             defaultParams = mapOf("effectId" to "minecraft:glowing", "durationSec" to "15", "amplifier" to "1")
         ),
         ActionDefinition(
             id = "ADD_AREA_EFFECT",
             category = ActionCategory.ENTITIES,
-            name = "Efeito em Área",
+            name = "Area Effect",
             icon = "🔮",
-            description = "Aplica efeito de poção em todas as entidades dentro de um raio.",
+            description = "Applies potion effect to all entities within a radius.",
             defaultParams = mapOf("effectId" to "minecraft:slowness", "radius" to "8", "durationSec" to "10", "amplifier" to "1")
         ),
 
@@ -121,111 +121,111 @@ object ActionRegistry {
         ActionDefinition(
             id = "SPAWN_COBBLEMON",
             category = ActionCategory.POKEMON,
-            name = "Gerar Cobblemon",
+            name = "Spawn Cobblemon",
             icon = "🐾",
-            description = "Gera um Pokémon no mundo com nível, shiny, golpes e atributos configurados.",
+            description = "Spawns a Pokémon with configured level, shiny status, moves, and attributes.",
             defaultParams = mapOf("species" to "Pikachu", "level" to "5", "shiny" to "false")
         ),
         ActionDefinition(
             id = "GIVE_POKEMON",
             category = ActionCategory.POKEMON,
-            name = "Entregar Pokémon",
+            name = "Give Pokémon",
             icon = "🎁",
-            description = "Adiciona um Pokémon configurado diretamente à equipe do jogador.",
+            description = "Adds a configured Pokémon directly to the player's party.",
             defaultParams = mapOf("species" to "Eevee", "level" to "5", "shiny" to "false")
         ),
         ActionDefinition(
             id = "MODIFY_POKEMON_PROPERTIES",
             category = ActionCategory.POKEMON,
-            name = "Modificar Pokémon",
+            name = "Modify Pokémon",
             icon = "📈",
-            description = "Altera a vida, experiência, nível ou amizade de um Pokémon da equipe.",
+            description = "Modifies HP, EXP, level, or friendship of a party Pokémon.",
             defaultParams = mapOf("slotIndex" to "0", "addExp" to "500", "addLevel" to "1", "healHp" to "true")
         ),
         ActionDefinition(
             id = "CHANGE_POKEMON_PERSONALITY",
             category = ActionCategory.POKEMON,
-            name = "Personalidade CobbleBrain",
+            name = "CobbleBrain Personality",
             icon = "🎭",
-            description = "Altera o perfil de fala, personalidade e tom de conversa IA do Pokémon.",
+            description = "Changes AI dialogue style, personality preset, and conversation tone.",
             defaultParams = mapOf("slotIndex" to "0", "personalityPreset" to "Heroic")
         ),
         ActionDefinition(
             id = "ADD_POKEMON_PARTY_EFFECT",
             category = ActionCategory.POKEMON,
-            name = "Efeito na Equipe Pokémon",
+            name = "Party Pokémon Effect",
             icon = "✨",
-            description = "Cura, remove condições de status ou restaura PP de toda a equipe Pokémon.",
+            description = "Heals, cures status conditions, or restores PP for entire party.",
             defaultParams = mapOf("healFullParty" to "true", "cureStatus" to "true")
         ),
 
-        // 🧍 JOGADOR
+        // 🧍 PLAYER
         ActionDefinition(
             id = "KILL_PLAYER",
             category = ActionCategory.PLAYER,
-            name = "Eliminar Jogador",
+            name = "Kill Player",
             icon = "💀",
-            description = "Causa a derrota imediata do jogador.",
+            description = "Causes immediate defeat of player.",
             defaultParams = emptyMap()
         ),
         ActionDefinition(
             id = "DAMAGE_PLAYER",
             category = ActionCategory.PLAYER,
-            name = "Causar Dano ao Jogador",
+            name = "Damage Player",
             icon = "💔",
-            description = "Aplica uma quantidade específica de pontos de dano ao jogador.",
+            description = "Deals specified damage amount to player.",
             defaultParams = mapOf("damageAmount" to "4.0")
         ),
         ActionDefinition(
             id = "GIVE_ITEM",
             category = ActionCategory.PLAYER,
-            name = "Dar Item ao Jogador",
+            name = "Give Item to Player",
             icon = "📦",
-            description = "Adiciona itens diretamente ao inventário do jogador.",
+            description = "Adds items directly to player inventory.",
             defaultParams = mapOf("itemId" to "cobblemon:poke_ball", "amount" to "5")
         ),
         ActionDefinition(
             id = "REMOVE_ITEM",
             category = ActionCategory.PLAYER,
-            name = "Remover Item do Jogador",
+            name = "Remove Item from Player",
             icon = "🗑️",
-            description = "Retira uma quantidade de itens do inventário do jogador.",
+            description = "Removes item quantity from player inventory.",
             defaultParams = mapOf("itemId" to "cobblemon:poke_ball", "amount" to "1")
         ),
         ActionDefinition(
             id = "ADD_PLAYER_EFFECT",
             category = ActionCategory.PLAYER,
-            name = "Efeito no Jogador",
+            name = "Player Effect",
             icon = "⚡",
-            description = "Aplica um efeito de poção (ex: Velocidade, Invisibilidade) ao jogador.",
+            description = "Applies potion effect (e.g. Speed, Invisibility) to player.",
             defaultParams = mapOf("effectId" to "minecraft:speed", "durationSec" to "10", "amplifier" to "1")
         ),
 
-        // 🎒 ITENS
+        // 🎒 ITEMS
         ActionDefinition(
             id = "SPAWN_ITEM",
             category = ActionCategory.ITEMS,
-            name = "Dropar Item no Chão",
+            name = "Drop Item on Ground",
             icon = "💎",
-            description = "Faz surgir um item flutuante dropado no chão nas coordenadas definidas.",
+            description = "Spawns a floating dropped item on ground at coordinates.",
             defaultParams = mapOf("itemId" to "minecraft:diamond", "amount" to "1", "posX" to "~", "posY" to "~", "posZ" to "~")
         ),
 
-        // 🧩 FLUXO
+        // 🧩 FLOW
         ActionDefinition(
             id = "JUMP_TO_STORY_POINT",
             category = ActionCategory.FLOW,
-            name = "Saltar para Ponto",
+            name = "Jump to Story Point",
             icon = "⏩",
-            description = "Transfere a execução imediatamente para outra Cena ou Nó da história.",
+            description = "Transfers execution immediately to another Scene or Node.",
             defaultParams = mapOf("targetSceneId" to "", "targetNodeId" to "")
         ),
         ActionDefinition(
             id = "REWIND_TO_STORY_POINT",
             category = ActionCategory.FLOW,
-            name = "Retroceder Ponto",
+            name = "Rewind Story Point",
             icon = "⏪",
-            description = "Restaura o estado e retrocede a execução para o checkpoint anterior.",
+            description = "Restores state and rewinds execution to previous checkpoint.",
             defaultParams = mapOf("targetSceneId" to "")
         ),
 
@@ -233,51 +233,58 @@ object ActionRegistry {
         ActionDefinition(
             id = "SEND_CHAT_MESSAGE",
             category = ActionCategory.INTERFACE,
-            name = "Mensagem no Chat",
+            name = "Chat Message",
             icon = "💬",
-            description = "Envia uma mensagem no chat com suporte a cores e variáveis.",
-            defaultParams = mapOf("messageText" to "Olá!", "messageType" to "CHAT")
+            description = "Sends a chat message with color formatting and variable support.",
+            defaultParams = mapOf("messageText" to "Hello!", "messageType" to "CHAT")
         ),
         ActionDefinition(
             id = "SHOW_TITLE_SCREEN",
             category = ActionCategory.INTERFACE,
-            name = "Exibir Título na Tela",
+            name = "Show Title Screen",
             icon = "🎬",
-            description = "Exibe um Título grande e Subtítulo no centro da tela do jogador.",
-            defaultParams = mapOf("mainTitle" to "Missão Concluída!", "subTitle" to "Parabéns!", "fadeIn" to "10", "stay" to "40", "fadeOut" to "10")
+            description = "Displays large Title and Subtitle in center of player screen with animations.",
+            defaultParams = mapOf(
+                "mainTitle" to "Quest Completed!",
+                "subTitle" to "Congratulations!",
+                "titleColor" to "#FFAA00",
+                "fadeIn" to "10",
+                "stay" to "70",
+                "fadeOut" to "20"
+            )
         ),
         ActionDefinition(
             id = "CHANGE_SCREEN_TINT",
             category = ActionCategory.INTERFACE,
-            name = "Coloração da Tela",
+            name = "Screen Tint / Fade",
             icon = "🎨",
-            description = "Aplica um filtro colorido temporário ou fade escuro na tela do jogador.",
+            description = "Applies temporary color filter or dark fade on player screen.",
             defaultParams = mapOf("tintColor" to "#FF0000", "alpha" to "0.5", "durationSec" to "3")
         ),
 
-        // ✨ EFEITOS
+        // ✨ EFFECTS
         ActionDefinition(
             id = "SPAWN_PARTICLES",
             category = ActionCategory.EFFECTS,
-            name = "Gerar Partículas",
+            name = "Spawn Particles",
             icon = "✨",
-            description = "Faz surgir partículas visuais (ex: coração, fogo, totem) no local indicado.",
+            description = "Spawns visual particles (e.g. heart, flame, totem) at location.",
             defaultParams = mapOf("particleId" to "minecraft:totem_of_undying", "count" to "20", "posX" to "~", "posY" to "~", "posZ" to "~")
         ),
         ActionDefinition(
             id = "PLAY_SOUND",
             category = ActionCategory.EFFECTS,
-            name = "Tocar Efeito Sonoro",
+            name = "Play Sound Effect",
             icon = "🔊",
-            description = "Reproduz um efeito de áudio estéreo/posicional para o jogador.",
+            description = "Plays stereo or 3D positional audio effect for player.",
             defaultParams = mapOf("soundId" to "minecraft:entity.player.levelup", "volume" to "1.0", "pitch" to "1.0")
         ),
         ActionDefinition(
             id = "PLAY_MUSIC",
             category = ActionCategory.EFFECTS,
-            name = "Tocar Trilha Sonora",
+            name = "Play Background Music",
             icon = "🎵",
-            description = "Inicia ou para a reprodução de uma música ou trilha temática de fundo.",
+            description = "Starts or stops background music track playback.",
             defaultParams = mapOf("musicId" to "minecraft:music.game", "loop" to "true")
         )
     )

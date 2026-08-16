@@ -4,7 +4,7 @@ import java.util.UUID
 
 data class SceneData(
     val id: String = UUID.randomUUID().toString(),
-    var title: String = "Cena Inicial",
+    var title: String = "Initial Scene",
     var description: String = "",
     var isStartScene: Boolean = false,
     var isEndScene: Boolean = false,
@@ -21,7 +21,7 @@ data class SceneData(
         if (nodes.isEmpty()) {
             val beginNode = NodeData(
                 parentSceneId = id,
-                title = "Início da Cena",
+                title = "Scene Start",
                 nodeType = NodeType.BEGIN_SCENE,
                 x = x + 30.0,
                 y = y + 50.0,

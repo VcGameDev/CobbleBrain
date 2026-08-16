@@ -13,8 +13,8 @@ enum class VariableScope {
 }
 
 data class StoryVariable(
-    var id: String = "var_nova",
-    var name: String = "var_nova",
+    var id: String = "var_new",
+    var name: String = "var_new",
     var type: VariableType = VariableType.STRING,
     var defaultValue: String = "",
     var scope: VariableScope = VariableScope.GLOBAL,

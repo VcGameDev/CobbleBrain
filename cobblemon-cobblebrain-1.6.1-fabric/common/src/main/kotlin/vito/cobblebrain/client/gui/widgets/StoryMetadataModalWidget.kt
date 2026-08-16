@@ -16,10 +16,10 @@ class StoryMetadataModalWidget(
     val onDataChanged: () -> Unit
 ) {
 
-    private val modalWidth = 320
-    private val modalHeight = 250
-    private val modalX = (screenWidth - modalWidth) / 2
-    private val modalY = (screenHeight - modalHeight) / 2
+    private val modalWidth = 340.coerceAtMost(screenWidth - 20)
+    private val modalHeight = 260.coerceAtMost(screenHeight - 20)
+    private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
+    private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
     private val idBox: EditBox
     private val titleBox: EditBox
@@ -36,8 +36,8 @@ class StoryMetadataModalWidget(
 
         var currentY = modalY + 28
 
-        // 1. ID do Projeto (Usado para comandos / executores)
-        idBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("ID da História"))
+        // 1. Story ID (Used for commands / executors)
+        idBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("Story ID"))
         idBox.value = project.id.ifBlank { project.name }
         idBox.setMaxLength(100)
         idBox.setResponder {
@@ -46,8 +46,8 @@ class StoryMetadataModalWidget(
         }
         currentY += 28
 
-        // 2. Título (Nome para Exibição)
-        titleBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("Título"))
+        // 2. Title (Display Name)
+        titleBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("Title"))
         titleBox.value = project.name
         titleBox.setMaxLength(100)
         titleBox.setResponder {
@@ -56,8 +56,8 @@ class StoryMetadataModalWidget(
         }
         currentY += 28
 
-        // 3. Autor
-        authorBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("Autor"))
+        // 3. Author
+        authorBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("Author"))
         authorBox.value = project.author
         authorBox.setMaxLength(100)
         authorBox.setResponder {
@@ -66,8 +66,8 @@ class StoryMetadataModalWidget(
         }
         currentY += 28
 
-        // 4. Versão
-        versionBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("Versão"))
+        // 4. Version
+        versionBox = EditBox(font, inputX, currentY, inputW, 14, Component.literal("Version"))
         versionBox.value = project.version
         versionBox.setMaxLength(30)
         versionBox.setResponder {
@@ -76,17 +76,22 @@ class StoryMetadataModalWidget(
         }
         currentY += 28
 
-        // 5. Descrição
-        descBox = EditBox(font, inputX, currentY, inputW, 30, Component.literal("Descrição"))
+        // 5. Description
+        descBox = EditBox(font, inputX, currentY, inputW, 30, Component.literal("Description"))
         descBox.value = project.description
-        descBox.setMaxLength(300)
+        descBox.setMaxLength(9999)
         descBox.setResponder {
             project.description = it
             onDataChanged()
         }
 
-        // Botão Salvar e Fechar
-        closeButton = Button.builder(Component.literal("✔ Concluído")) {
+        listOf(idBox, titleBox, authorBox, versionBox, descBox).forEach {
+            it.setEditable(true)
+            it.active = true
+        }
+
+        // Save and Close Button
+        closeButton = Button.builder(Component.literal("✔ Done")) {
             onClose()
         }.bounds(modalX + (modalWidth - 100) / 2, modalY + modalHeight - 24, 100, 18).build()
     }
@@ -98,27 +103,37 @@ class StoryMetadataModalWidget(
         guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
 
-        guiGraphics.drawString(font, "📋 Metadados da História", modalX + 10, modalY + 6, 0xFF00FFCC.toInt(), false)
+        guiGraphics.drawString(font, "📋 Story Metadata", modalX + 10, modalY + 6, 0xFF00FFCC.toInt(), false)
 
         var currentY = modalY + 20
-        guiGraphics.drawString(font, "ID (Comando):", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "ID (Command):", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
         idBox.render(guiGraphics, mouseX, mouseY, partialTick)
         currentY += 28
 
-        guiGraphics.drawString(font, "Título Exibição:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Display Title:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
         titleBox.render(guiGraphics, mouseX, mouseY, partialTick)
         currentY += 28
 
-        guiGraphics.drawString(font, "Autor:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Author:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
         authorBox.render(guiGraphics, mouseX, mouseY, partialTick)
         currentY += 28
 
-        guiGraphics.drawString(font, "Versão:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Version:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
         versionBox.render(guiGraphics, mouseX, mouseY, partialTick)
         currentY += 28
 
-        guiGraphics.drawString(font, "Descrição:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Description:", modalX + 15, currentY, 0xFFA0A0A0.toInt(), false)
         descBox.render(guiGraphics, mouseX, mouseY, partialTick)
+
+        val charCount = descBox.value.length
+        if (charCount >= 9000) {
+            val countText = "$charCount/9999"
+            val countColor = if (charCount >= 9999) 0xFFFF5555.toInt() else 0xFFFFEE55.toInt()
+            val countW = font.width(countText)
+            val countX = modalX + modalWidth - 15 - countW
+            val countY = descBox.y + descBox.height + 2
+            guiGraphics.drawString(font, countText, countX, countY, countColor, false)
+        }
 
         closeButton.render(guiGraphics, mouseX, mouseY, partialTick)
     }

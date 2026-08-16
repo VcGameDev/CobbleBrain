@@ -36,13 +36,13 @@ class StoryMetadataInspectorWidget(
         val inputW = panelWidth - 12
         var currentY = panelY + 24
 
-        // Botão Fechar no Canto Superior Direito
+        // Close Button on Top Right Corner
         val closeBtn = Button.builder(Component.literal("✖")) {
             onClose()
         }.bounds(panelX + panelWidth - 20, panelY + 3, 16, 16).build()
         childrenWidgets.add(closeBtn)
 
-        // 1. Campo ID da História (Validação estrita: apenas a-z, A-Z, 0-9, _, -)
+        // 1. Story ID Field (Strict validation: only a-z, A-Z, 0-9, _, -)
         val idEdit = EditBox(font, inputX, currentY + 10, inputW, 16, Component.literal("ID"))
         idEdit.setMaxLength(60)
         idEdit.value = project.id
@@ -59,8 +59,8 @@ class StoryMetadataInspectorWidget(
         childrenWidgets.add(idEdit)
         currentY += 30
 
-        // 2. Apelido / Display Name
-        val nameEdit = EditBox(font, inputX, currentY + 10, inputW, 16, Component.literal("Apelido"))
+        // 2. Display Name
+        val nameEdit = EditBox(font, inputX, currentY + 10, inputW, 16, Component.literal("Display Name"))
         nameEdit.setMaxLength(60)
         nameEdit.value = project.name
         nameEdit.setResponder { valText ->
@@ -70,9 +70,9 @@ class StoryMetadataInspectorWidget(
         childrenWidgets.add(nameEdit)
         currentY += 30
 
-        // 3. Descrição
-        val descEdit = EditBox(font, inputX, currentY + 10, inputW, 36, Component.literal("Descrição"))
-        descEdit.setMaxLength(250)
+        // 3. Description
+        val descEdit = EditBox(font, inputX, currentY + 10, inputW, 36, Component.literal("Description"))
+        descEdit.setMaxLength(9999)
         descEdit.value = project.description
         descEdit.setResponder { valText ->
             project.description = valText
@@ -81,9 +81,9 @@ class StoryMetadataInspectorWidget(
         childrenWidgets.add(descEdit)
         currentY += 50
 
-        // 4. Versão (ex: 1.0.0)
-        val verEdit = EditBox(font, inputX, currentY + 10, inputW, 16, Component.literal("Versão"))
-        verEdit.setMaxLength(20)
+        // 4. Version (e.g. 1.0.0)
+        val verEdit = EditBox(font, inputX, currentY + 10, inputW, 16, Component.literal("Version"))
+        verEdit.setMaxLength(30)
         verEdit.value = project.version
         verEdit.setResponder { valText ->
             project.version = valText
@@ -92,22 +92,22 @@ class StoryMetadataInspectorWidget(
         childrenWidgets.add(verEdit)
         currentY += 34
 
-        // 5. Botão "Copiar Dados"
-        val copyBtn = Button.builder(Component.literal("📋 Copiar Dados")) {
+        // 5. "Copy Data" Button
+        val copyBtn = Button.builder(Component.literal("📋 Copy Data")) {
             val jsonStr = StorySerializer.toJson(project)
-            onStatus("Dados da história copiados para a área de transferência!")
+            onStatus("Story data copied to clipboard!")
         }.bounds(inputX, currentY + 5, inputW, 16).build()
         childrenWidgets.add(copyBtn)
         currentY += 22
 
-        // 6. Botão "Duplicar História"
-        val dupBtn = Button.builder(Component.literal("📋 Duplicar História")) {
+        // 6. "Duplicate Story" Button
+        val dupBtn = Button.builder(Component.literal("📋 Duplicate Story")) {
             val newId = StoryProject.generateUniqueNewStoryId()
             val duplicate = StorySerializer.fromJson(StorySerializer.toJson(project)) ?: project
             duplicate.id = newId
-            duplicate.name = "${project.name} (Cópia)"
+            duplicate.name = "${project.name} (Copy)"
             onDuplicateStory(duplicate)
-            onStatus("História duplicada com sucesso: ${duplicate.id}")
+            onStatus("Story duplicated successfully: ${duplicate.id}")
         }.bounds(inputX, currentY + 5, inputW, 16).build()
         childrenWidgets.add(dupBtn)
     }
@@ -117,20 +117,27 @@ class StoryMetadataInspectorWidget(
         guiGraphics.fill(panelX, panelY, panelX + 1, panelY + panelHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(panelX, panelY, panelX + panelWidth, panelY + 20, 0xFF22222A.toInt())
 
-        guiGraphics.drawString(font, "📋 Metadados História", panelX + 6, panelY + 5, 0xFF00FFCC.toInt(), false)
+        guiGraphics.drawString(font, "📋 Story Metadata", panelX + 6, panelY + 5, 0xFF00FFCC.toInt(), false)
 
         var currentY = panelY + 24
         val idLabelColor = if (idError) 0xFFFF5555.toInt() else 0xFFA0A0A0.toInt()
-        guiGraphics.drawString(font, if (idError) "ID (inválido!):" else "ID da História:", panelX + 6, currentY, idLabelColor, false)
+        guiGraphics.drawString(font, if (idError) "ID (invalid!):" else "Story ID:", panelX + 6, currentY, idLabelColor, false)
         currentY += 30
 
-        guiGraphics.drawString(font, "Apelido (Display):", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Display Name:", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
         currentY += 30
 
-        guiGraphics.drawString(font, "Descrição:", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Description:", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
+        val charCount = project.description.length
+        if (charCount >= 9000) {
+            val countText = "$charCount/9999"
+            val countColor = if (charCount >= 9999) 0xFFFF5555.toInt() else 0xFFFFEE55.toInt()
+            val countW = font.width(countText)
+            guiGraphics.drawString(font, countText, panelX + panelWidth - 6 - countW, currentY, countColor, false)
+        }
         currentY += 50
 
-        guiGraphics.drawString(font, "Versão (ex: 1.0.0):", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
+        guiGraphics.drawString(font, "Version (e.g. 1.0.0):", panelX + 6, currentY, 0xFFA0A0A0.toInt(), false)
 
         childrenWidgets.toList().forEach { widget ->
             if (widget is Button) widget.render(guiGraphics, mouseX, mouseY, partialTick)

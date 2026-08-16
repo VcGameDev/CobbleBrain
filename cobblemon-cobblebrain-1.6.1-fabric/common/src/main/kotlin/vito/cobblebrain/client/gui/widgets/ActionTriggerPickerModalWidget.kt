@@ -19,26 +19,28 @@ class ActionTriggerPickerModalWidget(
     val onSelect: (String) -> Unit,
     val onClose: () -> Unit
 ) {
-    private val modalWidth = 400
-    private val modalHeight = 260
-    private val modalX = (screenWidth - modalWidth) / 2
-    private val modalY = (screenHeight - modalHeight) / 2
+    private val modalWidth = 420.coerceAtMost(screenWidth - 20)
+    private val modalHeight = 280.coerceAtMost(screenHeight - 20)
+    private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
+    private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
     private val searchBox: EditBox
     private val closeButton: Button
 
-    private var selectedCategoryIndex: Int = 0 // 0 = Todos
+    private var selectedCategoryIndex: Int = 0 // 0 = All
     private var scrollOffset: Double = 0.0
     private var categoryScrollOffset: Double = 0.0
 
     init {
-        searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Buscar"))
-        searchBox.setHint(Component.literal("🔍 Digite para pesquisar..."))
+        searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Search"))
+        searchBox.setHint(Component.literal("🔍 Type to search..."))
+        searchBox.setEditable(true)
+        searchBox.active = true
         searchBox.setResponder {
             scrollOffset = 0.0
         }
 
-        closeButton = Button.builder(Component.literal("✖ Fechar")) {
+        closeButton = Button.builder(Component.literal("✖ Close")) {
             onClose()
         }.bounds(modalX + modalWidth - 75, modalY + 5, 65, 16).build()
     }
@@ -53,7 +55,7 @@ class ActionTriggerPickerModalWidget(
 
     private fun getCategories(): List<Pair<String, String>> {
         val list = mutableListOf<Pair<String, String>>()
-        list.add(Pair("TODOS", "📁 Todos"))
+        list.add(Pair("ALL", "📁 All"))
         if (isAction) {
             ActionCategory.entries.forEach { cat ->
                 list.add(Pair(cat.name, cat.displayName))
@@ -69,7 +71,7 @@ class ActionTriggerPickerModalWidget(
     private fun getFilteredItems(): List<ItemCard> {
         val query = searchBox.value.trim().lowercase()
         val categories = getCategories()
-        val selectedCatKey = categories.getOrNull(selectedCategoryIndex)?.first ?: "TODOS"
+        val selectedCatKey = categories.getOrNull(selectedCategoryIndex)?.first ?: "ALL"
 
         val rawItems = if (isAction) {
             ActionRegistry.actions.map {
@@ -82,21 +84,21 @@ class ActionTriggerPickerModalWidget(
         }
 
         return rawItems.filter { item ->
-            val matchesCat = (selectedCatKey == "TODOS" || item.categoryName == selectedCatKey)
+            val matchesCat = (selectedCatKey == "ALL" || item.categoryName == selectedCatKey)
             val matchesQuery = query.isEmpty() || item.name.lowercase().contains(query) || item.description.lowercase().contains(query) || item.id.lowercase().contains(query)
             matchesCat && matchesQuery
         }
     }
 
     fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        // Moldura do Modal
+        // Modal Frame
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF14141A.toInt())
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + 24, 0xFF22222E.toInt())
         guiGraphics.fill(modalX, modalY, modalX + 1, modalY + modalHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
         guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0xFF3D5AFE.toInt())
 
-        val title = if (isAction) "🛠️ Selecionar Tipo de Ação" else "⚡ Selecionar Tipo de Gatilho"
+        val title = if (isAction) "🛠️ Select Action Type" else "⚡ Select Trigger Type"
         guiGraphics.drawString(font, title, modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
 
         closeButton.render(guiGraphics, mouseX, mouseY, partialTick)
@@ -105,7 +107,7 @@ class ActionTriggerPickerModalWidget(
         val contentY = modalY + 52
         val contentH = modalHeight - 60
 
-        // 1. PAINEL ESQUERDO: Categorias com Viewport Scissored e Rolagem Vertical
+        // 1. LEFT PANEL: Categories with Scissored Viewport and Vertical Scrolling
         val catW = 120
         val catX = modalX + 12
         guiGraphics.fill(catX, contentY, catX + catW, contentY + contentH, 0xFF0D0D12.toInt())
@@ -137,7 +139,7 @@ class ActionTriggerPickerModalWidget(
 
         guiGraphics.disableScissor()
 
-        // Barra de rolagem das Categorias
+        // Categories scroll bar
         val maxCatScroll = maxOf(0.0, totalCatH.toDouble() - contentH)
         if (maxCatScroll > 0) {
             val sbX = catX + catW - 3
@@ -148,7 +150,7 @@ class ActionTriggerPickerModalWidget(
             guiGraphics.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, 0xFF3D5AFE.toInt())
         }
 
-        // 2. PAINEL DIREITO: Cards de Itens com Viewport Scissored e Rolagem Vertical
+        // 2. RIGHT PANEL: Item Cards with Scissored Viewport and Vertical Scrolling
         val gridX = catX + catW + 8
         val gridW = modalWidth - (catW + 32)
         val gridH = contentH
@@ -180,11 +182,11 @@ class ActionTriggerPickerModalWidget(
                 guiGraphics.fill(gridX + 4, cy, gridX + gridW - 6, cy + 1, border)
                 guiGraphics.fill(gridX + 4, cy + cardH - 1, gridX + gridW - 6, cy + cardH, border)
 
-                // Ícone + Título
+                // Icon + Title
                 val titleStr = "${item.icon} ${item.name}"
                 guiGraphics.drawString(font, titleStr, gridX + 10, cy + 6, if (isSelected) 0xFF00FFCC.toInt() else 0xFFFFFFFF.toInt(), false)
 
-                // Descrição resumida
+                // Short description
                 val descStr = font.plainSubstrByWidth(item.description, gridW - 24)
                 guiGraphics.drawString(font, descStr, gridX + 10, cy + 22, 0xFFA0A0A0.toInt(), false)
             }
@@ -192,7 +194,7 @@ class ActionTriggerPickerModalWidget(
 
         guiGraphics.disableScissor()
 
-        // Barra de rolagem dos Cards
+        // Cards scroll bar
         val maxScroll = maxOf(0.0, totalH.toDouble() - gridH)
         if (maxScroll > 0) {
             val sbX = gridX + gridW - 4
@@ -206,14 +208,16 @@ class ActionTriggerPickerModalWidget(
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (closeButton.mouseClicked(mouseX, mouseY, button)) return true
-        if (searchBox.mouseClicked(mouseX, mouseY, button)) return true
+        val clickedSearch = searchBox.mouseClicked(mouseX, mouseY, button)
+        searchBox.isFocused = clickedSearch
+        if (clickedSearch) return true
 
         val contentY = modalY + 52
         val contentH = modalHeight - 60
         val catW = 120
         val catX = modalX + 12
 
-        // Clique na lista de categorias com offset de scroll
+        // Category list click with scroll offset
         val categories = getCategories()
         if (mouseX >= catX && mouseX <= catX + catW && mouseY >= contentY && mouseY <= contentY + contentH) {
             val relativeY = mouseY - contentY - 4 + categoryScrollOffset
@@ -225,7 +229,7 @@ class ActionTriggerPickerModalWidget(
             }
         }
 
-        // Clique nos cards de itens com offset de scroll
+        // Item cards click with scroll offset
         val gridX = catX + catW + 8
         val gridW = modalWidth - (catW + 32)
         val gridH = contentH

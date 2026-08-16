@@ -1,12 +1,11 @@
 package vito.cobblebrain.model
 
 import java.io.File
-import java.util.UUID
 
 data class StoryProject(
     var id: String = generateUniqueNewStoryId(),
     var name: String = id,
-    var author: String = "Criador",
+    var author: String = "Creator",
     var description: String = "",
     var version: String = "1.0.0",
     var activeSceneId: String = "",
@@ -16,7 +15,7 @@ data class StoryProject(
 ) {
     init {
         if (scenes.isEmpty()) {
-            val defaultScene = SceneData(title = "Cena Inicial")
+            val defaultScene = SceneData(title = "Initial Scene")
             scenes.add(defaultScene)
             activeSceneId = defaultScene.id
         } else if (activeSceneId.isEmpty()) {

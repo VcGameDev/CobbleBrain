@@ -21,7 +21,7 @@ object StoryExecutor {
     fun startStory(project: StoryProject, player: ServerPlayer? = null, server: MinecraftServer? = null): ActiveStoryInstance {
         val context = StoryContext(player = player, server = server ?: player?.server)
 
-        // Instanciar todas as variáveis cadastradas no catálogo do projeto
+        // Instantiate all variables registered in project catalog
         project.variables.forEach { variable ->
             context.variables[variable.id] = variable.parseTypedDefaultValue()
         }
@@ -29,12 +29,12 @@ object StoryExecutor {
         val instance = ActiveStoryInstance(storyId = project.id, project = project, context = context)
         activeStories[project.id] = instance
 
-        // Buscar explicitamente a cena marcada com isStartScene == true ou a cena ativa/primeira
+        // Explicitly search for scene marked with isStartScene == true or active/first scene
         val scene = project.scenes.find { it.isStartScene } ?: project.getActiveScene() ?: project.scenes.firstOrNull()
         if (scene != null) {
             project.activeSceneId = scene.id
 
-            // Localizar nó BeginSceneBlock ou Trigger/Inicial como ponto de partida da cena
+            // Locate BeginSceneBlock or Trigger/Initial node as entry point of scene
             val initialNode = scene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
                 ?: scene.nodes.find { it.nodeType == NodeType.TRIGGER }
                 ?: scene.nodes.firstOrNull()
@@ -73,28 +73,28 @@ object StoryExecutor {
 
         instance.context.currentNodeId = currentNode.id
 
-        // 0. COMPORTAMENTO DO BLOCO TRIGGER (NÓ DE ESPERA VS ESCUTADOR GLOBAL)
+        // 0. TRIGGER BLOCK BEHAVIOR (WAITING NODE VS GLOBAL LISTENER)
         if (currentNode.nodeType == NodeType.TRIGGER) {
             val requireInput = currentNode.params["requireInputSignal"] != "false"
             if (requireInput) {
-                // Se a chamada veio de uma conexão de entrada (targetPortId != null), armar o Trigger
+                // If call came from input connection (targetPortId != null), arm Trigger
                 if (targetPortId != null) {
                     instance.context.waitingTriggers.add(currentNode.id)
-                    return // Pausa a sequência aqui. Aguarda o evento do mundo ocorrer.
+                    return // Pause sequence here. Wait for world event to fire.
                 } else {
-                    // Se veio de um evento do mundo, só dispara se estiver armado no conjunto de espera
+                    // If came from world event, only fire if armed in waiting set
                     if (!instance.context.waitingTriggers.contains(currentNode.id)) {
-                        return // Não recebeu o sinal de entrada ainda. Ignora.
+                        return // Input signal not received yet. Ignore.
                     }
                     instance.context.waitingTriggers.remove(currentNode.id)
                 }
             }
-            // Se requireInput == false, atua autonomamente como Escutador Global
+            // If requireInput == false, acts autonomously as Global Listener
         }
 
-        // 1. BLOCO DE TRANSMISSÃO DE LINK (LINK SEND)
+        // 1. LINK SEND TRANSMITTER BLOCK
         if (currentNode.nodeType == NodeType.LINK_SEND) {
-            val channelTag = currentNode.params["channelTag"] ?: "canal_1"
+            val channelTag = currentNode.params["channelTag"] ?: "channel_1"
             val allNodes = mutableListOf<NodeData>()
             instance.project.scenes.forEach { scene -> allNodes.addAll(scene.nodes) }
 
@@ -105,17 +105,17 @@ object StoryExecutor {
             return
         }
 
-        // 2. BLOCO DE RECEPÇÃO DE LINK (LINK RECEIVE)
+        // 2. LINK RECEIVE RECEIVER BLOCK
         if (currentNode.nodeType == NodeType.LINK_RECEIVE) {
             continueOutgoingConnections(instance, currentNode, stepCount + 1)
             return
         }
 
-        // 3. BLOCO REPETIDOR / LOOP (LOOP)
+        // 3. REPEATER / LOOP BLOCK
         if (currentNode.nodeType == NodeType.LOOP) {
             val loopState = instance.context.activeLoops.getOrPut(currentNode.id) { LoopRuntimeState() }
 
-            // Verificar se o sinal entrou na porta STOP
+            // Check if signal entered STOP port
             val stopPort = currentNode.inputs.find { it.name.equals("Stop", ignoreCase = true) }
             if (targetPortId != null && stopPort != null && targetPortId == stopPort.id) {
                 loopState.isStopped = true
@@ -126,7 +126,7 @@ object StoryExecutor {
                 return
             }
 
-            // Iniciar o Loop a partir da porta IN
+            // Start Loop from IN port
             loopState.isStopped = false
             loopState.currentIteration = 0
 
@@ -165,7 +165,7 @@ object StoryExecutor {
                 }
 
                 stepCountLoop(0)
-            } else { // Modo TIME (Tempo Contínuo)
+            } else { // TIME Mode (Continuous Time)
                 fun stepTimeLoop() {
                     if (loopState.isStopped || instance.context.isCancelled) {
                         if (donePort != null) {
@@ -188,9 +188,9 @@ object StoryExecutor {
             return
         }
 
-        // 4. BLOCO MODIFICADOR DE VARIÁVEL (VARIABLE_SET - EXECUTION SETTER)
+        // 4. VARIABLE MODIFIER BLOCK (VARIABLE_SET - EXECUTION SETTER)
         if (currentNode.nodeType == NodeType.VARIABLE_SET) {
-            val varKey = currentNode.params["varKey"] ?: "var_nova"
+            val varKey = currentNode.params["varKey"] ?: "var_new"
             val op = currentNode.params["varOp"] ?: "="
             val valStr = currentNode.params["varValue"] ?: ""
 
@@ -253,43 +253,83 @@ object StoryExecutor {
                 }
             }
             instance.context.variables[varKey] = newVal
+            notifyVariableChanged(instance, varKey, newVal)
             continueOutgoingConnections(instance, currentNode, stepCount + 1)
             return
         }
 
-        // 5. BLOCO LEITOR DE VARIÁVEL (VARIABLE_GET - DATA GETTER)
+        // 5. VARIABLE READER BLOCK (VARIABLE_GET - DATA GETTER)
         if (currentNode.nodeType == NodeType.VARIABLE_GET) {
             continueOutgoingConnections(instance, currentNode, stepCount + 1)
             return
         }
 
-        // 6. BLOCO DE RAMIFICAÇÃO (BRANCH - IF/ELSE)
-        if (currentNode.nodeType == NodeType.BRANCH) {
-            val varKey = currentNode.params["varKey"] ?: "var_nova"
-            val op = currentNode.params["varOp"] ?: "=="
-            val targetValStr = currentNode.params["varValue"] ?: "true"
+        // 6. CONDITION BLOCK (CONDITION_NODE - IF / ELSE IF / ELSE)
+        if (currentNode.nodeType == NodeType.CONDITION_NODE) {
+            val elseIfCount = currentNode.params["elseIfCount"]?.toIntOrNull() ?: 0
+            val hasElse = currentNode.params["hasElse"] != "false"
 
-            val actualVal = instance.context.variables[varKey]
-            val evalResult = evaluateVariableCondition(actualVal, op, targetValStr)
+            // 1. Evaluate Branch 0 ("SE")
+            val varKey0 = currentNode.params["varKey_0"] ?: currentNode.params["varKey"] ?: "var_new"
+            val op0 = currentNode.params["varOp_0"] ?: currentNode.params["varOp"] ?: "=="
+            val targetVal0 = currentNode.params["varValue_0"] ?: currentNode.params["varValue"] ?: "true"
+            val actualVal0 = instance.context.variables[varKey0]
 
-            val scene = instance.project.getActiveScene()
-            if (scene != null) {
-                val targetPortIdx = if (evalResult) 0 else 1
-                val targetPort = currentNode.outputs.getOrNull(targetPortIdx) ?: currentNode.outputs.firstOrNull()
-                if (targetPort != null) {
-                    continuePortConnections(instance, currentNode, targetPort.id, stepCount + 1)
+            if (evaluateVariableCondition(actualVal0, op0, targetVal0)) {
+                val ifPort = currentNode.outputs.find { it.id == "OUT_IF" || it.name.equals("SE", ignoreCase = true) || it.name.equals("IF", ignoreCase = true) }
+                    ?: currentNode.outputs.firstOrNull()
+                if (ifPort != null) {
+                    continuePortConnections(instance, currentNode, ifPort.id, stepCount + 1)
+                }
+                return
+            }
+
+            // 2. Evaluate Else-If Branches 1..elseIfCount
+            for (i in 1..elseIfCount) {
+                val varKeyI = currentNode.params["varKey_$i"] ?: "var_new"
+                val opI = currentNode.params["varOp_$i"] ?: "=="
+                val targetValI = currentNode.params["varValue_$i"] ?: "true"
+                val actualValI = instance.context.variables[varKeyI]
+
+                if (evaluateVariableCondition(actualValI, opI, targetValI)) {
+                    val elseIfPort = currentNode.outputs.find {
+                        it.id == "OUT_ELSE_IF_$i" || it.name.equals("SENÃO SE $i", ignoreCase = true) || it.name.equals("SENAO SE $i", ignoreCase = true) || it.name.equals("ELSE IF $i", ignoreCase = true)
+                    } ?: currentNode.outputs.getOrNull(i)
+
+                    if (elseIfPort != null) {
+                        continuePortConnections(instance, currentNode, elseIfPort.id, stepCount + 1)
+                    }
+                    return
+                }
+            }
+
+            // 3. Fallback Else branch
+            if (hasElse) {
+                val elsePort = currentNode.outputs.find {
+                    it.id == "OUT_ELSE" || it.name.equals("SENÃO", ignoreCase = true) || it.name.equals("SENAO", ignoreCase = true) || it.name.equals("ELSE", ignoreCase = true) || it.name.equals("False", ignoreCase = true)
+                } ?: if (currentNode.outputs.size > (1 + elseIfCount)) currentNode.outputs.lastOrNull() else if (elseIfCount == 0 && currentNode.outputs.size >= 2) currentNode.outputs[1] else null
+
+                if (elsePort != null) {
+                    continuePortConnections(instance, currentNode, elsePort.id, stepCount + 1)
                 }
             }
             return
         }
 
-        // 7. BLOCO DE FINALIZAÇÃO DE CENA (END_SCENE)
+        // 6.1 COMMAND EXECUTION BLOCK (COMMAND_NODE)
+        if (currentNode.nodeType == NodeType.COMMAND_NODE) {
+            executeCommandNode(instance, currentNode)
+            continueOutgoingConnections(instance, currentNode, stepCount + 1)
+            return
+        }
+
+        // 7. SCENE FINISH BLOCK (END_SCENE)
         if (currentNode.nodeType == NodeType.END_SCENE) {
             finishSceneExecution(instance, stepCount)
             return
         }
 
-        // 8. BLOCO PORTÃO SINCRONIZADOR (GATE)
+        // 8. GATE SYNCHRONIZER BLOCK (GATE)
         if (currentNode.nodeType == NodeType.GATE) {
             val scene = instance.project.getActiveScene()
             if (scene != null) {
@@ -302,7 +342,7 @@ object StoryExecutor {
                     receivedPorts.add(currentNode.inputs.first().id)
                 }
 
-                // Só avança a execução quando TODAS as portas IN conectadas tiverem recebido o sinal
+                // Only advance execution when ALL connected IN ports have received input signal
                 if (activeInputPortIds.isEmpty() || receivedPorts.containsAll(activeInputPortIds)) {
                     instance.context.gateState.remove(currentNode.id)
                     continueOutgoingConnections(instance, currentNode, stepCount + 1)
@@ -318,6 +358,11 @@ object StoryExecutor {
 
         executeNodeAction(instance.context, currentNode)
 
+        if (currentNode.nodeType == NodeType.QUEST) {
+            StoryMissionManager.startMission(instance, currentNode)
+            return
+        }
+
         val condType = currentNode.params["condType"] ?: "LOCATION"
         if (currentNode.nodeType == NodeType.TIMER || (currentNode.nodeType == NodeType.TRIGGER && condType == "TIMER")) {
             val delaySec = currentNode.params["timerSeconds"]?.toDoubleOrNull() ?: (currentNode.params["timerSeconds"]?.toIntOrNull()?.toDouble() ?: 5.0)
@@ -332,7 +377,7 @@ object StoryExecutor {
         }
     }
 
-    private fun evaluateVariableCondition(actualVal: Any?, op: String, targetValStr: String): Boolean {
+    fun evaluateVariableCondition(actualVal: Any?, op: String, targetValStr: String): Boolean {
         if (actualVal is List<*> || op in listOf("CONTAINS", "SIZE", "IS_EMPTY", "GET_INDEX")) {
             val list = when (actualVal) {
                 is List<*> -> actualVal.map { it?.toString() ?: "" }
@@ -400,20 +445,20 @@ object StoryExecutor {
     private fun finishSceneExecution(instance: ActiveStoryInstance, stepCount: Int) {
         val scene = instance.project.getActiveScene() ?: return
 
-        // Se a cena atual estiver marcada com isEndScene == true, declara a história como concluída
+        // If current scene is marked with isEndScene == true, declare story finished
         if (scene.isEndScene) {
             stopStory(instance.storyId)
             return
         }
 
-        // Caso contrário, emite o sinal na porta de Saída (OUT) da Cena no grafo global
+        // Otherwise, emit signal on Scene OUT port in global graph
         val outgoingSceneConnections = instance.project.sceneConnections.filter { it.fromNodeId == scene.id }
         for (sceneConn in outgoingSceneConnections) {
             val targetScene = instance.project.scenes.find { it.id == sceneConn.toNodeId }
             if (targetScene != null) {
                 instance.project.activeSceneId = targetScene.id
 
-                // Iniciar a cena destino priorizando o nó BeginSceneBlock (Ponto de Entrada da Cena)
+                // Start destination scene prioritizing BeginSceneBlock (Scene Entry Point)
                 val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
                     ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
                     ?: targetScene.nodes.firstOrNull()
@@ -499,7 +544,7 @@ object StoryExecutor {
                 val actionSubtype = node.params["actionSubtype"] ?: "MESSAGE"
                 when (actionSubtype) {
                     "VAR_MODIFY" -> {
-                        val varKey = node.params["varKey"] ?: "var_nova"
+                        val varKey = node.params["varKey"] ?: "var_new"
                         val op = node.params["varOp"] ?: "="
                         val valStr = node.params["varValue"] ?: ""
 
@@ -530,6 +575,10 @@ object StoryExecutor {
                             }
                         }
                         context.variables[varKey] = newVal
+                        val inst = activeStories.values.find { it.context == context }
+                        if (inst != null) {
+                            notifyVariableChanged(inst, varKey, newVal)
+                        }
                     }
                     "TELEPORT" -> TeleportAction().execute(context, node)
                     "CHANGE_WEATHER" -> ChangeWeatherAction().execute(context, node)
@@ -558,10 +607,200 @@ object StoryExecutor {
                     else -> SendMessageAction().execute(context, node)
                 }
             }
-            NodeType.TIMER, NodeType.BRANCH, NodeType.CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT, NodeType.VARIABLE_GET, NodeType.VARIABLE_SET -> {
-                // Executados pela lógica de controle de fluxo do grafo
+            NodeType.AUDIO -> {
+                executeAudioNode(context, node)
+            }
+            NodeType.QUEST -> {
+                val inst = activeStories.values.find { it.context == context }
+                if (inst != null) {
+                    StoryMissionManager.startMission(inst, node)
+                }
+            }
+            NodeType.TIMER, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT, NodeType.VARIABLE_GET, NodeType.VARIABLE_SET -> {
+                // Executed by graph flow control logic
             }
             else -> {}
+        }
+    }
+
+    private fun executeCommandNode(instance: ActiveStoryInstance, node: NodeData) {
+        val context = instance.context
+        val server = context.server ?: context.player?.server ?: return
+        val player = context.player
+
+        val rawContent = node.content.ifBlank { node.params["commands"] ?: "" }
+        val lines = rawContent.lines().map { it.trim() }.filter { it.isNotBlank() }
+
+        val isServerSource = (node.params["commandSource"] ?: "SERVER") == "SERVER"
+        val isSilent = node.params["silent"] != "false"
+
+        for (rawLine in lines) {
+            val interpolated = interpolateCommand(rawLine, context, instance.project)
+            val command = interpolated.trim().removePrefix("/")
+            if (command.isBlank()) continue
+
+            try {
+                val source = if (isServerSource) {
+                    var s = server.createCommandSourceStack().withPermission(4)
+                    if (isSilent) s = s.withSuppressedOutput()
+                    s
+                } else {
+                    if (player != null) {
+                        var s = player.createCommandSourceStack()
+                        if (isSilent) s = s.withSuppressedOutput()
+                        s
+                    } else {
+                        var s = server.createCommandSourceStack().withPermission(4)
+                        if (isSilent) s = s.withSuppressedOutput()
+                        s
+                    }
+                }
+                server.commands.performPrefixedCommand(source, command)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun interpolateCommand(rawText: String, context: StoryContext, project: StoryProject): String {
+        var result = rawText
+
+        val player = context.player
+        val playerName = player?.scoreboardName ?: "Player"
+        val playerUuid = player?.uuid?.toString() ?: ""
+        val playerX = player?.x?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "0"
+        val playerY = player?.y?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "64"
+        val playerZ = player?.z?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "0"
+
+        result = result.replace("{player}", playerName, ignoreCase = true)
+        result = result.replace("{player_name}", playerName, ignoreCase = true)
+        result = result.replace("{name}", playerName, ignoreCase = true)
+        result = result.replace("{uuid}", playerUuid, ignoreCase = true)
+        result = result.replace("{player_x}", playerX, ignoreCase = true)
+        result = result.replace("{player_y}", playerY, ignoreCase = true)
+        result = result.replace("{player_z}", playerZ, ignoreCase = true)
+
+        context.variables.forEach { (key, value) ->
+            val strVal = if (value is List<*>) value.joinToString(",") else value?.toString() ?: ""
+            result = result.replace("{$key}", strVal, ignoreCase = true)
+        }
+
+        project.variables.forEach { v ->
+            if (!context.variables.containsKey(v.id)) {
+                result = result.replace("{${v.id}}", v.defaultValue, ignoreCase = true)
+            }
+        }
+
+        return result
+    }
+
+    fun notifyVariableChanged(instance: ActiveStoryInstance, varKey: String, newVal: Any?) {
+        val allNodes = mutableListOf<NodeData>()
+        instance.project.scenes.forEach { scene -> allNodes.addAll(scene.nodes) }
+
+        // 1. Reactive VARIABLE_GET nodes with ON_CHANGED output
+        val reactiveGetNodes = allNodes.filter {
+            it.nodeType == NodeType.VARIABLE_GET &&
+            it.params["varKey"] == varKey &&
+            it.outputs.any { port -> port.id == "ON_CHANGED_OUT" || port.name.equals("On Changed", ignoreCase = true) || port.name.equals("ON_CHANGED", ignoreCase = true) }
+        }
+
+        for (node in reactiveGetNodes) {
+            val onChangedPort = node.outputs.find { it.id == "ON_CHANGED_OUT" || it.name.equals("On Changed", ignoreCase = true) || it.name.equals("ON_CHANGED", ignoreCase = true) }
+            if (onChangedPort != null) {
+                continuePortConnections(instance, node, onChangedPort.id, stepCount = 0)
+            }
+        }
+
+        // 2. Waiting Triggers with VARIABLE_VALUE_CHECK
+        val waitingSnapshot = instance.context.waitingTriggers.toList()
+        for (nodeId in waitingSnapshot) {
+            val trigNode = allNodes.find { it.id == nodeId } ?: continue
+            if (trigNode.nodeType == NodeType.TRIGGER && trigNode.params["triggerType"] == "VARIABLE_VALUE_CHECK") {
+                val checkKey = trigNode.params["varKey"] ?: "var_1"
+                if (checkKey == varKey) {
+                    val op = trigNode.params["varOp"] ?: "=="
+                    val targetVal = trigNode.params["varValue"] ?: "0"
+                    val isMatch = evaluateVariableCondition(newVal, op, targetVal)
+                    val isIfNot = trigNode.params["triggerCondition"] == "IF_NOT"
+                    val shouldTrigger = if (isIfNot) !isMatch else isMatch
+                    if (shouldTrigger) {
+                        instance.context.waitingTriggers.remove(nodeId)
+                        executeNodeChain(instance, trigNode, targetPortId = null, stepCount = 0)
+                    }
+                }
+            }
+        }
+
+        // 3. Autonomous Reactive Triggers (requireInputSignal == "false")
+        val reactiveTriggers = allNodes.filter {
+            it.nodeType == NodeType.TRIGGER &&
+            it.params["requireInputSignal"] == "false" &&
+            it.params["triggerType"] == "VARIABLE_VALUE_CHECK" &&
+            (it.params["varKey"] ?: "var_1") == varKey
+        }
+        for (trigNode in reactiveTriggers) {
+            val op = trigNode.params["varOp"] ?: "=="
+            val targetVal = trigNode.params["varValue"] ?: "0"
+            val isMatch = evaluateVariableCondition(newVal, op, targetVal)
+            val isIfNot = trigNode.params["triggerCondition"] == "IF_NOT"
+            val shouldTrigger = if (isIfNot) !isMatch else isMatch
+            if (shouldTrigger) {
+                executeNodeChain(instance, trigNode, targetPortId = null, stepCount = 0)
+            }
+        }
+    }
+
+    private fun executeAudioNode(context: StoryContext, node: NodeData) {
+        val player = context.player ?: return
+        val mode = node.params["audioMode"] ?: "PLAY_SOUND_EFFECT"
+        val audioId = node.params["audioId"]?.ifBlank { "minecraft:entity.player.levelup" } ?: "minecraft:entity.player.levelup"
+        val volume = node.params["audioVolume"]?.toFloatOrNull() ?: 1.0f
+        val pitch = node.params["audioPitch"]?.toFloatOrNull() ?: 1.0f
+        val isPositional = node.params["spatialMode"] == "POSITIONAL_3D"
+
+        try {
+            when (mode) {
+                "STOP_ALL_MUSIC" -> {
+                    val cmd = "stopsound ${player.scoreboardName}"
+                    player.server?.commands?.performPrefixedCommand(
+                        player.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                        cmd
+                    )
+                }
+                "PLAY_BACKGROUND_MUSIC" -> {
+                    val category = "music"
+                    val cmd = if (isPositional) {
+                        val px = node.params["posX"] ?: "~"
+                        val py = node.params["posY"] ?: "~"
+                        val pz = node.params["posZ"] ?: "~"
+                        "playsound $audioId $category ${player.scoreboardName} $px $py $pz $volume $pitch"
+                    } else {
+                        "playsound $audioId $category ${player.scoreboardName} ~ ~ ~ $volume $pitch"
+                    }
+                    player.server?.commands?.performPrefixedCommand(
+                        player.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                        cmd
+                    )
+                }
+                else -> { // PLAY_SOUND_EFFECT
+                    val category = "master"
+                    val cmd = if (isPositional) {
+                        val px = node.params["posX"] ?: "~"
+                        val py = node.params["posY"] ?: "~"
+                        val pz = node.params["posZ"] ?: "~"
+                        "playsound $audioId $category ${player.scoreboardName} $px $py $pz $volume $pitch"
+                    } else {
+                        "playsound $audioId $category ${player.scoreboardName} ~ ~ ~ $volume $pitch"
+                    }
+                    player.server?.commands?.performPrefixedCommand(
+                        player.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                        cmd
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

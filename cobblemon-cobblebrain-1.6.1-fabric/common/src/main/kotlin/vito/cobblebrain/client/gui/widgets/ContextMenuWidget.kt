@@ -2,7 +2,6 @@ package vito.cobblebrain.client.gui.widgets
 
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.network.chat.Component
 import vito.cobblebrain.model.NodeData
 import vito.cobblebrain.model.SceneData
 
@@ -43,19 +42,19 @@ class ContextMenuWidget(
     private fun buildMenuItems() {
         menuItems.clear()
         if (targetNode != null) {
-            menuItems.add(MenuItem("🗑️ Excluir Bloco", ContextMenuAction.DELETE))
-            menuItems.add(MenuItem("📋 Duplicar Bloco", ContextMenuAction.DUPLICATE))
-            menuItems.add(MenuItem("⛓️ Retirar da Cena", ContextMenuAction.DETACH_FROM_SCENE))
-            menuItems.add(MenuItem("📄 Copiar Dados", ContextMenuAction.COPY_DATA))
+            menuItems.add(MenuItem("🗑️ Delete Block", ContextMenuAction.DELETE))
+            menuItems.add(MenuItem("📋 Duplicate Block", ContextMenuAction.DUPLICATE))
+            menuItems.add(MenuItem("⛓️ Detach from Scene", ContextMenuAction.DETACH_FROM_SCENE))
+            menuItems.add(MenuItem("📄 Copy Data", ContextMenuAction.COPY_DATA))
 
             val canPaste = BlockDataClipboard.hasCompatibleData(targetNode.nodeType)
-            menuItems.add(MenuItem("📌 Colar Dados", ContextMenuAction.PASTE_DATA, enabled = canPaste))
-            menuItems.add(MenuItem("🔄 Resetar Propriedades", ContextMenuAction.RESET_PROPERTIES))
-            menuItems.add(MenuItem("🔌 Desconectar Portas", ContextMenuAction.DISCONNECT_PORTS))
+            menuItems.add(MenuItem("📌 Paste Data", ContextMenuAction.PASTE_DATA, enabled = canPaste))
+            menuItems.add(MenuItem("🔄 Reset Properties", ContextMenuAction.RESET_PROPERTIES))
+            menuItems.add(MenuItem("🔌 Disconnect Ports", ContextMenuAction.DISCONNECT_PORTS))
         } else if (targetScene != null) {
-            menuItems.add(MenuItem("🗑️ Excluir Cena", ContextMenuAction.DELETE))
-            menuItems.add(MenuItem("📋 Duplicar Cena", ContextMenuAction.DUPLICATE))
-            menuItems.add(MenuItem("🔄 Resetar Cena", ContextMenuAction.RESET_PROPERTIES))
+            menuItems.add(MenuItem("🗑️ Delete Scene", ContextMenuAction.DELETE))
+            menuItems.add(MenuItem("📋 Duplicate Scene", ContextMenuAction.DUPLICATE))
+            menuItems.add(MenuItem("🔄 Reset Scene", ContextMenuAction.RESET_PROPERTIES))
         }
     }
 
@@ -64,40 +63,40 @@ class ContextMenuWidget(
         val renderX = if (screenX + menuWidth > screenW) screenW - menuWidth - 5 else screenX
         val renderY = if (screenY + totalH > screenH) screenH - totalH - 5 else screenY
 
-        // Se estiver no modal de confirmação de Reset
+        // Reset Confirmation Modal
         if (isShowingResetConfirmation) {
             val modalW = 220
             val modalH = 80
             val mx = (screenW - modalW) / 2
             val my = (screenH - modalH) / 2
 
-            // Overlay escuro
+            // Dark Overlay
             guiGraphics.fill(0, 0, screenW, screenH, 0x88000000.toInt())
-            // Modal
+            // Modal Frame
             guiGraphics.fill(mx, my, mx + modalW, my + modalH, 0xFF1E1E24.toInt())
             guiGraphics.fill(mx, my, mx + modalW, my + 1, 0xFFFF9800.toInt())
             guiGraphics.fill(mx, my + modalH - 1, mx + modalW, my + modalH, 0xFFFF9800.toInt())
             guiGraphics.fill(mx, my, mx + 1, my + modalH, 0xFFFF9800.toInt())
             guiGraphics.fill(mx + modalW - 1, my, mx + modalW, my + modalH, 0xFFFF9800.toInt())
 
-            guiGraphics.drawString(font, "⚠️ Resetar Propriedades", mx + 10, my + 10, 0xFFFF9800.toInt(), false)
-            val msg = "Deseja resetar as propriedades deste bloco para os valores padrão?"
+            guiGraphics.drawString(font, "⚠️ Reset Properties", mx + 10, my + 10, 0xFFFF9800.toInt(), false)
+            val msg = "Do you want to reset this block's properties to default values?"
             val line1 = font.plainSubstrByWidth(msg, modalW - 20)
             guiGraphics.drawString(font, line1, mx + 10, my + 28, 0xFFE0E0E0.toInt(), false)
 
-            // Botão Confirmar
+            // Confirm Button
             val btn1Hover = mouseX >= mx + 10 && mouseX <= mx + 100 && mouseY >= my + 50 && mouseY <= my + 70
             guiGraphics.fill(mx + 10, my + 50, mx + 100, my + 70, if (btn1Hover) 0xFFC62828.toInt() else 0xFF8E0000.toInt())
-            guiGraphics.drawString(font, "Confirmar", mx + 26, my + 56, 0xFFFFFFFF.toInt(), false)
+            guiGraphics.drawString(font, "Confirm", mx + 32, my + 56, 0xFFFFFFFF.toInt(), false)
 
-            // Botão Cancelar
+            // Cancel Button
             val btn2Hover = mouseX >= mx + 110 && mouseX <= mx + 200 && mouseY >= my + 50 && mouseY <= my + 70
             guiGraphics.fill(mx + 110, my + 50, mx + 200, my + 70, if (btn2Hover) 0xFF424242.toInt() else 0xFF212121.toInt())
-            guiGraphics.drawString(font, "Cancelar", mx + 130, my + 56, 0xFFFFFFFF.toInt(), false)
+            guiGraphics.drawString(font, "Cancel", mx + 138, my + 56, 0xFFFFFFFF.toInt(), false)
             return
         }
 
-        // Fundo do Menu de Contexto
+        // Context Menu Background
         guiGraphics.fill(renderX, renderY, renderX + menuWidth, renderY + totalH, 0xF018181C.toInt())
         guiGraphics.fill(renderX, renderY, renderX + 1, renderY + totalH, 0xFF3D5AFE.toInt())
         guiGraphics.fill(renderX + menuWidth - 1, renderY, renderX + menuWidth, renderY + totalH, 0xFF3D5AFE.toInt())
@@ -122,13 +121,13 @@ class ContextMenuWidget(
             val mx = (screenW - modalW) / 2
             val my = (screenH - modalH) / 2
 
-            // Clique no botão Confirmar Reset
+            // Click Confirm
             if (mouseX >= mx + 10 && mouseX <= mx + 100 && mouseY >= my + 50 && mouseY <= my + 70) {
                 onAction(ContextMenuAction.RESET_PROPERTIES)
                 onClose()
                 return true
             }
-            // Clique no botão Cancelar
+            // Click Cancel
             if (mouseX >= mx + 110 && mouseX <= mx + 200 && mouseY >= my + 50 && mouseY <= my + 70) {
                 isShowingResetConfirmation = false
                 onClose()
