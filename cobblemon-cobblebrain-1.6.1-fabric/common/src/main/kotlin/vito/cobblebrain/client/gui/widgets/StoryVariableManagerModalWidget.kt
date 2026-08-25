@@ -76,7 +76,8 @@ class StoryVariableManagerModalWidget(
         val listH = modalHeight - 34
 
         searchBox = EditBox(font, listX, listY, listW, 16, Component.literal("Search"))
-        searchBox.setHint(Component.literal("🔍 Filter variables..."))
+        searchBox.setMaxLength(2000)
+        searchBox.setHint(Component.literal("§8🔍 Filter variables..."))
         searchBox.setEditable(true)
         searchBox.active = true
         searchBox.setResponder { scrollOffset = 0.0 }
@@ -86,8 +87,8 @@ class StoryVariableManagerModalWidget(
         val detailW = modalWidth - (listW + 28)
 
         nameBox = EditBox(font, detailX + 8, detailY + 34, detailW - 16, 16, Component.literal("Variable ID"))
-        nameBox.setHint(Component.literal("Variable identifier (e.g. quest_step)"))
-        nameBox.setMaxLength(60)
+        nameBox.setHint(Component.literal("§8Variable identifier (e.g. quest_step)"))
+        nameBox.setMaxLength(2000)
         nameBox.setEditable(true)
         nameBox.active = true
         nameBox.setResponder { valText ->
@@ -126,8 +127,8 @@ class StoryVariableManagerModalWidget(
         }
 
         valBox = EditBox(font, detailX + 8, detailY + 102, detailW - 16, 16, Component.literal("Default Value"))
-        valBox.setHint(Component.literal("Initial default value"))
-        valBox.setMaxLength(100)
+        valBox.setHint(Component.literal("§8Initial default value"))
+        valBox.setMaxLength(2000)
         valBox.setEditable(true)
         valBox.active = true
         valBox.setResponder { valText ->

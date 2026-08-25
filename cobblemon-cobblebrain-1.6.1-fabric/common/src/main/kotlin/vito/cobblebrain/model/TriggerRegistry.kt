@@ -167,10 +167,20 @@ object TriggerRegistry {
         TriggerDefinition(
             id = "INTERACT_POKEMON",
             category = TriggerCategory.POKEMON,
-            name = "Interact with Pokémon",
+            name = "Interact with Entity / Pokémon",
             icon = "🐾",
-            description = "Triggers when right clicking a wild or party Pokémon.",
-            defaultParams = mapOf("targetSpecies" to "Eevee")
+            description = "Triggers when right clicking a target entity or Pokémon.",
+            defaultParams = mapOf(
+                "targetType" to "COBBLEMON",
+                "entityType" to "minecraft:villager",
+                "requiredStoryTag" to "",
+                "targetSpecies" to "Eevee",
+                "form" to "",
+                "minLevel" to "1",
+                "maxLevel" to "100",
+                "shinyMode" to "ANY",
+                "pokemonStatus" to "ANY"
+            )
         ),
         TriggerDefinition(
             id = "POKEMON_CATCH",
@@ -178,7 +188,7 @@ object TriggerRegistry {
             name = "Catch Pokémon",
             icon = "🔴",
             description = "Triggers when player successfully catches a Pokémon species.",
-            defaultParams = mapOf("targetSpecies" to "Pikachu")
+            defaultParams = mapOf("targetSpecies" to "Pikachu", "requiredStoryTag" to "")
         ),
         TriggerDefinition(
             id = "HIGHEST_POKEMON_LEVEL",
@@ -235,16 +245,37 @@ object TriggerRegistry {
             category = TriggerCategory.COMBAT,
             name = "Entity Death",
             icon = "☠️",
-            description = "Triggers when an entity with specified ID/Tag dies.",
-            defaultParams = mapOf("entityType" to "minecraft:zombie", "entityTag" to "")
+            description = "Triggers when a specific entity or Cobblemon dies/faints.",
+            defaultParams = mapOf(
+                "targetType" to "GENERIC",
+                "entityType" to "minecraft:zombie",
+                "requiredStoryTag" to "",
+                "targetSpecies" to "Pikachu",
+                "form" to "",
+                "minLevel" to "1",
+                "maxLevel" to "100",
+                "shinyMode" to "ANY",
+                "pokemonStatus" to "ANY"
+            )
         ),
         TriggerDefinition(
             id = "ENTITY_DAMAGED",
             category = TriggerCategory.COMBAT,
             name = "Entity Took Damage",
             icon = "💥",
-            description = "Triggers when a specific entity takes damage.",
-            defaultParams = mapOf("entityType" to "minecraft:player", "minDamage" to "1.0")
+            description = "Triggers when a specific entity or Cobblemon takes damage.",
+            defaultParams = mapOf(
+                "targetType" to "GENERIC",
+                "entityType" to "minecraft:player",
+                "minDamage" to "1.0",
+                "requiredStoryTag" to "",
+                "targetSpecies" to "Pikachu",
+                "form" to "",
+                "minLevel" to "1",
+                "maxLevel" to "100",
+                "shinyMode" to "ANY",
+                "pokemonStatus" to "ANY"
+            )
         ),
 
         // 🌍 WORLD
@@ -278,7 +309,17 @@ object TriggerRegistry {
             name = "Entity Spawned",
             icon = "👾",
             description = "Triggers when entity of specified type spawns in the world.",
-            defaultParams = mapOf("entityType" to "cobblemon:pokemon")
+            defaultParams = mapOf(
+                "targetType" to "COBBLEMON",
+                "entityType" to "cobblemon:pokemon",
+                "requiredStoryTag" to "",
+                "targetSpecies" to "Pikachu",
+                "form" to "",
+                "minLevel" to "1",
+                "maxLevel" to "100",
+                "shinyMode" to "ANY",
+                "pokemonStatus" to "ANY"
+            )
         ),
         TriggerDefinition(
             id = "ENTER_STRUCTURE_OR_ZONE",

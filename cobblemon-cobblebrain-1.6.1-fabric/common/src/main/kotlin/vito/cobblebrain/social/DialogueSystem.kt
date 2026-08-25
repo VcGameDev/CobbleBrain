@@ -463,11 +463,27 @@ object DialogueSystem {
         }
     }
 
-    // bridge de networking (Fabric vai implementar)
+    // bridge de networking (Fabric / NeoForge vai implementar)
     var sendToPlayer: ((ServerPlayer, String) -> Unit)? = null
     var sendPersonalityList: ((ServerPlayer, String) -> Unit)? = null
     var syncQuests: ((ServerPlayer) -> Unit)? = null
-    var onSendPromptClient: (() -> Unit)? = null
+    var sendAIDialogueBoxToPlayer: ((ServerPlayer, vito.cobblebrain.network.CobblebrainPayloads.AIDialogueBoxPayload) -> Unit)? = null
+    var sendSetEntityTexture: ((ServerPlayer, vito.cobblebrain.network.CobblebrainPayloads.SetEntityTexturePayload) -> Unit)? = null
+    var sendClearEntityTexture: ((ServerPlayer, vito.cobblebrain.network.CobblebrainPayloads.ClearEntityTexturePayload) -> Unit)? = null
+
+    fun broadcastEntityTexture(server: MinecraftServer, entity: Entity, storyId: String, textureName: String) {
+        val payload = vito.cobblebrain.network.CobblebrainPayloads.SetEntityTexturePayload(entity.id, storyId, textureName)
+        server.playerList.players.forEach { p ->
+            sendSetEntityTexture?.invoke(p, payload)
+        }
+    }
+
+    fun broadcastClearEntityTexture(server: MinecraftServer, entity: Entity) {
+        val payload = vito.cobblebrain.network.CobblebrainPayloads.ClearEntityTexturePayload(entity.id)
+        server.playerList.players.forEach { p ->
+            sendClearEntityTexture?.invoke(p, payload)
+        }
+    }
 
     fun onBattleStarted(event: BattleStartedEvent) {
         val battle = event.battle
@@ -957,18 +973,17 @@ object DialogueSystem {
     private val bubbleStands = mutableMapOf<UUID, UUID>()
 
     fun getBubbleY(entity: Entity): Double {
-        // topo da hitbox + pequeno offset
-        return entity.eyeY - 1
+        // Dynamically calculate bubble height above mob bounding box
+        return entity.eyeY + 0.5
     }
 
-    fun spawnSpeechBubble(
+    fun spawnEntitySpeechBubble(
         server: MinecraftServer,
-        pokemon: Pokemon,
+        entity: Entity,
         text: String,
-        durationTicks: Int = 60,
+        durationTicks: Int = 100,
         charsPerTick: Int = 1
     ) {
-        val entity = pokemon.entity ?: return
         val level = entity.level()
 
         val stand = ArmorStand(EntityType.ARMOR_STAND, level)
@@ -979,7 +994,6 @@ object DialogueSystem {
         stand.addTag("cobblebrain_chat_bubble")
         stand.moveTo(entity.x, getBubbleY(entity), entity.z)
 
-        // começa vazio (ou com um cursor, se quiser)
         stand.customName = Component.literal("")
 
         level.addFreshEntity(stand)
@@ -991,6 +1005,17 @@ object DialogueSystem {
         bubbleText[stand.uuid] = text
         bubbleProgress[stand.uuid] = 0
         bubbleSpeed[stand.uuid] = charsPerTick
+    }
+
+    fun spawnSpeechBubble(
+        server: MinecraftServer,
+        pokemon: Pokemon,
+        text: String,
+        durationTicks: Int = 60,
+        charsPerTick: Int = 1
+    ) {
+        val entity = pokemon.entity ?: return
+        spawnEntitySpeechBubble(server, entity, text, durationTicks, charsPerTick)
     }
 
 
@@ -2649,7 +2674,8 @@ object DialogueSystem {
         if (":" in normalized)
             return false
 
-        return normalized.startsWith("separator") ||
+        return normalized.startsWith("---") ||
+                normalized.startsWith("separator") ||
                 normalized.startsWith("quests") ||
                 normalized.startsWith("types") ||
                 normalized.startsWith("response language") ||
@@ -2718,6 +2744,8 @@ object DialogueSystem {
         val quirkRegex = Regex("""&QUIRK:([^:]+):([^|\n%#&]+)""", RegexOption.IGNORE_CASE)
         var cleanedContent = content
 
+        val newlyIdentified = mutableMapOf<String, MutableList<String>>()
+
         traitRegex.findAll(content).forEach { match ->
             val fullMatch = match.value
             cleanedContent = cleanedContent.replace(fullMatch, "")
@@ -2746,6 +2774,8 @@ object DialogueSystem {
                         if (!isDup) {
                             personality.traits.add(traitText)
                             MemorySystem.savePersonality(uuid.toString(), personality, pokemonName)
+                            val cleanName = pokemonName.substringBefore("#").trim()
+                            newlyIdentified.getOrPut(cleanName) { mutableListOf() }.add(traitText)
                         }
                     }
                 }
@@ -2780,10 +2810,26 @@ object DialogueSystem {
                         if (!isDup) {
                             personality.quirks.add(quirkText)
                             MemorySystem.savePersonality(uuid.toString(), personality, pokemonName)
+                            val cleanName = pokemonName.substringBefore("#").trim()
+                            newlyIdentified.getOrPut(cleanName) { mutableListOf() }.add(quirkText)
                         }
                     }
                 }
             }
+        }
+
+        if (newlyIdentified.isNotEmpty()) {
+            newlyIdentified.forEach { (pokeName, traitsOrQuirks) ->
+                val traitsList = traitsOrQuirks.joinToString(", ")
+                player.sendSystemMessage(
+                    Component.translatable("cobblebrain.personality.identified", pokeName, traitsList)
+                        .withStyle(ChatFormatting.GOLD)
+                )
+            }
+            player.sendSystemMessage(
+                Component.translatable("cobblebrain.personality.editor_hint")
+                    .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
+            )
         }
         
         memoryRegex.findAll(content).forEach { match ->
@@ -2841,7 +2887,7 @@ object DialogueSystem {
 
         val falas = allLines.filterNot {
             isPromptArtifact(it) ||
-
+                    it.startsWith("---") ||
                     it.startsWith("@") ||
                     it.startsWith("#") ||
                     it.startsWith("&") ||

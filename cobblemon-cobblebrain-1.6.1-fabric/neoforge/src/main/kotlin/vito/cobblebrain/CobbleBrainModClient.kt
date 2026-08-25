@@ -63,6 +63,12 @@ object CobbleBrainModClientNeoForge {
         "category.cobblebrain"
     )
 
+    private val KEY_DEBUG = KeyMapping(
+        "key.cobblebrain.story_debug",
+        GLFW.GLFW_KEY_F8,
+        "category.cobblebrain"
+    )
+
     fun init() {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
@@ -92,6 +98,7 @@ object CobbleBrainModClientNeoForge {
         CobblebrainClientCommon.keyToggle = CMD_TOGGLE
         CobblebrainClientCommon.keyPing = KEY_PING
         CobblebrainClientCommon.keyVoice = KEY_VOICE
+        CobblebrainClientCommon.keyDebug = KEY_DEBUG
     }
 
     // registra keybind
@@ -103,6 +110,7 @@ object CobbleBrainModClientNeoForge {
         event.register(CMD_TOGGLE)
         event.register(KEY_PING)
         event.register(KEY_VOICE)
+        event.register(KEY_DEBUG)
     }
 
     // tick
@@ -110,6 +118,9 @@ object CobbleBrainModClientNeoForge {
         MigrationNoticeChecker.checkAndShow(Minecraft.getInstance())
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
+        }
+        while (KEY_DEBUG.consumeClick()) {
+            vito.cobblebrain.client.StoryDebugClientHandler.handleF8Pressed()
         }
         while (CMD_UP.consumeClick()) {
             HudSystem.navigateUp()

@@ -30,6 +30,12 @@ class NodeInspectorWidget(
     val onOpenPokemonConfig: ((NodeData) -> Unit)? = null,
     val onOpenResourcePicker: ((ResourcePickerType, (String) -> Unit) -> Unit)? = null,
     val onOpenEntityConfig: ((NodeData) -> Unit)? = null,
+    val onDeleteNode: ((NodeData) -> Unit)? = null,
+    val onDissociateNode: ((NodeData) -> Unit)? = null,
+    val onOpenProfileModal: ((NodeData) -> Unit)? = null,
+    val onOpenAIDialogueModal: ((NodeData) -> Unit)? = null,
+    val onOpenAnimationSelector: ((node: NodeData, onSelected: (String) -> Unit) -> Unit)? = null,
+    val onOpenTextureSelector: ((node: NodeData, onSelected: (String) -> Unit) -> Unit)? = null,
     val projectVariables: List<StoryVariable> = emptyList()
 ) {
     private data class InspectorLabel(val text: String, val relY: Int, val color: Int = 0xFFA0A0A0.toInt())
@@ -62,12 +68,39 @@ class NodeInspectorWidget(
         val inputW = panelWidth - 12
         var relY = 4
 
+        // 0. DIAGNOSTIC EXECUTION ALERT BANNER
+        val storyId = (node.params["__story_id__"] ?: "").ifBlank { "default_story" }
+        val debugStatus = vito.cobblebrain.engine.StoryDebugger.getNodeStatus(storyId, node.id)
+        val debugErrMsg = vito.cobblebrain.engine.StoryDebugger.getNodeErrorMessage(storyId, node.id)
+
+        if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED || debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED || debugErrMsg != null) {
+            val isErr = debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED || debugErrMsg != null
+            val cardBorder = if (isErr) 0xFFEF4444.toInt() else 0xFFF59E0B.toInt()
+            val cardTitle = if (isErr) "⚠️ Block Execution Failed" else "⚠ Fallback Path Triggered"
+
+            labels.add(InspectorLabel(cardTitle, relY, cardBorder))
+            relY += 12
+
+            val errorMsg = debugErrMsg ?: "Runtime exception during block execution"
+            val shortMsg = font.plainSubstrByWidth(errorMsg, inputW)
+            labels.add(InspectorLabel(shortMsg, relY, 0xFFFCA5A5.toInt()))
+            relY += 14
+
+            val bDismiss = Button.builder(Component.literal("Dismiss / Retry Diagnostic")) {
+                vito.cobblebrain.engine.StoryDebugger.dismissNodeError(storyId, node.id)
+                buildUi()
+                onDataChanged()
+            }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+            addWidgetItem(bDismiss, relY, 16)
+            relY += 24
+        }
+
         // 1. Node Title Field
         labels.add(InspectorLabel("Title:", relY))
         relY += 12
 
         val tEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Title"))
-        tEdit.setMaxLength(50)
+        tEdit.setMaxLength(2000)
         tEdit.value = node.title
         tEdit.setResponder { valText ->
             node.title = valText
@@ -78,6 +111,7 @@ class NodeInspectorWidget(
 
         // 2. Dynamic Contextual UI for Node Types
         when (node.nodeType) {
+
             NodeType.ACTION -> {
                 val currentActionId = node.params["actionSubtype"] ?: "MESSAGE"
                 val actionDef = ActionRegistry.find(currentActionId)
@@ -102,6 +136,297 @@ class NodeInspectorWidget(
 
                 // Strictly Contextual Inputs for Active Action
                 when (actionDef.id) {
+                    "LOOK_AT", "LOOK_AT_BLOCK" -> {
+                        val targetType = node.params["targetType"] ?: "PLAYER_POKEMON"
+                        val halfW = (inputW - 2) / 2
+
+                        labels.add(InspectorLabel("Target Entity Type:", relY))
+                        relY += 12
+                        val bPoke = Button.builder(Component.literal("🐾 Cobblemon")) {
+                            node.params["targetType"] = "PLAYER_POKEMON"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (targetType == "PLAYER_POKEMON") bPoke.active = false
+
+                        val bNpc = Button.builder(Component.literal("👤 NPC / Mob")) {
+                            node.params["targetType"] = "NPC_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (targetType == "NPC_TAG") bNpc.active = false
+
+                        addWidgetItem(bPoke, relY, 14); addWidgetItem(bNpc, relY, 14)
+                        relY += 20
+
+                        if (targetType == "PLAYER_POKEMON") {
+                            labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
+                            relY += 12
+                            val curSlot = ((node.params["targetIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                            val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
+                                val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
+                                node.params["targetIdentifier"] = slotIdx.toString()
+                            }
+                            addWidgetItem(fSlot, relY, 16)
+                            relY += 22
+                        } else {
+                            labels.add(InspectorLabel("Entity Story Tag:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.setHint(Component.literal("§8Entity Story Tag (e.g. guide_npc)"))
+                            fTag.value = node.params["targetIdentifier"] ?: ""
+                            fTag.setResponder { node.params["targetIdentifier"] = it; onDataChanged() }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        }
+
+                        val lookModes = listOf(
+                            "PLAYER" to "👤 Face Player",
+                            "AWAY_FROM_PLAYER" to "↪️ Away From Player (180°)",
+                            "SKY" to "☁️ Sky (Pitch -90°)",
+                            "GROUND" to "⬇️ Ground (Pitch 90°)",
+                            "SPECIFIC_DIRECTION" to "📍 Coordinates X,Y,Z",
+                            "OPPOSITE_FACING" to "🔄 Opposite Facing (180°)"
+                        )
+                        val curMode = node.params["lookMode"] ?: "PLAYER"
+                        val curModeLabel = lookModes.find { it.first == curMode }?.second ?: "👤 Face Player"
+
+                        labels.add(InspectorLabel("Look Direction Mode:", relY))
+                        relY += 12
+                        val bMode = Button.builder(Component.literal(curModeLabel)) {
+                            val curIdx = lookModes.indexOfFirst { it.first == curMode }
+                            val nextIdx = (curIdx + 1) % lookModes.size
+                            node.params["lookMode"] = lookModes[nextIdx].first
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bMode, relY, 16)
+                        relY += 22
+
+                        if (curMode == "SPECIFIC_DIRECTION") {
+                            labels.add(InspectorLabel("Target Coordinates (X Y Z):", relY))
+                            relY += 12
+                            val fCoords = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Coordinates"))
+                            fCoords.setHint(Component.literal("§8X Y Z (e.g. 100 64 -200 or ~ ~ ~)"))
+                            fCoords.value = node.params["coordinates"] ?: "~ ~ ~"
+                            fCoords.setResponder { node.params["coordinates"] = it; onDataChanged() }
+                            addWidgetItem(fCoords, relY, 16)
+                            relY += 22
+                        }
+
+                        val isInstant = node.params["instantLook"] == "true"
+                        labels.add(InspectorLabel("Head Rotation Timing:", relY))
+                        relY += 12
+                        val bTiming = Button.builder(Component.literal(if (isInstant) "⚡ Instant Snap" else "🔄 Smooth Look Control")) {
+                            node.params["instantLook"] = if (isInstant) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bTiming, relY, 16)
+                        relY += 22
+                    }
+
+                    "ANIMATION", "ANIMATION_BLOCK" -> {
+                        val animSystem = node.params["animationSystem"] ?: "COBBLEMON"
+                        val halfW = (inputW - 2) / 2
+
+                        labels.add(InspectorLabel("Animation System:", relY))
+                        relY += 12
+                        val bCobble = Button.builder(Component.literal("🐾 Cobblemon")) {
+                            node.params["animationSystem"] = "COBBLEMON"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (animSystem == "COBBLEMON") bCobble.active = false
+
+                        val bNpc = Button.builder(Component.literal("👤 NPC / Mob")) {
+                            node.params["animationSystem"] = "NPC"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (animSystem == "NPC") bNpc.active = false
+
+                        addWidgetItem(bCobble, relY, 14); addWidgetItem(bNpc, relY, 14)
+                        relY += 20
+
+                        if (animSystem == "COBBLEMON") {
+                            labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
+                            relY += 12
+                            val curSlot = ((node.params["targetIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                            val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
+                                val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
+                                node.params["targetIdentifier"] = slotIdx.toString()
+                            }
+                            addWidgetItem(fSlot, relY, 16)
+                            relY += 22
+                        } else {
+                            labels.add(InspectorLabel("Entity Story Tag:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.setHint(Component.literal("§8Entity Story Tag (e.g. guard_1)"))
+                            fTag.value = node.params["targetIdentifier"] ?: ""
+                            fTag.setResponder { node.params["targetIdentifier"] = it; onDataChanged() }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        }
+
+                        labels.add(InspectorLabel("Animation / Pose ID:", relY))
+                        relY += 12
+                        val fAnim = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Animation ID"))
+                        fAnim.value = node.params["animationId"] ?: if (animSystem == "COBBLEMON") "battle_idle" else "CROUCHING"
+                        fAnim.setResponder { node.params["animationId"] = it; onDataChanged() }
+                        addWidgetItem(fAnim, relY, 16)
+                        relY += 20
+
+                        val bBrowse = Button.builder(Component.literal("🎬 Browse Animations...")) {
+                            onOpenAnimationSelector?.invoke(node) { chosenId ->
+                                node.params["animationId"] = chosenId
+                                buildUi()
+                                onDataChanged()
+                            }
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bBrowse, relY, 16)
+                        relY += 22
+
+                        val durMode = node.params["durationMode"] ?: "TEMPORARY"
+                        labels.add(InspectorLabel("Duration Mode:", relY))
+                        relY += 12
+                        val bTemp = Button.builder(Component.literal("⏳ Temporary")) {
+                            node.params["durationMode"] = "TEMPORARY"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (durMode == "TEMPORARY") bTemp.active = false
+
+                        val bPerm = Button.builder(Component.literal("♾️ Permanent")) {
+                            node.params["durationMode"] = "PERMANENT"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (durMode == "PERMANENT") bPerm.active = false
+
+                        addWidgetItem(bTemp, relY, 14); addWidgetItem(bPerm, relY, 14)
+                        relY += 20
+
+                        if (durMode == "TEMPORARY") {
+                            labels.add(InspectorLabel("Duration in Ticks (20t = 1s):", relY))
+                            relY += 12
+                            val fDur = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Ticks", node.params["durationTicks"] ?: "60") {
+                                node.params["durationTicks"] = it
+                            }
+                            addWidgetItem(fDur, relY, 16)
+                            relY += 22
+                        }
+
+                        val waitForComplete = node.params["waitForCompletion"] == "true"
+                        labels.add(InspectorLabel("Flow Execution:", relY))
+                        relY += 12
+                        val bWait = Button.builder(Component.literal(if (waitForComplete) "⏳ Delay OUT Until Duration Ends" else "⚡ Instant OUT Port Advance")) {
+                            node.params["waitForCompletion"] = if (waitForComplete) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bWait, relY, 16)
+                        relY += 22
+
+                        val overrideAi = node.params["overridePriority"] != "false"
+                        labels.add(InspectorLabel("AI Wander Lock:", relY))
+                        relY += 12
+                        val bOverride = Button.builder(Component.literal(if (overrideAi) "🔒 Lock AI (Prevent Wander Reset)" else "🔓 Normal AI (May Cancel Pose)")) {
+                            node.params["overridePriority"] = if (overrideAi) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bOverride, relY, 16)
+                        relY += 22
+                    }
+
+                    "SET_ENTITY_TEXTURE", "TEXTURE_BLOCK", "ENTITY_TEXTURE" -> {
+                        val targetType = node.params["targetType"] ?: "PLAYER_POKEMON"
+                        val halfW = (inputW - 2) / 2
+
+                        labels.add(InspectorLabel("Target Entity Type:", relY))
+                        relY += 12
+                        val bPoke = Button.builder(Component.literal("🐾 Cobblemon")) {
+                            node.params["targetType"] = "PLAYER_POKEMON"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (targetType == "PLAYER_POKEMON") bPoke.active = false
+
+                        val bNpc = Button.builder(Component.literal("👤 NPC / Mob")) {
+                            node.params["targetType"] = "NPC_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (targetType == "NPC_TAG") bNpc.active = false
+
+                        addWidgetItem(bPoke, relY, 14); addWidgetItem(bNpc, relY, 14)
+                        relY += 20
+
+                        if (targetType == "PLAYER_POKEMON") {
+                            labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
+                            relY += 12
+                            val curSlot = ((node.params["targetIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                            val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
+                                val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
+                                node.params["targetIdentifier"] = slotIdx.toString()
+                            }
+                            addWidgetItem(fSlot, relY, 16)
+                            relY += 22
+                        } else {
+                            labels.add(InspectorLabel("Entity Story Tag:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.setHint(Component.literal("§8Entity Story Tag (e.g. boss_zombie)"))
+                            fTag.value = node.params["targetIdentifier"] ?: ""
+                            fTag.setResponder { node.params["targetIdentifier"] = it; onDataChanged() }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        }
+
+                        val isReset = node.params["resetToDefault"] == "true"
+                        labels.add(InspectorLabel("Texture Action:", relY))
+                        relY += 12
+                        val bReset = Button.builder(Component.literal(if (isReset) "🔄 Reset to Default Appearance" else "🎨 Apply Custom Texture")) {
+                            node.params["resetToDefault"] = if (isReset) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bReset, relY, 16)
+                        relY += 22
+
+                        if (!isReset) {
+                            labels.add(InspectorLabel("Texture File (.png):", relY))
+                            relY += 12
+                            val fTex = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Texture Name"))
+                            fTex.setHint(Component.literal("§8e.g. custom_skin.png"))
+                            fTex.value = node.params["textureName"] ?: "custom_texture.png"
+                            fTex.setResponder { node.params["textureName"] = it; onDataChanged() }
+                            addWidgetItem(fTex, relY, 16)
+                            relY += 20
+
+                            val bBrowse = Button.builder(Component.literal("🎨 Browse Story Textures...")) {
+                                onOpenTextureSelector?.invoke(node) { chosen ->
+                                    node.params["textureName"] = chosen
+                                    buildUi()
+                                    onDataChanged()
+                                }
+                            }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                            addWidgetItem(bBrowse, relY, 16)
+                            relY += 22
+                        }
+                    }
+                    "AI_DIALOGUE" -> {
+                        labels.add(InspectorLabel("AI Dialogue Configuration:", relY))
+                        relY += 12
+                        val aiBtn = Button.builder(Component.literal("🤖 Configure AI Dialogue...")) {
+                            onOpenAIDialogueModal?.invoke(node)
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(aiBtn, relY, 16)
+                        relY += 22
+                    }
+
                     "SPAWN_STRUCTURE" -> {
                         val currentStructure = node.params["structureId"] ?: "minecraft:village_plains"
                         labels.add(InspectorLabel("Structure (Catalog):", relY))
@@ -134,6 +459,38 @@ class NodeInspectorWidget(
                     }
 
                     "TELEPORT" -> {
+                        val targetMode = node.params["targetMode"] ?: "PLAYER"
+                        val btnW = (inputW - 2) / 2
+                        labels.add(InspectorLabel("Target Entity:", relY))
+                        relY += 12
+                        val bPlayer = Button.builder(Component.literal("Player")) {
+                            node.params["targetMode"] = "PLAYER"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetMode == "PLAYER") bPlayer.active = false
+
+                        val bTag = Button.builder(Component.literal("Tagged Entity")) {
+                            node.params["targetMode"] = "STORY_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + btnW + 2, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetMode == "STORY_TAG") bTag.active = false
+
+                        addWidgetItem(bPlayer, relY, 14); addWidgetItem(bTag, relY, 14)
+                        relY += 18
+
+                        if (targetMode == "STORY_TAG") {
+                            labels.add(InspectorLabel("Target Story Tag:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.value = node.params["targetStoryTag"] ?: ""
+                            fTag.setHint(Component.literal("§8e.g. quest_boss, npc_guide"))
+                            fTag.setResponder { node.params["targetStoryTag"] = it; onDataChanged() }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        }
+
                         labels.add(InspectorLabel("Destination X:", relY))
                         relY += 12
                         val f1 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "X", node.params["destX"] ?: "0") { node.params["destX"] = it }
@@ -249,6 +606,34 @@ class NodeInspectorWidget(
                         addWidgetItem(pickBtn, relY, 16)
                         relY += 22
 
+                        labels.add(InspectorLabel("Story Tag (Optional):", relY))
+                        relY += 12
+                        val tagBox = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                        tagBox.value = node.params["storyTag"] ?: node.params["entity_storyTag"] ?: ""
+                        tagBox.setHint(Component.literal("§8e.g. quest_boss, npc_guide"))
+                        tagBox.setResponder {
+                            node.params["storyTag"] = it
+                            node.params["entity_storyTag"] = it
+                            onDataChanged()
+                        }
+                        addWidgetItem(tagBox, relY, 16)
+                        relY += 22
+
+                        labels.add(InspectorLabel("Position X, Y, Z:", relY))
+                        relY += 12
+                        val colW = (inputW - 4) / 3
+                        val fx = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("X"))
+                        fx.value = node.params["posX"] ?: "~"
+                        fx.setResponder { node.params["posX"] = it; onDataChanged() }
+                        val fy = EditBox(font, inputX + colW + 2, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("Y"))
+                        fy.value = node.params["posY"] ?: "~"
+                        fy.setResponder { node.params["posY"] = it; onDataChanged() }
+                        val fz = EditBox(font, inputX + (colW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("Z"))
+                        fz.value = node.params["posZ"] ?: "~"
+                        fz.setResponder { node.params["posZ"] = it; onDataChanged() }
+                        addWidgetItem(fx, relY, 16); addWidgetItem(fy, relY, 16); addWidgetItem(fz, relY, 16)
+                        relY += 22
+
                         val cfgBtn = Button.builder(Component.literal("⚙️ Configure Entity...")) {
                             onOpenEntityConfig?.invoke(node)
                         }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
@@ -257,23 +642,87 @@ class NodeInspectorWidget(
                     }
 
                     "KILL_ENTITY" -> {
-                        labels.add(InspectorLabel("Target Selector:", relY))
+                        val targetMode = node.params["targetMode"] ?: "AREA_NEAREST"
+                        val btnW = (inputW - 2) / 2
+                        labels.add(InspectorLabel("Target By:", relY))
                         relY += 12
-                        val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Selector"))
-                        f1.value = node.params["entitySelector"] ?: "@e[type=zombie,distance=..10]"
-                        f1.setResponder { node.params["entitySelector"] = it; onDataChanged() }
-                        addWidgetItem(f1, relY, 16)
-                        relY += 22
+                        val bArea = Button.builder(Component.literal("Area / Selector")) {
+                            node.params["targetMode"] = "AREA_NEAREST"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetMode == "AREA_NEAREST") bArea.active = false
+
+                        val bTag = Button.builder(Component.literal("Story Tag")) {
+                            node.params["targetMode"] = "STORY_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + btnW + 2, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetMode == "STORY_TAG") bTag.active = false
+
+                        addWidgetItem(bArea, relY, 14); addWidgetItem(bTag, relY, 14)
+                        relY += 18
+
+                        if (targetMode == "STORY_TAG") {
+                            labels.add(InspectorLabel("Target Story Tag:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.value = node.params["targetStoryTag"] ?: ""
+                            fTag.setHint(Component.literal("§8e.g. quest_boss"))
+                            fTag.setResponder { node.params["targetStoryTag"] = it; onDataChanged() }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        } else {
+                            labels.add(InspectorLabel("Entity Selector:", relY))
+                            relY += 12
+                            val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Selector"))
+                            f1.value = node.params["entitySelector"] ?: "@e[type=zombie,distance=..10]"
+                            f1.setResponder { node.params["entitySelector"] = it; onDataChanged() }
+                            addWidgetItem(f1, relY, 16)
+                            relY += 22
+                        }
                     }
 
                     "MODIFY_ENTITY_PROPERTIES" -> {
-                        labels.add(InspectorLabel("Target Selector:", relY))
+                        val targetMode = node.params["targetMode"] ?: "AREA_NEAREST"
+                        val btnW = (inputW - 2) / 2
+                        labels.add(InspectorLabel("Target By:", relY))
                         relY += 12
-                        val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Selector"))
-                        f1.value = node.params["entitySelector"] ?: "@e[type=!player,distance=..5,limit=1]"
-                        f1.setResponder { node.params["entitySelector"] = it; onDataChanged() }
-                        addWidgetItem(f1, relY, 16)
-                        relY += 22
+                        val bArea = Button.builder(Component.literal("Area / Selector")) {
+                            node.params["targetMode"] = "AREA_NEAREST"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetMode == "AREA_NEAREST") bArea.active = false
+
+                        val bTag = Button.builder(Component.literal("Story Tag")) {
+                            node.params["targetMode"] = "STORY_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + btnW + 2, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetMode == "STORY_TAG") bTag.active = false
+
+                        addWidgetItem(bArea, relY, 14); addWidgetItem(bTag, relY, 14)
+                        relY += 18
+
+                        if (targetMode == "STORY_TAG") {
+                            labels.add(InspectorLabel("Target Story Tag:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.value = node.params["targetStoryTag"] ?: ""
+                            fTag.setHint(Component.literal("§8e.g. quest_boss"))
+                            fTag.setResponder { node.params["targetStoryTag"] = it; onDataChanged() }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        } else {
+                            labels.add(InspectorLabel("Entity Selector:", relY))
+                            relY += 12
+                            val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Selector"))
+                            f1.value = node.params["entitySelector"] ?: "@e[type=!player,distance=..5,limit=1]"
+                            f1.setResponder { node.params["entitySelector"] = it; onDataChanged() }
+                            addWidgetItem(f1, relY, 16)
+                            relY += 22
+                        }
 
                         val cfgBtn = Button.builder(Component.literal("⚙️ Configure Entity...")) {
                             onOpenEntityConfig?.invoke(node)
@@ -283,6 +732,40 @@ class NodeInspectorWidget(
                     }
 
                     "ADD_ENTITY_EFFECT", "ADD_AREA_EFFECT" -> {
+                        if (actionDef.id == "ADD_ENTITY_EFFECT") {
+                            val targetMode = node.params["targetMode"] ?: "AREA_NEAREST"
+                            val btnW = (inputW - 2) / 2
+                            labels.add(InspectorLabel("Target By:", relY))
+                            relY += 12
+                            val bArea = Button.builder(Component.literal("Area / Nearest")) {
+                                node.params["targetMode"] = "AREA_NEAREST"
+                                buildUi()
+                                onDataChanged()
+                            }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                            if (targetMode == "AREA_NEAREST") bArea.active = false
+
+                            val bTag = Button.builder(Component.literal("Story Tag")) {
+                                node.params["targetMode"] = "STORY_TAG"
+                                buildUi()
+                                onDataChanged()
+                            }.bounds(inputX + btnW + 2, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                            if (targetMode == "STORY_TAG") bTag.active = false
+
+                            addWidgetItem(bArea, relY, 14); addWidgetItem(bTag, relY, 14)
+                            relY += 18
+
+                            if (targetMode == "STORY_TAG") {
+                                labels.add(InspectorLabel("Target Story Tag:", relY))
+                                relY += 12
+                                val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                                fTag.value = node.params["targetStoryTag"] ?: ""
+                                fTag.setHint(Component.literal("§8e.g. quest_boss"))
+                                fTag.setResponder { node.params["targetStoryTag"] = it; onDataChanged() }
+                                addWidgetItem(fTag, relY, 16)
+                                relY += 22
+                            }
+                        }
+
                         labels.add(InspectorLabel("Effect ID:", relY))
                         relY += 12
                         val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Effect"))
@@ -319,6 +802,15 @@ class NodeInspectorWidget(
                         relY += 12
                         val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Level", node.params["level"] ?: "5") { node.params["level"] = it }
                         addWidgetItem(f2, relY, 16)
+                        relY += 22
+
+                        labels.add(InspectorLabel("Story Tag (Optional):", relY))
+                        relY += 12
+                        val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                        fTag.value = node.params["storyTag"] ?: ""
+                        fTag.setHint(Component.literal("§8e.g. wild_legendary, boss"))
+                        fTag.setResponder { node.params["storyTag"] = it; onDataChanged() }
+                        addWidgetItem(fTag, relY, 16)
                         relY += 22
 
                         val isShiny = node.params["shiny"] == "true"
@@ -875,13 +1367,22 @@ class NodeInspectorWidget(
                         relY += 22
                     }
 
-                    "TALK_TO_POKEMON", "INTERACT_POKEMON", "POKEMON_CATCH", "CATCH_POKEMON", "SPECIFIC_POKEMON_IN_PARTY", "BATTLE_VICTORY", "DEFEAT_POKEMON" -> {
+                    "POKEMON_CATCH", "CATCH_POKEMON", "SPECIFIC_POKEMON_IN_PARTY", "BATTLE_VICTORY", "DEFEAT_POKEMON" -> {
                         labels.add(InspectorLabel("Pokémon Species:", relY))
                         relY += 12
                         val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Species"))
                         f1.value = node.params["targetSpecies"] ?: "Pikachu"
                         f1.setResponder { node.params["targetSpecies"] = it; onDataChanged() }
                         addWidgetItem(f1, relY, 16)
+                        relY += 22
+
+                        labels.add(InspectorLabel("Required Story Tag (Optional):", relY))
+                        relY += 12
+                        val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                        fTag.value = node.params["requiredStoryTag"] ?: ""
+                        fTag.setHint(Component.literal("§8e.g. quest_boss"))
+                        fTag.setResponder { node.params["requiredStoryTag"] = it; onDataChanged() }
+                        addWidgetItem(fTag, relY, 16)
                         relY += 22
                     }
 
@@ -911,20 +1412,111 @@ class NodeInspectorWidget(
                         relY += 16
                     }
 
-                    "ENTITY_DIED", "ENTITY_DAMAGED", "ENTITY_SPAWNED" -> {
-                        val currentEntity = node.params["entityType"] ?: "minecraft:zombie"
-                        labels.add(InspectorLabel("Entity Type (Catalog):", relY))
-                        relY += 12
+                    "ENTITY_DIED", "ENTITY_DAMAGED", "ENTITY_SPAWNED", "TALK_TO_POKEMON", "INTERACT_POKEMON" -> {
+                        val targetType = node.params["targetType"] ?: if (trigDef.id == "INTERACT_POKEMON" || trigDef.id == "TALK_TO_POKEMON") "COBBLEMON" else "GENERIC"
+                        val btnW = (inputW - 2) / 2
 
-                        val pickBtn = Button.builder(Component.literal("👾 $currentEntity")) {
-                            onOpenResourcePicker?.invoke(ResourcePickerType.ENTITY) { chosen ->
-                                node.params["entityType"] = chosen
-                                buildUi()
-                                onDataChanged()
-                            }
-                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
-                        addWidgetItem(pickBtn, relY, 16)
+                        labels.add(InspectorLabel("Target Type:", relY))
+                        relY += 12
+                        val bGen = Button.builder(Component.literal("👾 Generic Entity")) {
+                            node.params["targetType"] = "GENERIC"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetType == "GENERIC") bGen.active = false
+
+                        val bPoke = Button.builder(Component.literal("🐾 Cobblemon")) {
+                            node.params["targetType"] = "COBBLEMON"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + btnW + 2, (panelY + 20 + relY - scrollOffset).toInt(), btnW, 14).build()
+                        if (targetType == "COBBLEMON") bPoke.active = false
+
+                        addWidgetItem(bGen, relY, 14); addWidgetItem(bPoke, relY, 14)
+                        relY += 20
+
+                        if (targetType == "COBBLEMON") {
+                            labels.add(InspectorLabel("Pokémon Species:", relY))
+                            relY += 12
+                            val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Species"))
+                            f1.value = node.params["targetSpecies"] ?: "Pikachu"
+                            f1.setResponder { node.params["targetSpecies"] = it; onDataChanged() }
+                            addWidgetItem(f1, relY, 16)
+                            relY += 22
+
+                            labels.add(InspectorLabel("Form / Variant (Optional):", relY))
+                            relY += 12
+                            val fForm = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Form"))
+                            fForm.value = node.params["form"] ?: ""
+                            fForm.setHint(Component.literal("§8e.g. alolan, hisuian..."))
+                            fForm.setResponder { node.params["form"] = it; onDataChanged() }
+                            addWidgetItem(fForm, relY, 16)
+                            relY += 22
+
+                            labels.add(InspectorLabel("Level Range (Min - Max):", relY))
+                            relY += 12
+                            val halfW = (inputW - 4) / 2
+                            val minLvl = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, "Min", node.params["minLevel"] ?: "1") { node.params["minLevel"] = it }
+                            val maxLvl = createNumEdit(inputX + halfW + 4, (panelY + 20 + relY - scrollOffset).toInt(), halfW, "Max", node.params["maxLevel"] ?: "100") { node.params["maxLevel"] = it }
+                            addWidgetItem(minLvl, relY, 16); addWidgetItem(maxLvl, relY, 16)
+                            relY += 22
+
+                            val shinyMode = node.params["shinyMode"] ?: "ANY"
+                            val shiny3W = (inputW - 4) / 3
+                            labels.add(InspectorLabel("Shiny Variant:", relY))
+                            relY += 12
+                            val bShAny = Button.builder(Component.literal("✨ Any")) { node.params["shinyMode"] = "ANY"; buildUi(); onDataChanged() }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), shiny3W, 14).build()
+                            if (shinyMode == "ANY") bShAny.active = false
+                            val bShYes = Button.builder(Component.literal("✨ Yes")) { node.params["shinyMode"] = "YES"; buildUi(); onDataChanged() }.bounds(inputX + shiny3W + 2, (panelY + 20 + relY - scrollOffset).toInt(), shiny3W, 14).build()
+                            if (shinyMode == "YES") bShYes.active = false
+                            val bShNo = Button.builder(Component.literal("⚪ No")) { node.params["shinyMode"] = "NO"; buildUi(); onDataChanged() }.bounds(inputX + (shiny3W + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), shiny3W, 14).build()
+                            if (shinyMode == "NO") bShNo.active = false
+                            addWidgetItem(bShAny, relY, 14); addWidgetItem(bShYes, relY, 14); addWidgetItem(bShNo, relY, 14)
+                            relY += 20
+
+                            val statusMode = node.params["pokemonStatus"] ?: "ANY"
+                            labels.add(InspectorLabel("Pokémon Status:", relY))
+                            relY += 12
+                            val bStAny = Button.builder(Component.literal("Any")) { node.params["pokemonStatus"] = "ANY"; buildUi(); onDataChanged() }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), shiny3W, 14).build()
+                            if (statusMode == "ANY") bStAny.active = false
+                            val bStWild = Button.builder(Component.literal("Wild")) { node.params["pokemonStatus"] = "WILD"; buildUi(); onDataChanged() }.bounds(inputX + shiny3W + 2, (panelY + 20 + relY - scrollOffset).toInt(), shiny3W, 14).build()
+                            if (statusMode == "WILD") bStWild.active = false
+                            val bStParty = Button.builder(Component.literal("Party")) { node.params["pokemonStatus"] = "PARTY"; buildUi(); onDataChanged() }.bounds(inputX + (shiny3W + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), shiny3W, 14).build()
+                            if (statusMode == "PARTY") bStParty.active = false
+                            addWidgetItem(bStAny, relY, 14); addWidgetItem(bStWild, relY, 14); addWidgetItem(bStParty, relY, 14)
+                            relY += 20
+                        } else {
+                            val currentEntity = node.params["entityType"] ?: "minecraft:zombie"
+                            labels.add(InspectorLabel("Entity Type (Catalog):", relY))
+                            relY += 12
+
+                            val pickBtn = Button.builder(Component.literal("👾 $currentEntity")) {
+                                onOpenResourcePicker?.invoke(ResourcePickerType.ENTITY) { chosen ->
+                                    node.params["entityType"] = chosen
+                                    buildUi()
+                                    onDataChanged()
+                                }
+                            }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                            addWidgetItem(pickBtn, relY, 16)
+                            relY += 22
+                        }
+
+                        labels.add(InspectorLabel("Required Story Tag (Optional):", relY))
+                        relY += 12
+                        val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                        fTag.value = node.params["requiredStoryTag"] ?: ""
+                        fTag.setHint(Component.literal("§8e.g. quest_boss, npc_guide"))
+                        fTag.setResponder { node.params["requiredStoryTag"] = it; onDataChanged() }
+                        addWidgetItem(fTag, relY, 16)
                         relY += 22
+
+                        if (trigDef.id == "ENTITY_DAMAGED") {
+                            labels.add(InspectorLabel("Min Damage:", relY))
+                            relY += 12
+                            val fDmg = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Min Dmg", node.params["minDamage"] ?: "1.0") { node.params["minDamage"] = it }
+                            addWidgetItem(fDmg, relY, 16)
+                            relY += 22
+                        }
                     }
 
                     "WEATHER_CHECK" -> {
@@ -1236,6 +1828,28 @@ class NodeInspectorWidget(
                 }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
                 addWidgetItem(changeBtn, relY, 16)
                 relY += 22
+
+                if (currentTrigId in listOf("POKEMON_CATCH", "INTERACT_POKEMON", "TALK_TO_POKEMON", "SPECIFIC_POKEMON_IN_PARTY", "BATTLE_VICTORY")) {
+                    labels.add(InspectorLabel("Target Species (Optional):", relY))
+                    relY += 12
+                    val spEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Species"))
+                    spEdit.value = node.params["targetSpecies"] ?: ""
+                    spEdit.setHint(Component.literal("§8e.g. Pikachu (leave empty for any)"))
+                    spEdit.setResponder { node.params["targetSpecies"] = it; onDataChanged() }
+                    addWidgetItem(spEdit, relY, 16)
+                    relY += 22
+                }
+
+                if (currentTrigId in listOf("ENTITY_DIED", "ENTITY_DAMAGED", "ENTITY_SPAWNED", "INTERACT_POKEMON", "TALK_TO_POKEMON", "POKEMON_CATCH")) {
+                    labels.add(InspectorLabel("Required Story Tag (Optional):", relY))
+                    relY += 12
+                    val tagEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                    tagEdit.value = node.params["requiredStoryTag"] ?: ""
+                    tagEdit.setHint(Component.literal("§8e.g. quest_boss (leave empty for any)"))
+                    tagEdit.setResponder { node.params["requiredStoryTag"] = it; onDataChanged() }
+                    addWidgetItem(tagEdit, relY, 16)
+                    relY += 22
+                }
 
                 labels.add(InspectorLabel("Target Count:", relY))
                 relY += 12
@@ -1731,24 +2345,74 @@ class NodeInspectorWidget(
             }
 
             NodeType.DIALOGUE -> {
-                labels.add(InspectorLabel("Dialogue / Text:", relY))
+                val isAi = node.params["useAi"] == "true"
+                val halfW = (inputW - 2) / 2
+
+                labels.add(InspectorLabel("Generation Mode:", relY))
                 relY += 12
 
-                val cEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 28, Component.literal("Dialogue"))
-                cEdit.setMaxLength(500)
-                cEdit.value = node.content
-                cEdit.setResponder { valText ->
-                    node.content = valText
+                val normBtn = Button.builder(Component.literal("Fixed Text")) {
+                    node.params["useAi"] = "false"
+                    node.outputs.removeIf { it.id == "OUT_FALLBACK" || it.name.equals("Fallback", true) }
+                    buildUi()
                     onDataChanged()
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                if (!isAi) normBtn.active = false
+
+                val aiModeBtn = Button.builder(Component.literal("🤖 AI Generated")) {
+                    node.params["useAi"] = "true"
+                    if (node.outputs.none { it.id == "OUT_FALLBACK" || it.name.equals("Fallback", true) }) {
+                        node.outputs.add(PortData(id = "OUT_FALLBACK", name = "Fallback", type = PortType.OUTPUT))
+                    }
+                    buildUi()
+                    onDataChanged()
+                }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                if (isAi) aiModeBtn.active = false
+
+                addWidgetItem(normBtn, relY, 14)
+                addWidgetItem(aiModeBtn, relY, 14)
+                relY += 20
+
+                if (isAi) {
+                    labels.add(InspectorLabel("AI Instruction Prompt:", relY))
+                    relY += 12
+
+                    val cEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 28, Component.literal("Prompt"))
+                    cEdit.setMaxLength(2000)
+                    cEdit.value = node.content
+                    cEdit.setResponder { valText ->
+                        node.content = valText
+                        onDataChanged()
+                    }
+                    addWidgetItem(cEdit, relY, 28)
+                    relY += 34
+
+                    labels.add(InspectorLabel("AI Configuration:", relY))
+                    relY += 12
+                    val aiSettingsBtn = Button.builder(Component.literal("🤖 AI Settings...")) {
+                        onOpenAIDialogueModal?.invoke(node)
+                    }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                    addWidgetItem(aiSettingsBtn, relY, 16)
+                    relY += 22
+                } else {
+                    labels.add(InspectorLabel("Dialogue / Text:", relY))
+                    relY += 12
+
+                    val cEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 28, Component.literal("Dialogue"))
+                    cEdit.setMaxLength(500)
+                    cEdit.value = node.content
+                    cEdit.setResponder { valText ->
+                        node.content = valText
+                        onDataChanged()
+                    }
+                    addWidgetItem(cEdit, relY, 28)
+                    relY += 34
                 }
-                addWidgetItem(cEdit, relY, 28)
-                relY += 34
 
                 val currentSpeakerMode = node.params["speakerMode"] ?: "STANDARD"
                 labels.add(InspectorLabel("Speech System:", relY))
                 relY += 12
 
-                val halfW = (inputW - 2) / 2
                 val stdBtn = Button.builder(Component.literal("Standard")) {
                     node.params["speakerMode"] = "STANDARD"
                     buildUi()
@@ -1842,6 +2506,7 @@ class NodeInspectorWidget(
                         "PARTY_RANDOM" to "Random Party",
                         "NEAREST_WILD" to "Nearest Wild",
                         "BY_SPECIES" to "By Species / Name",
+                        "NPC" to "👤 Target Mob / NPC (Tag)",
                         "CUSTOM_NAME" to "Custom Name"
                     )
                     val currentSpeakerType = node.params["speakerType"] ?: "PARTY_FIRST"
@@ -1860,7 +2525,29 @@ class NodeInspectorWidget(
                     addWidgetItem(spkBtn, relY, 16)
                     relY += 22
 
-                    if (currentSpeakerType == "PARTY_SLOT") {
+                    if (currentSpeakerType == "NPC") {
+                        labels.add(InspectorLabel("Target Mob / NPC Tag:", relY))
+                        relY += 12
+                        val tagEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                        tagEdit.setHint(Component.literal("§8Entity Story Tag or Selector (e.g. guide_npc)"))
+                        tagEdit.value = node.params["entityStoryTag"] ?: node.params["speakerIdentifier"] ?: ""
+                        tagEdit.setResponder {
+                            node.params["entityStoryTag"] = it
+                            node.params["speakerIdentifier"] = it
+                            onDataChanged()
+                        }
+                        addWidgetItem(tagEdit, relY, 16)
+                        relY += 22
+
+                        labels.add(InspectorLabel("Speaker Display Name (Optional):", relY))
+                        relY += 12
+                        val nameEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Display Name"))
+                        nameEdit.setHint(Component.literal("§8Display Name (empty = auto mob name)"))
+                        nameEdit.value = node.params["customSpeakerName"] ?: ""
+                        nameEdit.setResponder { node.params["customSpeakerName"] = it; onDataChanged() }
+                        addWidgetItem(nameEdit, relY, 16)
+                        relY += 22
+                    } else if (currentSpeakerType == "PARTY_SLOT") {
                         labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
                         relY += 12
                         val slotEdit = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", node.params["partySlot"] ?: "1") {
@@ -1994,16 +2681,190 @@ class NodeInspectorWidget(
                 addWidgetItem(f1, relY, 16)
                 relY += 22
             }
+
+            NodeType.SAVE_STATE_NODE, NodeType.LOAD_STATE_NODE, NodeType.CHECKPOINT_NODE -> {
+                val cfgBtn = Button.builder(Component.literal("⚙️ Configure Save/Load Profile...")) {
+                    onOpenProfileModal?.invoke(node)
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                addWidgetItem(cfgBtn, relY, 16)
+                relY += 22
+
+                labels.add(InspectorLabel("Profile ID / Slot:", relY))
+                relY += 12
+                val f1 = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Profile ID"))
+                f1.value = node.params["profileId"] ?: "checkpoint_1"
+                f1.setResponder { node.params["profileId"] = it; onDataChanged() }
+                addWidgetItem(f1, relY, 16)
+                relY += 22
+
+                val currentScope = node.params["scope"] ?: "PLAYER"
+                val scopeBtn = Button.builder(Component.literal("Scope: $currentScope")) {
+                    node.params["scope"] = if (currentScope == "PLAYER") "GLOBAL" else "PLAYER"
+                    buildUi()
+                    onDataChanged()
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                addWidgetItem(scopeBtn, relY, 16)
+                relY += 22
+
+                if (node.nodeType == NodeType.SAVE_STATE_NODE || (node.nodeType == NodeType.CHECKPOINT_NODE && node.params["checkpointMode"] != "LOAD")) {
+                    labels.add(InspectorLabel("Modules (ALL or list):", relY))
+                    relY += 12
+                    val fMod = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Modules"))
+                    fMod.value = node.params["modules"] ?: "ALL"
+                    fMod.setResponder { node.params["modules"] = it; onDataChanged() }
+                    addWidgetItem(fMod, relY, 16)
+                    relY += 22
+                }
+
+                if (node.nodeType == NodeType.LOAD_STATE_NODE || (node.nodeType == NodeType.CHECKPOINT_NODE && node.params["checkpointMode"] == "LOAD")) {
+                    val currentMerge = node.params["mergeMode"] ?: "OVERWRITE"
+                    val mergeBtn = Button.builder(Component.literal("Merge: $currentMerge")) {
+                        node.params["mergeMode"] = if (currentMerge == "OVERWRITE") "SOFT_MERGE" else "OVERWRITE"
+                        buildUi()
+                        onDataChanged()
+                    }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                    addWidgetItem(mergeBtn, relY, 16)
+                    relY += 22
+
+                    labels.add(InspectorLabel("Jump Target Node ID:", relY))
+                    relY += 12
+                    val fJump = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Target Node ID"))
+                    fJump.value = node.params["jumpToTargetNodeId"] ?: ""
+                    fJump.setResponder { node.params["jumpToTargetNodeId"] = it; onDataChanged() }
+                    addWidgetItem(fJump, relY, 16)
+                    relY += 22
+
+                    labels.add(InspectorLabel("Grace Period (Ticks):", relY))
+                    relY += 12
+                    val fGrace = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Grace Ticks", node.params["gracePeriodTicks"] ?: "60") { node.params["gracePeriodTicks"] = it }
+                    addWidgetItem(fGrace, relY, 16)
+                    relY += 22
+
+                    labels.add(InspectorLabel("Clean Story Tag:", relY))
+                    relY += 12
+                    val fClean = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                    fClean.value = node.params["cleanStoryTag"] ?: ""
+                    fClean.setResponder { node.params["cleanStoryTag"] = it; onDataChanged() }
+                    addWidgetItem(fClean, relY, 16)
+                    relY += 22
+                }
+            }
+
+            NodeType.TEXTURE -> {
+                val targetType = node.params["targetType"] ?: "NPC_TAG"
+                val halfW = (inputW - 2) / 2
+
+                labels.add(InspectorLabel("Target Entity Type:", relY))
+                relY += 12
+                val bPoke = Button.builder(Component.literal("🐾 Cobblemon")) {
+                    node.params["targetType"] = "PLAYER_POKEMON"
+                    buildUi()
+                    onDataChanged()
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                if (targetType == "PLAYER_POKEMON") bPoke.active = false
+
+                val bNpc = Button.builder(Component.literal("👤 NPC / Mob")) {
+                    node.params["targetType"] = "NPC_TAG"
+                    buildUi()
+                    onDataChanged()
+                }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                if (targetType == "NPC_TAG") bNpc.active = false
+
+                addWidgetItem(bPoke, relY, 14); addWidgetItem(bNpc, relY, 14)
+                relY += 20
+
+                if (targetType == "PLAYER_POKEMON") {
+                    labels.add(InspectorLabel("Party Slot (0-5):", relY))
+                    relY += 12
+                    val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", node.params["pokemonSlot"] ?: "0") { node.params["pokemonSlot"] = it }
+                    addWidgetItem(fSlot, relY, 16)
+                    relY += 22
+                } else {
+                    labels.add(InspectorLabel("Entity Story Tag:", relY))
+                    relY += 12
+                    val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                    fTag.value = node.params["targetIdentifier"] ?: ""
+                    fTag.setResponder { node.params["targetIdentifier"] = it; onDataChanged() }
+                    addWidgetItem(fTag, relY, 16)
+                    relY += 22
+                }
+
+                val textureMode = node.params["textureMode"] ?: "SET_TEXTURE"
+                labels.add(InspectorLabel("Texture Action Mode:", relY))
+                relY += 12
+                val bSet = Button.builder(Component.literal("Apply Texture")) {
+                    node.params["textureMode"] = "SET_TEXTURE"
+                    buildUi()
+                    onDataChanged()
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                if (textureMode == "SET_TEXTURE") bSet.active = false
+
+                val bClear = Button.builder(Component.literal("Reset Default")) {
+                    node.params["textureMode"] = "CLEAR_TEXTURE"
+                    buildUi()
+                    onDataChanged()
+                }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                if (textureMode == "CLEAR_TEXTURE") bClear.active = false
+
+                addWidgetItem(bSet, relY, 14); addWidgetItem(bClear, relY, 14)
+                relY += 20
+
+                if (textureMode == "SET_TEXTURE") {
+                    val currentTex = node.params["textureName"] ?: ""
+                    labels.add(InspectorLabel("Selected Texture:", relY))
+                    relY += 12
+                    val fTex = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Texture Name"))
+                    fTex.value = currentTex
+                    fTex.setResponder { node.params["textureName"] = it; onDataChanged() }
+                    addWidgetItem(fTex, relY, 16)
+                    relY += 22
+
+                    val bBrowse = Button.builder(Component.literal("📁 Browse Story Textures")) {
+                        onOpenTextureSelector?.invoke(node) { chosen ->
+                            node.params["textureName"] = chosen
+                            buildUi()
+                            onDataChanged()
+                        }
+                    }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                    addWidgetItem(bBrowse, relY, 16)
+                    relY += 22
+                }
+            }
         }
+
+        // 3. Node Lifecycle Actions: Dissociate & Delete
+        relY += 10
+        labels.add(InspectorLabel("─ Actions ─", relY, 0xFF555566.toInt()))
+        relY += 14
+
+        if (!node.parentSceneId.isNullOrEmpty()) {
+            val detachBtn = Button.builder(Component.literal("✂️ Detach from Scene")) {
+                onDissociateNode?.invoke(node)
+            }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+            addWidgetItem(detachBtn, relY, 16)
+            relY += 20
+        }
+
+        val deleteBtn = Button.builder(Component.literal("🗑️ Delete Node")) {
+            onDeleteNode?.invoke(node)
+        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+        addWidgetItem(deleteBtn, relY, 16)
+        relY += 22
 
         totalContentHeight = relY.toDouble()
         updateWidgetPositions()
     }
 
+    private class NumEditBox(font: Font, x: Int, y: Int, w: Int, h: Int, title: Component) : EditBox(font, x, y, w, h, title)
+
     private fun addWidgetItem(widget: GuiEventListener, relY: Int, height: Int) {
         if (widget is EditBox) {
             widget.setEditable(true)
             widget.active = true
+            if (widget !is NumEditBox) {
+                // Ensure all text EditBoxes have at least 2000 character capacity
+                widget.setMaxLength(2000)
+            }
         }
         childrenWidgets.add(widget)
         val relX = when (widget) {
@@ -2036,8 +2897,9 @@ class NodeInspectorWidget(
     }
 
     private fun createNumEdit(x: Int, y: Int, w: Int, label: String, initialVal: String, onUpdate: (String) -> Unit): EditBox {
-        val eb = EditBox(font, x, y, w, 16, Component.literal(label))
+        val eb = NumEditBox(font, x, y, w, 16, Component.literal(label))
         eb.value = initialVal
+        eb.setMaxLength(32)
         eb.setEditable(true)
         eb.active = true
         eb.setFilter { text -> text.isEmpty() || text.all { it.isDigit() || it == '-' || it == '.' } }
@@ -2110,6 +2972,10 @@ class NodeInspectorWidget(
                 NodeType.CONSTRUCTION -> 0xFF00838F.toInt()
                 NodeType.QUEST -> 0xFFFF8F00.toInt()
                 NodeType.AUDIO -> 0xFF6A1B9A.toInt()
+                NodeType.SAVE_STATE_NODE -> 0xFF4A148C.toInt()
+                NodeType.LOAD_STATE_NODE -> 0xFF311B92.toInt()
+                NodeType.CHECKPOINT_NODE -> 0xFF512DA8.toInt()
+                NodeType.TEXTURE -> 0xFF9333EA.toInt()
             }
             guiGraphics.fill(nx, ny, nx + nw, ny + nh, color)
         }

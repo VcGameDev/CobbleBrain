@@ -27,7 +27,8 @@ class StoryVariableSelectorModalWidget(
 
     init {
         searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Search Variable"))
-        searchBox.setHint(Component.literal("🔍 Type to filter..."))
+        searchBox.setMaxLength(2000)
+        searchBox.setHint(Component.literal("§8🔍 Type to filter..."))
         searchBox.setEditable(true)
         searchBox.active = true
 

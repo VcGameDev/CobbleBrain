@@ -154,11 +154,78 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        DialogueHudOverlay.onAdvanceCallback = { instId, nodeId ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(CobblebrainPayloads.AdvanceAIDialoguePayload(instId, nodeId))
+            }
+        }
+
         ClientPlayNetworking.registerGlobalReceiver(
             CobblebrainPayloads.PersonalityListPayload.TYPE
         ) { payload, context ->
             context.client().execute {
                 CobblebrainClientCommon.onPersonalityListReceived?.invoke(payload.dataJson)
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.AIDialogueBoxPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                DialogueHudOverlay.showDialogue(
+                    speaker = payload.speakerName,
+                    type = payload.speakerType,
+                    text = payload.dialogueText,
+                    freeze = payload.freezePlayer,
+                    instId = payload.instanceId,
+                    nId = payload.nodeId
+                )
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.SetEntityTexturePayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                val tex = vito.cobblebrain.social.StoryAssetManager.getOrCreateDynamicTexture(payload.storyId, payload.textureName)
+                if (tex != null) {
+                    vito.cobblebrain.social.StoryAssetManager.setEntityOverride(payload.entityId, tex)
+                }
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.ClearEntityTexturePayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                vito.cobblebrain.social.StoryAssetManager.clearEntityOverride(payload.entityId)
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.StoryDebugSyncPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                val nodeType = try { vito.cobblebrain.model.NodeType.valueOf(payload.blockType) } catch (_: Exception) { vito.cobblebrain.model.NodeType.ACTION }
+                val status = try { vito.cobblebrain.engine.NodeExecutionStatus.valueOf(payload.status) } catch (_: Exception) { vito.cobblebrain.engine.NodeExecutionStatus.IDLE }
+                vito.cobblebrain.engine.StoryDebugger.recordLog(
+                    storyId = payload.storyId,
+                    blockId = payload.blockId,
+                    blockType = nodeType,
+                    status = status,
+                    level = payload.level,
+                    message = payload.message,
+                    details = payload.details.takeIf { it.isNotBlank() },
+                    server = null
+                )
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.StorySessionStateSyncPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                vito.cobblebrain.engine.StoryDebugger.updateSessionStateFromPayload(payload)
             }
         }
     }

@@ -37,8 +37,8 @@ object ActionRegistry {
             category = ActionCategory.MAP,
             name = "Teleport",
             icon = "🌀",
-            description = "Teleports player or target to specified X, Y, Z coordinates.",
-            defaultParams = mapOf("destX" to "0", "destY" to "64", "destZ" to "0")
+            description = "Teleports player or target entity to specified X, Y, Z coordinates.",
+            defaultParams = mapOf("targetMode" to "PLAYER", "targetStoryTag" to "", "destX" to "0", "destY" to "64", "destZ" to "0")
         ),
         ActionDefinition(
             id = "CHANGE_WEATHER",
@@ -82,7 +82,7 @@ object ActionRegistry {
             name = "Spawn Entity",
             icon = "👾",
             description = "Spawns an entity or mob (Vanilla or mod) at specified coordinates.",
-            defaultParams = mapOf("entityId" to "minecraft:villager", "customName" to "", "posX" to "~", "posY" to "~", "posZ" to "~")
+            defaultParams = mapOf("entityId" to "minecraft:villager", "customName" to "", "storyTag" to "", "posX" to "~", "posY" to "~", "posZ" to "~")
         ),
         ActionDefinition(
             id = "KILL_ENTITY",
@@ -90,7 +90,7 @@ object ActionRegistry {
             name = "Kill Entity",
             icon = "☠️",
             description = "Removes or slays entities in a radius or matching tag/name.",
-            defaultParams = mapOf("entitySelector" to "@e[type=zombie,distance=..10]")
+            defaultParams = mapOf("targetMode" to "AREA_NEAREST", "entitySelector" to "@e[type=zombie,distance=..10]", "targetStoryTag" to "")
         ),
         ActionDefinition(
             id = "MODIFY_ENTITY_PROPERTIES",
@@ -98,7 +98,7 @@ object ActionRegistry {
             name = "Entity Properties",
             icon = "📊",
             description = "Adjusts health, armor, speed, custom name, and AI of target entity.",
-            defaultParams = mapOf("health" to "20", "speedMultiplier" to "1.0", "customName" to "", "noAi" to "false")
+            defaultParams = mapOf("targetMode" to "AREA_NEAREST", "entitySelector" to "@e[type=!player,distance=..5,limit=1]", "targetStoryTag" to "", "health" to "20", "speedMultiplier" to "1.0", "customName" to "", "noAi" to "false")
         ),
         ActionDefinition(
             id = "ADD_ENTITY_EFFECT",
@@ -106,7 +106,7 @@ object ActionRegistry {
             name = "Apply Entity Effect",
             icon = "🧪",
             description = "Applies a potion effect to a specific target entity.",
-            defaultParams = mapOf("effectId" to "minecraft:glowing", "durationSec" to "15", "amplifier" to "1")
+            defaultParams = mapOf("targetMode" to "AREA_NEAREST", "entitySelector" to "@e[type=!player,distance=..5,limit=1]", "targetStoryTag" to "", "effectId" to "minecraft:glowing", "durationSec" to "15", "amplifier" to "1")
         ),
         ActionDefinition(
             id = "ADD_AREA_EFFECT",
@@ -116,6 +116,49 @@ object ActionRegistry {
             description = "Applies potion effect to all entities within a radius.",
             defaultParams = mapOf("effectId" to "minecraft:slowness", "radius" to "8", "durationSec" to "10", "amplifier" to "1")
         ),
+        ActionDefinition(
+            id = "LOOK_AT",
+            category = ActionCategory.ENTITIES,
+            name = "Look At Entity",
+            icon = "👀",
+            description = "Rotates target entity (Cobblemon or NPC/Mob) towards player, coordinates, sky, ground, or opposite direction.",
+            defaultParams = mapOf(
+                "targetType" to "PLAYER_POKEMON",
+                "targetIdentifier" to "0",
+                "lookMode" to "PLAYER",
+                "coordinates" to "~ ~ ~",
+                "instantLook" to "false"
+            )
+        ),
+        ActionDefinition(
+            id = "ANIMATION",
+            category = ActionCategory.ENTITIES,
+            name = "Entity Animation",
+            icon = "🎬",
+            description = "Plays Cobblemon or vanilla NPC/Mob animation/pose with duration and AI override lock.",
+            defaultParams = mapOf(
+                "animationSystem" to "COBBLEMON",
+                "targetIdentifier" to "0",
+                "animationId" to "battle_idle",
+                "durationMode" to "TEMPORARY",
+                "durationTicks" to "60",
+                "waitForCompletion" to "false",
+                "overridePriority" to "true"
+            )
+        ),
+        ActionDefinition(
+            id = "SET_ENTITY_TEXTURE",
+            category = ActionCategory.ENTITIES,
+            name = "Set Entity Texture / Skin",
+            icon = "🎨",
+            description = "Dynamically swaps the texture/skin of a Cobblemon or NPC/Mob using custom PNG assets from the story.",
+            defaultParams = mapOf(
+                "targetType" to "PLAYER_POKEMON",
+                "targetIdentifier" to "0",
+                "textureName" to "custom_texture.png",
+                "resetToDefault" to "false"
+            )
+        ),
 
         // 🐾 POKÉMON
         ActionDefinition(
@@ -124,7 +167,7 @@ object ActionRegistry {
             name = "Spawn Cobblemon",
             icon = "🐾",
             description = "Spawns a Pokémon with configured level, shiny status, moves, and attributes.",
-            defaultParams = mapOf("species" to "Pikachu", "level" to "5", "shiny" to "false")
+            defaultParams = mapOf("species" to "Pikachu", "level" to "5", "shiny" to "false", "storyTag" to "")
         ),
         ActionDefinition(
             id = "GIVE_POKEMON",
@@ -296,7 +339,9 @@ object ActionRegistry {
             "SPAWN_POKEMON", "SPAWN" -> "SPAWN_COBBLEMON"
             "SOUND" -> "PLAY_SOUND"
             "EFFECT" -> "ADD_PLAYER_EFFECT"
-            "COMMAND" -> "SPAWN_ENTITY"
+            "LOOK_AT_BLOCK" -> "LOOK_AT"
+            "ANIMATION_BLOCK" -> "ANIMATION"
+            "TEXTURE_BLOCK", "ENTITY_TEXTURE", "SET_TEXTURE" -> "SET_ENTITY_TEXTURE"
             else -> id
         }
         return actions.find { it.id == normalized } ?: actions.first()

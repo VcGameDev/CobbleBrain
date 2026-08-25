@@ -9,6 +9,7 @@ data class StoryProject(
     var description: String = "",
     var version: String = "1.0.0",
     var activeSceneId: String = "",
+    var prerequisites: StoryPrerequisites = StoryPrerequisites(),
     val scenes: MutableList<SceneData> = mutableListOf(),
     val sceneConnections: MutableList<ConnectionData> = mutableListOf(),
     val variables: MutableList<StoryVariable> = mutableListOf()

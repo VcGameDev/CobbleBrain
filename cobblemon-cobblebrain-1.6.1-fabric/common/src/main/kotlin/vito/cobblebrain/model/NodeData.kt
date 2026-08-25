@@ -23,7 +23,15 @@ enum class NodeType {
     QUEST,
     AUDIO,
     @SerializedName(value = "COMMAND_NODE", alternate = ["COMMAND"])
-    COMMAND_NODE
+    COMMAND_NODE,
+    @SerializedName(value = "SAVE_STATE_NODE", alternate = ["SAVE_STATE", "CHECKPOINT_SAVE"])
+    SAVE_STATE_NODE,
+    @SerializedName(value = "LOAD_STATE_NODE", alternate = ["LOAD_STATE", "CHECKPOINT_LOAD"])
+    LOAD_STATE_NODE,
+    @SerializedName(value = "CHECKPOINT_NODE", alternate = ["CHECKPOINT"])
+    CHECKPOINT_NODE,
+    @SerializedName(value = "TEXTURE", alternate = ["TEXTURE_BLOCK", "SET_TEXTURE", "ENTITY_TEXTURE"])
+    TEXTURE
 }
 
 data class NodeData(

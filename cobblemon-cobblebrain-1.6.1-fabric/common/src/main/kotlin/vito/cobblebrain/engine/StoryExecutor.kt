@@ -8,6 +8,13 @@ import vito.cobblebrain.model.NodeType
 import vito.cobblebrain.model.StoryProject
 import vito.cobblebrain.model.VariableType
 
+import vito.cobblebrain.engine.checkpoint.StoryCheckpointManager
+
+data class PrerequisiteValidationResult(
+    val isValid: Boolean,
+    val reason: String = ""
+)
+
 data class ActiveStoryInstance(
     val storyId: String,
     val project: StoryProject,
@@ -16,10 +23,127 @@ data class ActiveStoryInstance(
 
 object StoryExecutor {
     val activeStories = mutableMapOf<String, ActiveStoryInstance>()
+    val completedStoriesByPlayer = mutableMapOf<java.util.UUID, MutableSet<String>>()
     private const val MAX_NODES_PER_TICK = 50
 
-    fun startStory(project: StoryProject, player: ServerPlayer? = null, server: MinecraftServer? = null): ActiveStoryInstance {
-        val context = StoryContext(player = player, server = server ?: player?.server)
+    fun markStoryCompleted(player: ServerPlayer?, storyId: String) {
+        if (player != null && storyId.isNotBlank()) {
+            completedStoriesByPlayer.getOrPut(player.uuid) { mutableSetOf() }.add(storyId)
+        }
+    }
+
+    fun isStoryCompleted(player: ServerPlayer?, storyId: String): Boolean {
+        if (player == null || storyId.isBlank()) return false
+        return completedStoriesByPlayer[player.uuid]?.contains(storyId) == true
+    }
+
+    fun validatePrerequisites(project: StoryProject, player: ServerPlayer?, server: MinecraftServer?): PrerequisiteValidationResult {
+        val prereqs = project.prerequisites
+
+        if (player != null) {
+            // 1. World & Game Conditions
+            if (prereqs.freshWorldOnly) {
+                val worldTimeTicks = player.server.overworld().gameTime
+                val maxTicks = prereqs.freshWorldMaxMinutes * 1200L
+                if (worldTimeTicks > maxTicks) {
+                    return PrerequisiteValidationResult(false, "World is older than ${prereqs.freshWorldMaxMinutes} minutes (fresh world required).")
+                }
+            }
+
+            if (prereqs.requiredDimension.isNotBlank()) {
+                val currentDim = player.level().dimension().location().toString()
+                val targetDim = prereqs.requiredDimension.trim()
+                if (!currentDim.equals(targetDim, ignoreCase = true) && !targetDim.equals(currentDim.substringAfter(":"), ignoreCase = true)) {
+                    return PrerequisiteValidationResult(false, "Must be in dimension '$targetDim' (current: $currentDim).")
+                }
+            }
+
+            if (prereqs.requiredGameMode.isNotBlank() && !prereqs.requiredGameMode.equals("ANY", ignoreCase = true)) {
+                val currentMode = player.gameMode.gameModeForPlayer.name
+                if (!currentMode.equals(prereqs.requiredGameMode, ignoreCase = true)) {
+                    return PrerequisiteValidationResult(false, "Must be in game mode '${prereqs.requiredGameMode}' (current: $currentMode).")
+                }
+            }
+
+            // 2. Cobblemon Party Constraints
+            val partyList = try {
+                val party = com.cobblemon.mod.common.Cobblemon.storage.getParty(player)
+                (0..5).mapNotNull { party.get(it) }
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            if (prereqs.minPartySize > 0 && partyList.size < prereqs.minPartySize) {
+                return PrerequisiteValidationResult(false, "Must have at least ${prereqs.minPartySize} Pokémon in party (current: ${partyList.size}).")
+            }
+
+            if (prereqs.maxPartySize > 0 && partyList.size > prereqs.maxPartySize) {
+                return PrerequisiteValidationResult(false, "Must have at most ${prereqs.maxPartySize} Pokémon in party (current: ${partyList.size}).")
+            }
+
+            if (prereqs.partyLevelCap > 0) {
+                val overleveled = partyList.filter { it.level > prereqs.partyLevelCap }
+                if (overleveled.isNotEmpty()) {
+                    val names = overleveled.joinToString { "${it.species.name} (Lv. ${it.level})" }
+                    return PrerequisiteValidationResult(false, "Party level cap is ${prereqs.partyLevelCap}. Overleveled: $names.")
+                }
+            }
+
+            if (prereqs.requiredPokemonType.isNotBlank()) {
+                val reqType = prereqs.requiredPokemonType.trim()
+                val hasType = partyList.any { pkmn ->
+                    pkmn.primaryType.name.equals(reqType, ignoreCase = true) ||
+                    (pkmn.secondaryType?.name?.equals(reqType, ignoreCase = true) == true)
+                }
+                if (!hasType) {
+                    return PrerequisiteValidationResult(false, "Must have at least one $reqType-type Pokémon in party.")
+                }
+            }
+
+            // 3. Story Dependencies & Inventory
+            if (prereqs.requiredCompletedStories.isNotEmpty()) {
+                val missing = prereqs.requiredCompletedStories.filter { !isStoryCompleted(player, it) }
+                if (missing.isNotEmpty()) {
+                    return PrerequisiteValidationResult(false, "Prerequisite stories not completed: ${missing.joinToString()}.")
+                }
+            }
+
+            if (prereqs.emptyInventoryRequired) {
+                val isInvEmpty = player.inventory.items.all { it.isEmpty } &&
+                                 player.inventory.armor.all { it.isEmpty } &&
+                                 player.inventory.offhand.all { it.isEmpty }
+                if (!isInvEmpty) {
+                    return PrerequisiteValidationResult(false, "Inventory must be completely empty.")
+                }
+            }
+        }
+
+        return PrerequisiteValidationResult(true)
+    }
+
+    fun handlePrerequisiteFailure(project: StoryProject, player: ServerPlayer?, result: PrerequisiteValidationResult) {
+        if (player == null) return
+        val prereqs = project.prerequisites
+        if (prereqs.failureAction.equals("ALERT_MESSAGE", ignoreCase = true)) {
+            val customMsg = prereqs.failureMessage.trim()
+            val text = if (customMsg.isNotBlank()) customMsg else "⚠️ Cannot start '${project.name}': ${result.reason}"
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c$text"))
+        }
+    }
+
+    fun startStory(project: StoryProject, player: ServerPlayer? = null, server: MinecraftServer? = null): ActiveStoryInstance? {
+        val validation = validatePrerequisites(project, player, server)
+        if (!validation.isValid) {
+            handlePrerequisiteFailure(project, player, validation)
+            return null
+        }
+
+        val context = StoryContext(
+            player = player,
+            server = server ?: player?.server,
+            storyId = project.id,
+            project = project
+        )
 
         // Instantiate all variables registered in project catalog
         project.variables.forEach { variable ->
@@ -49,6 +173,23 @@ object StoryExecutor {
     fun stopStory(storyId: String) {
         val instance = activeStories.remove(storyId)
         instance?.context?.isCancelled = true
+        if (instance != null) {
+            val server = instance.context.server ?: instance.context.player?.server
+            StoryDebugger.broadcastSessionState(
+                server = server,
+                storyId = storyId,
+                packName = instance.project.name.ifBlank { "Story Pack" },
+                sceneName = instance.project.getActiveScene()?.title ?: "Main Scene",
+                activeNodeId = instance.context.currentNodeId ?: "",
+                activeNodeType = "STOPPED",
+                targetEntityName = "",
+                targetEntityTag = "",
+                targetEntitySlot = "",
+                targetEntityId = "",
+                variables = instance.context.variables,
+                isActive = false
+            )
+        }
     }
 
     fun stopAllStories(player: ServerPlayer? = null) {
@@ -72,25 +213,59 @@ object StoryExecutor {
         }
 
         instance.context.currentNodeId = currentNode.id
+        val storyId = instance.storyId.ifBlank { instance.project.id }
+        val server = instance.context.server ?: instance.context.player?.server
 
-        // 0. TRIGGER BLOCK BEHAVIOR (WAITING NODE VS GLOBAL LISTENER)
-        if (currentNode.nodeType == NodeType.TRIGGER) {
-            val requireInput = currentNode.params["requireInputSignal"] != "false"
-            if (requireInput) {
-                // If call came from input connection (targetPortId != null), arm Trigger
-                if (targetPortId != null) {
-                    instance.context.waitingTriggers.add(currentNode.id)
-                    return // Pause sequence here. Wait for world event to fire.
-                } else {
-                    // If came from world event, only fire if armed in waiting set
-                    if (!instance.context.waitingTriggers.contains(currentNode.id)) {
-                        return // Input signal not received yet. Ignore.
+        val activeScene = instance.project.getActiveScene()
+        val sceneName = activeScene?.title ?: "Main Scene"
+        val targetEntityName = currentNode.params["customName"] ?: currentNode.params["targetIdentifier"] ?: ""
+        val targetEntityTag = currentNode.params["targetIdentifier"] ?: currentNode.params["entityTag"] ?: ""
+        val targetEntitySlot = currentNode.params["pokemonSlot"] ?: ""
+
+        StoryDebugger.broadcastSessionState(
+            server = server,
+            storyId = storyId,
+            packName = instance.project.name.ifBlank { "Story Pack" },
+            sceneName = sceneName,
+            activeNodeId = currentNode.id,
+            activeNodeType = currentNode.nodeType.name,
+            targetEntityName = targetEntityName,
+            targetEntityTag = targetEntityTag,
+            targetEntitySlot = targetEntitySlot,
+            targetEntityId = currentNode.id,
+            variables = instance.context.variables,
+            isActive = true
+        )
+
+        StoryDebugger.recordLog(
+            storyId = storyId,
+            blockId = currentNode.id,
+            blockType = currentNode.nodeType,
+            status = NodeExecutionStatus.RUNNING,
+            level = "INFO",
+            message = "Executing node '${currentNode.title.ifBlank { currentNode.nodeType.name }}'",
+            server = server
+        )
+
+        try {
+            // 0. TRIGGER BLOCK BEHAVIOR (WAITING NODE VS GLOBAL LISTENER)
+            if (currentNode.nodeType == NodeType.TRIGGER) {
+                val requireInput = currentNode.params["requireInputSignal"] != "false"
+                if (requireInput) {
+                    // If call came from input connection (targetPortId != null), arm Trigger
+                    if (targetPortId != null) {
+                        instance.context.waitingTriggers.add(currentNode.id)
+                        return // Pause sequence here. Wait for world event to fire.
+                    } else {
+                        // If came from world event, only fire if armed in waiting set
+                        if (!instance.context.waitingTriggers.contains(currentNode.id)) {
+                            return // Input signal not received yet. Ignore.
+                        }
+                        instance.context.waitingTriggers.remove(currentNode.id)
                     }
-                    instance.context.waitingTriggers.remove(currentNode.id)
                 }
+                // If requireInput == false, acts autonomously as Global Listener
             }
-            // If requireInput == false, acts autonomously as Global Listener
-        }
 
         // 1. LINK SEND TRANSMITTER BLOCK
         if (currentNode.nodeType == NodeType.LINK_SEND) {
@@ -351,12 +526,114 @@ object StoryExecutor {
             }
         }
 
+        // 9. SAVE STATE CHECKPOINT BLOCK
+        if (currentNode.nodeType == NodeType.SAVE_STATE_NODE || (currentNode.nodeType == NodeType.CHECKPOINT_NODE && (currentNode.params["checkpointMode"] == "SAVE" || currentNode.params["checkpointMode"] == null))) {
+            val success = StoryCheckpointManager.saveCheckpoint(instance.context, currentNode)
+            val outputPortId = if (success) {
+                currentNode.outputs.find { it.id == "OUT_SUCCESS" || it.name.equals("Success", true) || it.name.equals("OK", true) }?.id
+                    ?: currentNode.outputs.firstOrNull()?.id
+            } else {
+                currentNode.outputs.find { it.id == "OUT_ERROR" || it.name.equals("Error", true) }?.id
+                    ?: currentNode.outputs.lastOrNull()?.id
+            }
+            if (outputPortId != null) {
+                continuePortConnections(instance, currentNode, outputPortId, stepCount + 1)
+            }
+            return
+        }
+
+        // 10. LOAD STATE CHECKPOINT BLOCK
+        if (currentNode.nodeType == NodeType.LOAD_STATE_NODE || (currentNode.nodeType == NodeType.CHECKPOINT_NODE && currentNode.params["checkpointMode"] == "LOAD")) {
+            val server = instance.context.server ?: instance.context.player?.server
+            if (server == null) {
+                val errPort = currentNode.outputs.find { it.id == "OUT_ERROR" || it.name.equals("Error", true) }?.id ?: currentNode.outputs.lastOrNull()?.id
+                if (errPort != null) continuePortConnections(instance, currentNode, errPort, stepCount + 1)
+                return
+            }
+
+            val scope = currentNode.params["scope"] ?: "PLAYER"
+            val rawProfileId = currentNode.params["profileId"]?.ifBlank { "checkpoint_1" } ?: "checkpoint_1"
+            val mergeMode = currentNode.params["mergeMode"] ?: "OVERWRITE"
+            val gracePeriodTicks = currentNode.params["gracePeriodTicks"]?.toIntOrNull() ?: 60
+            val cleanStoryTag = currentNode.params["cleanStoryTag"]?.trim() ?: ""
+            val jumpToTargetNodeId = currentNode.params["jumpToTargetNodeId"]?.trim() ?: ""
+
+            val checkpointData = StoryCheckpointManager.loadCheckpoint(server, instance.context.player, scope, rawProfileId, instance.context.variables)
+
+            if (checkpointData == null) {
+                // File not found!
+                val notFoundPort = currentNode.outputs.find { it.id == "OUT_NOT_FOUND" || it.name.contains("Not Found", true) || it.name.contains("Missing", true) }?.id
+                    ?: currentNode.outputs.find { it.id == "OUT_ERROR" || it.name.equals("Error", true) }?.id
+                    ?: currentNode.outputs.getOrNull(1)?.id
+                    ?: currentNode.outputs.firstOrNull()?.id
+
+                if (notFoundPort != null) {
+                    continuePortConnections(instance, currentNode, notFoundPort, stepCount + 1)
+                }
+                return
+            }
+
+            // Apply loaded checkpoint data
+            StoryCheckpointManager.applyCheckpoint(
+                context = instance.context,
+                checkpointData = checkpointData,
+                mergeMode = mergeMode,
+                gracePeriodTicks = gracePeriodTicks,
+                cleanStoryTag = cleanStoryTag
+            )
+
+            // Notify trigger listeners of checkpoint load
+            val player = instance.context.player
+            val resolvedProfileId = StoryCheckpointManager.resolveProfileId(rawProfileId, player, instance.context.variables)
+            if (player != null) {
+                StoryListenerManager.onCheckpointLoaded(player, resolvedProfileId)
+            }
+
+            // Flow Redirection if jumpToTargetNodeId is specified
+            if (jumpToTargetNodeId.isNotBlank()) {
+                val allNodes = mutableListOf<NodeData>()
+                instance.project.scenes.forEach { scene -> allNodes.addAll(scene.nodes) }
+                val targetJumpNode = allNodes.find { it.id == jumpToTargetNodeId || it.title.equals(jumpToTargetNodeId, true) }
+                if (targetJumpNode != null) {
+                    executeNodeChain(instance, targetJumpNode, targetPortId = null, stepCount = stepCount + 1)
+                    return
+                }
+            }
+
+            // Otherwise, fire OUT_SUCCESS
+            val successPort = currentNode.outputs.find { it.id == "OUT_SUCCESS" || it.name.equals("Success", true) || it.name.equals("OK", true) }?.id
+                ?: currentNode.outputs.firstOrNull()?.id
+            if (successPort != null) {
+                continuePortConnections(instance, currentNode, successPort, stepCount + 1)
+            }
+            return
+        }
+
         if (currentNode.nodeType == NodeType.CONSTRUCTION) {
             executeConstruction(instance, currentNode, stepCount)
+            StoryDebugger.recordLog(
+                storyId = storyId,
+                blockId = currentNode.id,
+                blockType = currentNode.nodeType,
+                status = NodeExecutionStatus.SUCCESS,
+                level = "INFO",
+                message = "Construction node initiated",
+                server = server
+            )
             return
         }
 
         executeNodeAction(instance.context, currentNode)
+
+        StoryDebugger.recordLog(
+            storyId = storyId,
+            blockId = currentNode.id,
+            blockType = currentNode.nodeType,
+            status = NodeExecutionStatus.SUCCESS,
+            level = "INFO",
+            message = "Node '${currentNode.title.ifBlank { currentNode.nodeType.name }}' executed successfully",
+            server = server
+        )
 
         if (currentNode.nodeType == NodeType.QUEST) {
             StoryMissionManager.startMission(instance, currentNode)
@@ -364,7 +641,14 @@ object StoryExecutor {
         }
 
         val condType = currentNode.params["condType"] ?: "LOCATION"
-        if (currentNode.nodeType == NodeType.TIMER || (currentNode.nodeType == NodeType.TRIGGER && condType == "TIMER")) {
+        val actionSubtype = currentNode.params["actionSubtype"] ?: ""
+        if (currentNode.nodeType == NodeType.ACTION && (actionSubtype == "ANIMATION" || actionSubtype == "ANIMATION_BLOCK") && currentNode.params["waitForCompletion"] == "true") {
+            val durTicks = currentNode.params["durationTicks"]?.toIntOrNull()?.coerceAtLeast(1) ?: 60
+            TickManager.schedule(durTicks) {
+                continueOutgoingConnections(instance, currentNode, stepCount)
+            }
+            return
+        } else if (currentNode.nodeType == NodeType.TIMER || (currentNode.nodeType == NodeType.TRIGGER && condType == "TIMER")) {
             val delaySec = currentNode.params["timerSeconds"]?.toDoubleOrNull() ?: (currentNode.params["timerSeconds"]?.toIntOrNull()?.toDouble() ?: 5.0)
             val delayTicks = maxOf(1, (delaySec * 20.0).toInt())
 
@@ -375,7 +659,22 @@ object StoryExecutor {
         } else {
             continueOutgoingConnections(instance, currentNode, stepCount)
         }
+    } catch (e: Throwable) {
+        e.printStackTrace()
+        val storyId = instance.storyId.ifBlank { instance.project.id }
+        val server = instance.context.server ?: instance.context.player?.server
+        StoryDebugger.recordLog(
+            storyId = storyId,
+            blockId = currentNode.id,
+            blockType = currentNode.nodeType,
+            status = NodeExecutionStatus.FAILED,
+            level = "ERROR",
+            message = e.message ?: "Execution error on node '${currentNode.title.ifBlank { currentNode.nodeType.name }}'",
+            details = e.stackTraceToString(),
+            server = server
+        )
     }
+}
 
     fun evaluateVariableCondition(actualVal: Any?, op: String, targetValStr: String): Boolean {
         if (actualVal is List<*> || op in listOf("CONTAINS", "SIZE", "IS_EMPTY", "GET_INDEX")) {
@@ -451,8 +750,8 @@ object StoryExecutor {
             return
         }
 
-        // Otherwise, emit signal on Scene OUT port in global graph
-        val outgoingSceneConnections = instance.project.sceneConnections.filter { it.fromNodeId == scene.id }
+        // Emit signal on Scene OUT port in global graph (to scenes or blocks)
+        val outgoingSceneConnections = instance.project.sceneConnections.filter { it.fromNodeId == scene.id || it.fromPortId == scene.outPort.id }
         for (sceneConn in outgoingSceneConnections) {
             val targetScene = instance.project.scenes.find { it.id == sceneConn.toNodeId }
             if (targetScene != null) {
@@ -465,6 +764,16 @@ object StoryExecutor {
 
                 if (initialNode != null) {
                     executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
+                }
+            } else {
+                // Target is a block/node connected to Scene OUT port
+                val allNodes = instance.project.scenes.flatMap { it.nodes }
+                val targetNode = allNodes.find { it.id == sceneConn.toNodeId }
+                if (targetNode != null) {
+                    if (!targetNode.parentSceneId.isNullOrBlank()) {
+                        instance.project.activeSceneId = targetNode.parentSceneId!!
+                    }
+                    executeNodeChain(instance, targetNode, targetPortId = sceneConn.toPortId, stepCount = stepCount + 1)
                 }
             }
         }
@@ -502,7 +811,7 @@ object StoryExecutor {
         runSubNode(firstSubNode, 0)
     }
 
-    private fun continuePortConnections(instance: ActiveStoryInstance, currentNode: NodeData, portId: String, stepCount: Int) {
+    fun continuePortConnections(instance: ActiveStoryInstance, currentNode: NodeData, portId: String, stepCount: Int) {
         if (instance.context.isCancelled) return
         val scene = instance.project.getActiveScene() ?: return
         val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id && it.fromPortId == portId }
@@ -513,18 +822,64 @@ object StoryExecutor {
                 executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
             }
         }
+
+        // Also check inter-scene / block-to-scene connections
+        val interConnections = instance.project.sceneConnections.filter { it.fromNodeId == currentNode.id && it.fromPortId == portId }
+        for (conn in interConnections) {
+            val targetScene = instance.project.scenes.find { it.id == conn.toNodeId }
+            if (targetScene != null) {
+                instance.project.activeSceneId = targetScene.id
+                val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
+                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
+                    ?: targetScene.nodes.firstOrNull()
+                if (initialNode != null) {
+                    executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
+                }
+            } else {
+                val allNodes = instance.project.scenes.flatMap { it.nodes }
+                val targetNode = allNodes.find { it.id == conn.toNodeId }
+                if (targetNode != null) {
+                    if (!targetNode.parentSceneId.isNullOrBlank()) {
+                        instance.project.activeSceneId = targetNode.parentSceneId!!
+                    }
+                    executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
+                }
+            }
+        }
     }
 
     private fun continueOutgoingConnections(instance: ActiveStoryInstance, currentNode: NodeData, stepCount: Int) {
         if (instance.context.isCancelled) return
         val scene = instance.project.getActiveScene() ?: return
         val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id }
+        val interConnections = instance.project.sceneConnections.filter { it.fromNodeId == currentNode.id }
 
-        if (outgoingConnections.isNotEmpty()) {
+        if (outgoingConnections.isNotEmpty() || interConnections.isNotEmpty()) {
             for (conn in outgoingConnections) {
                 val targetNode = scene.nodes.find { it.id == conn.toNodeId }
                 if (targetNode != null) {
                     executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
+                }
+            }
+            for (conn in interConnections) {
+                val targetScene = instance.project.scenes.find { it.id == conn.toNodeId }
+                if (targetScene != null) {
+                    instance.project.activeSceneId = targetScene.id
+                    val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
+                        ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
+                        ?: targetScene.nodes.firstOrNull()
+                    if (initialNode != null) {
+                        executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
+                    }
+                } else {
+                    val allNodes = instance.project.scenes.flatMap { it.nodes }
+                    val targetNode = allNodes.find { it.id == conn.toNodeId }
+                    if (targetNode != null) {
+                        if (!targetNode.parentSceneId.isNullOrBlank()) {
+                            instance.project.activeSceneId = targetNode.parentSceneId!!
+                        }
+                        executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
+                    }
                 }
             }
         } else {
@@ -537,12 +892,30 @@ object StoryExecutor {
             NodeType.BEGIN_SCENE -> {
                 BeginSceneBlock().evaluate(context, node)
             }
-            NodeType.DIALOGUE, NodeType.TRIGGER -> {
+            NodeType.DIALOGUE -> {
+                if (node.params["useAi"] == "true") {
+                    val inst = activeStories.values.find { it.context == context }
+                    if (inst != null) {
+                        AIDialogueBlock().evaluate(inst, node)
+                    } else {
+                        SendMessageAction().execute(context, node)
+                    }
+                } else {
+                    SendMessageAction().execute(context, node)
+                }
+            }
+            NodeType.TRIGGER -> {
                 SendMessageAction().execute(context, node)
             }
             NodeType.ACTION -> {
                 val actionSubtype = node.params["actionSubtype"] ?: "MESSAGE"
                 when (actionSubtype) {
+                    "AI_DIALOGUE" -> {
+                        val inst = activeStories.values.find { it.context == context }
+                        if (inst != null) {
+                            AIDialogueBlock().evaluate(inst, node)
+                        }
+                    }
                     "VAR_MODIFY" -> {
                         val varKey = node.params["varKey"] ?: "var_new"
                         val op = node.params["varOp"] ?: "="
@@ -601,11 +974,17 @@ object StoryExecutor {
                     "SPAWN_ITEM" -> SpawnItemAction().execute(context, node)
                     "SEND_CHAT_MESSAGE", "MESSAGE" -> SendMessageAction().execute(context, node)
                     "SHOW_TITLE_SCREEN" -> ShowTitleAction().execute(context, node)
+                    "LOOK_AT", "LOOK_AT_BLOCK" -> LookAtAction().execute(context, node)
+                    "ANIMATION", "ANIMATION_BLOCK" -> AnimationAction().execute(context, node)
+                    "SET_ENTITY_TEXTURE", "TEXTURE_BLOCK", "ENTITY_TEXTURE" -> SetEntityTextureAction().execute(context, node)
                     "SPAWN_PARTICLES" -> SpawnParticlesAction().execute(context, node)
                     "PLAY_SOUND", "SOUND" -> PlaySoundAction().execute(context, node)
                     "PLAY_MUSIC" -> PlayMusicAction().execute(context, node)
                     else -> SendMessageAction().execute(context, node)
                 }
+            }
+            NodeType.TEXTURE -> {
+                SetEntityTextureAction().execute(context, node)
             }
             NodeType.AUDIO -> {
                 executeAudioNode(context, node)
@@ -695,6 +1074,37 @@ object StoryExecutor {
     }
 
     fun notifyVariableChanged(instance: ActiveStoryInstance, varKey: String, newVal: Any?) {
+        val storyId = instance.storyId.ifBlank { instance.project.id }
+        val server = instance.context.server ?: instance.context.player?.server
+        val activeScene = instance.project.getActiveScene()
+        val sceneName = activeScene?.title ?: "Main Scene"
+
+        StoryDebugger.broadcastSessionState(
+            server = server,
+            storyId = storyId,
+            packName = instance.project.name.ifBlank { "Story Pack" },
+            sceneName = sceneName,
+            activeNodeId = instance.context.currentNodeId ?: "",
+            activeNodeType = "VARIABLE_SET",
+            targetEntityName = "",
+            targetEntityTag = "",
+            targetEntitySlot = "",
+            targetEntityId = "",
+            variables = instance.context.variables,
+            updatedVarKey = varKey,
+            isActive = true
+        )
+
+        StoryDebugger.recordLog(
+            storyId = storyId,
+            blockId = instance.context.currentNodeId ?: "var_$varKey",
+            blockType = NodeType.VARIABLE_SET,
+            status = NodeExecutionStatus.SUCCESS,
+            level = "INFO",
+            message = "Variable '$varKey' changed to '$newVal'",
+            server = server
+        )
+
         val allNodes = mutableListOf<NodeData>()
         instance.project.scenes.forEach { scene -> allNodes.addAll(scene.nodes) }
 

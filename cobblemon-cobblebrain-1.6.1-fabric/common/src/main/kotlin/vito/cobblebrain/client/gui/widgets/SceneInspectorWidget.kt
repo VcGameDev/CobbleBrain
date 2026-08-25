@@ -52,7 +52,7 @@ class SceneInspectorWidget(
         relY += 12
 
         val tEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Name"))
-        tEdit.setMaxLength(50)
+        tEdit.setMaxLength(2000)
         tEdit.value = scene.title
         tEdit.setResponder { valText ->
             scene.title = valText
@@ -65,7 +65,7 @@ class SceneInspectorWidget(
         relY += 12
 
         val descEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 36, Component.literal("Description"))
-        descEdit.setMaxLength(250)
+        descEdit.setMaxLength(9999)
         descEdit.value = scene.description
         descEdit.setResponder { valText ->
             scene.description = valText

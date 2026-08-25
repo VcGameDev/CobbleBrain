@@ -167,6 +167,8 @@
   "cobblebrain.summary.applied": "(O resumo da sessão anterior foi aplicado a esta conversa)",
   "cobblebrain.summary.offline_unavailable": "O resumo da sessão não está disponível no Modo Offline.",
   "cobblebrain.summary.saving": "Salvando contexto da sessão... Por favor, aguarde.",
+  "cobblebrain.personality.identified": "Personalidade de %s identificada: %s",
+  "cobblebrain.personality.editor_hint": "Se quiser mudar, vá para o Personality Editor nas configurações do mod.",
   "cobblebrain.feedback.command_applied": "Comando '%s' aplicado a %s.",
   "cobblebrain.feedback.pokemon_not_found": "Não foi possível encontrar um Pokémon ativo chamado %s.",
   "cobblebrain.quest.interrupt_warning": "Espere! O Pokémon está prestes a dizer algo sobre a missão. Envie a mensagem novamente se quiser interrompê-lo de qualquer maneira.",

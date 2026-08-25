@@ -88,6 +88,8 @@ class DialogueSystemNeoForge {
     @SubscribeEvent
     fun onDamage(event: LivingDamageEvent.Post) {
         val entity = event.entity
+        val killer = event.source.entity
+        vito.cobblebrain.engine.StoryListenerManager.onEntityDamaged(entity, killer, event.newDamage)
         DialogueSystem.onDamage(
             entity,
             event.source,
@@ -101,6 +103,7 @@ class DialogueSystemNeoForge {
         val entity = event.entity
         val killer = event.source.entity
         val now = System.currentTimeMillis()
+        vito.cobblebrain.engine.StoryListenerManager.onEntityDied(entity, killer)
 
         // 1. Pokémon Fainted: a player-owned Pokémon died
         if (entity is PokemonEntity) {

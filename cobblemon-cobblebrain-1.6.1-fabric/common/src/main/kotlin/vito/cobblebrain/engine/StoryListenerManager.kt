@@ -1,7 +1,9 @@
 package vito.cobblebrain.engine
 
+import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.Entity
+import vito.cobblebrain.model.NodeData
 import vito.cobblebrain.model.NodeType
 
 object StoryListenerManager {
@@ -71,7 +73,7 @@ object StoryListenerManager {
 
                 if (shouldTrigger) {
                     val isIfNot = trigNode.params["triggerCondition"] == "IF_NOT"
-                    val finalResult = if (isIfNot) !shouldTrigger else shouldTrigger
+                    val finalResult = !isIfNot
                     if (finalResult) {
                         StoryExecutor.executeNodeChain(instance, trigNode, targetPortId = null)
                     }
@@ -81,10 +83,12 @@ object StoryListenerManager {
     }
 
     fun onPokemonCatch(player: ServerPlayer, species: String) {
+        StoryMissionManager.onTriggerFired(player, "POKEMON_CATCH")
         dispatchReactiveTrigger(player, "POKEMON_CATCH", mapOf("targetSpecies" to species))
     }
 
     fun onBattleVictory(player: ServerPlayer, targetSpecies: String = "") {
+        StoryMissionManager.onTriggerFired(player, "BATTLE_VICTORY")
         dispatchReactiveTrigger(player, "BATTLE_VICTORY", mapOf("targetSpecies" to targetSpecies))
     }
 
@@ -94,14 +98,21 @@ object StoryListenerManager {
     }
 
     fun onPokemonInteract(player: ServerPlayer, species: String) {
+        StoryMissionManager.onTriggerFired(player, "INTERACT_POKEMON")
         dispatchReactiveTrigger(player, "INTERACT_POKEMON", mapOf("targetSpecies" to species))
     }
 
+    fun onEntityInteract(player: ServerPlayer, entity: Entity) {
+        dispatchReactiveEntityTrigger(player, "INTERACT_ENTITY", entity)
+    }
+
     fun onBlockInteract(player: ServerPlayer, blockId: String) {
+        StoryMissionManager.onTriggerFired(player, "BLOCK_INTERACTED")
         dispatchReactiveTrigger(player, "BLOCK_INTERACTED", mapOf("blockId" to blockId))
     }
 
     fun onBlockPlaced(player: ServerPlayer, blockId: String) {
+        StoryMissionManager.onTriggerFired(player, "BLOCK_PLACED")
         dispatchReactiveTrigger(player, "BLOCK_PLACED", mapOf("blockId" to blockId))
     }
 
@@ -109,16 +120,194 @@ object StoryListenerManager {
         if (entity is ServerPlayer) {
             StoryMissionManager.onPlayerDeath(entity)
         }
-        val player = killer as? ServerPlayer ?: return
-        val entityId = entity.type.toString()
-        dispatchReactiveTrigger(player, "ENTITY_DIED", mapOf("entityType" to entityId))
+
+        val directPlayer = when (killer) {
+            is ServerPlayer -> killer
+            is net.minecraft.world.entity.projectile.Projectile -> killer.owner as? ServerPlayer
+            is PokemonEntity -> killer.pokemon.getOwnerPlayer()
+            else -> null
+        }
+
+        val targetPlayers = mutableSetOf<ServerPlayer>()
+        if (directPlayer != null) targetPlayers.add(directPlayer)
+        if (entity is ServerPlayer) targetPlayers.add(entity)
+        targetPlayers.addAll(entity.level().players().filterIsInstance<ServerPlayer>())
+
+        for (player in targetPlayers) {
+            dispatchReactiveEntityTrigger(player, "ENTITY_DIED", entity)
+        }
     }
 
-    private fun dispatchReactiveTrigger(player: ServerPlayer, triggerType: String, eventData: Map<String, String>) {
-        StoryMissionManager.onTriggerFired(player, triggerType)
+    fun onEntityDamaged(entity: Entity, source: Entity?, amount: Float) {
+        val directPlayer = when (source) {
+            is ServerPlayer -> source
+            is net.minecraft.world.entity.projectile.Projectile -> source.owner as? ServerPlayer
+            is PokemonEntity -> source.pokemon.getOwnerPlayer()
+            else -> null
+        }
+
+        val targetPlayers = mutableSetOf<ServerPlayer>()
+        if (directPlayer != null) targetPlayers.add(directPlayer)
+        if (entity is ServerPlayer) targetPlayers.add(entity)
+        targetPlayers.addAll(entity.level().players().filterIsInstance<ServerPlayer>())
+
+        val minDmgMap = mapOf("damageAmount" to amount.toString())
+        for (player in targetPlayers) {
+            dispatchReactiveEntityTrigger(player, "ENTITY_DAMAGED", entity, minDmgMap)
+        }
+    }
+
+    fun onEntitySpawned(entity: Entity) {
+        val players = entity.level().players().filterIsInstance<ServerPlayer>()
+        for (player in players) {
+            dispatchReactiveEntityTrigger(player, "ENTITY_SPAWNED", entity)
+        }
+    }
+
+    fun matchesEntityFilters(node: NodeData, entity: Entity?): Boolean {
+        if (entity == null) return false
+
+        // 1. Story Tag Check
+        val requiredTag = (node.params["requiredStoryTag"] ?: node.params["storyTag"] ?: node.params["targetStoryTag"] ?: node.params["targetIdentifier"])?.trim()
+        if (!requiredTag.isNullOrBlank()) {
+            if (!entity.tags.contains(requiredTag)) {
+                return false
+            }
+        }
+
+        val targetType = node.params["targetType"] ?: if (entity is PokemonEntity) "COBBLEMON" else "GENERIC"
+
+        if (targetType == "COBBLEMON") {
+            if (entity !is PokemonEntity) return false
+            val poke = entity.pokemon
+
+            // Species check
+            val targetSpecies = node.params["targetSpecies"]?.ifBlank { node.params["species"] ?: "" }?.trim() ?: ""
+            if (targetSpecies.isNotBlank()) {
+                val sName = poke.species.name
+                val sId = poke.species.showdownId()
+                if (!sName.equals(targetSpecies, ignoreCase = true) && !sId.equals(targetSpecies, ignoreCase = true)) {
+                    return false
+                }
+            }
+
+            // Form check
+            val targetForm = node.params["form"]?.trim() ?: ""
+            if (targetForm.isNotBlank()) {
+                if (!poke.form.name.equals(targetForm, ignoreCase = true)) {
+                    return false
+                }
+            }
+
+            // Level range check
+            val minLevel = node.params["minLevel"]?.toIntOrNull() ?: 1
+            val maxLevel = node.params["maxLevel"]?.toIntOrNull() ?: 100
+            val pokeLevel = poke.level
+            if (pokeLevel < minLevel || pokeLevel > maxLevel) {
+                return false
+            }
+
+            // Shiny check
+            val shinyMode = node.params["shinyMode"] ?: "ANY"
+            if (shinyMode == "YES" && !poke.shiny) return false
+            if (shinyMode == "NO" && poke.shiny) return false
+
+            // Status check (Wild vs Party)
+            val statusMode = node.params["pokemonStatus"] ?: "ANY"
+            val isOwned = poke.getOwnerUUID() != null
+            if (statusMode == "WILD" && isOwned) return false
+            if (statusMode == "PARTY" && !isOwned) return false
+
+            return true
+        } else {
+            // Generic Entity Mode
+            val targetEntityType = node.params["entityType"]?.trim() ?: ""
+            if (targetEntityType.isNotBlank() && !targetEntityType.equals("ANY", ignoreCase = true) && targetEntityType != "*") {
+                val curTypeStr = entity.type.toString()
+                val curDescId = entity.type.descriptionId
+                val regKey = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(entity.type)
+                val fullKey = regKey.toString()
+                val keyPath = regKey.path
+                val targetPath = targetEntityType.substringAfter(":")
+
+                val isMatch = fullKey.equals(targetEntityType, ignoreCase = true) ||
+                              keyPath.equals(targetPath, ignoreCase = true) ||
+                              curTypeStr.equals(targetEntityType, ignoreCase = true) ||
+                              curDescId.endsWith(".$targetPath", ignoreCase = true) ||
+                              curDescId.contains(targetPath, ignoreCase = true)
+
+                if (!isMatch) {
+                    return false
+                }
+            }
+            return true
+        }
+    }
+
+    private fun dispatchReactiveEntityTrigger(player: ServerPlayer, triggerType: String, entity: Entity?, eventData: Map<String, String> = emptyMap()) {
+        StoryMissionManager.onEntityTriggerFired(player, triggerType, entity)
 
         val activeList = StoryExecutor.activeStories.values.filter { it.context.player?.uuid == player.uuid }
         for (instance in activeList) {
+            val validation = StoryExecutor.validatePrerequisites(instance.project, player, player.server)
+            if (!validation.isValid) {
+                StoryExecutor.handlePrerequisiteFailure(instance.project, player, validation)
+                continue
+            }
+
+            val allNodes = mutableListOf<NodeData>()
+            val activeScene = instance.project.getActiveScene()
+            if (activeScene != null) allNodes.addAll(activeScene.nodes)
+            instance.project.scenes.forEach { s ->
+                if (s.id != activeScene?.id) {
+                    allNodes.addAll(s.nodes.filter { instance.context.waitingTriggers.contains(it.id) })
+                }
+            }
+
+            val matchingNodes = allNodes.filter { node ->
+                node.nodeType == NodeType.TRIGGER &&
+                (node.params["triggerType"] == triggerType ||
+                 (triggerType == "ENTITY_DIED" && (node.params["triggerType"] == "ENTITY_DIED" || node.params["triggerType"] == "ENTITY_DEATH" || node.params["triggerType"] == "ON_ENTITY_DIED")) ||
+                 (triggerType == "ENTITY_DAMAGED" && (node.params["triggerType"] == "ENTITY_DAMAGED" || node.params["triggerType"] == "ON_ENTITY_DAMAGED")) ||
+                 (triggerType == "INTERACT_ENTITY" && node.params["triggerType"] == "INTERACT_POKEMON") ||
+                 (triggerType == "INTERACT_POKEMON" && node.params["triggerType"] == "INTERACT_ENTITY"))
+            }
+
+            for (node in matchingNodes) {
+                var matches = matchesEntityFilters(node, entity)
+
+                val minDamage = node.params["minDamage"]?.toFloatOrNull()
+                val actualDamage = eventData["damageAmount"]?.toFloatOrNull()
+                if (minDamage != null && actualDamage != null && actualDamage < minDamage) {
+                    matches = false
+                }
+
+                val isIfNot = node.params["triggerCondition"] == "IF_NOT"
+                val finalResult = if (isIfNot) !matches else matches
+                if (finalResult) {
+                    StoryDebugger.recordLog(
+                        storyId = instance.storyId.ifBlank { instance.project.id },
+                        blockId = node.id,
+                        blockType = NodeType.TRIGGER,
+                        status = NodeExecutionStatus.SUCCESS,
+                        level = "INFO",
+                        message = "Trigger '${node.title.ifBlank { "Entity $triggerType" }}' fired on '${entity?.type?.descriptionId ?: "entity"}'",
+                        server = player.server
+                    )
+                    StoryExecutor.executeNodeChain(instance, node, targetPortId = null)
+                }
+            }
+        }
+    }
+
+    private fun dispatchReactiveTrigger(player: ServerPlayer, triggerType: String, eventData: Map<String, String>) {
+        val activeList = StoryExecutor.activeStories.values.filter { it.context.player?.uuid == player.uuid }
+        for (instance in activeList) {
+            val validation = StoryExecutor.validatePrerequisites(instance.project, player, player.server)
+            if (!validation.isValid) {
+                StoryExecutor.handlePrerequisiteFailure(instance.project, player, validation)
+                continue
+            }
             val scene = instance.project.getActiveScene() ?: continue
             val matchingNodes = scene.nodes.filter { node ->
                 node.nodeType == NodeType.TRIGGER &&
@@ -146,6 +335,14 @@ object StoryListenerManager {
                     }
                 }
 
+                val targetSlot = node.params["slotId"] ?: node.params["profileId"]
+                if (!targetSlot.isNullOrBlank() && eventData.containsKey("slotId")) {
+                    val evSlot = eventData["slotId"] ?: ""
+                    if (!evSlot.contains(targetSlot, ignoreCase = true)) {
+                        matches = false
+                    }
+                }
+
                 if (matches) {
                     val isIfNot = node.params["triggerCondition"] == "IF_NOT"
                     val finalResult = if (isIfNot) !matches else matches
@@ -155,5 +352,14 @@ object StoryListenerManager {
                 }
             }
         }
+    }
+
+    fun onCheckpointLoaded(player: ServerPlayer, profileId: String, firstJoinOnly: Boolean = false) {
+        val eventData = mapOf(
+            "slotId" to profileId,
+            "profileId" to profileId,
+            "firstJoinOnly" to firstJoinOnly.toString()
+        )
+        dispatchReactiveTrigger(player, "ON_CHECKPOINT_LOADED", eventData)
     }
 }

@@ -114,6 +114,12 @@ object HudSystem {
 
         // 4. Indicador de Ação (Próximo ao ícone do Cobblemon - Placeholder)
         renderActionIndicator(guiGraphics, client)
+
+        // 5. Checkpoint Loading Transition Overlay
+        LoadingTransitionOverlay.render(guiGraphics, client)
+
+        // 6. AI Dialogue HUD Overlay Box
+        DialogueHudOverlay.render(guiGraphics, client)
     }
 
     // ===================================================================================

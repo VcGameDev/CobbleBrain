@@ -7,6 +7,9 @@
     "MobAccessor",
     "PersistentStatusContainerMixin"
   ],
+  "client": [
+    "EntityRendererMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

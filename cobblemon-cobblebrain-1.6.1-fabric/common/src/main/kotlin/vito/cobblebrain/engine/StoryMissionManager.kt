@@ -1,6 +1,7 @@
 package vito.cobblebrain.engine
 
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.entity.Entity
 import vito.cobblebrain.model.NodeData
 
 data class ActiveMission(
@@ -73,6 +74,54 @@ object StoryMissionManager {
         }
     }
 
+    fun onEntityTriggerFired(player: ServerPlayer?, triggerId: String, entity: Entity?) {
+        val snapshot = activeMissions.toList()
+        for (mission in snapshot) {
+            if (mission.isCompleted || mission.isFailed) continue
+            if (mission.instance.context.player?.uuid != player?.uuid && player != null) continue
+
+            // Time limit check
+            if (mission.timeLimitSec > 0) {
+                val elapsedSec = (System.currentTimeMillis() - mission.startTimeMs) / 1000
+                if (elapsedSec > mission.timeLimitSec) {
+                    failMission(mission, "Time Limit Reached")
+                    continue
+                }
+            }
+
+            val trigMatches = mission.questTrigger == triggerId ||
+                    (triggerId == "INTERACT_ENTITY" && mission.questTrigger == "INTERACT_POKEMON") ||
+                    (triggerId == "INTERACT_POKEMON" && mission.questTrigger == "INTERACT_ENTITY")
+
+            if (trigMatches) {
+                if (entity != null) {
+                    val reqTag = mission.questNode.params["requiredStoryTag"]?.trim()
+                    if (!reqTag.isNullOrBlank() && !entity.tags.contains(reqTag)) {
+                        continue
+                    }
+                    if (entity is com.cobblemon.mod.common.entity.pokemon.PokemonEntity) {
+                        val reqSpecies = mission.questNode.params["targetSpecies"]?.trim()
+                        if (!reqSpecies.isNullOrBlank()) {
+                            if (!entity.pokemon.species.name.equals(reqSpecies, ignoreCase = true) &&
+                                !entity.pokemon.species.showdownId().equals(reqSpecies, ignoreCase = true)) {
+                                continue
+                            }
+                        }
+                    }
+                }
+
+                mission.currentProgress += 1
+
+                if (mission.currentProgress >= mission.targetCount) {
+                    mission.isCompleted = true
+                    fireQuestOutput(mission, "SUCCESS_OUT")
+                } else {
+                    fireQuestOutput(mission, "PROGRESS_OUT")
+                }
+            }
+        }
+    }
+
     fun onPlayerDeath(player: ServerPlayer) {
         val snapshot = activeMissions.toList()
         for (mission in snapshot) {
@@ -100,6 +149,24 @@ object StoryMissionManager {
             val targetNode = scene?.nodes?.find { it.id == conn.toNodeId }
             if (targetNode != null) {
                 StoryExecutor.executeNodeChain(mission.instance, targetNode, targetPortId = conn.toPortId)
+            }
+        }
+    }
+
+    fun getQuestProgressSnapshot(player: ServerPlayer?): Map<String, Int> {
+        val result = mutableMapOf<String, Int>()
+        activeMissions.forEach { m ->
+            if (player == null || m.instance.context.player?.uuid == player.uuid) {
+                result[m.questNode.id] = m.currentProgress
+            }
+        }
+        return result
+    }
+
+    fun restoreQuestProgress(player: ServerPlayer, progressMap: Map<String, Int>) {
+        activeMissions.forEach { m ->
+            if (m.instance.context.player?.uuid == player.uuid && progressMap.containsKey(m.questNode.id)) {
+                m.currentProgress = progressMap[m.questNode.id] ?: m.currentProgress
             }
         }
     }

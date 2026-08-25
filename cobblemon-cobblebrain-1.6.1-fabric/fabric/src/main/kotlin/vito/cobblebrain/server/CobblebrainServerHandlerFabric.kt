@@ -125,5 +125,21 @@ object CobblebrainServerHandlerFabric {
                 CobblebrainServerHandler.handleDeletePersonality(player, payload.pokemonUuid)
             }
         }
+
+        // Advance AI Dialogue Payload
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.AdvanceAIDialoguePayload.TYPE) { payload, context ->
+            context.server().execute {
+                val inst = vito.cobblebrain.engine.StoryExecutor.activeStories.values.find { it.storyId == payload.instanceId }
+                if (inst != null) {
+                    val node = inst.project.scenes.flatMap { it.nodes }.find { it.id == payload.nodeId }
+                    if (node != null) {
+                        val outPort = node.outputs.find { it.name.equals("OUT", true) || it.name.equals("OUT_SUCCESS", true) } ?: node.outputs.firstOrNull()
+                        if (outPort != null) {
+                            vito.cobblebrain.engine.StoryExecutor.continuePortConnections(inst, node, outPort.id, 1)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

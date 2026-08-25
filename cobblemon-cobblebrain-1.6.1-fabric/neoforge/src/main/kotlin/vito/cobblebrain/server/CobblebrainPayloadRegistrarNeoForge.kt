@@ -220,5 +220,55 @@ object CobblebrainPayloadRegistrarNeoForge {
                 CobblebrainServerHandlers.onDeletePersonality(player, payload)
             }
         }
+
+        registrar.playToClient(
+            CobblebrainPayloads.SetEntityTexturePayload.TYPE,
+            CobblebrainPayloads.SetEntityTexturePayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                val tex = vito.cobblebrain.social.StoryAssetManager.getOrCreateDynamicTexture(payload.storyId, payload.textureName)
+                if (tex != null) {
+                    vito.cobblebrain.social.StoryAssetManager.setEntityOverride(payload.entityId, tex)
+                }
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.ClearEntityTexturePayload.TYPE,
+            CobblebrainPayloads.ClearEntityTexturePayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                vito.cobblebrain.social.StoryAssetManager.clearEntityOverride(payload.entityId)
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.StoryDebugSyncPayload.TYPE,
+            CobblebrainPayloads.StoryDebugSyncPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                val nodeType = try { vito.cobblebrain.model.NodeType.valueOf(payload.blockType) } catch (_: Exception) { vito.cobblebrain.model.NodeType.ACTION }
+                val status = try { vito.cobblebrain.engine.NodeExecutionStatus.valueOf(payload.status) } catch (_: Exception) { vito.cobblebrain.engine.NodeExecutionStatus.IDLE }
+                vito.cobblebrain.engine.StoryDebugger.recordLog(
+                    storyId = payload.storyId,
+                    blockId = payload.blockId,
+                    blockType = nodeType,
+                    status = status,
+                    level = payload.level,
+                    message = payload.message,
+                    details = payload.details.takeIf { it.isNotBlank() },
+                    server = null
+                )
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.StorySessionStateSyncPayload.TYPE,
+            CobblebrainPayloads.StorySessionStateSyncPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                vito.cobblebrain.engine.StoryDebugger.updateSessionStateFromPayload(payload)
+            }
+        }
     }
 }

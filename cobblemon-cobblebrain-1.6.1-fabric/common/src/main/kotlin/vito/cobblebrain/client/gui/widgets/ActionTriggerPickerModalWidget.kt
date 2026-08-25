@@ -33,7 +33,8 @@ class ActionTriggerPickerModalWidget(
 
     init {
         searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Search"))
-        searchBox.setHint(Component.literal("🔍 Type to search..."))
+        searchBox.setMaxLength(2000)
+        searchBox.setHint(Component.literal("§8🔍 Type to search..."))
         searchBox.setEditable(true)
         searchBox.active = true
         searchBox.setResponder {

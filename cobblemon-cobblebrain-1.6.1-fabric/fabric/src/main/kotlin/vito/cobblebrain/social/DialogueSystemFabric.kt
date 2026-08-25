@@ -29,13 +29,21 @@ object DialogueSystemFabric {
 
         // DAMAGE (player + pokemon)
         ServerLivingEntityEvents.AFTER_DAMAGE.register { entity, source, amount, newHealth, absorbed ->
-
+            vito.cobblebrain.engine.StoryListenerManager.onEntityDamaged(entity, source.entity, amount)
             DialogueSystem.onDamage(
                 entity,
                 source,
                 amount,
                 newHealth
             )
+        }
+
+        // INTERACT ENTITY
+        net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register { player, world, hand, entity, hitResult ->
+            if (!world.isClientSide && hand == net.minecraft.world.InteractionHand.MAIN_HAND && player is ServerPlayer) {
+                vito.cobblebrain.engine.StoryListenerManager.onEntityInteract(player, entity)
+            }
+            net.minecraft.world.InteractionResult.PASS
         }
 
         // SERVER TICK
@@ -106,6 +114,13 @@ object DialogueSystemFabric {
             event.battle.players.forEach { p ->
                 vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p)
             }
+        }
+
+        // Damage - handles damage triggers
+        ServerLivingEntityEvents.ALLOW_DAMAGE.register { entity, source, amount ->
+            val attacker = source.entity
+            vito.cobblebrain.engine.StoryListenerManager.onEntityDamaged(entity, attacker, amount)
+            true
         }
 
         // Death - handles Pokémon fainted, player kills and Pokémon kills

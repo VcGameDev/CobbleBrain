@@ -7,6 +7,8 @@ import net.minecraft.client.gui.components.EditBox
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 import vito.cobblebrain.model.NodeData
 
 enum class EntityTab {
@@ -20,16 +22,19 @@ class EntityConfigModalWidget(
     val font: Font,
     val screenWidth: Int,
     val screenHeight: Int,
-    val onOpenItemPicker: ((onSelect: (String) -> Unit) -> Unit)? = null,
+    val onOpenItemPicker: ((currentVal: String, onSelect: (String) -> Unit) -> Unit)? = null,
     val onClose: () -> Unit,
     val onDataChanged: () -> Unit
 ) {
-    private val modalWidth = 470.coerceAtMost(screenWidth - 20)
+    private val modalWidth = 480.coerceAtMost(screenWidth - 20)
     private val modalHeight = 290.coerceAtMost(screenHeight - 20)
     private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
     private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
     private var activeTab: EntityTab = EntityTab.EQUIPMENT_ATTRIBUTES
+
+    // Sub-modal for item picking
+    var activeItemPickerModal: ItemPickerModalWidget? = null
 
     // Tab Header Buttons
     private val tabCatalogBtn: Button
@@ -43,6 +48,7 @@ class EntityConfigModalWidget(
     private var selectedCategoryIndex: Int = 0
     private var catalogScrollOffset: Double = 0.0
     private var categoryScrollOffset: Double = 0.0
+    private var isDraggingCatalogScrollbar: Boolean = false
     private val allEntityResources: List<String>
     private var currentEntityId: String = node.params["entityId"] ?: "minecraft:villager"
 
@@ -54,6 +60,7 @@ class EntityConfigModalWidget(
     private val armorBox: EditBox
 
     // Tab 3: Metadata & Behavior
+    private val storyTagBox: EditBox
     private val customNameBox: EditBox
     private var nameVisible: Boolean
     private var noGravity: Boolean
@@ -75,13 +82,13 @@ class EntityConfigModalWidget(
 
     private var focusedEditBox: EditBox? = null
 
-    // Temporary local equipment state
+    // Local equipment state
+    private var currentMainhand: String = node.params["entity_mainhand"] ?: ""
+    private var currentOffhand: String = node.params["entity_offhand"] ?: ""
     private var currentHelmet: String = node.params["entity_helmet"] ?: ""
     private var currentChest: String = node.params["entity_chest"] ?: ""
     private var currentLegs: String = node.params["entity_legs"] ?: ""
     private var currentFeet: String = node.params["entity_feet"] ?: ""
-    private var currentMainhand: String = node.params["entity_mainhand"] ?: ""
-    private var currentOffhand: String = node.params["entity_offhand"] ?: ""
 
     init {
         // --- 1. Tab Navigation Header ---
@@ -114,14 +121,16 @@ class EntityConfigModalWidget(
         allEntityResources = (registryList + fallbackList).distinct().sorted()
 
         searchBox = EditBox(font, modalX + 14, modalY + 50, modalWidth - 28, 16, Component.literal("Search"))
-        searchBox.setHint(Component.literal("🔍 Filter entities or enter custom ID..."))
+        searchBox.setMaxLength(2000)
+        searchBox.setHint(Component.literal("§8🔍 Filter entities or enter custom ID..."))
         searchBox.setEditable(true)
         searchBox.active = true
         searchBox.setResponder { catalogScrollOffset = 0.0 }
 
         customIdBox = EditBox(font, modalX + 150, modalY + 90, modalWidth - 165, 18, Component.literal("Custom ID"))
+        customIdBox.setMaxLength(2000)
         customIdBox.value = currentEntityId
-        customIdBox.setHint(Component.literal("e.g. custom_mod:my_entity"))
+        customIdBox.setHint(Component.literal("§8e.g. custom_mod:my_entity"))
         customIdBox.setEditable(true)
         customIdBox.active = true
 
@@ -140,77 +149,84 @@ class EntityConfigModalWidget(
         val leftX = modalX + 14
         val rightX = modalX + 22 + colW
 
-        fun createEquipSlot(relY: Int, icon: String, getVal: () -> String, setVal: (String) -> Unit): Pair<Button, Button> {
-            lateinit var slotBtn: Button
-            fun updateBtnText() {
-                val v = getVal()
-                val label = if (v.isNotBlank()) {
-                    val shortName = if (v.contains(":")) v.substringAfter(":") else v
-                    font.plainSubstrByWidth("$icon $shortName", colW - 28)
+        fun createEquipmentRow(slotIdx: Int, label: String, icon: String, getVal: () -> String, setVal: (String) -> Unit): Pair<Button, Button> {
+            val slotY = modalY + 50 + slotIdx * 31
+            val chooseBtn = Button.builder(Component.literal("🔍 Choose...")) {
+                if (onOpenItemPicker != null) {
+                    onOpenItemPicker.invoke(getVal()) { chosen ->
+                        setVal(chosen)
+                    }
                 } else {
-                    "$icon (Empty - Choose)"
+                    activeItemPickerModal = ItemPickerModalWidget(
+                        font = font,
+                        screenWidth = screenWidth,
+                        screenHeight = screenHeight,
+                        selectedItemId = getVal(),
+                        onSelect = { chosen ->
+                            setVal(chosen)
+                            activeItemPickerModal = null
+                        },
+                        onClose = { activeItemPickerModal = null }
+                    )
                 }
-                slotBtn.message = Component.literal(label)
-            }
-
-            slotBtn = Button.builder(Component.literal("")) {
-                onOpenItemPicker?.invoke { selectedItem ->
-                    setVal(selectedItem)
-                    updateBtnText()
-                }
-            }.bounds(leftX, modalY + relY, colW - 24, 18).build()
-            updateBtnText()
+            }.bounds(leftX + colW - 86, slotY + 7, 62, 16).build()
 
             val clearBtn = Button.builder(Component.literal("🗑️")) {
                 setVal("")
-                updateBtnText()
-            }.bounds(leftX + colW - 22, modalY + relY, 20, 18).build()
+            }.bounds(leftX + colW - 22, slotY + 7, 18, 16).build()
 
-            return Pair(slotBtn, clearBtn)
+            return Pair(chooseBtn, clearBtn)
         }
 
-        val hRow = createEquipSlot(60, "🪖", { currentHelmet }, { currentHelmet = it })
-        equipButtons.add(hRow.first); equipButtons.add(hRow.second)
+        val rowMain = createEquipmentRow(0, "Main Hand", "🗡️", { currentMainhand }, { currentMainhand = it })
+        equipButtons.add(rowMain.first); equipButtons.add(rowMain.second)
 
-        val cRow = createEquipSlot(90, "🥋", { currentChest }, { currentChest = it })
-        equipButtons.add(cRow.first); equipButtons.add(cRow.second)
+        val rowOff = createEquipmentRow(1, "Offhand", "🛡️", { currentOffhand }, { currentOffhand = it })
+        equipButtons.add(rowOff.first); equipButtons.add(rowOff.second)
 
-        val lRow = createEquipSlot(120, "👖", { currentLegs }, { currentLegs = it })
-        equipButtons.add(lRow.first); equipButtons.add(lRow.second)
+        val rowHelm = createEquipmentRow(2, "Helmet", "🪖", { currentHelmet }, { currentHelmet = it })
+        equipButtons.add(rowHelm.first); equipButtons.add(rowHelm.second)
 
-        val fRow = createEquipSlot(150, "👢", { currentFeet }, { currentFeet = it })
-        equipButtons.add(fRow.first); equipButtons.add(fRow.second)
+        val rowChest = createEquipmentRow(3, "Chestplate", "🥋", { currentChest }, { currentChest = it })
+        equipButtons.add(rowChest.first); equipButtons.add(rowChest.second)
 
-        val mRow = createEquipSlot(180, "🗡️", { currentMainhand }, { currentMainhand = it })
-        equipButtons.add(mRow.first); equipButtons.add(mRow.second)
+        val rowLegs = createEquipmentRow(4, "Leggings", "👖", { currentLegs }, { currentLegs = it })
+        equipButtons.add(rowLegs.first); equipButtons.add(rowLegs.second)
 
-        val oRow = createEquipSlot(210, "🛡️", { currentOffhand }, { currentOffhand = it })
-        equipButtons.add(oRow.first); equipButtons.add(oRow.second)
+        val rowFeet = createEquipmentRow(5, "Boots", "👢", { currentFeet }, { currentFeet = it })
+        equipButtons.add(rowFeet.first); equipButtons.add(rowFeet.second)
 
-        maxHealthBox = EditBox(font, rightX, modalY + 62, colW, 16, Component.literal("Max Health"))
+        maxHealthBox = EditBox(font, rightX, modalY + 64, colW, 16, Component.literal("Max Health"))
         maxHealthBox.value = node.params["entity_maxHealth"] ?: ""
-        maxHealthBox.setHint(Component.literal("e.g. 20.0, 100.0"))
+        maxHealthBox.setHint(Component.literal("§8e.g. 20.0, 100.0"))
         maxHealthBox.setEditable(true); maxHealthBox.active = true
 
-        speedBox = EditBox(font, rightX, modalY + 104, colW, 16, Component.literal("Movement Speed"))
+        speedBox = EditBox(font, rightX, modalY + 106, colW, 16, Component.literal("Movement Speed"))
         speedBox.value = node.params["entity_speed"] ?: ""
-        speedBox.setHint(Component.literal("e.g. 0.25, 0.35"))
+        speedBox.setHint(Component.literal("§8e.g. 0.25, 0.35"))
         speedBox.setEditable(true); speedBox.active = true
 
-        damageBox = EditBox(font, rightX, modalY + 146, colW, 16, Component.literal("Attack Damage"))
+        damageBox = EditBox(font, rightX, modalY + 148, colW, 16, Component.literal("Attack Damage"))
         damageBox.value = node.params["entity_damage"] ?: ""
-        damageBox.setHint(Component.literal("e.g. 2.0, 10.0"))
+        damageBox.setHint(Component.literal("§8e.g. 2.0, 10.0"))
         damageBox.setEditable(true); damageBox.active = true
 
-        armorBox = EditBox(font, rightX, modalY + 188, colW, 16, Component.literal("Armor"))
+        armorBox = EditBox(font, rightX, modalY + 190, colW, 16, Component.literal("Armor"))
         armorBox.value = node.params["entity_armor"] ?: ""
-        armorBox.setHint(Component.literal("e.g. 0.0, 15.0"))
+        armorBox.setHint(Component.literal("§8e.g. 0.0, 15.0"))
         armorBox.setEditable(true); armorBox.active = true
 
         // --- 4. Metadata & Behavior Tab Setup ---
-        customNameBox = EditBox(font, modalX + 16, modalY + 64, modalWidth - 32, 16, Component.literal("Custom Name"))
+        storyTagBox = EditBox(font, modalX + 16, modalY + 62, modalWidth - 32, 16, Component.literal("Story Tag"))
+        storyTagBox.setMaxLength(2000)
+        storyTagBox.value = node.params["entity_storyTag"] ?: node.params["storyTag"] ?: ""
+        storyTagBox.setHint(Component.literal("§8🏷️ Story Tag / Command Tag (e.g. quest_boss, guide_npc)..."))
+        storyTagBox.setEditable(true); storyTagBox.active = true
+
+        customNameBox = EditBox(font, modalX + 16, modalY + 94, modalWidth - 32, 16, Component.literal("Custom Name"))
+        customNameBox.setMaxLength(2000)
         customNameBox.value = node.params["entity_customName"] ?: node.params["customName"] ?: ""
-        customNameBox.setHint(Component.literal("Name displayed above entity..."))
+        customNameBox.setHint(Component.literal("§8Name displayed above entity..."))
         customNameBox.setEditable(true); customNameBox.active = true
 
         nameVisible = node.params["entity_nameVisible"] == "true"
@@ -225,32 +241,32 @@ class EntityConfigModalWidget(
         nameVisibleBtn = Button.builder(Component.literal(if (nameVisible) "🏷️ Name Always Visible: YES" else "🏷️ Name Always Visible: NO")) {
             nameVisible = !nameVisible
             nameVisibleBtn.message = Component.literal(if (nameVisible) "🏷️ Name Always Visible: YES" else "🏷️ Name Always Visible: NO")
-        }.bounds(modalX + 16, modalY + 92, toggleW, 18).build()
+        }.bounds(modalX + 16, modalY + 120, toggleW, 18).build()
 
         noGravityBtn = Button.builder(Component.literal(if (noGravity) "🪶 No Gravity: YES" else "🪶 No Gravity: NO")) {
             noGravity = !noGravity
             noGravityBtn.message = Component.literal(if (noGravity) "🪶 No Gravity: YES" else "🪶 No Gravity: NO")
-        }.bounds(modalX + 24 + toggleW, modalY + 92, toggleW, 18).build()
+        }.bounds(modalX + 24 + toggleW, modalY + 120, toggleW, 18).build()
 
         invulnerableBtn = Button.builder(Component.literal(if (invulnerable) "🛡️ Invulnerable: YES" else "🛡️ Invulnerable: NO")) {
             invulnerable = !invulnerable
             invulnerableBtn.message = Component.literal(if (invulnerable) "🛡️ Invulnerable: YES" else "🛡️ Invulnerable: NO")
-        }.bounds(modalX + 16, modalY + 118, toggleW, 18).build()
+        }.bounds(modalX + 16, modalY + 144, toggleW, 18).build()
 
         noAiBtn = Button.builder(Component.literal(if (noAi) "🧠 No AI (NoAI): YES" else "🧠 No AI (NoAI): NO")) {
             noAi = !noAi
             noAiBtn.message = Component.literal(if (noAi) "🧠 No AI (NoAI): YES" else "🧠 No AI (NoAI): NO")
-        }.bounds(modalX + 24 + toggleW, modalY + 118, toggleW, 18).build()
+        }.bounds(modalX + 24 + toggleW, modalY + 144, toggleW, 18).build()
 
         glowingBtn = Button.builder(Component.literal(if (glowing) "✨ Glowing: YES" else "✨ Glowing: NO")) {
             glowing = !glowing
             glowingBtn.message = Component.literal(if (glowing) "✨ Glowing: YES" else "✨ Glowing: NO")
-        }.bounds(modalX + 16, modalY + 144, toggleW, 18).build()
+        }.bounds(modalX + 16, modalY + 168, toggleW, 18).build()
 
         silentBtn = Button.builder(Component.literal(if (silent) "🔇 Silent: YES" else "🔇 Silent: NO")) {
             silent = !silent
             silentBtn.message = Component.literal(if (silent) "🔇 Silent: YES" else "🔇 Silent: NO")
-        }.bounds(modalX + 24 + toggleW, modalY + 144, toggleW, 18).build()
+        }.bounds(modalX + 24 + toggleW, modalY + 168, toggleW, 18).build()
 
         // --- 5. Common Save & Cancel Buttons ---
         saveBtn = Button.builder(Component.literal("💾 Save Properties")) {
@@ -267,6 +283,14 @@ class EntityConfigModalWidget(
             if (speedBox.value.isNotBlank()) node.params["entity_speed"] = speedBox.value.trim() else node.params.remove("entity_speed")
             if (damageBox.value.isNotBlank()) node.params["entity_damage"] = damageBox.value.trim() else node.params.remove("entity_damage")
             if (armorBox.value.isNotBlank()) node.params["entity_armor"] = armorBox.value.trim() else node.params.remove("entity_armor")
+
+            if (storyTagBox.value.isNotBlank()) {
+                node.params["entity_storyTag"] = storyTagBox.value.trim()
+                node.params["storyTag"] = storyTagBox.value.trim()
+            } else {
+                node.params.remove("entity_storyTag")
+                node.params.remove("storyTag")
+            }
 
             if (customNameBox.value.isNotBlank()) {
                 node.params["entity_customName"] = customNameBox.value.trim()
@@ -335,6 +359,12 @@ class EntityConfigModalWidget(
     }
 
     fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (activeItemPickerModal != null) {
+            guiGraphics.fill(0, 0, screenWidth, screenHeight, 0xF20A0A0E.toInt())
+            activeItemPickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            return
+        }
+
         // Modal Window Frame
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF14141A.toInt())
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + 22, 0xFF22222E.toInt())
@@ -414,33 +444,45 @@ class EntityConfigModalWidget(
                     applyCustomBtn.render(guiGraphics, mouseX, mouseY, partialTick)
                 } else {
                     val filtered = getFilteredEntities()
-                    val itemH = 24
+                    val itemH = 26
                     guiGraphics.fill(listX, contentY, listX + listW, contentY + contentH, 0xFF0D0D12.toInt())
 
                     if (filtered.isEmpty()) {
                         guiGraphics.drawCenteredString(font, "No entities found.", listX + listW / 2, contentY + contentH / 2 - 4, 0xFF888899.toInt())
                     } else {
-                        guiGraphics.enableScissor(listX, contentY, listX + listW, contentY + contentH)
+                        guiGraphics.enableScissor(listX, contentY, listX + listW - 6, contentY + contentH)
                         filtered.forEachIndexed { idx, card ->
                             val iy = (contentY + 4 + idx * (itemH + 2) - catalogScrollOffset).toInt()
                             if (iy + itemH >= contentY && iy <= contentY + contentH) {
                                 val isSelected = card.id == currentEntityId
-                                val isHovered = mouseX >= listX + 4 && mouseX <= listX + listW - 4 && mouseY >= iy && mouseY <= iy + itemH
+                                val isHovered = mouseX >= listX + 4 && mouseX <= listX + listW - 10 && mouseY >= iy && mouseY <= iy + itemH
                                 val bg = if (isSelected) 0xFF1B3A4B.toInt() else if (isHovered) 0xFF222232.toInt() else 0xFF16161E.toInt()
                                 val border = if (isSelected) 0xFF00FFCC.toInt() else if (isHovered) 0xFFFFD700.toInt() else 0xFF282836.toInt()
 
-                                guiGraphics.fill(listX + 4, iy, listX + listW - 4, iy + itemH, bg)
-                                guiGraphics.fill(listX + 4, iy, listX + listW - 4, iy + 1, border)
-                                guiGraphics.fill(listX + 4, iy + itemH - 1, listX + listW - 4, iy + itemH, border)
+                                guiGraphics.fill(listX + 4, iy, listX + listW - 10, iy + itemH, bg)
+                                guiGraphics.fill(listX + 4, iy, listX + listW - 10, iy + 1, border)
+                                guiGraphics.fill(listX + 4, iy + itemH - 1, listX + listW - 10, iy + itemH, border)
 
-                                guiGraphics.drawString(font, card.icon, listX + 8, iy + 7, 0xFFFFFFFF.toInt(), false)
-                                guiGraphics.drawString(font, font.plainSubstrByWidth(card.displayName, listW - 40), listX + 24, iy + 3, if (isSelected) 0xFF00FFCC.toInt() else 0xFFFFFFFF.toInt(), false)
-                                guiGraphics.drawString(font, font.plainSubstrByWidth(card.id, listW - 40), listX + 24, iy + 13, 0xFF888899.toInt(), false)
+                                guiGraphics.drawString(font, card.icon, listX + 8, iy + 8, 0xFFFFFFFF.toInt(), false)
+                                guiGraphics.drawString(font, font.plainSubstrByWidth(card.displayName, listW - 45), listX + 24, iy + 4, if (isSelected) 0xFF00FFCC.toInt() else 0xFFFFFFFF.toInt(), false)
+                                guiGraphics.drawString(font, font.plainSubstrByWidth(card.id, listW - 45), listX + 24, iy + 15, 0xFF888899.toInt(), false)
 
-                                if (isSelected) guiGraphics.drawString(font, "✔", listX + listW - 16, iy + 7, 0xFF00FFCC.toInt(), false)
+                                if (isSelected) guiGraphics.drawString(font, "✔", listX + listW - 22, iy + 8, 0xFF00FFCC.toInt(), false)
                             }
                         }
                         guiGraphics.disableScissor()
+
+                        // Vertical Scrollbar for Entity Catalog
+                        val totalContentHeight = filtered.size * (itemH + 2) + 8
+                        if (totalContentHeight > contentH) {
+                            val maxScroll = maxOf(0.0, (totalContentHeight - contentH).toDouble())
+                            val thumbH = maxOf(16, (contentH * (contentH.toDouble() / totalContentHeight)).toInt())
+                            val thumbY = (contentY + 2 + (catalogScrollOffset / maxScroll) * (contentH - 4 - thumbH)).toInt()
+
+                            val sbX = listX + listW - 6
+                            guiGraphics.fill(sbX, contentY + 2, sbX + 4, contentY + contentH - 2, 0xFF181822.toInt())
+                            guiGraphics.fill(sbX, thumbY, sbX + 4, thumbY + thumbH, if (isDraggingCatalogScrollbar) 0xFFFFD700.toInt() else 0xFF00FFCC.toInt())
+                        }
                     }
                 }
             }
@@ -450,32 +492,71 @@ class EntityConfigModalWidget(
                 val leftX = modalX + 14
                 val rightX = modalX + 22 + colW
 
-                // Left Column: Equipments
-                guiGraphics.drawString(font, "🪖 Helmet:", leftX, modalY + 50, 0xFFA0A0A0.toInt(), false)
-                guiGraphics.drawString(font, "🥋 Chestplate:", leftX, modalY + 80, 0xFFA0A0A0.toInt(), false)
-                guiGraphics.drawString(font, "👖 Leggings:", leftX, modalY + 110, 0xFFA0A0A0.toInt(), false)
-                guiGraphics.drawString(font, "👢 Boots:", leftX, modalY + 140, 0xFFA0A0A0.toInt(), false)
-                guiGraphics.drawString(font, "🗡️ Main Hand:", leftX, modalY + 170, 0xFFA0A0A0.toInt(), false)
-                guiGraphics.drawString(font, "🛡️ Offhand:", leftX, modalY + 200, 0xFFA0A0A0.toInt(), false)
+                // Left Column: Rebuilt Equipment Cards
+                val slots = listOf(
+                    Triple("Main Hand", "🗡️", currentMainhand),
+                    Triple("Offhand", "🛡️", currentOffhand),
+                    Triple("Helmet", "🪖", currentHelmet),
+                    Triple("Chestplate", "🥋", currentChest),
+                    Triple("Leggings", "👖", currentLegs),
+                    Triple("Boots", "👢", currentFeet)
+                )
+
+                slots.forEachIndexed { idx, (slotTitle, defaultIcon, itemVal) ->
+                    val slotY = modalY + 50 + idx * 31
+                    val cardH = 28
+
+                    // Background container for equipment slot
+                    guiGraphics.fill(leftX, slotY, leftX + colW, slotY + cardH, 0xFF101016.toInt())
+                    guiGraphics.fill(leftX, slotY, leftX + colW, slotY + 1, 0xFF22222E.toInt())
+                    guiGraphics.fill(leftX, slotY + cardH - 1, leftX + colW, slotY + cardH, 0xFF22222E.toInt())
+                    guiGraphics.fill(leftX, slotY, leftX + 1, slotY + cardH, 0xFF22222E.toInt())
+                    guiGraphics.fill(leftX + colW - 1, slotY, leftX + colW, slotY + cardH, 0xFF22222E.toInt())
+
+                    // Item Icon
+                    val rl = if (itemVal.isNotBlank()) ResourceLocation.tryParse(itemVal) else null
+                    val item = if (rl != null) try { BuiltInRegistries.ITEM.get(rl) } catch (_: Exception) { Items.AIR } else Items.AIR
+                    val stack = if (item != Items.AIR) ItemStack(item) else ItemStack.EMPTY
+
+                    if (!stack.isEmpty) {
+                        try {
+                            guiGraphics.renderItem(stack, leftX + 4, slotY + 6)
+                        } catch (_: Exception) {
+                            guiGraphics.drawString(font, defaultIcon, leftX + 6, slotY + 9, 0xFFFFFFFF.toInt(), false)
+                        }
+                    } else {
+                        guiGraphics.drawString(font, defaultIcon, leftX + 6, slotY + 9, 0xFFFFFFFF.toInt(), false)
+                    }
+
+                    // Slot Title & Item Name
+                    val displayItemName = if (!stack.isEmpty) stack.hoverName.string else if (itemVal.isNotBlank()) itemVal.substringAfter(":") else "(Empty)"
+                    guiGraphics.drawString(font, "$slotTitle:", leftX + 24, slotY + 4, 0xFFA0A0A0.toInt(), false)
+                    val nameColor = if (itemVal.isNotBlank()) 0xFF00FFCC.toInt() else 0xFF666677.toInt()
+                    val truncName = font.plainSubstrByWidth(displayItemName, colW - 114)
+                    guiGraphics.drawString(font, truncName, leftX + 24, slotY + 15, nameColor, false)
+                }
 
                 equipButtons.forEach { it.render(guiGraphics, mouseX, mouseY, partialTick) }
 
                 // Right Column: Attributes
-                guiGraphics.drawString(font, "❤️ Max Health:", rightX, modalY + 50, 0xFFA0A0A0.toInt(), false)
+                guiGraphics.drawString(font, "❤️ Max Health:", rightX, modalY + 52, 0xFFA0A0A0.toInt(), false)
                 maxHealthBox.render(guiGraphics, mouseX, mouseY, partialTick)
 
-                guiGraphics.drawString(font, "⚡ Movement Speed:", rightX, modalY + 92, 0xFFA0A0A0.toInt(), false)
+                guiGraphics.drawString(font, "⚡ Movement Speed:", rightX, modalY + 94, 0xFFA0A0A0.toInt(), false)
                 speedBox.render(guiGraphics, mouseX, mouseY, partialTick)
 
-                guiGraphics.drawString(font, "💥 Attack Damage:", rightX, modalY + 134, 0xFFA0A0A0.toInt(), false)
+                guiGraphics.drawString(font, "💥 Attack Damage:", rightX, modalY + 136, 0xFFA0A0A0.toInt(), false)
                 damageBox.render(guiGraphics, mouseX, mouseY, partialTick)
 
-                guiGraphics.drawString(font, "🛡️ Armor:", rightX, modalY + 176, 0xFFA0A0A0.toInt(), false)
+                guiGraphics.drawString(font, "🛡️ Armor:", rightX, modalY + 178, 0xFFA0A0A0.toInt(), false)
                 armorBox.render(guiGraphics, mouseX, mouseY, partialTick)
             }
 
             EntityTab.METADATA_BEHAVIOR -> {
-                guiGraphics.drawString(font, "🏷️ Custom Name:", modalX + 16, modalY + 52, 0xFFA0A0A0.toInt(), false)
+                guiGraphics.drawString(font, "🏷️ Story Tag (Command Tag):", modalX + 16, modalY + 50, 0xFFA0A0A0.toInt(), false)
+                storyTagBox.render(guiGraphics, mouseX, mouseY, partialTick)
+
+                guiGraphics.drawString(font, "📛 Custom Display Name:", modalX + 16, modalY + 82, 0xFFA0A0A0.toInt(), false)
                 customNameBox.render(guiGraphics, mouseX, mouseY, partialTick)
 
                 nameVisibleBtn.render(guiGraphics, mouseX, mouseY, partialTick)
@@ -485,7 +566,7 @@ class EntityConfigModalWidget(
                 glowingBtn.render(guiGraphics, mouseX, mouseY, partialTick)
                 silentBtn.render(guiGraphics, mouseX, mouseY, partialTick)
 
-                guiGraphics.drawString(font, "ℹ️ These settings override default entity behavior.", modalX + 16, modalY + 170, 0xFF888899.toInt(), false)
+                guiGraphics.drawString(font, "ℹ️ Story tags allow other story blocks to target this specific entity.", modalX + 16, modalY + 192, 0xFF888899.toInt(), false)
             }
         }
 
@@ -494,13 +575,17 @@ class EntityConfigModalWidget(
     }
 
     private fun setFocus(target: EditBox?) {
-        listOf(searchBox, customIdBox, maxHealthBox, speedBox, damageBox, armorBox, customNameBox).forEach {
+        listOf(searchBox, customIdBox, maxHealthBox, speedBox, damageBox, armorBox, storyTagBox, customNameBox).forEach {
             it.isFocused = (it == target)
         }
         focusedEditBox = target
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (activeItemPickerModal != null) {
+            return activeItemPickerModal!!.mouseClicked(mouseX, mouseY, button)
+        }
+
         // Tab Header clicks
         if (tabCatalogBtn.mouseClicked(mouseX, mouseY, button)) return true
         if (tabEquipAttrBtn.mouseClicked(mouseX, mouseY, button)) return true
@@ -548,9 +633,21 @@ class EntityConfigModalWidget(
                     }
                     if (applyCustomBtn.mouseClicked(mouseX, mouseY, button)) return true
                 } else {
-                    if (mouseX >= listX && mouseX <= listX + listW && mouseY >= contentY && mouseY <= contentY + contentH) {
-                        val filtered = getFilteredEntities()
-                        val itemH = 24
+                    val filtered = getFilteredEntities()
+                    val totalContentHeight = filtered.size * 28 + 8
+                    val maxScroll = maxOf(0.0, (totalContentHeight - contentH).toDouble())
+
+                    // Scrollbar click check
+                    val sbX = listX + listW - 6
+                    if (mouseX >= sbX - 2 && mouseX <= sbX + 6 && mouseY >= contentY && mouseY <= contentY + contentH && maxScroll > 0) {
+                        isDraggingCatalogScrollbar = true
+                        val clickRatio = ((mouseY - contentY) / contentH).coerceIn(0.0, 1.0)
+                        catalogScrollOffset = clickRatio * maxScroll
+                        return true
+                    }
+
+                    if (mouseX >= listX && mouseX <= listX + listW - 8 && mouseY >= contentY && mouseY <= contentY + contentH) {
+                        val itemH = 26
                         filtered.forEachIndexed { idx, card ->
                             val iy = contentY + 4 + idx * (itemH + 2) - catalogScrollOffset
                             if (mouseY >= iy && mouseY <= iy + itemH) {
@@ -579,6 +676,10 @@ class EntityConfigModalWidget(
             }
 
             EntityTab.METADATA_BEHAVIOR -> {
+                if (storyTagBox.mouseClicked(mouseX, mouseY, button)) {
+                    setFocus(storyTagBox)
+                    return true
+                }
                 if (customNameBox.mouseClicked(mouseX, mouseY, button)) {
                     setFocus(customNameBox)
                     return true
@@ -597,7 +698,39 @@ class EntityConfigModalWidget(
         return true
     }
 
+    fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (activeItemPickerModal != null) {
+            return activeItemPickerModal!!.mouseReleased(mouseX, mouseY, button)
+        }
+        isDraggingCatalogScrollbar = false
+        return false
+    }
+
+    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        if (activeItemPickerModal != null) {
+            return activeItemPickerModal!!.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+        }
+
+        if (activeTab == EntityTab.CATALOG && isDraggingCatalogScrollbar) {
+            val contentY = modalY + 70
+            val contentH = modalHeight - 98
+            val filtered = getFilteredEntities()
+            val totalContentHeight = filtered.size * 28 + 8
+            val maxScroll = maxOf(0.0, (totalContentHeight - contentH).toDouble())
+            if (maxScroll > 0) {
+                val clickRatio = ((mouseY - contentY) / contentH).coerceIn(0.0, 1.0)
+                catalogScrollOffset = clickRatio * maxScroll
+                return true
+            }
+        }
+        return false
+    }
+
     fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
+        if (activeItemPickerModal != null) {
+            return activeItemPickerModal!!.mouseScrolled(mouseX, mouseY, scrollY)
+        }
+
         if (activeTab == EntityTab.CATALOG) {
             val contentY = modalY + 70
             val contentH = modalHeight - 98
@@ -618,12 +751,12 @@ class EntityConfigModalWidget(
             val listX = catX + catW + 6
             val listW = modalWidth - (catW + 34)
             if (mouseX >= listX && mouseX <= listX + listW && mouseY >= contentY && mouseY <= contentY + contentH) {
-                val totalItemsH = getFilteredEntities().size * 26 + 4
+                val totalItemsH = getFilteredEntities().size * 28 + 8
                 val maxScroll = maxOf(0.0, (totalItemsH - contentH).toDouble())
                 if (scrollY < 0) {
-                    catalogScrollOffset = (catalogScrollOffset + 26).coerceAtMost(maxScroll)
+                    catalogScrollOffset = (catalogScrollOffset + 28).coerceAtMost(maxScroll)
                 } else if (scrollY > 0) {
-                    catalogScrollOffset = (catalogScrollOffset - 26).coerceAtLeast(0.0)
+                    catalogScrollOffset = (catalogScrollOffset - 28).coerceAtLeast(0.0)
                 }
                 return true
             }
@@ -632,6 +765,10 @@ class EntityConfigModalWidget(
     }
 
     fun charTyped(codePoint: Char, modifiers: Int): Boolean {
+        if (activeItemPickerModal != null) {
+            return activeItemPickerModal!!.charTyped(codePoint, modifiers)
+        }
+
         val focus = focusedEditBox
         if (focus != null && focus.isFocused) {
             return focus.charTyped(codePoint, modifiers)
@@ -640,6 +777,10 @@ class EntityConfigModalWidget(
     }
 
     fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        if (activeItemPickerModal != null) {
+            return activeItemPickerModal!!.keyPressed(keyCode, scanCode, modifiers)
+        }
+
         val focus = focusedEditBox
         if (focus != null && focus.isFocused) {
             if (focus.keyPressed(keyCode, scanCode, modifiers)) return true

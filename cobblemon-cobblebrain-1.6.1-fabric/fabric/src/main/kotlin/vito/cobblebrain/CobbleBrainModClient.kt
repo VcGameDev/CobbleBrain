@@ -97,6 +97,12 @@ object CobbleBrainModClient : ClientModInitializer {
             "category.cobblebrain"
         )
 
+        val keyDebug = KeyMapping(
+            "key.cobblebrain.story_debug",
+            GLFW.GLFW_KEY_F8,
+            "category.cobblebrain"
+        )
+
         // keybinds
         KeyBindingHelper.registerKeyBinding(openConfig)
         KeyBindingHelper.registerKeyBinding(commandKeyQ)
@@ -106,6 +112,7 @@ object CobbleBrainModClient : ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(commandKeyMode)
         KeyBindingHelper.registerKeyBinding(keyPing)
         KeyBindingHelper.registerKeyBinding(keyVoice)
+        KeyBindingHelper.registerKeyBinding(keyDebug)
 
         // Passa as referências para a HUD dinâmica
         CobblebrainClientCommon.keyUp = commandKeyQ
@@ -115,11 +122,15 @@ object CobbleBrainModClient : ClientModInitializer {
         CobblebrainClientCommon.keyMode = commandKeyMode
         CobblebrainClientCommon.keyPing = keyPing
         CobblebrainClientCommon.keyVoice = keyVoice
+        CobblebrainClientCommon.keyDebug = keyDebug
 
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick { client ->
             MigrationNoticeChecker.checkAndShow(client)
             while (openConfig.consumeClick()) {
                 CobblebrainClientCommon.openConfig()
+            }
+            while (keyDebug.consumeClick()) {
+                vito.cobblebrain.client.StoryDebugClientHandler.handleF8Pressed()
             }
             while (commandKeyQ.consumeClick()) {
                 HudSystem.navigateUp()

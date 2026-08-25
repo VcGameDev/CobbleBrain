@@ -12,7 +12,10 @@ enum class ContextMenuAction {
     COPY_DATA,
     PASTE_DATA,
     RESET_PROPERTIES,
-    DISCONNECT_PORTS
+    DISCONNECT_PORTS,
+    PASTE_NODES,
+    SAVE_STORY,
+    ADD_NODE
 }
 
 class ContextMenuWidget(
@@ -20,6 +23,7 @@ class ContextMenuWidget(
     val screenY: Int,
     val targetNode: NodeData? = null,
     val targetScene: SceneData? = null,
+    val isCanvasMenu: Boolean = false,
     val font: Font,
     val onAction: (ContextMenuAction) -> Unit,
     val onClose: () -> Unit
@@ -55,6 +59,11 @@ class ContextMenuWidget(
             menuItems.add(MenuItem("🗑️ Delete Scene", ContextMenuAction.DELETE))
             menuItems.add(MenuItem("📋 Duplicate Scene", ContextMenuAction.DUPLICATE))
             menuItems.add(MenuItem("🔄 Reset Scene", ContextMenuAction.RESET_PROPERTIES))
+        } else if (isCanvasMenu) {
+            val canPasteNodes = BlockDataClipboard.hasCopiedNodes()
+            menuItems.add(MenuItem("📋 Paste Nodes", ContextMenuAction.PASTE_NODES, enabled = canPasteNodes))
+            menuItems.add(MenuItem("💾 Save Story", ContextMenuAction.SAVE_STORY))
+            menuItems.add(MenuItem("➕ Add New Node...", ContextMenuAction.ADD_NODE))
         }
     }
 

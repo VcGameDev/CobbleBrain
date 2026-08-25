@@ -34,6 +34,7 @@ object CobblebrainClientCommon {
     var keyMode: KeyMapping? = null
     var keyPing: KeyMapping? = null
     var keyVoice: KeyMapping? = null
+    var keyDebug: KeyMapping? = null
 
     fun onQuestsSynced(json: String) {
         currentQuestsJson = json

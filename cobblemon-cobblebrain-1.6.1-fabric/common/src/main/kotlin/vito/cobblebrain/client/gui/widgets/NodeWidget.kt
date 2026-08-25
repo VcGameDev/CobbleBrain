@@ -36,8 +36,9 @@ class NodeWidget(val node: NodeData) {
             NodeType.LOOP -> NodeRectShape.SQUARE
 
             NodeType.CONSTRUCTION, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.TRIGGER,
-            NodeType.DIALOGUE, NodeType.ACTION, NodeType.TIMER,
-            NodeType.QUEST, NodeType.AUDIO -> NodeRectShape.VERTICAL_RECTANGLE
+            NodeType.DIALOGUE, NodeType.ACTION, NodeType.TIMER, NodeType.SAVE_STATE_NODE,
+            NodeType.LOAD_STATE_NODE, NodeType.CHECKPOINT_NODE,
+            NodeType.QUEST, NodeType.AUDIO, NodeType.TEXTURE -> NodeRectShape.VERTICAL_RECTANGLE
         }
     }
 
@@ -64,9 +65,13 @@ class NodeWidget(val node: NodeData) {
             NodeType.DIALOGUE -> 0xFFC62828.toInt()     // Bright Red Dialogue
             NodeType.ACTION -> 0xFFD32F2F.toInt()       // Crimson Action Red
             NodeType.COMMAND_NODE -> 0xFFD84315.toInt()  // Rust Orange Command
+            NodeType.SAVE_STATE_NODE -> 0xFF4A148C.toInt() // Deep Purple Save Checkpoint
+            NodeType.LOAD_STATE_NODE -> 0xFF311B92.toInt() // Deep Indigo Load Checkpoint
+            NodeType.CHECKPOINT_NODE -> 0xFF512DA8.toInt() // Indigo Checkpoint Node
             NodeType.TIMER -> 0xFF8E24AA.toInt()        // Vibrant Purple Timer
             NodeType.COMMENT -> 0xFFFBC02D.toInt()     // Note Yellow
             NodeType.AUDIO -> 0xFF6A1B9A.toInt()       // Dark Purple Audio
+            NodeType.TEXTURE -> 0xFF9333EA.toInt()     // Vibrant Magenta/Purple Texture
         }
     }
 
@@ -114,35 +119,62 @@ class NodeWidget(val node: NodeData) {
                worldY >= node.y && worldY <= node.y + node.height
     }
 
+    fun getDefaultWidth(): Double {
+        return when (getRectShape()) {
+            NodeRectShape.HORIZONTAL_RECTANGLE -> 160.0
+            NodeRectShape.SQUARE -> 90.0
+            NodeRectShape.VERTICAL_RECTANGLE -> 130.0
+        }
+    }
+
+    fun getDefaultHeight(): Double {
+        return when {
+            node.nodeType == NodeType.CONDITION_NODE -> maxOf(100.0, 30.0 + node.outputs.size * 22.0)
+            node.nodeType == NodeType.COMMAND_NODE -> 100.0
+            getRectShape() == NodeRectShape.HORIZONTAL_RECTANGLE -> 55.0
+            getRectShape() == NodeRectShape.SQUARE -> 90.0
+            else -> 100.0
+        }
+    }
+
+    fun isWorldPosOnResizeHandle(worldX: Double, worldY: Double): Boolean {
+        val rx = node.x + node.width - 12.0
+        val ry = node.y + node.height - 12.0
+        return worldX >= rx && worldX <= node.x + node.width + 4.0 &&
+               worldY >= ry && worldY <= node.y + node.height + 4.0
+    }
+    fun getErrorTooltipAt(worldX: Double, worldY: Double, storyId: String): String? {
+        val inBounds = worldX >= node.x - 4.0 && worldX <= node.x + node.width + 4.0 &&
+                       worldY >= node.y - 4.0 && worldY <= node.y + node.height + 4.0
+        if (!inBounds) return null
+
+        val status = vito.cobblebrain.engine.StoryDebugger.getNodeStatus(storyId, node.id)
+        val errMsg = vito.cobblebrain.engine.StoryDebugger.getNodeErrorMessage(storyId, node.id)
+        return when (status) {
+            vito.cobblebrain.engine.NodeExecutionStatus.FAILED -> "§c❌ Block Execution Error: §f${errMsg ?: "Unknown runtime failure"}"
+            vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED -> "§6⚠ Fallback Triggered: §f${errMsg ?: "Fallback path executed"}"
+            vito.cobblebrain.engine.NodeExecutionStatus.RUNNING -> "§b⚡ Block currently running..."
+            else -> null
+        }
+    }
+
     fun render(
         guiGraphics: GuiGraphics,
         font: Font,
         hoveredPort: PortData? = null,
         isModalOpen: Boolean = false,
-        isCollidingWithOverlay: Boolean = false
+        isCollidingWithOverlay: Boolean = false,
+        storyId: String = ""
     ) {
-        when (getRectShape()) {
-            NodeRectShape.HORIZONTAL_RECTANGLE -> {
-                node.width = 160.0
-                node.height = 55.0
-            }
-            NodeRectShape.SQUARE -> {
-                node.width = 90.0
-                node.height = 90.0
-            }
-            NodeRectShape.VERTICAL_RECTANGLE -> {
-                node.width = 130.0
-                node.height = 100.0
-            }
+        if (node.width <= 0.0) {
+            node.width = getDefaultWidth()
+        }
+        if (node.height <= 0.0) {
+            node.height = getDefaultHeight()
         }
 
-        if (node.nodeType == NodeType.CONDITION_NODE) {
-            node.width = 140.0
-            node.height = maxOf(100.0, 30.0 + node.outputs.size * 22.0)
-        } else if (node.nodeType == NodeType.COMMAND_NODE) {
-            node.width = 140.0
-            node.height = 100.0
-        }
+        node.width = node.width.coerceAtLeast(120.0)
+        node.height = node.height.coerceAtLeast(40.0)
 
         val x = node.x.toInt()
         val y = node.y.toInt()
@@ -163,10 +195,29 @@ class NodeWidget(val node: NodeData) {
                 val commentText = font.plainSubstrByWidth(node.content.ifBlank { "Your note..." }, w - 12)
                 guiGraphics.drawString(font, commentText, x + 6, y + 24, 0xFFE0E0D0.toInt(), false)
             }
+
+            // Comment Resize Handle
+            val rx = x + w - 8
+            val ry = y + h - 8
+            guiGraphics.fill(rx, ry, rx + 8, ry + 8, noteBorder)
+            guiGraphics.fill(rx + 1, ry + 1, rx + 7, ry + 7, 0xEE222016.toInt())
+            guiGraphics.fill(rx + 2, ry + 5, rx + 6, ry + 7, noteBorder)
+            guiGraphics.fill(rx + 4, ry + 3, rx + 6, ry + 5, noteBorder)
             return
         }
 
+        // Diagnostic Debug Status
+        val debugStatus = vito.cobblebrain.engine.StoryDebugger.getNodeStatus(storyId, node.id)
+        val debugErrMsg = vito.cobblebrain.engine.StoryDebugger.getNodeErrorMessage(storyId, node.id)
+
         val borderColor = when {
+            debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED -> 0xFFFF3333.toInt()
+            debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED -> 0xFFF59E0B.toInt()
+            debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING -> {
+                val pulse = ((kotlin.math.sin(System.currentTimeMillis() / 150.0) + 1.0) * 0.5 * 180 + 75).toInt()
+                (pulse shl 24) or 0x0038BDF8
+            }
+            debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS -> 0xFF22C55E.toInt()
             isStartTestNode -> 0xFF00FFCC.toInt()
             isEndTestNode -> 0xFFFF5555.toInt()
             isSelected -> 0xFFFFD700.toInt()
@@ -175,14 +226,39 @@ class NodeWidget(val node: NodeData) {
 
         val headerColor = getHeaderColor()
 
-        guiGraphics.fill(x - 2, y - 2, x + w + 2, y + h + 2, borderColor)
+        // Extra thick outline for debug error/running states
+        val borderThickness = if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED || debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING) 3 else 2
+        guiGraphics.fill(x - borderThickness, y - borderThickness, x + w + borderThickness, y + h + borderThickness, borderColor)
         guiGraphics.fill(x, y, x + w, y + h, 0xFF1E1E24.toInt())
         guiGraphics.fill(x, y, x + w, y + headerHeight, headerColor)
+
+        // Diagnostic Top-Right Badges
+        if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED) {
+            val bx = x + w - 14
+            val by = y - 6
+            guiGraphics.fill(bx, by, bx + 16, by + 14, 0xFFDC2626.toInt())
+            guiGraphics.fill(bx, by, bx + 16, by + 1, 0xFFFFFFFF.toInt())
+            guiGraphics.fill(bx, by, bx + 1, by + 14, 0xFFFFFFFF.toInt())
+            guiGraphics.fill(bx + 15, by, bx + 16, by + 14, 0xFFFFFFFF.toInt())
+            guiGraphics.fill(bx, by + 13, bx + 16, by + 14, 0xFFFFFFFF.toInt())
+            guiGraphics.drawString(font, "!", bx + 5, by + 3, 0xFFFFFFFF.toInt(), true)
+        } else if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED) {
+            val bx = x + w - 14
+            val by = y - 6
+            guiGraphics.fill(bx, by, bx + 16, by + 14, 0xFFD97706.toInt())
+            guiGraphics.drawString(font, "⚠", bx + 3, by + 3, 0xFFFFFFFF.toInt(), false)
+        } else if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING) {
+            val bx = x + w - 14
+            val by = y - 6
+            guiGraphics.fill(bx, by, bx + 16, by + 14, 0xFF0284C7.toInt())
+            guiGraphics.drawString(font, "⚡", bx + 3, by + 3, 0xFFFFFFFF.toInt(), false)
+        }
 
         // Hide node text ONLY if colliding with overlay menu/inspector
         if (!shouldHideText) {
             val isBoundToScene = !node.parentSceneId.isNullOrEmpty()
-            val maxTitleW = if (isBoundToScene) w - 24 else w - 8
+            val hasBadge = debugStatus != vito.cobblebrain.engine.NodeExecutionStatus.IDLE
+            val maxTitleW = if (isBoundToScene || hasBadge) w - 28 else w - 8
             val titleText = font.plainSubstrByWidth(node.title, maxTitleW)
             guiGraphics.drawString(font, titleText, x + 6, y + 6, 0xFFFFFFFF.toInt(), true)
 
@@ -198,7 +274,7 @@ class NodeWidget(val node: NodeData) {
                     val trigType = node.params["triggerType"] ?: "START"
                     "$condMode: $trigType"
                 }
-                NodeType.DIALOGUE -> node.content.ifBlank { "No dialogue..." }
+                NodeType.DIALOGUE -> if (node.params["useAi"] == "true") "🤖 AI Prompt: ${node.content.ifBlank { "Prompt..." }}" else node.content.ifBlank { "No dialogue..." }
                 NodeType.ACTION -> {
                     val actionType = node.params["actionSubtype"] ?: "MESSAGE"
                     when (actionType) {
@@ -230,6 +306,15 @@ class NodeWidget(val node: NodeData) {
                 NodeType.VARIABLE_SET -> "✏️ Set: ${node.params["varKey"] ?: "new_var"} ${node.params["varOp"] ?: "="} ${node.params["varValue"] ?: "1"}"
                 NodeType.QUEST -> "🏆 Quest: ${node.params["questTitle"] ?: node.title}"
                 NodeType.AUDIO -> "🎵 Audio: ${node.params["audioId"] ?: "sound"}"
+                NodeType.SAVE_STATE_NODE -> "💾 Save: [${node.params["profileId"] ?: "checkpoint_1"}]"
+                NodeType.LOAD_STATE_NODE -> "🔄 Load: [${node.params["profileId"] ?: "checkpoint_1"}]"
+                NodeType.CHECKPOINT_NODE -> "🚩 Checkpoint"
+                NodeType.TEXTURE -> {
+                    val target = if (node.params["targetType"] == "PLAYER_POKEMON") "Slot ${node.params["pokemonSlot"] ?: "0"}" else (node.params["targetIdentifier"] ?: "NPC")
+                    val tex = node.params["textureName"]?.ifBlank { "None" } ?: "None"
+                    val mode = if (node.params["textureMode"] == "CLEAR_TEXTURE") "Reset" else "Set: $tex"
+                    "🎨 $mode ($target)"
+                }
             }
 
             val previewText = font.plainSubstrByWidth(rawSummary, w - 12)
@@ -289,5 +374,17 @@ class NodeWidget(val node: NodeData) {
                 guiGraphics.drawString(font, pName, opx - r - 3 - textW, opy - 4, 0xFFCCCCCC.toInt(), false)
             }
         }
+
+        // Render Node Resize Handle at Bottom-Right Corner (8x8 px)
+        val rx = x + w - 8
+        val ry = y + h - 8
+        val rw = 8
+        val rh = 8
+        val handleColor = if (isSelected) 0xFFFFD700.toInt() else 0xFF666677.toInt()
+
+        guiGraphics.fill(rx, ry, rx + rw, ry + rh, handleColor)
+        guiGraphics.fill(rx + 1, ry + 1, rx + rw - 1, ry + rh - 1, 0xFF18181C.toInt())
+        guiGraphics.fill(rx + 2, ry + 5, rx + 6, ry + 7, handleColor)
+        guiGraphics.fill(rx + 4, ry + 3, rx + 6, ry + 5, handleColor)
     }
 }

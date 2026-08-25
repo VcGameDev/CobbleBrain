@@ -42,7 +42,8 @@ class ResourcePickerModalWidget(
 
     init {
         searchBox = EditBox(font, modalX + 15, modalY + 28, modalWidth - 30, 16, Component.literal("Search"))
-        searchBox.setHint(Component.literal("🔍 Type to filter catalog or type a custom ID..."))
+        searchBox.setMaxLength(2000)
+        searchBox.setHint(Component.literal("§8🔍 Type to filter catalog or type a custom ID..."))
         searchBox.setEditable(true)
         searchBox.active = true
         searchBox.setResponder {
@@ -50,8 +51,9 @@ class ResourcePickerModalWidget(
         }
 
         customIdBox = EditBox(font, modalX + 150, modalY + 80, modalWidth - 165, 18, Component.literal("Custom ID"))
+        customIdBox.setMaxLength(2000)
         customIdBox.value = currentSelectedId
-        customIdBox.setHint(Component.literal("e.g. my_datapack:my_resource"))
+        customIdBox.setHint(Component.literal("§8e.g. my_datapack:my_resource"))
         customIdBox.setEditable(true)
         customIdBox.active = true
 
@@ -467,6 +469,14 @@ class ResourcePickerModalWidget(
             }
         }
 
+        return false
+    }
+
+    fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        return false
+    }
+
+    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
         return false
     }
 

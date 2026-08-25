@@ -50,11 +50,32 @@ class StoryEditorScreen(
     private var isPanning: Boolean = false
     private var draggedScene: SceneData? = null
     private var resizingScene: SceneData? = null
+    private var resizingNode: NodeData? = null
+    private var lastClickedNodeId: String? = null
+    private var lastClickedNodeTime: Long = 0L
+    private var lastClickedSceneId: String? = null
+    private var lastClickedSceneTime: Long = 0L
     private var lastMouseX: Double = 0.0
     private var lastMouseY: Double = 0.0
 
     private var draggedWidget: NodeWidget? = null
-    private var selectedWidget: NodeWidget? = null
+    var selectedWidget: NodeWidget? = null
+    val selectedWidgets: MutableSet<NodeWidget> = mutableSetOf()
+
+    // Marquee / Box Selection State
+    var isSelectionModeActive: Boolean = false
+    private var isBoxSelecting: Boolean = false
+    private var selectionHoldStartTime: Long = 0L
+    private var selectionHoldOriginX: Double = 0.0
+    private var selectionHoldOriginY: Double = 0.0
+    private var isHoldingForSelection: Boolean = false
+    private var lastEmptyCanvasClickTime: Long = 0L
+    private var lastEmptyCanvasClickX: Double = 0.0
+    private var lastEmptyCanvasClickY: Double = 0.0
+    private var selectionOriginWorldX: Double = 0.0
+    private var selectionOriginWorldY: Double = 0.0
+    private var selectionCurrentWorldX: Double = 0.0
+    private var selectionCurrentWorldY: Double = 0.0
 
     // Ongoing Connection
     private var connectingSourceNode: NodeData? = null
@@ -77,14 +98,19 @@ class StoryEditorScreen(
     var activeSceneInspector: SceneInspectorWidget? = null
 
     // Dedicated Modals
-    var activeMetadataModal: StoryMetadataModalWidget? = null
-    var activeDocModal: StoryDocumentationModalWidget? = null
-    var activeVariableModal: StoryVariableManagerModalWidget? = null
+    private var activeMetadataModal: StoryMetadataModalWidget? = null
+    private var activeSaveProfileModal: SaveProfileModalWidget? = null
+    private var activeAIDialogueModal: AIDialogueModalWidget? = null
+    private var activeDocModal: StoryDocumentationModalWidget? = null
+    private var activeVariableModal: StoryVariableManagerModalWidget? = null
     var activeVarSelectorModal: StoryVariableSelectorModalWidget? = null
     var activeActionTriggerPickerModal: ActionTriggerPickerModalWidget? = null
     var activePokemonConfigModal: PokemonConfigModalWidget? = null
     var activeResourcePickerModal: ResourcePickerModalWidget? = null
+    var activeItemPickerModal: ItemPickerModalWidget? = null
     var activeEntityConfigModal: EntityConfigModalWidget? = null
+    private var activeAnimationSelectorModal: AnimationSelectorModalWidget? = null
+    private var activeTextureSelectorModal: TextureSelectorModalWidget? = null
 
     // Context Menu (Right Click)
     var activeContextMenu: ContextMenuWidget? = null
@@ -120,10 +146,14 @@ class StoryEditorScreen(
 
         // SECTION 3: Actions & Events
         PaletteEntry(true, "--- 3. ACTIONS & EVENTS ---"),
-        PaletteEntry(false, "💬 Dialogue", NodeType.DIALOGUE),
+        PaletteEntry(false, "💬 Dialogue Block", NodeType.DIALOGUE),
         PaletteEntry(false, "⚡ Action", NodeType.ACTION),
         PaletteEntry(false, "⌨️ Command", NodeType.COMMAND_NODE),
+        PaletteEntry(false, "💾 Save Checkpoint", NodeType.SAVE_STATE_NODE),
+        PaletteEntry(false, "🔄 Load Checkpoint", NodeType.LOAD_STATE_NODE),
         PaletteEntry(false, "🎵 Audio / Music", NodeType.AUDIO),
+        PaletteEntry(false, "🎨 Change Texture", NodeType.TEXTURE),
+        PaletteEntry(false, "🚩 Checkpoint", NodeType.CHECKPOINT_NODE),
         PaletteEntry(false, "⏱ Timer", NodeType.TIMER),
         PaletteEntry(false, "📝 Note", NodeType.COMMENT)
     )
@@ -206,12 +236,19 @@ class StoryEditorScreen(
     }
 
     private fun rebuildNodeWidgets() {
+        val prevSelectedIds = selectedWidgets.map { it.node.id }.toSet()
         nodeWidgets.clear()
+        selectedWidgets.clear()
+
         if (editingConstructionNode != null) {
             editingConstructionNode?.innerNodes?.forEach { node ->
                 val widget = NodeWidget(node)
                 widget.isStartTestNode = (rangeTestStartNode?.id == node.id)
                 widget.isEndTestNode = (rangeTestEndNode?.id == node.id)
+                if (prevSelectedIds.contains(node.id)) {
+                    widget.isSelected = true
+                    selectedWidgets.add(widget)
+                }
                 nodeWidgets.add(widget)
             }
         } else {
@@ -220,9 +257,16 @@ class StoryEditorScreen(
                     val widget = NodeWidget(node)
                     widget.isStartTestNode = (rangeTestStartNode?.id == node.id)
                     widget.isEndTestNode = (rangeTestEndNode?.id == node.id)
+                    if (prevSelectedIds.contains(node.id)) {
+                        widget.isSelected = true
+                        selectedWidgets.add(widget)
+                    }
                     nodeWidgets.add(widget)
                 }
             }
+        }
+        if (selectedWidget != null && selectedWidgets.none { it.node.id == selectedWidget?.node?.id }) {
+            selectedWidget = selectedWidgets.firstOrNull()
         }
     }
 
@@ -367,6 +411,10 @@ class StoryEditorScreen(
             NodeType.VARIABLE_SET -> "Var (Set)"
             NodeType.QUEST -> "Mission (Quest)"
             NodeType.AUDIO -> "Audio / Music"
+            NodeType.SAVE_STATE_NODE -> "Save Checkpoint"
+            NodeType.LOAD_STATE_NODE -> "Load Checkpoint"
+            NodeType.CHECKPOINT_NODE -> "Checkpoint"
+            NodeType.TEXTURE -> "Change Texture"
         }
 
         val inputs = mutableListOf<PortData>()
@@ -388,6 +436,11 @@ class StoryEditorScreen(
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
                 outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
                 w = 130.0; h = 100.0
+            }
+            NodeType.TEXTURE -> {
+                inputs.add(PortData(name = "In", type = PortType.INPUT))
+                outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
+                w = 150.0; h = 80.0
             }
             NodeType.VARIABLE_GET -> {
                 outputs.add(PortData(name = "Val", type = PortType.OUTPUT))
@@ -445,6 +498,19 @@ class StoryEditorScreen(
                 outputs.add(PortData(name = "Cycle", type = PortType.OUTPUT))
                 outputs.add(PortData(name = "Done", type = PortType.OUTPUT))
                 w = 90.0; h = 90.0
+            }
+            NodeType.SAVE_STATE_NODE -> {
+                inputs.add(PortData(id = "IN", name = "In", type = PortType.INPUT))
+                outputs.add(PortData(id = "OUT_SUCCESS", name = "Success", type = PortType.OUTPUT))
+                outputs.add(PortData(id = "OUT_ERROR", name = "Error", type = PortType.OUTPUT))
+                w = 140.0; h = 100.0
+            }
+            NodeType.LOAD_STATE_NODE -> {
+                inputs.add(PortData(id = "IN", name = "In", type = PortType.INPUT))
+                outputs.add(PortData(id = "OUT_SUCCESS", name = "Success", type = PortType.OUTPUT))
+                outputs.add(PortData(id = "OUT_NOT_FOUND", name = "Not Found", type = PortType.OUTPUT))
+                outputs.add(PortData(id = "OUT_ERROR", name = "Error", type = PortType.OUTPUT))
+                w = 140.0; h = 110.0
             }
             else -> {
                 inputs.add(PortData(name = "In", type = PortType.INPUT))
@@ -510,6 +576,17 @@ class StoryEditorScreen(
             ghostNode.params["loopMode"] = "COUNT"
             ghostNode.params["loopCount"] = "5"
             ghostNode.params["loopIntervalSec"] = "1.0"
+        } else if (type == NodeType.SAVE_STATE_NODE) {
+            ghostNode.params["profileId"] = "checkpoint_1"
+            ghostNode.params["scope"] = "PLAYER"
+            ghostNode.params["modules"] = "ALL"
+        } else if (type == NodeType.LOAD_STATE_NODE) {
+            ghostNode.params["profileId"] = "checkpoint_1"
+            ghostNode.params["scope"] = "PLAYER"
+            ghostNode.params["mergeMode"] = "OVERWRITE"
+            ghostNode.params["jumpToTargetNodeId"] = ""
+            ghostNode.params["gracePeriodTicks"] = "60"
+            ghostNode.params["cleanStoryTag"] = ""
         }
 
         activePlacementNode = ghostNode
@@ -626,17 +703,30 @@ class StoryEditorScreen(
                 )
             },
             onOpenResourcePicker = { pickerType, onSelect ->
-                activeResourcePickerModal = ResourcePickerModalWidget(
-                    pickerType = pickerType,
-                    font = font,
-                    screenWidth = width,
-                    screenHeight = height,
-                    currentSelectedId = "",
-                    onSelect = { chosenId ->
-                        onSelect(chosenId)
-                    },
-                    onClose = { activeResourcePickerModal = null }
-                )
+                if (pickerType == ResourcePickerType.ITEM) {
+                    activeItemPickerModal = ItemPickerModalWidget(
+                        font = font,
+                        screenWidth = width,
+                        screenHeight = height,
+                        selectedItemId = "",
+                        onSelect = { chosenId ->
+                            onSelect(chosenId)
+                        },
+                        onClose = { activeItemPickerModal = null }
+                    )
+                } else {
+                    activeResourcePickerModal = ResourcePickerModalWidget(
+                        pickerType = pickerType,
+                        font = font,
+                        screenWidth = width,
+                        screenHeight = height,
+                        currentSelectedId = "",
+                        onSelect = { chosenId ->
+                            onSelect(chosenId)
+                        },
+                        onClose = { activeResourcePickerModal = null }
+                    )
+                }
             },
             onOpenEntityConfig = { targetNode ->
                 activeEntityConfigModal = EntityConfigModalWidget(
@@ -644,15 +734,17 @@ class StoryEditorScreen(
                     font = font,
                     screenWidth = width,
                     screenHeight = height,
-                    onOpenItemPicker = { onSelect ->
-                        activeResourcePickerModal = ResourcePickerModalWidget(
-                            pickerType = ResourcePickerType.ITEM,
+                    onOpenItemPicker = { currentVal, onSelect ->
+                        activeItemPickerModal = ItemPickerModalWidget(
                             font = font,
                             screenWidth = width,
                             screenHeight = height,
-                            currentSelectedId = "",
-                            onSelect = onSelect,
-                            onClose = { activeResourcePickerModal = null }
+                            selectedItemId = currentVal,
+                            onSelect = { chosen ->
+                                onSelect(chosen)
+                                activeItemPickerModal = null
+                            },
+                            onClose = { activeItemPickerModal = null }
                         )
                     },
                     onClose = { activeEntityConfigModal = null },
@@ -662,8 +754,190 @@ class StoryEditorScreen(
                     }
                 )
             },
+            onDeleteNode = { target -> deleteNode(target) },
+            onDissociateNode = { target -> dissociateNode(target) },
+            onOpenProfileModal = { target -> openSaveProfileModalForNode(target) },
+            onOpenAIDialogueModal = { target -> openAIDialogueModalForNode(target) },
+            onOpenAnimationSelector = { target, onSelect -> openAnimationSelectorModalForNode(target, onSelect) },
+            onOpenTextureSelector = { target, onSelect -> openTextureSelectorModalForNode(target, onSelect) },
             projectVariables = project.variables
         )
+    }
+
+    fun openTextureSelectorModalForNode(node: NodeData, onSelected: (String) -> Unit) {
+        closeAllTopMenus()
+        activeTextureSelectorModal = TextureSelectorModalWidget(
+            font = font,
+            screenWidth = width,
+            screenHeight = height,
+            storyId = project.id.ifBlank { "default_story" },
+            initialSelected = node.params["textureName"] ?: "",
+            onSelect = { chosen ->
+                onSelected(chosen)
+            },
+            onClose = { activeTextureSelectorModal = null }
+        )
+    }
+
+    fun openDebugConsole() {
+        closeAllTopMenus()
+        minecraft?.setScreen(StoryRuntimeDebugScreen(parentScreen = this, initialStoryId = project.id))
+    }
+
+    fun focusOnNode(blockId: String) {
+        val targetNode = project.scenes.flatMap { it.nodes }.find { it.id == blockId }
+            ?: editingConstructionNode?.innerNodes?.find { it.id == blockId }
+        if (targetNode != null) {
+            val parentScene = project.scenes.find { scene -> scene.nodes.any { it.id == blockId } }
+            if (parentScene != null && project.activeSceneId != parentScene.id) {
+                project.activeSceneId = parentScene.id
+                editingConstructionNode = null
+                rebuildNodeWidgets()
+            }
+
+            panX = (width / 2.0) - (targetNode.x + targetNode.width / 2.0) * zoom
+            panY = (height / 2.0) - (targetNode.y + targetNode.height / 2.0) * zoom
+
+            selectedWidget = nodeWidgets.find { it.node.id == targetNode.id }
+            nodeWidgets.forEach { it.isSelected = (it.node.id == targetNode.id) }
+            openInspectorForNode(targetNode)
+        }
+    }
+
+    fun openAnimationSelectorModalForNode(node: NodeData, onSelected: (String) -> Unit) {
+        closeAllTopMenus()
+        activeAnimationSelectorModal = AnimationSelectorModalWidget(
+            font = font,
+            screenWidth = width,
+            screenHeight = height,
+            selectedSystem = node.params["animationSystem"] ?: "COBBLEMON",
+            initialSelected = node.params["animationId"] ?: "",
+            onSelect = { chosenId ->
+                onSelected(chosenId)
+            },
+            onClose = { activeAnimationSelectorModal = null }
+        )
+    }
+
+    fun openSaveProfileModalForNode(node: NodeData) {
+        closeAllTopMenus()
+        activeSaveProfileModal = SaveProfileModalWidget(
+            node = node,
+            project = project,
+            font = font,
+            screenWidth = width,
+            screenHeight = height,
+            onClose = { activeSaveProfileModal = null },
+            onDataChanged = {
+                markDirty()
+                activeInspector?.buildUi()
+            }
+        )
+    }
+
+    fun openAIDialogueModalForNode(node: NodeData) {
+        closeAllTopMenus()
+        activeAIDialogueModal = AIDialogueModalWidget(
+            node = node,
+            project = project,
+            font = font,
+            screenWidth = width,
+            screenHeight = height,
+            onClose = { activeAIDialogueModal = null },
+            onDataChanged = {
+                markDirty()
+                activeInspector?.buildUi()
+            }
+        )
+    }
+
+    fun deleteNode(node: NodeData) {
+        // 1. Remove from all scene children and construction sub-graphs
+        project.scenes.forEach { scene ->
+            scene.nodes.removeIf { it.id == node.id }
+        }
+        editingConstructionNode?.innerNodes?.removeIf { it.id == node.id }
+        openConstructionNodes.removeIf { it.id == node.id }
+
+        // 2. Sever and remove all wire connections attached to this node across all scenes & project
+        project.scenes.forEach { scene ->
+            scene.connections.removeIf { it.fromNodeId == node.id || it.toNodeId == node.id }
+        }
+        editingConstructionNode?.innerConnections?.removeIf { it.fromNodeId == node.id || it.toNodeId == node.id }
+        project.sceneConnections.removeIf { it.fromNodeId == node.id || it.toNodeId == node.id }
+
+        // 3. Clear selection & close inspector if targeted
+        selectedWidgets.removeIf { it.node.id == node.id }
+        if (selectedWidget?.node?.id == node.id) {
+            selectedWidget = selectedWidgets.firstOrNull()
+        }
+        if (activeInspector?.node?.id == node.id) {
+            activeInspector = null
+        }
+
+        markDirty()
+        rebuildNodeWidgets()
+        showStatus("Node deleted: ${node.title}")
+    }
+
+    fun deleteNodes(nodes: List<NodeData>) {
+        if (nodes.isEmpty()) return
+        val nodeIds = nodes.map { it.id }.toSet()
+
+        // 1. Remove from all scenes and construction sub-graphs
+        project.scenes.forEach { scene ->
+            scene.nodes.removeIf { nodeIds.contains(it.id) }
+            scene.connections.removeIf { nodeIds.contains(it.fromNodeId) || nodeIds.contains(it.toNodeId) }
+        }
+        editingConstructionNode?.innerNodes?.removeIf { nodeIds.contains(it.id) }
+        editingConstructionNode?.innerConnections?.removeIf { nodeIds.contains(it.fromNodeId) || nodeIds.contains(it.toNodeId) }
+        openConstructionNodes.removeIf { nodeIds.contains(it.id) }
+        project.sceneConnections.removeIf { nodeIds.contains(it.fromNodeId) || nodeIds.contains(it.toNodeId) }
+
+        // 2. Clear selection & close inspector
+        selectedWidgets.removeIf { nodeIds.contains(it.node.id) }
+        if (selectedWidget != null && nodeIds.contains(selectedWidget?.node?.id)) {
+            selectedWidget = null
+        }
+        if (activeInspector != null && nodeIds.contains(activeInspector?.node?.id)) {
+            activeInspector = null
+        }
+
+        markDirty()
+        rebuildNodeWidgets()
+        showStatus("${nodes.size} nodes deleted.")
+    }
+
+    fun dissociateNode(node: NodeData) {
+        // 1. Duplicate/clone node with all parameters & configuration
+        val inputs = node.inputs.map { PortData(name = it.name, type = it.type) }.toMutableList()
+        val outputs = node.outputs.map { PortData(name = it.name, type = it.type) }.toMutableList()
+        val cloneNode = NodeData(
+            parentSceneId = null,
+            title = node.title,
+            nodeType = node.nodeType,
+            content = node.content,
+            x = currentMouseWorldX - node.width / 2.0,
+            y = currentMouseWorldY - node.height / 2.0,
+            width = node.width,
+            height = node.height,
+            inputs = inputs,
+            outputs = outputs,
+            params = HashMap(node.params),
+            innerNodes = node.innerNodes.toMutableList(),
+            innerConnections = node.innerConnections.toMutableList()
+        )
+
+        // 2. Remove original node and sever its connections
+        deleteNode(node)
+
+        // 3. Place cloned node in Ghost Mode
+        activePlacementNode = cloneNode
+        selectedWidget = null
+        selectedWidgets.clear()
+        activeInspector = null
+        activeContextMenu = null
+        showStatus("Node detached into Ghost Placement mode. Click canvas to place.")
     }
 
     private fun openSceneInspector(scene: SceneData) {
@@ -719,9 +993,14 @@ class StoryEditorScreen(
         val startNode = rangeTestStartNode
         if (startNode == null) return
 
-        saveProject()
-
         val serverPlayer = minecraft?.player?.uuid?.let { minecraft?.singleplayerServer?.playerList?.getPlayer(it) }
+        val valRes = StoryExecutor.validatePrerequisites(project, serverPlayer, serverPlayer?.server)
+        if (!valRes.isValid) {
+            StoryExecutor.handlePrerequisiteFailure(project, serverPlayer, valRes)
+            showStatus("Prerequisites failed: ${valRes.reason}")
+            return
+        }
+
         val instance = ActiveStoryInstance(storyId = project.id, project = project, context = StoryContext(player = serverPlayer))
         StoryExecutor.activeStories[project.id] = instance
 
@@ -781,7 +1060,7 @@ class StoryEditorScreen(
         currentMouseWorldX = screenToWorldX(mouseX.toDouble())
         currentMouseWorldY = screenToWorldY(mouseY.toDouble())
 
-        val isModalOpen = activeDocModal != null || showExitConfirmModal || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null || activeActionTriggerPickerModal != null || activePokemonConfigModal != null || activeResourcePickerModal != null || activeEntityConfigModal != null
+        val isModalOpen = activeDocModal != null || showExitConfirmModal || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null || activeActionTriggerPickerModal != null || activePokemonConfigModal != null || activeResourcePickerModal != null || activeItemPickerModal != null || activeEntityConfigModal != null || activeSaveProfileModal != null || activeAIDialogueModal != null || activeAnimationSelectorModal != null || activeTextureSelectorModal != null
 
         // 1. Canvas Background and Grid
         guiGraphics.fill(0, 0, width, height, 0xFF141418.toInt())
@@ -808,9 +1087,27 @@ class StoryEditorScreen(
         // Render canvas nodes (with selective AABB collision check for each node)
         nodeWidgets.toList().forEach { widget ->
             val isColliding = isNodeCollidingWithOverlays(widget)
-            widget.render(guiGraphics, font, if (isModalOpen || isColliding) null else hoveredPort, isModalOpen, isColliding)
+            widget.render(guiGraphics, font, if (isModalOpen || isColliding) null else hoveredPort, isModalOpen, isColliding, storyId = project.id)
         }
         renderGhostPlacementNode(guiGraphics)
+
+        // Render Selection Box (Marquee)
+        if (isBoxSelecting) {
+            val bx1 = minOf(selectionOriginWorldX, selectionCurrentWorldX).toInt()
+            val by1 = minOf(selectionOriginWorldY, selectionCurrentWorldY).toInt()
+            val bx2 = maxOf(selectionOriginWorldX, selectionCurrentWorldX).toInt()
+            val by2 = maxOf(selectionOriginWorldY, selectionCurrentWorldY).toInt()
+
+            if (bx2 > bx1 && by2 > by1) {
+                // Semi-transparent fill
+                guiGraphics.fill(bx1, by1, bx2, by2, 0x334499FF)
+                // 1px solid border
+                guiGraphics.fill(bx1, by1, bx2, by1 + 1, 0xFF3399FF.toInt())
+                guiGraphics.fill(bx1, by2 - 1, bx2, by2, 0xFF3399FF.toInt())
+                guiGraphics.fill(bx1, by1, bx1 + 1, by2, 0xFF3399FF.toInt())
+                guiGraphics.fill(bx2 - 1, by1, bx2, by2, 0xFF3399FF.toInt())
+            }
+        }
 
         guiGraphics.pose().popPose()
         guiGraphics.disableScissor()
@@ -848,6 +1145,17 @@ class StoryEditorScreen(
         if (isBlockPaletteOpen) renderBlockPalette(guiGraphics, mX, mY)
         if (isTestMenuOpen) renderTestMenu(guiGraphics, mX, mY)
         activeContextMenu?.render(guiGraphics, mX, mY, width, height)
+
+        // Diagnostic Node Error Hover Tooltips
+        if (!isModalOpen && activeInspector == null && !isFileMenuOpen && !isAddMenuOpen && !isSystemMenuOpen) {
+            for (widget in nodeWidgets) {
+                val errTip = widget.getErrorTooltipAt(currentMouseWorldX, currentMouseWorldY, project.id)
+                if (errTip != null) {
+                    guiGraphics.renderTooltip(font, Component.literal(errTip), mouseX, mouseY)
+                    break
+                }
+            }
+        }
 
         guiGraphics.flush()
         guiGraphics.pose().popPose()
@@ -893,6 +1201,22 @@ class StoryEditorScreen(
         val centerX = (width - titleW) / 2
         guiGraphics.drawString(font, titleText, centerX, 4, 0xFF00FFCC.toInt(), false)
 
+        // Debug Console Toolbar Toggle Button (Far Top-Right Corner)
+        val errCount = vito.cobblebrain.engine.StoryDebugger.getErrorCount(project.id)
+        val debugBtnLabel = if (errCount > 0) "🐞 Debug ($errCount)" else "🐞 Debug"
+        val debugBtnW = font.width(debugBtnLabel) + 12
+        val debugBtnH = 14
+        val debugBtnX = width - debugBtnW - 8
+        val debugBtnY = 2
+        val isDebugHover = mouseX >= debugBtnX && mouseX <= debugBtnX + debugBtnW && mouseY >= debugBtnY && mouseY <= debugBtnY + debugBtnH
+        val debugBg = when {
+            errCount > 0 -> if (isDebugHover) 0xFFDC2626.toInt() else 0xFF991B1B.toInt()
+            isDebugHover -> 0xFF334155.toInt()
+            else -> 0xFF1E293B.toInt()
+        }
+        guiGraphics.fill(debugBtnX, debugBtnY, debugBtnX + debugBtnW, debugBtnY + debugBtnH, debugBg)
+        guiGraphics.drawString(font, debugBtnLabel, debugBtnX + 6, debugBtnY + 3, if (errCount > 0) 0xFFFCA5A5.toInt() else 0xFFFFFFFF.toInt(), false)
+
         if (isRangeTestSelectionMode) {
             val modeMsg = if (rangeTestStartNode == null) {
                 "🎯 SELECTION MODE: Click 1st Block (TEST START) - Free drag/pan"
@@ -920,15 +1244,23 @@ class StoryEditorScreen(
 
         guiGraphics.fill(0, 0, width, height, 0xF0101014.toInt())
 
-        activeDocModal?.render(guiGraphics, mouseX, mouseY, partialTick)
-        if (showExitConfirmModal) renderExitConfirmModal(guiGraphics, mouseX, mouseY)
-        activeVariableModal?.render(guiGraphics, mouseX, mouseY, partialTick)
-        activeMetadataModal?.render(guiGraphics, mouseX, mouseY, partialTick)
-        activeVarSelectorModal?.render(guiGraphics, mouseX, mouseY, partialTick)
-        activeActionTriggerPickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
-        activePokemonConfigModal?.render(guiGraphics, mouseX, mouseY, partialTick)
-        activeResourcePickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
-        activeEntityConfigModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+        // Render ONLY the active top-level modal so underlying screens/modals are 100% invisible
+        when {
+            activeItemPickerModal != null -> activeItemPickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeResourcePickerModal != null -> activeResourcePickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activePokemonConfigModal != null -> activePokemonConfigModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeEntityConfigModal != null -> activeEntityConfigModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeAnimationSelectorModal != null -> activeAnimationSelectorModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeTextureSelectorModal != null -> activeTextureSelectorModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeSaveProfileModal != null -> activeSaveProfileModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeAIDialogueModal != null -> activeAIDialogueModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeActionTriggerPickerModal != null -> activeActionTriggerPickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeVarSelectorModal != null -> activeVarSelectorModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeMetadataModal != null -> activeMetadataModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeVariableModal != null -> activeVariableModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeDocModal != null -> activeDocModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            showExitConfirmModal -> renderExitConfirmModal(guiGraphics, mouseX, mouseY)
+        }
 
         guiGraphics.flush()
         guiGraphics.pose().popPose()
@@ -958,7 +1290,7 @@ class StoryEditorScreen(
         if (isAddMenuOpen) {
             val dropW = 160
             val dropX = addMenuX
-            val items = listOf("🎬 New Scene", "📋 Manage Catalog", "🔹 Variable Block (Get)", "✏️ Modifier Block (Set)", "+ Blocks")
+            val items = listOf("🎬 New Scene", "💬 Dialogue Block", "📋 Manage Catalog", "🔹 Variable Block (Get)", "✏️ Modifier Block (Set)", "+ Blocks")
             val dropH = itemH * items.size + 4
 
             guiGraphics.fill(dropX, dropY, dropX + dropW, dropY + dropH, 0xF018181C.toInt())
@@ -1358,11 +1690,29 @@ class StoryEditorScreen(
             project.sceneConnections.forEach { conn ->
                 val fromScene = project.scenes.find { it.id == conn.fromNodeId }
                 val toScene = project.scenes.find { it.id == conn.toNodeId }
-                if (fromScene != null && toScene != null) {
-                    val x1 = fromScene.x + fromScene.width
-                    val y1 = fromScene.y + 40
-                    val x2 = toScene.x
-                    val y2 = toScene.y + 40
+
+                val fromNodeWidget = if (fromScene == null) nodeWidgets.find { it.node.id == conn.fromNodeId } else null
+                val toNodeWidget = if (toScene == null) nodeWidgets.find { it.node.id == conn.toNodeId } else null
+
+                val (x1, y1) = when {
+                    fromScene != null -> Pair(fromScene.x + fromScene.width, fromScene.y + 40)
+                    fromNodeWidget != null -> {
+                        val idx = fromNodeWidget.node.outputs.indexOfFirst { it.id == conn.fromPortId }
+                        if (idx >= 0) fromNodeWidget.getOutputPortWorldPos(idx) else Pair(fromNodeWidget.node.x, fromNodeWidget.node.y)
+                    }
+                    else -> Pair(0.0, 0.0)
+                }
+
+                val (x2, y2) = when {
+                    toScene != null -> Pair(toScene.x, toScene.y + 40)
+                    toNodeWidget != null -> {
+                        val idx = toNodeWidget.node.inputs.indexOfFirst { it.id == conn.toPortId }
+                        if (idx >= 0) toNodeWidget.getInputPortWorldPos(idx) else Pair(toNodeWidget.node.x, toNodeWidget.node.y)
+                    }
+                    else -> Pair(0.0, 0.0)
+                }
+
+                if (x1 != 0.0 || y1 != 0.0 || x2 != 0.0 || y2 != 0.0) {
                     drawBezierCurve(guiGraphics, x1, y1, x2, y2, 0xFF00FFCC.toInt())
                 }
             }
@@ -1471,14 +1821,27 @@ class StoryEditorScreen(
     }
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (activeDocModal != null) return activeDocModal!!.mouseClicked(mouseX, mouseY, button)
-        if (activeVariableModal != null) return activeVariableModal!!.mouseClicked(mouseX, mouseY, button)
-        if (activeMetadataModal != null) return activeMetadataModal!!.mouseClicked(mouseX, mouseY, button)
-        if (activeVarSelectorModal != null) return activeVarSelectorModal!!.mouseClicked(mouseX, mouseY, button)
-        if (activeActionTriggerPickerModal != null) return activeActionTriggerPickerModal!!.mouseClicked(mouseX, mouseY, button)
-        if (activePokemonConfigModal != null) return activePokemonConfigModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeItemPickerModal != null) return activeItemPickerModal!!.mouseClicked(mouseX, mouseY, button)
         if (activeResourcePickerModal != null) return activeResourcePickerModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activePokemonConfigModal != null) return activePokemonConfigModal!!.mouseClicked(mouseX, mouseY, button)
         if (activeEntityConfigModal != null) return activeEntityConfigModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeAnimationSelectorModal != null) {
+            if (activeAnimationSelectorModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+        }
+        if (activeTextureSelectorModal != null) {
+            if (activeTextureSelectorModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+        }
+        if (activeSaveProfileModal != null) {
+            if (activeSaveProfileModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+        }
+        if (activeAIDialogueModal != null) {
+            if (activeAIDialogueModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+        }
+        if (activeActionTriggerPickerModal != null) return activeActionTriggerPickerModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeVarSelectorModal != null) return activeVarSelectorModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeMetadataModal != null) return activeMetadataModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeVariableModal != null) return activeVariableModal!!.mouseClicked(mouseX, mouseY, button)
+        if (activeDocModal != null) return activeDocModal!!.mouseClicked(mouseX, mouseY, button)
 
         if (showExitConfirmModal) {
             val modalW = 280
@@ -1508,6 +1871,18 @@ class StoryEditorScreen(
                     return true
                 }
             }
+            return true
+        }
+
+        // Top Toolbar Debug Console Button Click (Far Top-Right Corner)
+        val errCount = vito.cobblebrain.engine.StoryDebugger.getErrorCount(project.id)
+        val debugBtnLabel = if (errCount > 0) "🐞 Debug ($errCount)" else "🐞 Debug"
+        val debugBtnW = font.width(debugBtnLabel) + 12
+        val debugBtnH = 14
+        val debugBtnX = width - debugBtnW - 8
+        val debugBtnY = 2
+        if (mouseX >= debugBtnX && mouseX <= debugBtnX + debugBtnW && mouseY >= debugBtnY && mouseY <= debugBtnY + debugBtnH) {
+            openDebugConsole()
             return true
         }
 
@@ -1547,12 +1922,16 @@ class StoryEditorScreen(
         if (isAddMenuOpen) {
             val dropW = 160
             val dropX = addMenuX
-            val itemsCount = 5
+            val itemsCount = 6
             if (mouseX >= dropX && mouseX <= dropX + dropW && mouseY >= dropY && mouseY < dropY + itemH * itemsCount) {
                 val idx = ((mouseY - (dropY + 2)) / itemH).toInt()
                 when (idx) {
                     0 -> createNewSceneFrame()
                     1 -> {
+                        addNode(NodeType.DIALOGUE)
+                        isAddMenuOpen = false
+                    }
+                    2 -> {
                         activeVariableModal = StoryVariableManagerModalWidget(
                             project = project,
                             font = font,
@@ -1563,15 +1942,15 @@ class StoryEditorScreen(
                         )
                         isAddMenuOpen = false
                     }
-                    2 -> {
+                    3 -> {
                         addNode(NodeType.VARIABLE_GET)
                         isAddMenuOpen = false
                     }
-                    3 -> {
+                    4 -> {
                         addNode(NodeType.VARIABLE_SET)
                         isAddMenuOpen = false
                     }
-                    4 -> {
+                    5 -> {
                         isBlockPaletteOpen = true
                         isAddMenuOpen = false
                     }
@@ -1815,6 +2194,7 @@ class StoryEditorScreen(
                     }
                 }
             }
+            openContextMenuForCanvas(mouseX.toInt(), mouseY.toInt(), worldX, worldY)
             return true
         }
 
@@ -1897,16 +2277,67 @@ class StoryEditorScreen(
             }
         }
 
+        for (widget in nodeWidgets.reversed()) {
+            if (widget.isWorldPosOnResizeHandle(worldX, worldY)) {
+                resizingNode = widget.node
+                selectedWidgets.forEach { it.isSelected = false }
+                selectedWidgets.clear()
+                selectedWidget = widget
+                widget.isSelected = true
+                selectedWidgets.add(widget)
+                markDirty()
+                return true
+            }
+        }
+
+        val isShiftOrCtrl = Screen.hasShiftDown() || Screen.hasControlDown()
+
         var clickedOnNode = false
         for (widget in nodeWidgets.reversed()) {
             if (widget.isWorldPosInside(worldX, worldY)) {
-                selectedWidget?.isSelected = false
-                selectedWidget = widget
-                widget.isSelected = true
-                widget.isDragging = true
-                draggedWidget = widget
                 clickedOnNode = true
-                openInspectorForNode(widget.node)
+                val now = System.currentTimeMillis()
+                val isDouble = (widget.node.id == lastClickedNodeId) && (now - lastClickedNodeTime < 300)
+                lastClickedNodeId = widget.node.id
+                lastClickedNodeTime = now
+
+                if (isShiftOrCtrl) {
+                    if (selectedWidgets.contains(widget)) {
+                        widget.isSelected = false
+                        selectedWidgets.remove(widget)
+                        if (selectedWidget == widget) {
+                            selectedWidget = selectedWidgets.firstOrNull()
+                        }
+                    } else {
+                        widget.isSelected = true
+                        selectedWidgets.add(widget)
+                        selectedWidget = widget
+                        if (isDouble) {
+                            openInspectorForNode(widget.node)
+                        }
+                    }
+                } else {
+                    if (selectedWidgets.contains(widget) && selectedWidgets.size > 1) {
+                        // Already in a multi-selection: drag all selected nodes together
+                        draggedWidget = widget
+                        selectedWidgets.forEach { it.isDragging = true }
+                        if (isDouble) {
+                            openInspectorForNode(widget.node)
+                        }
+                    } else {
+                        // Single selection
+                        selectedWidgets.forEach { it.isSelected = false }
+                        selectedWidgets.clear()
+                        selectedWidget = widget
+                        widget.isSelected = true
+                        widget.isDragging = true
+                        selectedWidgets.add(widget)
+                        draggedWidget = widget
+                        if (isDouble) {
+                            openInspectorForNode(widget.node)
+                        }
+                    }
+                }
                 break
             }
         }
@@ -1926,25 +2357,77 @@ class StoryEditorScreen(
                 }
 
                 if (worldX >= sx && worldX <= sx + sw && worldY >= sy - 20 && worldY <= sy) {
+                    val now = System.currentTimeMillis()
+                    val isDouble = (scene.id == lastClickedSceneId) && (now - lastClickedSceneTime < 300)
+                    lastClickedSceneId = scene.id
+                    lastClickedSceneTime = now
+
                     draggedScene = scene
                     project.activeSceneId = scene.id
                     rebuildNodeWidgets()
-                    openSceneInspector(scene)
+                    if (isDouble) {
+                        openSceneInspector(scene)
+                    }
                     return true
                 }
             }
         }
 
         if (!clickedOnNode && draggedScene == null && resizingScene == null) {
-            selectedWidget?.isSelected = false
-            selectedWidget = null
-            activeInspector = null
-            activeSceneInspector = null
-            activeContextMenu = null
-            closeAllTopMenus()
-            isPanning = true
-            lastMouseX = mouseX
-            lastMouseY = mouseY
+            val now = System.currentTimeMillis()
+            val isDoubleClick = (now - lastEmptyCanvasClickTime < 350) && (Math.hypot(mouseX - lastEmptyCanvasClickX, mouseY - lastEmptyCanvasClickY) < 15.0)
+            val isShiftOrCtrl = Screen.hasShiftDown() || Screen.hasControlDown()
+
+            lastEmptyCanvasClickTime = now
+            lastEmptyCanvasClickX = mouseX
+            lastEmptyCanvasClickY = mouseY
+
+            if (button == 0) { // Left click
+                if (isDoubleClick) {
+                    // Double-click triggers immediate box selection
+                    isSelectionModeActive = true
+                    isBoxSelecting = true
+                    isHoldingForSelection = false
+                    selectionOriginWorldX = worldX
+                    selectionOriginWorldY = worldY
+                    selectionCurrentWorldX = worldX
+                    selectionCurrentWorldY = worldY
+                    return true
+                }
+
+                if (!isShiftOrCtrl) {
+                    selectedWidgets.forEach { it.isSelected = false }
+                    selectedWidgets.clear()
+                    selectedWidget = null
+                    activeInspector = null
+                    activeSceneInspector = null
+                    activeContextMenu = null
+                    closeAllTopMenus()
+                }
+
+                selectionOriginWorldX = worldX
+                selectionOriginWorldY = worldY
+                selectionCurrentWorldX = worldX
+                selectionCurrentWorldY = worldY
+
+                if (isShiftOrCtrl) {
+                    // Immediate Selection Box trigger with Shift/Ctrl
+                    isBoxSelecting = true
+                    isHoldingForSelection = false
+                } else {
+                    // Click-and-hold (Long press) or normal pan candidate
+                    selectionHoldStartTime = now
+                    selectionHoldOriginX = mouseX
+                    selectionHoldOriginY = mouseY
+                    isHoldingForSelection = true
+                    lastMouseX = mouseX
+                    lastMouseY = mouseY
+                }
+            } else if (button == 2 || button == 1) { // Middle or Right click: Pan
+                isPanning = true
+                lastMouseX = mouseX
+                lastMouseY = mouseY
+            }
         }
 
         return super.mouseClicked(mouseX, mouseY, button)
@@ -1972,20 +2455,81 @@ class StoryEditorScreen(
         )
     }
 
+    private fun openContextMenuForCanvas(screenX: Int, screenY: Int, worldX: Double, worldY: Double) {
+        activeContextMenu = ContextMenuWidget(
+            screenX = screenX,
+            screenY = screenY,
+            isCanvasMenu = true,
+            font = font,
+            onAction = { action ->
+                when (action) {
+                    ContextMenuAction.PASTE_NODES -> {
+                        pasteCopiedNodesAt(worldX, worldY)
+                    }
+                    ContextMenuAction.SAVE_STORY -> {
+                        saveProject()
+                    }
+                    ContextMenuAction.ADD_NODE -> {
+                        isBlockPaletteOpen = true
+                        closeAllTopMenus()
+                        isTestMenuOpen = false
+                        showStatus("Node creation palette opened.")
+                    }
+                    else -> {}
+                }
+            },
+            onClose = { activeContextMenu = null }
+        )
+    }
+
+    private fun pasteCopiedNodesAt(targetX: Double, targetY: Double) {
+        if (!BlockDataClipboard.hasCopiedNodes()) return
+
+        val targetScene = if (editingConstructionNode != null) null else project.scenes.find { targetX >= it.x && targetX <= it.x + it.width && targetY >= it.y && targetY <= it.y + it.height } ?: project.getActiveScene()
+        val targetSceneId = targetScene?.id
+
+        val (pastedNodes, pastedConns) = BlockDataClipboard.paste(targetX, targetY, targetSceneId)
+        if (pastedNodes.isNotEmpty()) {
+            if (editingConstructionNode != null) {
+                editingConstructionNode?.innerNodes?.addAll(pastedNodes)
+                editingConstructionNode?.innerConnections?.addAll(pastedConns)
+            } else {
+                val scene = targetScene ?: project.scenes.firstOrNull()
+                if (scene != null) {
+                    scene.nodes.addAll(pastedNodes)
+                    scene.connections.addAll(pastedConns)
+                }
+            }
+            markDirty()
+            selectedWidgets.forEach { it.isSelected = false }
+            selectedWidgets.clear()
+            rebuildNodeWidgets()
+
+            val pastedIds = pastedNodes.map { it.id }.toSet()
+            nodeWidgets.filter { pastedIds.contains(it.node.id) }.forEach {
+                it.isSelected = true
+                selectedWidgets.add(it)
+            }
+
+            if (selectedWidgets.size == 1) {
+                selectedWidget = selectedWidgets.first()
+                openInspectorForNode(selectedWidget!!.node)
+                showStatus("Pasted 1 node: ${selectedWidget!!.node.title}")
+            } else {
+                selectedWidget = null
+                activeInspector = null
+                showStatus("Pasted ${pastedNodes.size} nodes.")
+            }
+        }
+    }
+
     private fun handleContextMenuNodeAction(node: NodeData, action: ContextMenuAction) {
         val currentNodes = getActiveNodes()
         val currentConns = getActiveConnections()
 
         when (action) {
             ContextMenuAction.DELETE -> {
-                currentNodes.remove(node)
-                currentConns.removeAll { it.fromNodeId == node.id || it.toNodeId == node.id }
-                openConstructionNodes.remove(node)
-                if (selectedWidget?.node?.id == node.id) selectedWidget = null
-                if (activeInspector?.node?.id == node.id) activeInspector = null
-                markDirty()
-                rebuildNodeWidgets()
-                showStatus("Block deleted!")
+                deleteNode(node)
             }
             ContextMenuAction.DUPLICATE -> {
                 val inputs = node.inputs.map { PortData(name = it.name, type = it.type) }.toMutableList()
@@ -2010,21 +2554,7 @@ class StoryEditorScreen(
                 showStatus("Block duplicated!")
             }
             ContextMenuAction.DETACH_FROM_SCENE -> {
-                val parentScene = project.scenes.find { it.nodes.contains(node) || node.parentSceneId == it.id }
-                if (parentScene != null) {
-                    parentScene.nodes.remove(node)
-                    parentScene.connections.removeAll { it.fromNodeId == node.id || it.toNodeId == node.id }
-                    node.x = parentScene.x + parentScene.width + 40.0
-                    node.y = parentScene.y
-                    rebuildNodeWidgets()
-                }
-
-                node.parentSceneId = null
-                activePlacementNode = null
-                activeContextMenu = null
-                activeInspector = null
-                markDirty()
-                showStatus("Block detached!")
+                dissociateNode(node)
             }
             ContextMenuAction.COPY_DATA -> {
                 BlockDataClipboard.copyFrom(node)
@@ -2053,6 +2583,16 @@ class StoryEditorScreen(
                 if (removed) markDirty()
                 showStatus(if (removed) "Ports disconnected!" else "No connections found.")
             }
+            ContextMenuAction.PASTE_NODES -> {
+                pasteCopiedNodesAt(currentMouseWorldX, currentMouseWorldY)
+            }
+            ContextMenuAction.SAVE_STORY -> {
+                saveProject()
+            }
+            ContextMenuAction.ADD_NODE -> {
+                isBlockPaletteOpen = true
+            }
+            else -> {}
         }
     }
 
@@ -2135,7 +2675,73 @@ class StoryEditorScreen(
     }
 
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
-        if (showExitConfirmModal || activeDocModal != null || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null) return true
+        if (activeItemPickerModal != null) return activeItemPickerModal!!.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+        if (activeResourcePickerModal != null) return activeResourcePickerModal!!.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+        if (activeEntityConfigModal != null) return activeEntityConfigModal!!.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+        if (activeAnimationSelectorModal?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
+        if (activeTextureSelectorModal?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
+        if (activeSaveProfileModal?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
+        if (activeMetadataModal?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
+        if (showExitConfirmModal || activeDocModal != null || activeVariableModal != null || activeVarSelectorModal != null || activePokemonConfigModal != null || activeActionTriggerPickerModal != null || activeAIDialogueModal != null || activeAnimationSelectorModal != null || activeTextureSelectorModal != null) return true
+
+        val now = System.currentTimeMillis()
+
+        if (isHoldingForSelection && !isBoxSelecting) {
+            val holdDuration = now - selectionHoldStartTime
+            val moveDist = Math.hypot(mouseX - selectionHoldOriginX, mouseY - selectionHoldOriginY)
+
+            // If held down for >= 200ms before or while moving, it becomes a Box Selection!
+            if (holdDuration >= 200) {
+                isBoxSelecting = true
+                isHoldingForSelection = false
+                isPanning = false
+            } else if (moveDist > 6.0) {
+                // Moved fast within < 200ms: user wants to pan!
+                isPanning = true
+                isHoldingForSelection = false
+            }
+        }
+
+        if (isBoxSelecting) {
+            selectionCurrentWorldX = screenToWorldX(mouseX)
+            selectionCurrentWorldY = screenToWorldY(mouseY)
+
+            val selMinX = minOf(selectionOriginWorldX, selectionCurrentWorldX)
+            val selMaxX = maxOf(selectionOriginWorldX, selectionCurrentWorldX)
+            val selMinY = minOf(selectionOriginWorldY, selectionCurrentWorldY)
+            val selMaxY = maxOf(selectionOriginWorldY, selectionCurrentWorldY)
+
+            val isShiftOrCtrl = Screen.hasShiftDown() || Screen.hasControlDown()
+
+            for (widget in nodeWidgets) {
+                val nodeX = widget.node.x
+                val nodeY = widget.node.y
+                val nodeW = widget.node.width
+                val nodeH = widget.node.height
+
+                val intersects = nodeX < selMaxX && nodeX + nodeW > selMinX &&
+                                 nodeY < selMaxY && nodeY + nodeH > selMinY
+
+                if (intersects) {
+                    widget.isSelected = true
+                    selectedWidgets.add(widget)
+                } else if (!isShiftOrCtrl) {
+                    widget.isSelected = false
+                    selectedWidgets.remove(widget)
+                }
+            }
+            return true
+        }
+
+        val targetResizeNode = resizingNode
+        if (targetResizeNode != null) {
+            val worldX = screenToWorldX(mouseX)
+            val worldY = screenToWorldY(mouseY)
+            targetResizeNode.width = (worldX - targetResizeNode.x).coerceAtLeast(120.0)
+            targetResizeNode.height = (worldY - targetResizeNode.y).coerceAtLeast(40.0)
+            markDirty()
+            return true
+        }
 
         val targetResizeScene = resizingScene
         if (targetResizeScene != null) {
@@ -2169,8 +2775,19 @@ class StoryEditorScreen(
 
         val targetWidget = draggedWidget
         if (targetWidget != null) {
-            targetWidget.node.x += dragX / zoom
-            targetWidget.node.y += dragY / zoom
+            val dx = dragX / zoom
+            val dy = dragY / zoom
+
+            if (selectedWidgets.contains(targetWidget) && selectedWidgets.size > 1) {
+                // Bulk simultaneous dragging for all selected nodes
+                selectedWidgets.forEach { w ->
+                    w.node.x += dx
+                    w.node.y += dy
+                }
+            } else {
+                targetWidget.node.x += dx
+                targetWidget.node.y += dy
+            }
             markDirty()
             return true
         }
@@ -2181,39 +2798,97 @@ class StoryEditorScreen(
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (showExitConfirmModal || activeDocModal != null || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null) return true
 
+        isHoldingForSelection = false
+        isSelectionModeActive = false
+        resizingNode = null
+        resizingScene = null
+
+        if (isBoxSelecting) {
+            isBoxSelecting = false
+            if (selectedWidgets.size == 1) {
+                selectedWidget = selectedWidgets.first()
+            } else if (selectedWidgets.size > 1) {
+                selectedWidget = null
+                activeInspector = null
+                showStatus("${selectedWidgets.size} nodes selected.")
+            }
+            return true
+        }
+
         isPanning = false
         draggedScene = null
-        resizingScene = null
 
         val targetWidget = draggedWidget
         if (targetWidget != null) {
-            val node = targetWidget.node
-            val targetScene = project.scenes.find { isNodeInsideScene(node, it) }
-            if (targetScene != null) {
-                node.parentSceneId = targetScene.id
-                if (!targetScene.nodes.contains(node)) {
-                    targetScene.nodes.add(node)
-                }
-                updateVariableSceneBinding(node, targetScene.id)
+            val nodesToProcess = if (selectedWidgets.contains(targetWidget) && selectedWidgets.size > 1) {
+                selectedWidgets.map { it.node }
             } else {
-                node.parentSceneId = null
+                listOf(targetWidget.node)
             }
+
+            val primaryNode = targetWidget.node
+            val targetScene = project.scenes.find { isNodeInsideScene(primaryNode, it) }
+
+            if (targetScene != null && editingConstructionNode == null) {
+                var linkedCount = 0
+                nodesToProcess.forEach { node ->
+                    val oldSceneId = node.parentSceneId
+                    if (oldSceneId != null && oldSceneId != targetScene.id) {
+                        // Moved from another scene: sever old connections!
+                        project.scenes.forEach { sc ->
+                            sc.connections.removeIf { it.fromNodeId == node.id || it.toNodeId == node.id }
+                        }
+                    }
+                    node.parentSceneId = targetScene.id
+                    if (!targetScene.nodes.contains(node)) {
+                        targetScene.nodes.add(node)
+                    }
+                    updateVariableSceneBinding(node, targetScene.id)
+                    linkedCount++
+                }
+                if (linkedCount > 1) {
+                    showStatus("$linkedCount nodes linked to scene: ${targetScene.title}")
+                } else {
+                    showStatus("Node linked to scene: ${targetScene.title}")
+                }
+            } else {
+                // Dragged outside scenes: detach and sever connections
+                var detachedCount = 0
+                nodesToProcess.forEach { node ->
+                    val oldSceneId = node.parentSceneId
+                    if (oldSceneId != null) {
+                        // Sever all connections attached to this node
+                        project.scenes.forEach { sc ->
+                            sc.connections.removeIf { it.fromNodeId == node.id || it.toNodeId == node.id }
+                        }
+                        detachedCount++
+                    }
+                    node.parentSceneId = null
+                }
+                if (detachedCount > 0) {
+                    showStatus(if (detachedCount == 1) "Node detached from scene & connections severed." else "$detachedCount nodes detached & connections severed.")
+                }
+            }
+            markDirty()
         }
 
         draggedWidget?.isDragging = false
         draggedWidget = null
+        selectedWidgets.forEach { it.isDragging = false }
 
         val sourceScene = connectingSourceScene
         if (sourceScene != null && connectingSourceType != null) {
             val worldX = screenToWorldX(mouseX)
             val worldY = screenToWorldY(mouseY)
+            var connected = false
 
+            // 1. Try connecting Scene to another Scene
             for (targetScene in project.scenes) {
                 if (targetScene.id == sourceScene.id) continue
                 val inY = targetScene.y + 40
                 val r = 12
 
-                if (Math.hypot(worldX - targetScene.x, worldY - inY) <= r && connectingSourceType == PortType.OUTPUT) {
+                if (connectingSourceType == PortType.OUTPUT && Math.hypot(worldX - targetScene.x, worldY - inY) <= r) {
                     val exists = project.sceneConnections.any {
                         it.fromNodeId == sourceScene.id && it.toNodeId == targetScene.id
                     }
@@ -2229,7 +2904,42 @@ class StoryEditorScreen(
                         markDirty()
                         showStatus("Inter-scene connection created!")
                     }
+                    connected = true
                     break
+                }
+            }
+
+            // 2. Try connecting Scene to a Block Node
+            if (!connected) {
+                for (tWidget in nodeWidgets) {
+                    val targetPortPair = tWidget.getPortAtWorldPos(worldX, worldY)
+                    if (targetPortPair != null) {
+                        val (targetPort, targetType) = targetPortPair
+                        if (connectingSourceType != targetType) {
+                            val fromNodeId = if (connectingSourceType == PortType.OUTPUT) sourceScene.id else tWidget.node.id
+                            val fromPortId = if (connectingSourceType == PortType.OUTPUT) sourceScene.outPort.id else targetPort.id
+                            val toNodeId = if (connectingSourceType == PortType.INPUT) sourceScene.id else tWidget.node.id
+                            val toPortId = if (connectingSourceType == PortType.INPUT) sourceScene.inPort.id else targetPort.id
+
+                            val exists = project.sceneConnections.any {
+                                it.fromNodeId == fromNodeId && it.fromPortId == fromPortId &&
+                                it.toNodeId == toNodeId && it.toPortId == toPortId
+                            }
+                            if (!exists) {
+                                project.sceneConnections.add(
+                                    ConnectionData(
+                                        fromNodeId = fromNodeId,
+                                        fromPortId = fromPortId,
+                                        toNodeId = toNodeId,
+                                        toPortId = toPortId
+                                    )
+                                )
+                                markDirty()
+                                showStatus("Scene-Block connection created!")
+                            }
+                        }
+                        break
+                    }
                 }
             }
             connectingSourceScene = null
@@ -2242,38 +2952,89 @@ class StoryEditorScreen(
         if (sourceNode != null && sourcePort != null && sourceType != null) {
             val worldX = screenToWorldX(mouseX)
             val worldY = screenToWorldY(mouseY)
+            var connectedToScene = false
 
-            for (tWidget in nodeWidgets) {
-                if (tWidget.node.id == sourceNode.id) continue
-                val targetPortPair = tWidget.getPortAtWorldPos(worldX, worldY)
-                if (targetPortPair != null) {
-                    val (targetPort, targetType) = targetPortPair
+            // 1. Check if dropped on a Scene Port
+            for (targetScene in project.scenes) {
+                val inY = targetScene.y + 40
+                val outY = targetScene.y + 40
+                val r = 12
 
-                    if (sourceType != targetType) {
-                        val fromNodeId = if (sourceType == PortType.OUTPUT) sourceNode.id else tWidget.node.id
-                        val fromPortId = if (sourceType == PortType.OUTPUT) sourcePort.id else targetPort.id
-                        val toNodeId = if (sourceType == PortType.INPUT) sourceNode.id else tWidget.node.id
-                        val toPortId = if (sourceType == PortType.INPUT) sourcePort.id else targetPort.id
-
-                        val activeConns = getActiveConnections()
-                        val exists = activeConns.any {
-                            it.fromNodeId == fromNodeId && it.fromPortId == fromPortId &&
-                            it.toNodeId == toNodeId && it.toPortId == toPortId
-                        }
-                        if (!exists) {
-                            activeConns.add(
-                                ConnectionData(
-                                    fromNodeId = fromNodeId,
-                                    fromPortId = fromPortId,
-                                    toNodeId = toNodeId,
-                                    toPortId = toPortId
-                                )
-                            )
-                            markDirty()
-                            showStatus("Connection created!")
-                        }
+                if (sourceType == PortType.OUTPUT && Math.hypot(worldX - targetScene.x, worldY - inY) <= r) {
+                    val exists = project.sceneConnections.any {
+                        it.fromNodeId == sourceNode.id && it.fromPortId == sourcePort.id &&
+                        it.toNodeId == targetScene.id && it.toPortId == targetScene.inPort.id
                     }
+                    if (!exists) {
+                        project.sceneConnections.add(
+                            ConnectionData(
+                                fromNodeId = sourceNode.id,
+                                fromPortId = sourcePort.id,
+                                toNodeId = targetScene.id,
+                                toPortId = targetScene.inPort.id
+                            )
+                        )
+                        markDirty()
+                        showStatus("Block-Scene connection created!")
+                    }
+                    connectedToScene = true
                     break
+                } else if (sourceType == PortType.INPUT && Math.hypot(worldX - (targetScene.x + targetScene.width), worldY - outY) <= r) {
+                    val exists = project.sceneConnections.any {
+                        it.fromNodeId == targetScene.id && it.fromPortId == targetScene.outPort.id &&
+                        it.toNodeId == sourceNode.id && it.toPortId == sourcePort.id
+                    }
+                    if (!exists) {
+                        project.sceneConnections.add(
+                            ConnectionData(
+                                fromNodeId = targetScene.id,
+                                fromPortId = targetScene.outPort.id,
+                                toNodeId = sourceNode.id,
+                                toPortId = sourcePort.id
+                            )
+                        )
+                        markDirty()
+                        showStatus("Scene-Block connection created!")
+                    }
+                    connectedToScene = true
+                    break
+                }
+            }
+
+            // 2. Check if dropped on a Node Port
+            if (!connectedToScene) {
+                for (tWidget in nodeWidgets) {
+                    if (tWidget.node.id == sourceNode.id) continue
+                    val targetPortPair = tWidget.getPortAtWorldPos(worldX, worldY)
+                    if (targetPortPair != null) {
+                        val (targetPort, targetType) = targetPortPair
+
+                        if (sourceType != targetType) {
+                            val fromNodeId = if (sourceType == PortType.OUTPUT) sourceNode.id else tWidget.node.id
+                            val fromPortId = if (sourceType == PortType.OUTPUT) sourcePort.id else targetPort.id
+                            val toNodeId = if (sourceType == PortType.INPUT) sourceNode.id else tWidget.node.id
+                            val toPortId = if (sourceType == PortType.INPUT) sourcePort.id else targetPort.id
+
+                            val activeConns = getActiveConnections()
+                            val exists = activeConns.any {
+                                it.fromNodeId == fromNodeId && it.fromPortId == fromPortId &&
+                                it.toNodeId == toNodeId && it.toPortId == toPortId
+                            }
+                            if (!exists) {
+                                activeConns.add(
+                                    ConnectionData(
+                                        fromNodeId = fromNodeId,
+                                        fromPortId = fromPortId,
+                                        toNodeId = toNodeId,
+                                        toPortId = toPortId
+                                    )
+                                )
+                                markDirty()
+                                showStatus("Connection created!")
+                            }
+                        }
+                        break
+                    }
                 }
             }
         }
@@ -2283,16 +3044,28 @@ class StoryEditorScreen(
         connectingSourceType = null
         connectingSourceScene = null
 
+        if (activeItemPickerModal != null) return activeItemPickerModal!!.mouseReleased(mouseX, mouseY, button)
+        if (activeResourcePickerModal != null) return activeResourcePickerModal!!.mouseReleased(mouseX, mouseY, button)
+        if (activeEntityConfigModal != null) return activeEntityConfigModal!!.mouseReleased(mouseX, mouseY, button)
+        if (activeMetadataModal != null) return activeMetadataModal!!.mouseReleased(mouseX, mouseY, button)
+
         return super.mouseReleased(mouseX, mouseY, button)
     }
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
         if (showExitConfirmModal || activeDocModal != null) return true
 
+        if (activeItemPickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeResourcePickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeEntityConfigModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeAnimationSelectorModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeTextureSelectorModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeSaveProfileModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeAIDialogueModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeMetadataModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeVariableModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeVarSelectorModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeActionTriggerPickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
-        if (activeResourcePickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeInspector?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeSceneInspector?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
 
@@ -2347,7 +3120,12 @@ class StoryEditorScreen(
         if (activeActionTriggerPickerModal?.charTyped(codePoint, modifiers) == true) return true
         if (activePokemonConfigModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeResourcePickerModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeItemPickerModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeEntityConfigModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeAnimationSelectorModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeTextureSelectorModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeSaveProfileModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeAIDialogueModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeInspector?.charTyped(codePoint, modifiers) == true) return true
         if (activeSceneInspector?.charTyped(codePoint, modifiers) == true) return true
         return super.charTyped(codePoint, modifiers)
@@ -2390,14 +3168,44 @@ class StoryEditorScreen(
         }
 
         if (activeResourcePickerModal != null) {
-            if (keyCode == 256) { activeResourcePickerModal = null; return true }
             if (activeResourcePickerModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeResourcePickerModal = null; return true }
+            return true
+        }
+
+        if (activeItemPickerModal != null) {
+            if (activeItemPickerModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeItemPickerModal = null; return true }
             return true
         }
 
         if (activeEntityConfigModal != null) {
-            if (keyCode == 256) { activeEntityConfigModal = null; return true }
             if (activeEntityConfigModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeEntityConfigModal = null; return true }
+            return true
+        }
+
+        if (activeAnimationSelectorModal != null) {
+            if (activeAnimationSelectorModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeAnimationSelectorModal = null; return true }
+            return true
+        }
+
+        if (activeTextureSelectorModal != null) {
+            if (activeTextureSelectorModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeTextureSelectorModal = null; return true }
+            return true
+        }
+
+        if (activeSaveProfileModal != null) {
+            if (activeSaveProfileModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeSaveProfileModal = null; return true }
+            return true
+        }
+
+        if (activeAIDialogueModal != null) {
+            if (activeAIDialogueModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeAIDialogueModal = null; return true }
             return true
         }
 
@@ -2409,7 +3217,61 @@ class StoryEditorScreen(
         if (activeInspector?.keyPressed(keyCode, scanCode, modifiers) == true) return true
         if (activeSceneInspector?.keyPressed(keyCode, scanCode, modifiers) == true) return true
 
+        if (keyCode == 32) { // Space key
+            // Consume space so it doesn't trigger focused buttons or open menus
+            return true
+        }
+
+        if (Screen.hasControlDown()) {
+            if (keyCode == 67) { // Ctrl+C (Copy)
+                val nodesToCopy = if (selectedWidgets.isNotEmpty()) selectedWidgets.map { it.node }.toList() else (selectedWidget?.let { listOf(it.node) } ?: emptyList())
+                if (nodesToCopy.isNotEmpty()) {
+                    val conns = getActiveConnections()
+                    BlockDataClipboard.copy(nodesToCopy, conns)
+                    if (nodesToCopy.size == 1) {
+                        showStatus("Copied 1 node: ${nodesToCopy.first().title}")
+                    } else {
+                        showStatus("Copied ${nodesToCopy.size} nodes.")
+                    }
+                    return true
+                }
+            }
+
+            if (keyCode == 86) { // Ctrl+V (Paste)
+                pasteCopiedNodesAt(currentMouseWorldX, currentMouseWorldY)
+                return true
+            }
+
+            if (keyCode == 65) { // Ctrl+A (Select All)
+                selectedWidgets.clear()
+                nodeWidgets.forEach {
+                    it.isSelected = true
+                    selectedWidgets.add(it)
+                }
+                selectedWidget = null
+                activeInspector = null
+                showStatus("Selected all ${selectedWidgets.size} nodes.")
+                return true
+            }
+        }
+
+        if (keyCode == 261 || keyCode == 259) { // Delete or Backspace
+            if (selectedWidgets.isNotEmpty()) {
+                val toDelete = selectedWidgets.map { it.node }.toList()
+                deleteNodes(toDelete)
+                return true
+            } else if (selectedWidget != null) {
+                deleteNode(selectedWidget!!.node)
+                return true
+            }
+        }
+
         if (keyCode == 256) {
+            if (isSelectionModeActive) {
+                isSelectionModeActive = false
+                showStatus("Selection mode exited.")
+                return true
+            }
             if (isRangeTestSelectionMode) {
                 isRangeTestSelectionMode = false
                 rangeTestStartNode = null

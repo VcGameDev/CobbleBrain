@@ -379,4 +379,227 @@ object CobblebrainPayloads {
 
         override fun type() = TYPE
     }
+
+    /** Server → Client: Triggers the HUD Dialogue Box Overlay */
+    data class AIDialogueBoxPayload(
+        val speakerName: String,
+        val speakerType: String,
+        val dialogueText: String,
+        val freezePlayer: Boolean,
+        val instanceId: String,
+        val nodeId: String
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "ai_dialogue_box")
+            val TYPE = CustomPacketPayload.Type<AIDialogueBoxPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, AIDialogueBoxPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeUtf(payload.speakerName)
+                        buf.writeUtf(payload.speakerType)
+                        buf.writeUtf(payload.dialogueText)
+                        buf.writeBoolean(payload.freezePlayer)
+                        buf.writeUtf(payload.instanceId)
+                        buf.writeUtf(payload.nodeId)
+                    },
+                    { buf ->
+                        AIDialogueBoxPayload(
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readBoolean(),
+                            buf.readUtf(),
+                            buf.readUtf()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Client → Server: Fired when player finishes reading/advancing HUD dialogue */
+    data class AdvanceAIDialoguePayload(
+        val instanceId: String,
+        val nodeId: String
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "advance_ai_dialogue")
+            val TYPE = CustomPacketPayload.Type<AdvanceAIDialoguePayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, AdvanceAIDialoguePayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeUtf(payload.instanceId)
+                        buf.writeUtf(payload.nodeId)
+                    },
+                    { buf ->
+                        AdvanceAIDialoguePayload(
+                            buf.readUtf(),
+                            buf.readUtf()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Server → Client: Sets dynamic texture on target entity */
+    data class SetEntityTexturePayload(
+        val entityId: Int,
+        val storyId: String,
+        val textureName: String
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "set_entity_texture")
+            val TYPE = CustomPacketPayload.Type<SetEntityTexturePayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, SetEntityTexturePayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeInt(payload.entityId)
+                        buf.writeUtf(payload.storyId)
+                        buf.writeUtf(payload.textureName)
+                    },
+                    { buf ->
+                        SetEntityTexturePayload(
+                            buf.readInt(),
+                            buf.readUtf(),
+                            buf.readUtf()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Server → Client: Clears dynamic texture override on target entity */
+    data class ClearEntityTexturePayload(
+        val entityId: Int
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "clear_entity_texture")
+            val TYPE = CustomPacketPayload.Type<ClearEntityTexturePayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, ClearEntityTexturePayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeInt(payload.entityId)
+                    },
+                    { buf ->
+                        ClearEntityTexturePayload(
+                            buf.readInt()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Server → Client: Broadcasts block execution trace & debug events */
+    data class StoryDebugSyncPayload(
+        val timestamp: Long,
+        val storyId: String,
+        val blockId: String,
+        val blockType: String,
+        val status: String,
+        val level: String,
+        val message: String,
+        val details: String
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "story_debug_sync")
+            val TYPE = CustomPacketPayload.Type<StoryDebugSyncPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, StoryDebugSyncPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeLong(payload.timestamp)
+                        buf.writeUtf(payload.storyId)
+                        buf.writeUtf(payload.blockId)
+                        buf.writeUtf(payload.blockType)
+                        buf.writeUtf(payload.status)
+                        buf.writeUtf(payload.level)
+                        buf.writeUtf(payload.message)
+                        buf.writeUtf(payload.details)
+                    },
+                    { buf ->
+                        StoryDebugSyncPayload(
+                            buf.readLong(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Server → Client: Broadcasts active story session overview and variables */
+    data class StorySessionStateSyncPayload(
+        val storyId: String,
+        val packName: String,
+        val sceneName: String,
+        val activeNodeId: String,
+        val activeNodeType: String,
+        val targetEntityName: String,
+        val targetEntityTag: String,
+        val targetEntitySlot: String,
+        val targetEntityId: String,
+        val variablesJson: String,
+        val lastUpdatedVarKey: String,
+        val isActive: Boolean
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "story_session_state_sync")
+            val TYPE = CustomPacketPayload.Type<StorySessionStateSyncPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, StorySessionStateSyncPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeUtf(payload.storyId)
+                        buf.writeUtf(payload.packName)
+                        buf.writeUtf(payload.sceneName)
+                        buf.writeUtf(payload.activeNodeId)
+                        buf.writeUtf(payload.activeNodeType)
+                        buf.writeUtf(payload.targetEntityName)
+                        buf.writeUtf(payload.targetEntityTag)
+                        buf.writeUtf(payload.targetEntitySlot)
+                        buf.writeUtf(payload.targetEntityId)
+                        buf.writeUtf(payload.variablesJson)
+                        buf.writeUtf(payload.lastUpdatedVarKey)
+                        buf.writeBoolean(payload.isActive)
+                    },
+                    { buf ->
+                        StorySessionStateSyncPayload(
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readUtf(),
+                            buf.readBoolean()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
 }
+

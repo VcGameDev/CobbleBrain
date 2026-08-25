@@ -55,10 +55,12 @@ class PokemonConfigModalWidget(
 
         // Row 1: Species and Level
         speciesBox = EditBox(font, leftX, modalY + 42, colW, 16, Component.literal("Species"))
+        speciesBox.setMaxLength(2000)
         speciesBox.value = node.params["species"] ?: "Pikachu"
         editBoxes.add(speciesBox)
 
         levelBox = EditBox(font, rightX, modalY + 42, colW, 16, Component.literal("Level"))
+        levelBox.setMaxLength(10)
         levelBox.value = node.params["level"] ?: "5"
         levelBox.setFilter { text -> text.isEmpty() || text.all { it.isDigit() } }
         editBoxes.add(levelBox)
@@ -77,30 +79,34 @@ class PokemonConfigModalWidget(
 
         // Row 3: Nature and Ability
         natureBox = EditBox(font, leftX, modalY + 118, colW, 16, Component.literal("Nature"))
+        natureBox.setMaxLength(2000)
         natureBox.value = node.params["nature"] ?: ""
-        natureBox.setHint(Component.literal("e.g. Adamant, Jolly..."))
+        natureBox.setHint(Component.literal("§8e.g. Adamant, Jolly..."))
         editBoxes.add(natureBox)
 
         abilityBox = EditBox(font, rightX, modalY + 118, colW, 16, Component.literal("Ability"))
+        abilityBox.setMaxLength(2000)
         abilityBox.value = node.params["ability"] ?: ""
-        abilityBox.setHint(Component.literal("Cobblemon Ability"))
+        abilityBox.setHint(Component.literal("§8Cobblemon Ability"))
         editBoxes.add(abilityBox)
 
         // Row 4: Form / Variant and Moves
         formBox = EditBox(font, leftX, modalY + 156, colW, 16, Component.literal("Form/Variant"))
+        formBox.setMaxLength(2000)
         formBox.value = node.params["form"] ?: ""
-        formBox.setHint(Component.literal("e.g. alolan, hisuian..."))
+        formBox.setHint(Component.literal("§8e.g. alolan, hisuian..."))
         editBoxes.add(formBox)
 
         move1Box = EditBox(font, rightX, modalY + 156, colW, 16, Component.literal("Special Move"))
+        move1Box.setMaxLength(2000)
         move1Box.value = node.params["specialMove"] ?: ""
+        move1Box.setHint(Component.literal("§8Move 1 (e.g. thunderbolt)"))
         editBoxes.add(move1Box)
 
         editBoxes.forEach {
             it.setEditable(true)
             it.active = true
         }
-        move1Box.setHint(Component.literal("Move 1 (e.g. thunderbolt)"))
 
         // Action Buttons
         saveBtn = Button.builder(Component.literal("💾 Save Attributes")) {
