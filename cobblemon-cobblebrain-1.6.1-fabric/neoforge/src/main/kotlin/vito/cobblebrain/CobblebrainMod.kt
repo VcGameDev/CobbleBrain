@@ -79,6 +79,14 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
             )
         }
 
+        vito.cobblebrain.engine.StoryDebugger.sendDebugSync = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryDebugger.sendSessionStateSync = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
         // ===== CONFIG =====
         ConfigHandler.load()
 

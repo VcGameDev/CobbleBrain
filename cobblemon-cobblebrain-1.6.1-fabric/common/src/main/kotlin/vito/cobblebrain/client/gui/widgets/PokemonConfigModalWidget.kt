@@ -201,4 +201,8 @@ class PokemonConfigModalWidget(
         }
         return false
     }
+
+    fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
+        return mouseX >= modalX && mouseX <= modalX + modalWidth && mouseY >= modalY && mouseY <= modalY + modalHeight
+    }
 }

@@ -37,7 +37,7 @@ class NodeWidget(val node: NodeData) {
 
             NodeType.CONSTRUCTION, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.TRIGGER,
             NodeType.DIALOGUE, NodeType.ACTION, NodeType.TIMER, NodeType.SAVE_STATE_NODE,
-            NodeType.LOAD_STATE_NODE, NodeType.CHECKPOINT_NODE,
+            NodeType.LOAD_STATE_NODE,
             NodeType.QUEST, NodeType.AUDIO, NodeType.TEXTURE -> NodeRectShape.VERTICAL_RECTANGLE
         }
     }
@@ -67,7 +67,6 @@ class NodeWidget(val node: NodeData) {
             NodeType.COMMAND_NODE -> 0xFFD84315.toInt()  // Rust Orange Command
             NodeType.SAVE_STATE_NODE -> 0xFF4A148C.toInt() // Deep Purple Save Checkpoint
             NodeType.LOAD_STATE_NODE -> 0xFF311B92.toInt() // Deep Indigo Load Checkpoint
-            NodeType.CHECKPOINT_NODE -> 0xFF512DA8.toInt() // Indigo Checkpoint Node
             NodeType.TIMER -> 0xFF8E24AA.toInt()        // Vibrant Purple Timer
             NodeType.COMMENT -> 0xFFFBC02D.toInt()     // Note Yellow
             NodeType.AUDIO -> 0xFF6A1B9A.toInt()       // Dark Purple Audio
@@ -280,8 +279,19 @@ class NodeWidget(val node: NodeData) {
                     when (actionType) {
                         "LOOK_AT", "LOOK_AT_BLOCK" -> {
                             val op = if (node.params["operationMode"] == "RESET_LOOK") "Reset AI" else "Focus"
-                            val subj = if (node.params["subjectType"] == "NPC_TAG") (node.params["subjectIdentifier"]?.ifBlank { "NPC" } ?: "NPC") else "Slot ${node.params["subjectIdentifier"] ?: "0"}"
+                            val subj = if (node.params["subjectType"] == "NPC_TAG") (node.params["subjectIdentifier"]?.ifBlank { "NPC" } ?: "NPC") else "Slot ${node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: "1"}"
                             "👀 Look: $op ($subj)"
+                        }
+                        "MOVE_TO_BLOCK", "NAVIGATE_ENTITY", "MOVE_TO", "PATHFIND_ENTITY" -> {
+                            val subj = if (node.params["subjectType"] == "NPC_TAG") (node.params["subjectIdentifier"]?.ifBlank { "NPC" } ?: "NPC") else "Slot ${node.params["subjectIdentifier"] ?: "1"}"
+                            val dest = when (node.params["targetDestinationType"]) {
+                                "PLAYER" -> "Player"
+                                "ENTITY_TAG" -> "@${node.params["destinationIdentifier"]?.ifBlank { "mob" } ?: "mob"}"
+                                "WORLD_BLOCK_TAG" -> "@block:${node.params["destinationIdentifier"]?.ifBlank { "block" } ?: "block"}"
+                                else -> node.params["destinationIdentifier"]?.ifBlank { node.params["coordinates"] ?: "~ ~ ~" } ?: "~ ~ ~"
+                            }
+                            val spd = node.params["speedMode"] ?: "WALK"
+                            "🚶 Move: $subj ➔ $dest ($spd)"
                         }
                         "TAG_BLOCK", "MANAGE_TAG", "TAG" -> {
                             val op = when (node.params["operation"]) {
@@ -330,9 +340,8 @@ class NodeWidget(val node: NodeData) {
                 NodeType.AUDIO -> "🎵 Audio: ${node.params["audioId"] ?: "sound"}"
                 NodeType.SAVE_STATE_NODE -> "💾 Save: [${node.params["profileId"] ?: "checkpoint_1"}]"
                 NodeType.LOAD_STATE_NODE -> "🔄 Load: [${node.params["profileId"] ?: "checkpoint_1"}]"
-                NodeType.CHECKPOINT_NODE -> "🚩 Checkpoint"
                 NodeType.TEXTURE -> {
-                    val target = if (node.params["targetType"] == "PLAYER_POKEMON") "Slot ${node.params["pokemonSlot"] ?: "0"}" else (node.params["targetIdentifier"] ?: "NPC")
+                    val target = if (node.params["targetType"] == "PLAYER_POKEMON") "Slot ${node.params["pokemonSlot"] ?: node.params["targetIdentifier"] ?: "1"}" else (node.params["targetIdentifier"] ?: "NPC")
                     val tex = node.params["textureName"]?.ifBlank { "None" } ?: "None"
                     val mode = if (node.params["textureMode"] == "CLEAR_TEXTURE") "Reset" else "Set: $tex"
                     "🎨 $mode ($target)"

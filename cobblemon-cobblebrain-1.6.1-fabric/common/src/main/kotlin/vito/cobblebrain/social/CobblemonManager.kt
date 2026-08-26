@@ -57,6 +57,12 @@ object PokemonQuery {
         }
         return ativos
     }
+
+    fun parsePartySlotIndex(slotStr: String?): Int {
+        if (slotStr.isNullOrBlank()) return 0
+        val raw = slotStr.trim().toIntOrNull() ?: 1
+        return (raw - 1).coerceIn(0, 5)
+    }
 }
 
 object PokemonTalkCommand {

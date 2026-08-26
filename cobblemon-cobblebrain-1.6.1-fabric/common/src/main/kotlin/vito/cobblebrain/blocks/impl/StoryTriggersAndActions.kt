@@ -488,6 +488,8 @@ class SpawnEntityAction : IAction {
         val noAi = node.params["entity_noAi"] == "true" || node.params["noAi"] == "true"
         val glowing = node.params["entity_glowing"] == "true"
         val silent = node.params["entity_silent"] == "true"
+        val invisible = node.params["entity_invisible"] == "true"
+        val noHitbox = node.params["entity_noHitbox"] == "true"
 
         val maxHealth = node.params["entity_maxHealth"]?.toDoubleOrNull()
         val speed = node.params["entity_speed"]?.toDoubleOrNull()
@@ -535,6 +537,14 @@ class SpawnEntityAction : IAction {
             if (noAi) nbtParts.add("NoAI:1b")
             if (glowing) nbtParts.add("Glowing:1b")
             if (silent) nbtParts.add("Silent:1b")
+            if (invisible) {
+                nbtParts.add("Invisible:1b")
+                nbtParts.add("ActiveEffects:[{Id:14,Amplifier:0b,Duration:999999,ShowParticles:0b}]")
+            }
+            if (noHitbox) {
+                nbtParts.add("Marker:1b")
+                nbtParts.add("Invulnerable:1b")
+            }
 
             val attrParts = mutableListOf<String>()
             if (maxHealth != null) attrParts.add("{Name:\"generic.max_health\",Base:${maxHealth}d}")
@@ -620,6 +630,8 @@ class ModifyEntityPropertiesAction : IAction {
         val noAi = node.params["entity_noAi"] == "true" || node.params["noAi"] == "true"
         val glowing = node.params["entity_glowing"] == "true"
         val silent = node.params["entity_silent"] == "true"
+        val invisible = node.params["entity_invisible"] == "true"
+        val noHitbox = node.params["entity_noHitbox"] == "true"
 
         val maxHealth = node.params["entity_maxHealth"]?.toDoubleOrNull()
         val speed = node.params["entity_speed"]?.toDoubleOrNull()
@@ -647,6 +659,15 @@ class ModifyEntityPropertiesAction : IAction {
             if (node.params.containsKey("entity_noAi") || node.params.containsKey("noAi")) nbtParts.add("NoAI:${if (noAi) "1b" else "0b"}")
             if (node.params.containsKey("entity_glowing")) nbtParts.add("Glowing:${if (glowing) "1b" else "0b"}")
             if (node.params.containsKey("entity_silent")) nbtParts.add("Silent:${if (silent) "1b" else "0b"}")
+            if (node.params.containsKey("entity_invisible")) {
+                nbtParts.add("Invisible:${if (invisible) "1b" else "0b"}")
+                if (invisible) {
+                    nbtParts.add("ActiveEffects:[{Id:14,Amplifier:0b,Duration:999999,ShowParticles:0b}]")
+                }
+            }
+            if (node.params.containsKey("entity_noHitbox")) {
+                nbtParts.add("Marker:${if (noHitbox) "1b" else "0b"}")
+            }
 
             val attrParts = mutableListOf<String>()
             if (maxHealth != null) attrParts.add("{Name:\"generic.max_health\",Base:${maxHealth}d}")
@@ -870,6 +891,8 @@ class ApplyEffectAction : IAction {
         val effectId = node.params["effectId"]?.ifBlank { "minecraft:speed" } ?: "minecraft:speed"
         val duration = node.params["durationSec"]?.toIntOrNull() ?: 10
         val amplifier = ((node.params["amplifier"]?.toIntOrNull() ?: 1) - 1).coerceAtLeast(0)
+        val showParticles = node.params["showParticles"] != "false"
+        val hideParticles = !showParticles
 
         val targetMode = node.params["targetMode"] ?: "AREA_NEAREST"
         val targetStoryTag = node.params["targetStoryTag"]?.trim() ?: ""
@@ -880,7 +903,7 @@ class ApplyEffectAction : IAction {
         }
 
         try {
-            val cmd = "effect give $targetSelector $effectId $duration $amplifier"
+            val cmd = "effect give $targetSelector $effectId $duration $amplifier $hideParticles"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                     ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -900,8 +923,10 @@ class AreaEffectAction : IAction {
         val radius = node.params["radius"]?.toIntOrNull() ?: 8
         val duration = node.params["durationSec"]?.toIntOrNull() ?: 10
         val amplifier = ((node.params["amplifier"]?.toIntOrNull() ?: 1) - 1).coerceAtLeast(0)
+        val showParticles = node.params["showParticles"] != "false"
+        val hideParticles = !showParticles
         try {
-            val cmd = "effect give @e[distance=..$radius] $effectId $duration $amplifier"
+            val cmd = "effect give @e[distance=..$radius] $effectId $duration $amplifier $hideParticles"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                     ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -1092,19 +1117,18 @@ class AnimationAction : IAction {
         var targetPokemon: Pokemon? = null
 
         if (animSystem == "COBBLEMON" && player != null) {
-            val slotIdx = targetId.toIntOrNull()?.coerceIn(0, 5) ?: 0
+            val slotIdx = PokemonQuery.parsePartySlotIndex(targetId)
             try {
                 val party = Cobblemon.storage.getParty(player)
                 targetPokemon = party.get(slotIdx)
-                targetEntity = targetPokemon?.entity
             } catch (_: Exception) {}
-            if (targetEntity == null) {
+            if (targetPokemon == null) {
                 try {
                     val activeList = PokemonQuery.findActivePokemon(player)
                     targetPokemon = activeList.getOrNull(slotIdx) ?: activeList.firstOrNull()
-                    targetEntity = targetPokemon?.entity
                 } catch (_: Exception) {}
             }
+            targetEntity = targetPokemon?.entity
         } else {
             val levels = player?.serverLevel()?.let { listOf(it) } ?: server.allLevels.toList()
             for (lvl in levels) {
@@ -1215,15 +1239,15 @@ class SetEntityTextureAction : IAction {
         val server = context.server ?: player?.server ?: return
 
         val targetType = node.params["targetType"] ?: "PLAYER_POKEMON"
-        val targetId = node.params["targetIdentifier"] ?: "0"
+        val targetId = node.params["pokemonSlot"] ?: node.params["targetIdentifier"] ?: "1"
         val textureName = node.params["textureName"]?.trim() ?: "custom_texture.png"
-        val resetToDefault = node.params["resetToDefault"] == "true"
+        val resetToDefault = node.params["resetToDefault"] == "true" || node.params["textureMode"] == "CLEAR_TEXTURE"
         val storyId = context.storyId.ifBlank { context.project?.id ?: "default_story" }
 
         // 1. Resolve Target LivingEntity
         var targetEntity: LivingEntity? = null
         if (targetType == "PLAYER_POKEMON" && player != null) {
-            val slotIdx = targetId.toIntOrNull()?.coerceIn(0, 5) ?: 0
+            val slotIdx = PokemonQuery.parsePartySlotIndex(targetId)
             try {
                 val party = Cobblemon.storage.getParty(player)
                 val poke = party.get(slotIdx)
@@ -1261,8 +1285,20 @@ class SetEntityTextureAction : IAction {
 }
 
 // ==========================================================
-// GATILHOS (TRIGGERS)
+// GATILHOS (TRIGGERS) & SCENE BLOCKS
 // ==========================================================
+
+class BeginSceneBlock : ITrigger {
+    override fun evaluate(context: StoryContext, node: NodeData): Boolean {
+        return true
+    }
+}
+
+class EndSceneBlock : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        // Scene completion hook
+    }
+}
 
 class StoryStartedTrigger : ITrigger {
     override fun evaluate(context: StoryContext, node: NodeData): Boolean {
@@ -1411,3 +1447,289 @@ class TagAction : IAction {
         }
     }
 }
+
+class MoveToAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val player = context.player
+        val server = context.server ?: player?.server ?: return
+        val sLevel = player?.serverLevel() ?: server.overworld()
+
+        val subjectType = node.params["subjectType"] ?: "PLAYER_POKEMON"
+        val subjectId = node.params["pokemonSlot"] ?: node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: "1"
+
+        // 1. Resolve Subject LivingEntity
+        val subjectEntity = StoryLookAtManager.resolveSubjectEntity(
+            sLevel,
+            player,
+            if (subjectType == "PLAYER_POKEMON") LookSubjectType.PLAYER_POKEMON else LookSubjectType.NPC_TAG,
+            subjectId
+        ) ?: return
+
+        // 2. Resolve Target Destination Vec3
+        val destType = node.params["targetDestinationType"] ?: "COORDINATES"
+        val destId = node.params["destinationIdentifier"]?.ifBlank { node.params["coordinates"] ?: "~0 ~0 ~5" } ?: (node.params["coordinates"] ?: "~0 ~0 ~5")
+        val targetVec = when (destType) {
+            "PLAYER" -> {
+                if (destId.isNotBlank() && destId != "~" && destId != "Player" && destId.contains(" ")) {
+                    CoordinateResolver.resolveSafeVec3(
+                        destId,
+                        sLevel,
+                        player,
+                        server,
+                        defaultOrigin = player?.position() ?: subjectEntity.position(),
+                        safePosition = true,
+                        snapToGround = true
+                    )
+                } else {
+                    player?.position() ?: subjectEntity.position()
+                }
+            }
+            "ENTITY_TAG" -> {
+                val box = player?.boundingBox?.inflate(128.0) ?: AABB(-1000.0, -100.0, -1000.0, 1000.0, 300.0, 1000.0)
+                val target = sLevel.getEntitiesOfClass(LivingEntity::class.java, box) { it.isAlive && it.tags.contains(destId) }.firstOrNull()
+                target?.position() ?: subjectEntity.position()
+            }
+            "WORLD_BLOCK_TAG" -> {
+                StoryTagManager.getBlockVec3(destId) ?: subjectEntity.position()
+            }
+            else -> {
+                CoordinateResolver.resolveSafeVec3(
+                    destId,
+                    sLevel,
+                    player,
+                    server,
+                    defaultOrigin = subjectEntity.position(),
+                    safePosition = true,
+                    snapToGround = true
+                )
+            }
+        }
+
+        // 3. Resolve Speed Mode
+        val speedMode = node.params["speedMode"] ?: "WALK"
+        val speedMultiplier = when (speedMode) {
+            "SPRINT" -> 1.5
+            "SNEAK" -> 0.5
+            "CUSTOM" -> node.params["customSpeedMultiplier"]?.toDoubleOrNull() ?: 1.0
+            else -> 1.0
+        }
+
+        val waitForCompletion = node.params["waitForCompletion"] != "false"
+        val timeoutTicks = node.params["timeoutTicks"]?.toIntOrNull() ?: 100
+        val onTimeoutBehavior = node.params["onTimeoutBehavior"] ?: "TELEPORT_TO_DESTINATION"
+        val lockPositionOnArrival = node.params["lockPositionOnArrival"] != "false"
+
+        // 4. Start Pathfinding
+        if (waitForCompletion) {
+            StoryPathfindingManager.startPathfinding(
+                subject = subjectEntity,
+                targetDestination = targetVec,
+                speedModifier = speedMultiplier,
+                waitForCompletion = true,
+                timeoutTicks = timeoutTicks,
+                onTimeoutBehavior = onTimeoutBehavior,
+                lockPositionOnArrival = lockPositionOnArrival
+            ) {
+                val instance = StoryExecutor.activeStories.values.find { it.context == context }
+                if (instance != null) {
+                    StoryExecutor.continueOutgoingConnections(instance, node)
+                }
+            }
+        } else {
+            StoryPathfindingManager.startPathfinding(
+                subject = subjectEntity,
+                targetDestination = targetVec,
+                speedModifier = speedMultiplier,
+                waitForCompletion = false,
+                timeoutTicks = timeoutTicks,
+                onTimeoutBehavior = onTimeoutBehavior,
+                lockPositionOnArrival = lockPositionOnArrival
+            )
+        }
+    }
+}
+
+class SpawnStructureAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val player = context.player
+        val server = context.server ?: player?.server ?: return
+
+        val structureId = node.params["structureId"]?.ifBlank { "minecraft:small_house" } ?: "minecraft:small_house"
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+        val pos = CoordinateResolver.resolveBlockPos(coordInput, player, server)
+        try {
+            val cmd = "place structure $structureId ${pos.x} ${pos.y} ${pos.z}"
+            server.commands.performPrefixedCommand(
+                player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
+                    ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                cmd
+            )
+        } catch (e: Exception) {
+            StoryDebugger.recordLog(
+                storyId = "",
+                blockId = node.id,
+                blockType = node.nodeType,
+                status = NodeExecutionStatus.FAILED,
+                level = "ERROR",
+                message = "Failed to spawn structure '$structureId': ${e.message}",
+                server = server
+            )
+        }
+    }
+}
+
+class ChangePokemonPersonalityAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val player = context.player ?: return
+        val server = context.server ?: player.server ?: return
+        val slotStr = node.params["slotIndex"] ?: node.params["pokemonSlot"] ?: "1"
+        val slotIdx = PokemonQuery.parsePartySlotIndex(slotStr)
+        val preset = node.params["personalityPreset"] ?: "Heroic"
+
+        try {
+            val party = Cobblemon.storage.getParty(player)
+            val pokemon = party.get(slotIdx)
+            if (pokemon != null) {
+                context.variables["pokemon_${slotIdx}_personality"] = preset
+                player.sendSystemMessage(Component.literal("§a[CobbleBrain]§f Pokémon in slot ${slotIdx + 1} personality: §b$preset"))
+            } else {
+                StoryDebugger.recordLog(
+                    storyId = "",
+                    blockId = node.id,
+                    blockType = node.nodeType,
+                    status = NodeExecutionStatus.FAILED,
+                    level = "WARN",
+                    message = "No Pokémon found in party slot ${slotIdx + 1} to change personality.",
+                    server = server
+                )
+            }
+        } catch (e: Exception) {
+            StoryDebugger.recordLog(
+                storyId = "",
+                blockId = node.id,
+                blockType = node.nodeType,
+                status = NodeExecutionStatus.FAILED,
+                level = "ERROR",
+                message = "Error changing Pokémon personality: ${e.message}",
+                server = server
+            )
+        }
+    }
+}
+
+class PartyPokemonEffectAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val player = context.player ?: return
+        val server = context.server ?: player.server ?: return
+
+        val healFullParty = node.params["healFullParty"] != "false"
+        val cureStatus = node.params["cureStatus"] != "false"
+        val restorePP = node.params["restorePP"] == "true" || healFullParty
+
+        try {
+            val party = Cobblemon.storage.getParty(player)
+            for (pokemon in party) {
+                if (healFullParty) {
+                    pokemon.currentHealth = pokemon.maxHealth
+                }
+                if (cureStatus) {
+                    pokemon.status = null
+                }
+                if (restorePP) {
+                    pokemon.moveSet.forEach { move ->
+                        move.currentPp = move.maxPp
+                    }
+                }
+            }
+            player.sendSystemMessage(Component.literal("§a[CobbleBrain]§f Party Pokémon restored successfully!"))
+        } catch (e: Exception) {
+            StoryDebugger.recordLog(
+                storyId = "",
+                blockId = node.id,
+                blockType = node.nodeType,
+                status = NodeExecutionStatus.FAILED,
+                level = "ERROR",
+                message = "Error healing Pokémon party: ${e.message}",
+                server = server
+            )
+        }
+    }
+}
+
+class JumpToStoryPointAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val targetSceneId = node.params["targetSceneId"]?.trim() ?: ""
+        val targetNodeId = node.params["targetNodeId"]?.trim() ?: ""
+        val instance = StoryExecutor.activeStories.values.find { it.context == context } ?: return
+
+        if (targetSceneId.isNotBlank() && targetSceneId != instance.project.activeSceneId) {
+            val targetScene = instance.project.scenes.find { it.id == targetSceneId || it.title.equals(targetSceneId, true) }
+            if (targetScene != null) {
+                instance.project.activeSceneId = targetScene.id
+                val startNode = if (targetNodeId.isNotBlank()) {
+                    targetScene.nodes.find { it.id == targetNodeId }
+                } else {
+                    targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE } ?: targetScene.nodes.firstOrNull()
+                }
+                if (startNode != null) {
+                    StoryExecutor.executeNodeChain(instance, startNode)
+                }
+            }
+        } else if (targetNodeId.isNotBlank()) {
+            val targetNode = instance.project.getActiveScene()?.nodes?.find { it.id == targetNodeId }
+            if (targetNode != null) {
+                StoryExecutor.executeNodeChain(instance, targetNode)
+            }
+        }
+    }
+}
+
+class RewindToStoryPointAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val server = context.server ?: context.player?.server ?: return
+        val targetProfileId = node.params["profileId"]?.ifBlank { "checkpoint_1" } ?: "checkpoint_1"
+        val targetScope = node.params["scope"] ?: "PLAYER"
+        val checkpointData = vito.cobblebrain.engine.checkpoint.StoryCheckpointManager.loadCheckpoint(server, context.player, targetScope, targetProfileId, context.variables)
+
+        if (checkpointData != null) {
+            vito.cobblebrain.engine.checkpoint.StoryCheckpointManager.applyCheckpoint(context, checkpointData)
+            val instance = StoryExecutor.activeStories.values.find { it.context == context }
+            val targetSceneId = node.params["targetSceneId"]?.trim() ?: ""
+            if (instance != null && targetSceneId.isNotBlank()) {
+                val targetScene = instance.project.scenes.find { it.id == targetSceneId || it.title.equals(targetSceneId, true) }
+                if (targetScene != null) {
+                    instance.project.activeSceneId = targetScene.id
+                    val startNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE } ?: targetScene.nodes.firstOrNull()
+                    if (startNode != null) {
+                        StoryExecutor.executeNodeChain(instance, startNode)
+                    }
+                }
+            }
+        } else {
+            StoryDebugger.recordLog(
+                storyId = "",
+                blockId = node.id,
+                blockType = node.nodeType,
+                status = NodeExecutionStatus.FAILED,
+                level = "WARN",
+                message = "Rewind failed: checkpoint '$targetProfileId' not found on disk.",
+                server = server
+            )
+        }
+    }
+}
+
+class ChangeScreenTintAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val player = context.player ?: return
+        val tintColor = node.params["tintColor"] ?: "#FF0000"
+        val alpha = node.params["alpha"]?.toFloatOrNull() ?: 0.5f
+        val durationSec = node.params["durationSec"]?.toIntOrNull() ?: 3
+
+        player.sendSystemMessage(Component.literal("§e[Screen Tint] $tintColor (alpha=$alpha, duration=${durationSec}s)"))
+    }
+}
+

@@ -248,7 +248,7 @@ object StoryLookAtManager {
         subjectIdentifier: String
     ): LivingEntity? {
         if (subjectType == LookSubjectType.PLAYER_POKEMON && player != null) {
-            val slotIdx = (subjectIdentifier.toIntOrNull() ?: 0).coerceIn(0, 5)
+            val slotIdx = PokemonQuery.parsePartySlotIndex(subjectIdentifier)
             try {
                 val party = Cobblemon.storage.getParty(player)
                 val poke = party.get(slotIdx)

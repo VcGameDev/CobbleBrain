@@ -27,7 +27,7 @@ class EntityConfigModalWidget(
     val onDataChanged: () -> Unit
 ) {
     private val modalWidth = 480.coerceAtMost(screenWidth - 20)
-    private val modalHeight = 290.coerceAtMost(screenHeight - 20)
+    private val modalHeight = 315.coerceAtMost(screenHeight - 20)
     private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
     private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
@@ -60,14 +60,16 @@ class EntityConfigModalWidget(
     private val armorBox: EditBox
 
     // Tab 3: Metadata & Behavior
-    private val storyTagBox: EditBox
-    private val customNameBox: EditBox
+    private var storyTagBox: EditBox
+    private var customNameBox: EditBox
     private var nameVisible: Boolean
     private var noGravity: Boolean
     private var invulnerable: Boolean
     private var noAi: Boolean
     private var glowing: Boolean
     private var silent: Boolean
+    private var invisible: Boolean
+    private var noHitbox: Boolean
 
     private val nameVisibleBtn: Button
     private val noGravityBtn: Button
@@ -75,6 +77,8 @@ class EntityConfigModalWidget(
     private val noAiBtn: Button
     private val glowingBtn: Button
     private val silentBtn: Button
+    private val invisibleBtn: Button
+    private val noHitboxBtn: Button
 
     // Common Action Buttons
     private val saveBtn: Button
@@ -235,6 +239,8 @@ class EntityConfigModalWidget(
         noAi = node.params["entity_noAi"] == "true" || node.params["noAi"] == "true"
         glowing = node.params["entity_glowing"] == "true"
         silent = node.params["entity_silent"] == "true"
+        invisible = node.params["entity_invisible"] == "true"
+        noHitbox = node.params["entity_noHitbox"] == "true"
 
         val toggleW = (modalWidth - 40) / 2
 
@@ -267,6 +273,16 @@ class EntityConfigModalWidget(
             silent = !silent
             silentBtn.message = Component.literal(if (silent) "🔇 Silent: YES" else "🔇 Silent: NO")
         }.bounds(modalX + 24 + toggleW, modalY + 168, toggleW, 18).build()
+
+        invisibleBtn = Button.builder(Component.literal(if (invisible) "👻 Invisible: YES" else "👻 Invisible: NO")) {
+            invisible = !invisible
+            invisibleBtn.message = Component.literal(if (invisible) "👻 Invisible: YES" else "👻 Invisible: NO")
+        }.bounds(modalX + 16, modalY + 192, toggleW, 18).build()
+
+        noHitboxBtn = Button.builder(Component.literal(if (noHitbox) "🚫 No Hitbox (Marker): YES" else "🚫 No Hitbox (Marker): NO")) {
+            noHitbox = !noHitbox
+            noHitboxBtn.message = Component.literal(if (noHitbox) "🚫 No Hitbox (Marker): YES" else "🚫 No Hitbox (Marker): NO")
+        }.bounds(modalX + 24 + toggleW, modalY + 192, toggleW, 18).build()
 
         // --- 5. Common Save & Cancel Buttons ---
         saveBtn = Button.builder(Component.literal("💾 Save Properties")) {
@@ -307,6 +323,8 @@ class EntityConfigModalWidget(
             node.params["noAi"] = noAi.toString()
             node.params["entity_glowing"] = glowing.toString()
             node.params["entity_silent"] = silent.toString()
+            node.params["entity_invisible"] = invisible.toString()
+            node.params["entity_noHitbox"] = noHitbox.toString()
 
             onDataChanged()
             onClose()
@@ -565,8 +583,10 @@ class EntityConfigModalWidget(
                 noAiBtn.render(guiGraphics, mouseX, mouseY, partialTick)
                 glowingBtn.render(guiGraphics, mouseX, mouseY, partialTick)
                 silentBtn.render(guiGraphics, mouseX, mouseY, partialTick)
+                invisibleBtn.render(guiGraphics, mouseX, mouseY, partialTick)
+                noHitboxBtn.render(guiGraphics, mouseX, mouseY, partialTick)
 
-                guiGraphics.drawString(font, "ℹ️ Story tags allow other story blocks to target this specific entity.", modalX + 16, modalY + 192, 0xFF888899.toInt(), false)
+                guiGraphics.drawString(font, "ℹ️ Story tags allow other story blocks to target this specific entity.", modalX + 16, modalY + 218, 0xFF888899.toInt(), false)
             }
         }
 
@@ -691,6 +711,8 @@ class EntityConfigModalWidget(
                 if (noAiBtn.mouseClicked(mouseX, mouseY, button)) return true
                 if (glowingBtn.mouseClicked(mouseX, mouseY, button)) return true
                 if (silentBtn.mouseClicked(mouseX, mouseY, button)) return true
+                if (invisibleBtn.mouseClicked(mouseX, mouseY, button)) return true
+                if (noHitboxBtn.mouseClicked(mouseX, mouseY, button)) return true
             }
         }
 

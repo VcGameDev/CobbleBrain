@@ -180,12 +180,13 @@ class NodeInspectorWidget(
                         if (subjectType == "PLAYER_POKEMON") {
                             labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
                             relY += 12
-                            val rawSlot = node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: "0"
-                            val curSlot = ((rawSlot.toIntOrNull() ?: 0) + 1).toString()
+                            val rawSlot = node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: "1"
+                            val curSlot = (rawSlot.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
                             val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
-                                val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
-                                node.params["subjectIdentifier"] = slotIdx.toString()
-                                node.params["targetIdentifier"] = slotIdx.toString()
+                                val slotNum = (it.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                                node.params["subjectIdentifier"] = slotNum
+                                node.params["targetIdentifier"] = slotNum
+                                onDataChanged()
                             }
                             addWidgetItem(fSlot, relY, 16)
                             relY += 22
@@ -324,6 +325,229 @@ class NodeInspectorWidget(
                         }
                     }
 
+                    "MOVE_TO_BLOCK", "NAVIGATE_ENTITY", "MOVE_TO", "PATHFIND_ENTITY" -> {
+                        val subjectType = node.params["subjectType"] ?: "PLAYER_POKEMON"
+                        val halfW = (inputW - 2) / 2
+
+                        labels.add(InspectorLabel("Subject Entity:", relY))
+                        relY += 12
+                        val bPoke = Button.builder(Component.literal("🐾 Cobblemon")) {
+                            node.params["subjectType"] = "PLAYER_POKEMON"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (subjectType == "PLAYER_POKEMON") bPoke.active = false
+
+                        val bNpc = Button.builder(Component.literal("👤 NPC / Mob")) {
+                            node.params["subjectType"] = "NPC_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (subjectType == "NPC_TAG") bNpc.active = false
+
+                        addWidgetItem(bPoke, relY, 14); addWidgetItem(bNpc, relY, 14)
+                        relY += 20
+
+                        if (subjectType == "PLAYER_POKEMON") {
+                            labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
+                            relY += 12
+                            val rawSlot = node.params["subjectIdentifier"] ?: node.params["pokemonSlot"] ?: node.params["targetIdentifier"] ?: "1"
+                            val curSlot = (rawSlot.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                            val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
+                                val slotNum = (it.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                                node.params["subjectIdentifier"] = slotNum
+                                node.params["pokemonSlot"] = slotNum
+                                node.params["targetIdentifier"] = slotNum
+                                onDataChanged()
+                            }
+                            addWidgetItem(fSlot, relY, 16)
+                            relY += 22
+                        } else {
+                            labels.add(InspectorLabel("Subject Story Tag:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.setHint(Component.literal("§8e.g. guide_npc, quest_target"))
+                            fTag.value = node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: ""
+                            fTag.setResponder {
+                                node.params["subjectIdentifier"] = it
+                                node.params["targetIdentifier"] = it
+                                onDataChanged()
+                            }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        }
+
+                        // Target Destination Type
+                        val destType = node.params["targetDestinationType"] ?: "COORDINATES"
+                        labels.add(InspectorLabel("Destination Type:", relY))
+                        relY += 12
+                        val quarterW = (inputW - 6) / 4
+                        val bCoord = Button.builder(Component.literal("📍 Coord")) {
+                            node.params["targetDestinationType"] = "COORDINATES"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (destType == "COORDINATES") bCoord.active = false
+
+                        val bMobTag = Button.builder(Component.literal("🏷️ Entity")) {
+                            node.params["targetDestinationType"] = "ENTITY_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + quarterW + 2, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (destType == "ENTITY_TAG") bMobTag.active = false
+
+                        val bBlockTag = Button.builder(Component.literal("🧱 Block")) {
+                            node.params["targetDestinationType"] = "WORLD_BLOCK_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + (quarterW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (destType == "WORLD_BLOCK_TAG") bBlockTag.active = false
+
+                        val bPlayer = Button.builder(Component.literal("👤 Player")) {
+                            node.params["targetDestinationType"] = "PLAYER"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + (quarterW + 2) * 3, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (destType == "PLAYER") bPlayer.active = false
+
+                        addWidgetItem(bCoord, relY, 14); addWidgetItem(bMobTag, relY, 14)
+                        addWidgetItem(bBlockTag, relY, 14); addWidgetItem(bPlayer, relY, 14)
+                        relY += 20
+
+                        when (destType) {
+                            "ENTITY_TAG" -> {
+                                labels.add(InspectorLabel("Target Entity Story Tag:", relY))
+                                relY += 12
+                                val fDestTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                                fDestTag.setHint(Component.literal("§8Target mob tag (e.g. boss_arena)"))
+                                fDestTag.value = node.params["destinationIdentifier"] ?: ""
+                                fDestTag.setResponder { node.params["destinationIdentifier"] = it; onDataChanged() }
+                                addWidgetItem(fDestTag, relY, 16)
+                                relY += 22
+                            }
+                            "WORLD_BLOCK_TAG" -> {
+                                labels.add(InspectorLabel("Target Block Story Tag:", relY))
+                                relY += 12
+                                val fBlockTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Block Tag"))
+                                fBlockTag.setHint(Component.literal("§8Target block tag (e.g. shrine_altar)"))
+                                fBlockTag.value = node.params["destinationIdentifier"] ?: ""
+                                fBlockTag.setResponder { node.params["destinationIdentifier"] = it; onDataChanged() }
+                                addWidgetItem(fBlockTag, relY, 16)
+                                relY += 22
+                            }
+                            "PLAYER" -> {
+                                val initCoord = node.params["destinationIdentifier"]?.ifBlank { "~0 ~0 ~0" } ?: "~0 ~0 ~0"
+                                relY = addCoordinateInputSection("Offset from Player:", initCoord, inputX, inputW, relY, showSafetyControls = true) {
+                                    node.params["destinationIdentifier"] = it
+                                    node.params["coordinates"] = it
+                                }
+                            }
+                            else -> {
+                                val initCoord = node.params["destinationIdentifier"]?.ifBlank { node.params["coordinates"] ?: "~0 ~0 ~5" } ?: "~0 ~0 ~5"
+                                relY = addCoordinateInputSection("Target Destination Coords:", initCoord, inputX, inputW, relY, showSafetyControls = true) {
+                                    node.params["destinationIdentifier"] = it
+                                    node.params["coordinates"] = it
+                                }
+                            }
+                        }
+
+                        // Speed Mode
+                        val speedMode = node.params["speedMode"] ?: "WALK"
+                        labels.add(InspectorLabel("Movement Speed:", relY))
+                        relY += 12
+                        val bWalk = Button.builder(Component.literal("🚶 Walk")) {
+                            node.params["speedMode"] = "WALK"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (speedMode == "WALK") bWalk.active = false
+
+                        val bSprint = Button.builder(Component.literal("🏃 Sprint")) {
+                            node.params["speedMode"] = "SPRINT"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + quarterW + 2, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (speedMode == "SPRINT") bSprint.active = false
+
+                        val bSneak = Button.builder(Component.literal("🤫 Sneak")) {
+                            node.params["speedMode"] = "SNEAK"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + (quarterW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (speedMode == "SNEAK") bSneak.active = false
+
+                        val bCustom = Button.builder(Component.literal("⚡ Custom")) {
+                            node.params["speedMode"] = "CUSTOM"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + (quarterW + 2) * 3, (panelY + 20 + relY - scrollOffset).toInt(), quarterW, 14).build()
+                        if (speedMode == "CUSTOM") bCustom.active = false
+
+                        addWidgetItem(bWalk, relY, 14); addWidgetItem(bSprint, relY, 14)
+                        addWidgetItem(bSneak, relY, 14); addWidgetItem(bCustom, relY, 14)
+                        relY += 20
+
+                        if (speedMode == "CUSTOM") {
+                            labels.add(InspectorLabel("Speed Multiplier (e.g. 1.25):", relY))
+                            relY += 12
+                            val fSpeed = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Speed", node.params["customSpeedMultiplier"] ?: "1.25") {
+                                node.params["customSpeedMultiplier"] = it
+                                onDataChanged()
+                            }
+                            addWidgetItem(fSpeed, relY, 16)
+                            relY += 22
+                        }
+
+                        // Completion & Lock
+                        val isWait = node.params["waitForCompletion"] != "false"
+                        val bWait = Button.builder(Component.literal(if (isWait) "⏳ Wait for Entity to Arrive: YES" else "⚡ Instant (No Story Pause): NO")) {
+                            node.params["waitForCompletion"] = if (isWait) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bWait, relY, 16)
+                        relY += 20
+
+                        val isLock = node.params["lockPositionOnArrival"] != "false"
+                        val bLock = Button.builder(Component.literal(if (isLock) "⚓ Lock in Place on Arrival: YES" else "🔓 Allow Wandering AI: NO")) {
+                            node.params["lockPositionOnArrival"] = if (isLock) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bLock, relY, 16)
+                        relY += 20
+
+                        // Advanced Timeout Controls
+                        labels.add(InspectorLabel("Timeout Ticks (20 = 1s):", relY))
+                        relY += 12
+                        val fTimeout = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Ticks", node.params["timeoutTicks"] ?: "100") {
+                            node.params["timeoutTicks"] = it
+                            onDataChanged()
+                        }
+                        addWidgetItem(fTimeout, relY, 16)
+                        relY += 22
+
+                        val timeoutBehavior = node.params["onTimeoutBehavior"] ?: "TELEPORT_TO_DESTINATION"
+                        labels.add(InspectorLabel("On Timeout Action:", relY))
+                        relY += 12
+                        val bTpTimeout = Button.builder(Component.literal("🌀 Teleport to Dest")) {
+                            node.params["onTimeoutBehavior"] = "TELEPORT_TO_DESTINATION"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (timeoutBehavior == "TELEPORT_TO_DESTINATION") bTpTimeout.active = false
+
+                        val bAdvTimeout = Button.builder(Component.literal("⏩ Advance Anyway")) {
+                            node.params["onTimeoutBehavior"] = "ADVANCE_ANYWAY"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (timeoutBehavior == "ADVANCE_ANYWAY") bAdvTimeout.active = false
+
+                        addWidgetItem(bTpTimeout, relY, 14); addWidgetItem(bAdvTimeout, relY, 14)
+                        relY += 22
+                    }
+
                     "ANIMATION", "ANIMATION_BLOCK" -> {
                         val animSystem = node.params["animationSystem"] ?: "COBBLEMON"
                         val halfW = (inputW - 2) / 2
@@ -350,10 +574,13 @@ class NodeInspectorWidget(
                         if (animSystem == "COBBLEMON") {
                             labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
                             relY += 12
-                            val curSlot = ((node.params["targetIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                            val rawSlot = node.params["targetIdentifier"] ?: node.params["subjectIdentifier"] ?: "1"
+                            val curSlot = (rawSlot.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
                             val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
-                                val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
-                                node.params["targetIdentifier"] = slotIdx.toString()
+                                val slotNum = (it.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                                node.params["targetIdentifier"] = slotNum
+                                node.params["subjectIdentifier"] = slotNum
+                                onDataChanged()
                             }
                             addWidgetItem(fSlot, relY, 16)
                             relY += 22
@@ -465,10 +692,13 @@ class NodeInspectorWidget(
                         if (targetType == "PLAYER_POKEMON") {
                             labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
                             relY += 12
-                            val curSlot = ((node.params["targetIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                            val rawSlot = node.params["pokemonSlot"] ?: node.params["targetIdentifier"] ?: "1"
+                            val curSlot = (rawSlot.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
                             val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
-                                val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
-                                node.params["targetIdentifier"] = slotIdx.toString()
+                                val slotNum = (it.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                                node.params["pokemonSlot"] = slotNum
+                                node.params["targetIdentifier"] = slotNum
+                                onDataChanged()
                             }
                             addWidgetItem(fSlot, relY, 16)
                             relY += 22
@@ -606,10 +836,13 @@ class NodeInspectorWidget(
                                     "PLAYER_POKEMON_SLOT" -> {
                                         labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
                                         relY += 12
-                                        val curSlot = ((node.params["selectorIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                                        val rawSlot = node.params["selectorIdentifier"] ?: node.params["targetIdentifier"] ?: "1"
+                                        val curSlot = (rawSlot.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
                                         val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
-                                            val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
-                                            node.params["selectorIdentifier"] = slotIdx.toString()
+                                            val slotNum = (it.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                                            node.params["selectorIdentifier"] = slotNum
+                                            node.params["targetIdentifier"] = slotNum
+                                            onDataChanged()
                                         }
                                         addWidgetItem(fSlot, relY, 16)
                                         relY += 22
@@ -1038,20 +1271,47 @@ class NodeInspectorWidget(
                         f1.value = node.params["effectId"] ?: "minecraft:glowing"
                         f1.setResponder { node.params["effectId"] = it; onDataChanged() }
                         addWidgetItem(f1, relY, 16)
+                        relY += 20
+
+                        val bBrowse = Button.builder(Component.literal("🧪 Browse Effects Catalog...")) {
+                            onOpenResourcePicker?.invoke(ResourcePickerType.EFFECT) { chosen ->
+                                node.params["effectId"] = chosen
+                                buildUi()
+                                onDataChanged()
+                            }
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bBrowse, relY, 16)
+                        relY += 22
+
+                        labels.add(InspectorLabel("Potency / Level:", relY))
+                        relY += 12
+                        val fAmp = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Level", node.params["amplifier"] ?: "1") { node.params["amplifier"] = it; onDataChanged() }
+                        addWidgetItem(fAmp, relY, 16)
                         relY += 22
 
                         if (actionDef.id == "ADD_AREA_EFFECT") {
                             labels.add(InspectorLabel("Radius (Blocks):", relY))
                             relY += 12
-                            val fr = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Radius", node.params["radius"] ?: "8") { node.params["radius"] = it }
+                            val fr = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Radius", node.params["radius"] ?: "8") { node.params["radius"] = it; onDataChanged() }
                             addWidgetItem(fr, relY, 16)
                             relY += 22
                         }
 
                         labels.add(InspectorLabel("Duration (Seconds):", relY))
                         relY += 12
-                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Sec", node.params["durationSec"] ?: "10") { node.params["durationSec"] = it }
+                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Sec", node.params["durationSec"] ?: "10") { node.params["durationSec"] = it; onDataChanged() }
                         addWidgetItem(f2, relY, 16)
+                        relY += 22
+
+                        val showPart = node.params["showParticles"] != "false"
+                        labels.add(InspectorLabel("Particle Effect:", relY))
+                        relY += 12
+                        val bPart = Button.builder(Component.literal(if (showPart) "✨ Particles: VISIBLE" else "✨ Particles: HIDDEN")) {
+                            node.params["showParticles"] = if (showPart) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bPart, relY, 16)
                         relY += 22
                     }
 
@@ -1168,18 +1428,39 @@ class NodeInspectorWidget(
                         f1.value = node.params["effectId"] ?: "minecraft:speed"
                         f1.setResponder { node.params["effectId"] = it; onDataChanged() }
                         addWidgetItem(f1, relY, 16)
+                        relY += 20
+
+                        val bBrowse = Button.builder(Component.literal("🧪 Browse Effects Catalog...")) {
+                            onOpenResourcePicker?.invoke(ResourcePickerType.EFFECT) { chosen ->
+                                node.params["effectId"] = chosen
+                                buildUi()
+                                onDataChanged()
+                            }
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bBrowse, relY, 16)
+                        relY += 22
+
+                        labels.add(InspectorLabel("Potency / Level:", relY))
+                        relY += 12
+                        val f3 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Level", node.params["amplifier"] ?: "1") { node.params["amplifier"] = it; onDataChanged() }
+                        addWidgetItem(f3, relY, 16)
                         relY += 22
 
                         labels.add(InspectorLabel("Duration (Seconds):", relY))
                         relY += 12
-                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Sec", node.params["durationSec"] ?: "10") { node.params["durationSec"] = it }
+                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Sec", node.params["durationSec"] ?: "10") { node.params["durationSec"] = it; onDataChanged() }
                         addWidgetItem(f2, relY, 16)
                         relY += 22
 
-                        labels.add(InspectorLabel("Amplifier (Level):", relY))
+                        val showPart = node.params["showParticles"] != "false"
+                        labels.add(InspectorLabel("Particle Effect:", relY))
                         relY += 12
-                        val f3 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Amp", node.params["amplifier"] ?: "1") { node.params["amplifier"] = it }
-                        addWidgetItem(f3, relY, 16)
+                        val bPart = Button.builder(Component.literal(if (showPart) "✨ Particles: VISIBLE" else "✨ Particles: HIDDEN")) {
+                            node.params["showParticles"] = if (showPart) "false" else "true"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(bPart, relY, 16)
                         relY += 22
                     }
 
@@ -2954,7 +3235,7 @@ class NodeInspectorWidget(
                 relY += 22
             }
 
-            NodeType.SAVE_STATE_NODE, NodeType.LOAD_STATE_NODE, NodeType.CHECKPOINT_NODE -> {
+            NodeType.SAVE_STATE_NODE, NodeType.LOAD_STATE_NODE -> {
                 val cfgBtn = Button.builder(Component.literal("⚙️ Configure Save/Load Profile...")) {
                     onOpenProfileModal?.invoke(node)
                 }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
@@ -2978,7 +3259,7 @@ class NodeInspectorWidget(
                 addWidgetItem(scopeBtn, relY, 16)
                 relY += 22
 
-                if (node.nodeType == NodeType.SAVE_STATE_NODE || (node.nodeType == NodeType.CHECKPOINT_NODE && node.params["checkpointMode"] != "LOAD")) {
+                if (node.nodeType == NodeType.SAVE_STATE_NODE) {
                     labels.add(InspectorLabel("Modules (ALL or list):", relY))
                     relY += 12
                     val fMod = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Modules"))
@@ -2988,7 +3269,7 @@ class NodeInspectorWidget(
                     relY += 22
                 }
 
-                if (node.nodeType == NodeType.LOAD_STATE_NODE || (node.nodeType == NodeType.CHECKPOINT_NODE && node.params["checkpointMode"] == "LOAD")) {
+                if (node.nodeType == NodeType.LOAD_STATE_NODE) {
                     val currentMerge = node.params["mergeMode"] ?: "OVERWRITE"
                     val mergeBtn = Button.builder(Component.literal("Merge: $currentMerge")) {
                         node.params["mergeMode"] = if (currentMerge == "OVERWRITE") "SOFT_MERGE" else "OVERWRITE"
@@ -3046,9 +3327,16 @@ class NodeInspectorWidget(
                 relY += 20
 
                 if (targetType == "PLAYER_POKEMON") {
-                    labels.add(InspectorLabel("Party Slot (0-5):", relY))
+                    labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
                     relY += 12
-                    val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", node.params["pokemonSlot"] ?: "0") { node.params["pokemonSlot"] = it }
+                    val rawSlot = node.params["pokemonSlot"] ?: node.params["targetIdentifier"] ?: "1"
+                    val curSlot = (rawSlot.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                    val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
+                        val slotNum = (it.toIntOrNull() ?: 1).coerceIn(1, 6).toString()
+                        node.params["pokemonSlot"] = slotNum
+                        node.params["targetIdentifier"] = slotNum
+                        onDataChanged()
+                    }
                     addWidgetItem(fSlot, relY, 16)
                     relY += 22
                 } else {
@@ -3298,7 +3586,6 @@ class NodeInspectorWidget(
                 NodeType.AUDIO -> 0xFF6A1B9A.toInt()
                 NodeType.SAVE_STATE_NODE -> 0xFF4A148C.toInt()
                 NodeType.LOAD_STATE_NODE -> 0xFF311B92.toInt()
-                NodeType.CHECKPOINT_NODE -> 0xFF512DA8.toInt()
                 NodeType.TEXTURE -> 0xFF9333EA.toInt()
             }
             guiGraphics.fill(nx, ny, nx + nw, ny + nh, color)

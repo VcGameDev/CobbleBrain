@@ -127,4 +127,17 @@ class StoryDocumentationModalWidget(
         }
         return true
     }
+
+    fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
+        if (scrollY < 0) {
+            activeTab = (activeTab + 1) % 3
+            buildUi()
+            return true
+        } else if (scrollY > 0) {
+            activeTab = if (activeTab <= 0) 2 else activeTab - 1
+            buildUi()
+            return true
+        }
+        return false
+    }
 }

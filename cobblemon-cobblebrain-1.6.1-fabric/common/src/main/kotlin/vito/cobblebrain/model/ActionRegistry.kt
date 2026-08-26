@@ -149,13 +149,32 @@ object ActionRegistry {
             defaultParams = mapOf(
                 "operationMode" to "APPLY_LOOK",
                 "subjectType" to "PLAYER_POKEMON",
-                "subjectIdentifier" to "0",
+                "subjectIdentifier" to "1",
                 "referenceType" to "PLAYER",
                 "referenceIdentifier" to "",
                 "lookMode" to "TOWARDS_REFERENCE",
                 "durationMode" to "TEMPORARY",
                 "durationTicks" to "60",
                 "waitForCompletion" to "false"
+            )
+        ),
+        ActionDefinition(
+            id = "MOVE_TO_BLOCK",
+            category = ActionCategory.ENTITIES,
+            name = "Move / Pathfind Entity",
+            icon = "🚶",
+            description = "Commands a Cobblemon, NPC, or mob to walk, sprint, or sneak along a path to target coordinates or story anchor.",
+            defaultParams = mapOf(
+                "subjectType" to "PLAYER_POKEMON",
+                "subjectIdentifier" to "1",
+                "targetDestinationType" to "COORDINATES",
+                "destinationIdentifier" to "~0 ~0 ~5",
+                "speedMode" to "WALK",
+                "customSpeedMultiplier" to "1.0",
+                "waitForCompletion" to "true",
+                "timeoutTicks" to "100",
+                "onTimeoutBehavior" to "TELEPORT_TO_DESTINATION",
+                "lockPositionOnArrival" to "true"
             )
         ),
         ActionDefinition(
@@ -166,7 +185,7 @@ object ActionRegistry {
             description = "Plays Cobblemon or vanilla NPC/Mob animation/pose with duration and AI override lock.",
             defaultParams = mapOf(
                 "animationSystem" to "COBBLEMON",
-                "targetIdentifier" to "0",
+                "targetIdentifier" to "1",
                 "animationId" to "battle_idle",
                 "durationMode" to "TEMPORARY",
                 "durationTicks" to "60",
@@ -182,7 +201,8 @@ object ActionRegistry {
             description = "Dynamically swaps the texture/skin of a Cobblemon or NPC/Mob using custom PNG assets from the story.",
             defaultParams = mapOf(
                 "targetType" to "PLAYER_POKEMON",
-                "targetIdentifier" to "0",
+                "targetIdentifier" to "1",
+                "pokemonSlot" to "1",
                 "textureName" to "custom_texture.png",
                 "resetToDefault" to "false"
             )
@@ -195,10 +215,10 @@ object ActionRegistry {
             description = "Dynamically adds, removes, or clears story tags on entities, world blocks, or players.",
             defaultParams = mapOf(
                 "targetCategory" to "ENTITY",
-                "targetSelector" to "CLOSEST_MOB",
-                "selectorIdentifier" to "16",
+                "targetSelector" to "PLAYER_POKEMON_SLOT",
+                "selectorIdentifier" to "1",
                 "operation" to "ADD_TAG",
-                "tagName" to "quest_target"
+                "tagName" to "story_tag_1"
             )
         ),
 
@@ -235,7 +255,7 @@ object ActionRegistry {
             name = "Modify Pokémon",
             icon = "📈",
             description = "Modifies HP, EXP, level, or friendship of a party Pokémon.",
-            defaultParams = mapOf("slotIndex" to "0", "addExp" to "500", "addLevel" to "1", "healHp" to "true")
+            defaultParams = mapOf("targetType" to "PLAYER_PARTY", "targetSlot" to "1", "addExp" to "500", "addLevel" to "1", "healHp" to "true")
         ),
         ActionDefinition(
             id = "CHANGE_POKEMON_PERSONALITY",
@@ -243,7 +263,7 @@ object ActionRegistry {
             name = "CobbleBrain Personality",
             icon = "🎭",
             description = "Changes AI dialogue style, personality preset, and conversation tone.",
-            defaultParams = mapOf("slotIndex" to "0", "personalityPreset" to "Heroic")
+            defaultParams = mapOf("slotIndex" to "1", "personalityPreset" to "Heroic")
         ),
         ActionDefinition(
             id = "ADD_POKEMON_PARTY_EFFECT",
@@ -293,7 +313,7 @@ object ActionRegistry {
             name = "Player Effect",
             icon = "⚡",
             description = "Applies potion effect (e.g. Speed, Invisibility) to player.",
-            defaultParams = mapOf("effectId" to "minecraft:speed", "durationSec" to "10", "amplifier" to "1")
+            defaultParams = mapOf("effectId" to "minecraft:speed", "durationSec" to "10", "amplifier" to "1", "showParticles" to "true")
         ),
 
         // 🎒 ITEMS
@@ -393,6 +413,7 @@ object ActionRegistry {
             "EFFECT" -> "ADD_PLAYER_EFFECT"
             "LOOK_AT_BLOCK" -> "LOOK_AT"
             "ANIMATION_BLOCK" -> "ANIMATION"
+            "NAVIGATE_ENTITY", "MOVE_TO", "PATHFIND_ENTITY", "MOVE_ENTITY" -> "MOVE_TO_BLOCK"
             "TEXTURE_BLOCK", "ENTITY_TEXTURE", "SET_TEXTURE" -> "SET_ENTITY_TEXTURE"
             "MANAGE_TAG", "TAG_ACTION", "TAG", "MANAGE_TAGS" -> "TAG_BLOCK"
             else -> id

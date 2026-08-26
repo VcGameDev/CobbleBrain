@@ -17,13 +17,7 @@ class SaveProfileModalWidget(
     val onClose: () -> Unit,
     val onDataChanged: () -> Unit
 ) {
-    // Mode Detection: LOAD if nodeType is LOAD_STATE_NODE or checkpointMode is LOAD
-    private var isSaveMode: Boolean = when {
-        node.nodeType == NodeType.SAVE_STATE_NODE -> true
-        node.nodeType == NodeType.LOAD_STATE_NODE -> false
-        node.params["checkpointMode"] == "LOAD" -> false
-        else -> true
-    }
+    private var isSaveMode: Boolean = node.nodeType != NodeType.LOAD_STATE_NODE
 
     private val modalWidth = 470.coerceAtMost(screenWidth - 20)
     private val modalHeight = 340.coerceAtMost(screenHeight - 20)
@@ -39,7 +33,7 @@ class SaveProfileModalWidget(
     private var activeTab: Int = 0 // 0 = Modules, 1 = Flow & Scope, 2 = Transition (Load mode only)
     private var tabScrollOffsets = floatArrayOf(0f, 0f, 0f)
     private var focusedEditBox: EditBox? = null
-    private var activeVarPickerModal: VariableSelectorModalWidget? = null
+    private var activeVarPickerModal: StoryVariableSelectorModalWidget? = null
 
     // Modern Button Helper Class
     class ModernButton(
@@ -141,7 +135,6 @@ class SaveProfileModalWidget(
 
     private val closeButton: ModernButton
     private val scopeBtn: ModernButton
-    private val modeToggleBtn: ModernButton?
 
     private val profileIdEdit: EditBox
 
@@ -180,17 +173,6 @@ class SaveProfileModalWidget(
             onClose()
         }
 
-        // Mode switch ONLY if generic CHECKPOINT_NODE
-        modeToggleBtn = if (node.nodeType == NodeType.CHECKPOINT_NODE) {
-            ModernButton(modalX + modalWidth - 225, modalY + 6, 90, 16, if (isSaveMode) "Mode: SAVE" else "Mode: LOAD", isPrimary = true) {
-                isSaveMode = !isSaveMode
-                node.params["checkpointMode"] = if (isSaveMode) "SAVE" else "LOAD"
-                modeToggleBtn?.label = if (isSaveMode) "Mode: SAVE" else "Mode: LOAD"
-                if (activeTab > 1 && isSaveMode) activeTab = 0
-                onDataChanged()
-            }
-        } else null
-
         profileIdEdit = EditBox(font, modalX + 105, modalY + 30, modalWidth - 230, 16, Component.literal("Profile ID"))
         profileIdEdit.setMaxLength(2000)
         profileIdEdit.setHint(Component.literal("§8e.g. {player}_slot1"))
@@ -218,9 +200,10 @@ class SaveProfileModalWidget(
 
         openVarPickerBtn = ModernButton(0, 0, 110, 18, "📋 Select...") {
             val currentSelected = (node.params["selectedVarKeys"] ?: "").split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
-            activeVarPickerModal = VariableSelectorModalWidget(
+            activeVarPickerModal = StoryVariableSelectorModalWidget(
                 project = project,
                 initialSelectedKeys = currentSelected,
+                isMultiSelect = true,
                 font = font,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
@@ -401,16 +384,15 @@ class SaveProfileModalWidget(
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + modalHeight, 0xEE0F172A.toInt())
         // Border outline (Cyan Highlight)
         guiGraphics.fill(modalX, modalY, modalX + modalWidth, modalY + 1, 0xFF38BDF8.toInt())
-        guiGraphics.fill(modalX, modalY, modalX + 1, modalY + modalHeight, 0x33FFFFFF.toInt())
-        guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0x33FFFFFF.toInt())
-        guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0x33FFFFFF.toInt())
+        guiGraphics.fill(modalX, modalY, modalX + 1, modalY + modalHeight, 0x33FFFFFF)
+        guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0x33FFFFFF)
+        guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0x33FFFFFF)
 
         // Header Title
         val headerTitle = if (isSaveMode) "💾 Save Profile Configuration" else "📂 Load Profile Configuration"
         guiGraphics.drawString(font, headerTitle, modalX + 12, modalY + 10, 0xFF38BDF8.toInt(), true)
 
         closeButton.render(guiGraphics, font, mouseX, mouseY)
-        modeToggleBtn?.render(guiGraphics, font, mouseX, mouseY)
 
         // Profile ID & Scope Card Panel
         guiGraphics.fill(modalX + 10, modalY + 26, modalX + modalWidth - 10, modalY + 50, 0xCC1E293B.toInt())
@@ -432,7 +414,7 @@ class SaveProfileModalWidget(
             val tabW = font.width(name) + 16
             val isHover = mouseX >= tabX && mouseX <= tabX + tabW && mouseY >= tabY && mouseY <= tabY + 20
 
-            val textCol = if (isSelected) 0xFF38BDF8.toInt() else if (isHover) 0xFFFFFFFF.toInt() else 0x94A3B8.toInt()
+            val textCol = if (isSelected) 0xFF38BDF8.toInt() else if (isHover) 0xFFFFFFFF.toInt() else 0x94A3B8
             guiGraphics.drawString(font, name, tabX + 8, tabY + 5, textCol, false)
 
             if (isSelected) {
@@ -440,7 +422,7 @@ class SaveProfileModalWidget(
             }
             tabX += tabW + 6
         }
-        guiGraphics.fill(modalX + 10, tabY + 22, modalX + modalWidth - 10, tabY + 23, 0x22FFFFFF.toInt())
+        guiGraphics.fill(modalX + 10, tabY + 22, modalX + modalWidth - 10, tabY + 23, 0x22FFFFFF)
 
         // Content Area Card Background
         guiGraphics.fill(contentLeft, contentTop, contentRight, contentBottom, 0xCC1E293B.toInt())
@@ -627,6 +609,8 @@ class SaveProfileModalWidget(
             guiGraphics.fill(sbX, contentTop, sbX + 3, contentBottom, 0xFF0F172A.toInt())
             guiGraphics.fill(sbX, thumbY, sbX + 3, thumbY + thumbH, 0xFF38BDF8.toInt())
         }
+
+        activeVarPickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
     }
 
     private fun checkEditClick(editBox: EditBox, mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -645,7 +629,6 @@ class SaveProfileModalWidget(
         }
 
         if (closeButton.mouseClicked(mouseX, mouseY, button)) return true
-        if (modeToggleBtn?.mouseClicked(mouseX, mouseY, button) == true) return true
         if (scopeBtn.mouseClicked(mouseX, mouseY, button)) return true
 
         if (profileIdEdit.mouseClicked(mouseX, mouseY, button)) {

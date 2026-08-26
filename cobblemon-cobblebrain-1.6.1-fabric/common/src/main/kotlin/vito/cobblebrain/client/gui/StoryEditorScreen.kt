@@ -149,13 +149,13 @@ class StoryEditorScreen(
         PaletteEntry(true, "--- 3. ACTIONS & EVENTS ---"),
         PaletteEntry(false, "💬 Dialogue Block", NodeType.DIALOGUE),
         PaletteEntry(false, "⚡ Action", NodeType.ACTION),
+        PaletteEntry(false, "🚶 Move / Pathfind Entity", NodeType.ACTION, "MOVE_TO_BLOCK"),
         PaletteEntry(false, "🏷️ Manage Story Tag", NodeType.ACTION, "TAG_BLOCK"),
         PaletteEntry(false, "⌨️ Command", NodeType.COMMAND_NODE),
         PaletteEntry(false, "💾 Save Checkpoint", NodeType.SAVE_STATE_NODE),
         PaletteEntry(false, "🔄 Load Checkpoint", NodeType.LOAD_STATE_NODE),
         PaletteEntry(false, "🎵 Audio / Music", NodeType.AUDIO),
         PaletteEntry(false, "🎨 Change Texture", NodeType.TEXTURE),
-        PaletteEntry(false, "🚩 Checkpoint", NodeType.CHECKPOINT_NODE),
         PaletteEntry(false, "⏱ Timer", NodeType.TIMER),
         PaletteEntry(false, "📝 Note", NodeType.COMMENT)
     )
@@ -178,6 +178,7 @@ class StoryEditorScreen(
 
     private val toolbarHeight = 36
     private val sceneBarHeight = 16
+    var pendingFocusNodeId: String? = null
 
     init {
         project.scenes.forEach { openSceneIds.add(it.id) }
@@ -371,6 +372,12 @@ class StoryEditorScreen(
                 isTestMenuOpen = next
             }.bounds(testX, testY, testW, testH).build()
         )
+
+        val pendingId = pendingFocusNodeId
+        if (pendingId != null) {
+            pendingFocusNodeId = null
+            focusOnNode(pendingId)
+        }
     }
 
     private fun checkDirtyBeforeAction(onProceed: () -> Unit) {
@@ -396,6 +403,8 @@ class StoryEditorScreen(
     private fun addNode(type: NodeType, presetSubtype: String? = null) {
         val title = if (presetSubtype == "TAG_BLOCK") {
             "Manage Story Tag"
+        } else if (presetSubtype == "MOVE_TO_BLOCK") {
+            "Move / Pathfind Entity"
         } else when (type) {
             NodeType.BEGIN_SCENE -> "Scene Start"
             NodeType.TRIGGER -> "Trigger"
@@ -417,7 +426,6 @@ class StoryEditorScreen(
             NodeType.AUDIO -> "Audio / Music"
             NodeType.SAVE_STATE_NODE -> "Save Checkpoint"
             NodeType.LOAD_STATE_NODE -> "Load Checkpoint"
-            NodeType.CHECKPOINT_NODE -> "Checkpoint"
             NodeType.TEXTURE -> "Change Texture"
         }
 
@@ -587,6 +595,15 @@ class StoryEditorScreen(
             ghostNode.params["actionSubtype"] = "TAG_BLOCK"
             ghostNode.params["actionId"] = "TAG_BLOCK"
             ActionRegistry.getAction("TAG_BLOCK")?.defaultParams?.forEach { (k, v) ->
+                ghostNode.params[k] = v
+            }
+        }
+
+        if (presetSubtype == "MOVE_TO_BLOCK" || (type == NodeType.ACTION && presetSubtype == "MOVE_TO_BLOCK")) {
+            ghostNode.title = "Move / Pathfind Entity"
+            ghostNode.params["actionSubtype"] = "MOVE_TO_BLOCK"
+            ghostNode.params["actionId"] = "MOVE_TO_BLOCK"
+            ActionRegistry.getAction("MOVE_TO_BLOCK")?.defaultParams?.forEach { (k, v) ->
                 ghostNode.params[k] = v
             }
         }
@@ -815,6 +832,11 @@ class StoryEditorScreen(
     }
 
     fun focusOnNode(blockId: String) {
+        if (width <= 0 || height <= 0 || nodeWidgets.isEmpty()) {
+            pendingFocusNodeId = blockId
+            return
+        }
+
         val targetNode = project.scenes.flatMap { it.nodes }.find { it.id == blockId }
             ?: editingConstructionNode?.innerNodes?.find { it.id == blockId }
         if (targetNode != null) {
@@ -1319,9 +1341,9 @@ class StoryEditorScreen(
         }
 
         if (isAddMenuOpen) {
-            val dropW = 160
+            val dropW = 175
             val dropX = addMenuX
-            val items = listOf("🎬 New Scene", "💬 Dialogue Block", "🏷️ Manage Story Tag", "📋 Manage Variables", "🔹 Variable Block (Get)", "✏️ Modifier Block (Set)", "+ Blocks")
+            val items = listOf("🎬 New Scene", "💬 Dialogue Block", "🚶 Move / Pathfind Entity", "🏷️ Manage Story Tag", "📋 Manage Variables", "🔹 Variable Block (Get)", "✏️ Modifier Block (Set)", "+ Blocks")
             val dropH = itemH * items.size + 4
 
             guiGraphics.fill(dropX, dropY, dropX + dropW, dropY + dropH, 0xF018181C.toInt())
@@ -1954,9 +1976,9 @@ class StoryEditorScreen(
         }
 
         if (isAddMenuOpen) {
-            val dropW = 160
+            val dropW = 175
             val dropX = addMenuX
-            val itemsCount = 7
+            val itemsCount = 8
             if (mouseX >= dropX && mouseX <= dropX + dropW && mouseY >= dropY && mouseY < dropY + itemH * itemsCount) {
                 val idx = ((mouseY - (dropY + 2)) / itemH).toInt()
                 when (idx) {
@@ -1966,10 +1988,14 @@ class StoryEditorScreen(
                         isAddMenuOpen = false
                     }
                     2 -> {
-                        addNode(NodeType.ACTION, "TAG_BLOCK")
+                        addNode(NodeType.ACTION, "MOVE_TO_BLOCK")
                         isAddMenuOpen = false
                     }
                     3 -> {
+                        addNode(NodeType.ACTION, "TAG_BLOCK")
+                        isAddMenuOpen = false
+                    }
+                    4 -> {
                         activeVariableModal = StoryVariableManagerModalWidget(
                             project = project,
                             font = font,
@@ -1980,15 +2006,15 @@ class StoryEditorScreen(
                         )
                         isAddMenuOpen = false
                     }
-                    4 -> {
+                    5 -> {
                         addNode(NodeType.VARIABLE_GET)
                         isAddMenuOpen = false
                     }
-                    5 -> {
+                    6 -> {
                         addNode(NodeType.VARIABLE_SET)
                         isAddMenuOpen = false
                     }
-                    6 -> {
+                    7 -> {
                         isBlockPaletteOpen = true
                         isAddMenuOpen = false
                     }
@@ -3091,8 +3117,11 @@ class StoryEditorScreen(
     }
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
-        if (showExitConfirmModal || activeDocModal != null) return true
+        if (showExitConfirmModal) return true
+        if (activeDocModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeDocModal != null) return true
 
+        if (activePokemonConfigModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeItemPickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeResourcePickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeEntityConfigModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true

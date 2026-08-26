@@ -13,17 +13,22 @@ class StoryVariableSelectorModalWidget(
     val font: Font,
     val screenWidth: Int,
     val screenHeight: Int,
-    val onSelect: (StoryVariable) -> Unit,
+    initialSelectedKeys: Set<String> = emptySet(),
+    val isMultiSelect: Boolean = false,
+    val onSelect: ((StoryVariable) -> Unit)? = null,
+    val onSaveSelection: ((Set<String>) -> Unit)? = null,
     val onClose: () -> Unit
 ) {
-    private val modalWidth = 340.coerceAtMost(screenWidth - 20)
-    private val modalHeight = 250.coerceAtMost(screenHeight - 20)
+    private val modalWidth = if (isMultiSelect) 440.coerceAtMost(screenWidth - 20) else 340.coerceAtMost(screenWidth - 20)
+    private val modalHeight = if (isMultiSelect) 310.coerceAtMost(screenHeight - 20) else 250.coerceAtMost(screenHeight - 20)
     private val modalX = maxOf(10, (screenWidth - modalWidth) / 2)
     private val modalY = maxOf(10, (screenHeight - modalHeight) / 2)
 
+    private val selectedKeys = initialSelectedKeys.toMutableSet()
     private val searchBox: EditBox
     private var scrollOffset = 0
     private val closeButton: Button
+    private var saveButton: Button? = null
 
     init {
         searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Search Variable"))
@@ -35,6 +40,13 @@ class StoryVariableSelectorModalWidget(
         closeButton = Button.builder(Component.literal("✖ Close")) {
             onClose()
         }.bounds(modalX + modalWidth - 75, modalY + 5, 65, 16).build()
+
+        if (isMultiSelect) {
+            saveButton = Button.builder(Component.literal("✔ Save Selection")) {
+                onSaveSelection?.invoke(selectedKeys)
+                onClose()
+            }.bounds(modalX + modalWidth - 140, modalY + modalHeight - 25, 125, 18).build()
+        }
     }
 
     private fun getFilteredVariables(): List<StoryVariable> {
@@ -51,8 +63,10 @@ class StoryVariableSelectorModalWidget(
         guiGraphics.fill(modalX + modalWidth - 1, modalY, modalX + modalWidth, modalY + modalHeight, 0xFF00ACC1.toInt())
         guiGraphics.fill(modalX, modalY + modalHeight - 1, modalX + modalWidth, modalY + modalHeight, 0xFF00ACC1.toInt())
 
-        guiGraphics.drawString(font, "📦 Select Catalog Variable", modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
+        val title = if (isMultiSelect) "📦 Select Variables for Snapshot" else "📦 Select Catalog Variable"
+        guiGraphics.drawString(font, title, modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
         closeButton.render(guiGraphics, mouseX, mouseY, partialTick)
+        saveButton?.render(guiGraphics, mouseX, mouseY, partialTick)
 
         searchBox.render(guiGraphics, mouseX, mouseY, partialTick)
 
@@ -60,7 +74,7 @@ class StoryVariableSelectorModalWidget(
         val listY = modalY + 52
         val listW = modalWidth - 30
         val itemH = 22
-        val maxVisible = 7
+        val maxVisible = if (isMultiSelect) 9 else 7
         val listH = itemH * maxVisible
 
         guiGraphics.fill(listX, listY, listX + listW, listY + listH, 0xFF121218.toInt())
@@ -79,16 +93,18 @@ class StoryVariableSelectorModalWidget(
             val variable = filtered[i]
             val iy = listY + idx * itemH
 
+            val isSelected = selectedKeys.contains(variable.id)
             val isHovered = mouseX >= listX && mouseX <= listX + listW && mouseY >= iy && mouseY < iy + itemH
-            val bg = if (isHovered) 0xFF00ACC1.toInt() else if (idx % 2 == 0) 0xFF1A1A22.toInt() else 0xFF22222C.toInt()
+            val bg = if (isSelected) 0xFF00695C.toInt() else if (isHovered) 0xFF00ACC1.toInt() else if (idx % 2 == 0) 0xFF1A1A22.toInt() else 0xFF22222C.toInt()
 
             guiGraphics.fill(listX + 2, iy + 1, listX + listW - 2, iy + itemH - 1, bg)
 
             val scopeBadge = if (variable.scope.name == "GLOBAL") "🌐 Global" else "📁 Local"
             val typeBadge = variable.type.name
-            val text = "${variable.id}  [$typeBadge] ($scopeBadge)"
+            val prefix = if (isMultiSelect) (if (isSelected) "[✔] " else "[  ] ") else ""
+            val text = "$prefix${variable.id}  [$typeBadge] ($scopeBadge)"
 
-            val textColor = if (isHovered) 0xFFFFFFFF.toInt() else 0xFFCCCCCC.toInt()
+            val textColor = if (isSelected || isHovered) 0xFFFFFFFF.toInt() else 0xFFCCCCCC.toInt()
             guiGraphics.drawString(font, font.plainSubstrByWidth(text, listW - 12), listX + 8, iy + 6, textColor, false)
         }
 
@@ -107,6 +123,7 @@ class StoryVariableSelectorModalWidget(
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (closeButton.mouseClicked(mouseX, mouseY, button)) return true
+        if (saveButton?.mouseClicked(mouseX, mouseY, button) == true) return true
         val clickedSearch = searchBox.mouseClicked(mouseX, mouseY, button)
         searchBox.isFocused = clickedSearch
         if (clickedSearch) return true
@@ -115,13 +132,18 @@ class StoryVariableSelectorModalWidget(
         val listY = modalY + 52
         val listW = modalWidth - 30
         val itemH = 22
-        val maxVisible = 7
+        val maxVisible = if (isMultiSelect) 9 else 7
 
         val filtered = getFilteredVariables()
         if (mouseX >= listX && mouseX <= listX + listW && mouseY >= listY && mouseY < listY + itemH * maxVisible) {
             val idx = ((mouseY - listY) / itemH).toInt() + scrollOffset
             if (idx in filtered.indices) {
-                onSelect(filtered[idx])
+                val v = filtered[idx]
+                if (isMultiSelect) {
+                    if (selectedKeys.contains(v.id)) selectedKeys.remove(v.id) else selectedKeys.add(v.id)
+                } else {
+                    onSelect?.invoke(v)
+                }
                 return true
             }
         }
@@ -130,7 +152,7 @@ class StoryVariableSelectorModalWidget(
 
     fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
         val filtered = getFilteredVariables()
-        val maxVisible = 7
+        val maxVisible = if (isMultiSelect) 9 else 7
         if (filtered.size > maxVisible) {
             if (scrollY > 0) {
                 scrollOffset = (scrollOffset - 1).coerceAtLeast(0)
@@ -155,3 +177,4 @@ class StoryVariableSelectorModalWidget(
         return false
     }
 }
+

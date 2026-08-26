@@ -527,7 +527,7 @@ object StoryExecutor {
         }
 
         // 9. SAVE STATE CHECKPOINT BLOCK
-        if (currentNode.nodeType == NodeType.SAVE_STATE_NODE || (currentNode.nodeType == NodeType.CHECKPOINT_NODE && (currentNode.params["checkpointMode"] == "SAVE" || currentNode.params["checkpointMode"] == null))) {
+        if (currentNode.nodeType == NodeType.SAVE_STATE_NODE) {
             val success = StoryCheckpointManager.saveCheckpoint(instance.context, currentNode)
             val outputPortId = if (success) {
                 currentNode.outputs.find { it.id == "OUT_SUCCESS" || it.name.equals("Success", true) || it.name.equals("OK", true) }?.id
@@ -543,7 +543,7 @@ object StoryExecutor {
         }
 
         // 10. LOAD STATE CHECKPOINT BLOCK
-        if (currentNode.nodeType == NodeType.LOAD_STATE_NODE || (currentNode.nodeType == NodeType.CHECKPOINT_NODE && currentNode.params["checkpointMode"] == "LOAD")) {
+        if (currentNode.nodeType == NodeType.LOAD_STATE_NODE) {
             val server = instance.context.server ?: instance.context.player?.server
             if (server == null) {
                 val errPort = currentNode.outputs.find { it.id == "OUT_ERROR" || it.name.equals("Error", true) }?.id ?: currentNode.outputs.lastOrNull()?.id
@@ -643,6 +643,10 @@ object StoryExecutor {
         val condType = currentNode.params["condType"] ?: "LOCATION"
         val actionSubtype = currentNode.params["actionSubtype"] ?: ""
         if (currentNode.nodeType == NodeType.ACTION &&
+            (actionSubtype in listOf("MOVE_TO_BLOCK", "NAVIGATE_ENTITY", "MOVE_TO", "PATHFIND_ENTITY")) &&
+            currentNode.params["waitForCompletion"] != "false") {
+            return
+        } else if (currentNode.nodeType == NodeType.ACTION &&
             (actionSubtype in listOf("ANIMATION", "ANIMATION_BLOCK", "LOOK_AT", "LOOK_AT_BLOCK")) &&
             currentNode.params["waitForCompletion"] == "true" &&
             currentNode.params["durationMode"] != "INDEFINITE" &&
@@ -852,7 +856,7 @@ object StoryExecutor {
         }
     }
 
-    private fun continueOutgoingConnections(instance: ActiveStoryInstance, currentNode: NodeData, stepCount: Int) {
+    fun continueOutgoingConnections(instance: ActiveStoryInstance, currentNode: NodeData, stepCount: Int = 0) {
         if (instance.context.isCancelled) return
         val scene = instance.project.getActiveScene() ?: return
         val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id }
@@ -980,8 +984,15 @@ object StoryExecutor {
                     "SHOW_TITLE_SCREEN" -> ShowTitleAction().execute(context, node)
                     "LOOK_AT", "LOOK_AT_BLOCK" -> LookAtAction().execute(context, node)
                     "ANIMATION", "ANIMATION_BLOCK" -> AnimationAction().execute(context, node)
+                    "MOVE_TO_BLOCK", "NAVIGATE_ENTITY", "MOVE_TO", "PATHFIND_ENTITY" -> MoveToAction().execute(context, node)
                     "SET_ENTITY_TEXTURE", "TEXTURE_BLOCK", "ENTITY_TEXTURE" -> SetEntityTextureAction().execute(context, node)
                     "TAG_BLOCK", "MANAGE_TAG", "TAG_ACTION", "TAG" -> TagAction().execute(context, node)
+                    "SPAWN_STRUCTURE", "STRUCTURE" -> SpawnStructureAction().execute(context, node)
+                    "CHANGE_POKEMON_PERSONALITY" -> ChangePokemonPersonalityAction().execute(context, node)
+                    "ADD_POKEMON_PARTY_EFFECT" -> PartyPokemonEffectAction().execute(context, node)
+                    "JUMP_TO_STORY_POINT" -> JumpToStoryPointAction().execute(context, node)
+                    "REWIND_TO_STORY_POINT" -> RewindToStoryPointAction().execute(context, node)
+                    "CHANGE_SCREEN_TINT" -> ChangeScreenTintAction().execute(context, node)
                     "SPAWN_PARTICLES" -> SpawnParticlesAction().execute(context, node)
                     "PLAY_SOUND", "SOUND" -> PlaySoundAction().execute(context, node)
                     "PLAY_MUSIC" -> PlayMusicAction().execute(context, node)

@@ -144,6 +144,30 @@ class AIDialogueBlock {
                         StoryExecutor.continuePortConnections(instance, node, targetPort.id, 1)
                     }
                 }
+
+                if (isSuccess) {
+                    vito.cobblebrain.engine.StoryDebugger.recordLog(
+                        storyId = instance.storyId,
+                        blockId = node.id,
+                        blockType = node.nodeType,
+                        status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
+                        level = "INFO",
+                        message = "AI Dialogue generated ($speakerName): ${verbalText.take(45)}...",
+                        details = verbalText,
+                        server = server
+                    )
+                } else {
+                    vito.cobblebrain.engine.StoryDebugger.recordLog(
+                        storyId = instance.storyId,
+                        blockId = node.id,
+                        blockType = node.nodeType,
+                        status = vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED,
+                        level = "WARN",
+                        message = "AI request failed / timed out. Using fallback.",
+                        details = "Fallback dialogue: $verbalText",
+                        server = server
+                    )
+                }
             }
 
             if (server != null) {

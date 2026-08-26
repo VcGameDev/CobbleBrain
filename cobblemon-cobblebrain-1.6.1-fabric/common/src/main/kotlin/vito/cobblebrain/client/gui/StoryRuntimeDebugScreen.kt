@@ -244,9 +244,9 @@ class StoryRuntimeDebugScreen(
         RenderSystem.defaultBlendFunc()
 
         // 1. Draw solid canvas background
-        renderBackground(guiGraphics, mouseX, mouseY, partialTick)
+        guiGraphics.fill(0, 0, width, height, 0xF8090D16.toInt())
 
-        // 2. Top Header Bar (52px high)
+        // 2. Top Header Bar (50px high)
         guiGraphics.fill(0, 0, width, 50, 0xFF0F172A.toInt())
         guiGraphics.fill(0, 49, width, 50, 0xFF38BDF8.toInt())
 

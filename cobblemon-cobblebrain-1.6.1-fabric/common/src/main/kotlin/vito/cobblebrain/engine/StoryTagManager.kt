@@ -93,7 +93,7 @@ object StoryTagManager {
             }
             "PLAYER_POKEMON_SLOT", "POKEMON_SLOT", "PARTY_SLOT" -> {
                 if (player == null) return null
-                val slotIdx = (identifier.toIntOrNull() ?: 0).coerceIn(0, 5)
+                val slotIdx = PokemonQuery.parsePartySlotIndex(identifier)
                 try {
                     val party = Cobblemon.storage.getParty(player)
                     val poke = party.get(slotIdx)

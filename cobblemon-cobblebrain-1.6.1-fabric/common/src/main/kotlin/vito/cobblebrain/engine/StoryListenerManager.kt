@@ -8,12 +8,15 @@ import vito.cobblebrain.model.NodeType
 
 object StoryListenerManager {
 
+    val activeContinuousTriggerStates = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
     /**
      * Called periodically (e.g. every 10 or 20 ticks) to check continuous triggers
      * such as elapsed time, player coordinates, biome, day/night, weather, etc.
      */
     fun onServerTick() {
         StoryLookAtManager.onServerTick()
+        StoryPathfindingManager.onServerTick()
 
         val activeList = StoryExecutor.activeStories.values.toList()
         for (instance in activeList) {
@@ -73,12 +76,19 @@ object StoryListenerManager {
                     else -> false
                 }
 
-                if (shouldTrigger) {
-                    val isIfNot = trigNode.params["triggerCondition"] == "IF_NOT"
-                    val finalResult = !isIfNot
-                    if (finalResult) {
+                val triggerKey = "${instance.storyId}:${trigNode.id}"
+                val wasTriggered = activeContinuousTriggerStates[triggerKey] ?: false
+
+                val isIfNot = trigNode.params["triggerCondition"] == "IF_NOT"
+                val finalResult = if (isIfNot) !shouldTrigger else shouldTrigger
+
+                if (finalResult) {
+                    if (!wasTriggered) {
+                        activeContinuousTriggerStates[triggerKey] = true
                         StoryExecutor.executeNodeChain(instance, trigNode, targetPortId = null)
                     }
+                } else {
+                    activeContinuousTriggerStates[triggerKey] = false
                 }
             }
         }

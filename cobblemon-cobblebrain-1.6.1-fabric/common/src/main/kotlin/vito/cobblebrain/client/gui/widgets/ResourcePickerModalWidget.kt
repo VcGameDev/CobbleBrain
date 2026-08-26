@@ -12,7 +12,8 @@ enum class ResourcePickerType {
     SOUND,
     ENTITY,
     STRUCTURE,
-    ITEM
+    ITEM,
+    EFFECT
 }
 
 class ResourcePickerModalWidget(
@@ -123,6 +124,23 @@ class ResourcePickerModalWidget(
                 )
                 fallbackList.distinct().sorted()
             }
+            ResourcePickerType.EFFECT -> {
+                val registryList = try { BuiltInRegistries.MOB_EFFECT.keySet().map { it.toString() } } catch (_: Exception) { emptyList() }
+                val fallbackList = listOf(
+                    "minecraft:speed", "minecraft:slowness", "minecraft:haste", "minecraft:mining_fatigue",
+                    "minecraft:strength", "minecraft:instant_health", "minecraft:instant_damage", "minecraft:jump_boost",
+                    "minecraft:nausea", "minecraft:regeneration", "minecraft:resistance", "minecraft:fire_resistance",
+                    "minecraft:water_breathing", "minecraft:invisibility", "minecraft:blindness", "minecraft:night_vision",
+                    "minecraft:hunger", "minecraft:weakness", "minecraft:poison", "minecraft:wither",
+                    "minecraft:health_boost", "minecraft:absorption", "minecraft:saturation", "minecraft:glowing",
+                    "minecraft:levitation", "minecraft:luck", "minecraft:unluck", "minecraft:slow_falling",
+                    "minecraft:conduit_power", "minecraft:dolphins_grace", "minecraft:bad_omen",
+                    "minecraft:hero_of_the_village", "minecraft:darkness", "minecraft:trial_omen",
+                    "minecraft:raid_omen", "minecraft:wind_charged", "minecraft:weaving",
+                    "minecraft:oozing", "minecraft:infested"
+                )
+                (registryList + fallbackList).distinct().sorted()
+            }
         }
     }
 
@@ -136,6 +154,7 @@ class ResourcePickerModalWidget(
             ResourcePickerType.ENTITY -> (try { BuiltInRegistries.ENTITY_TYPE.containsKey(rl) } catch (_: Exception) { false }) || allResources.contains(trimmed)
             ResourcePickerType.ITEM -> (try { BuiltInRegistries.ITEM.containsKey(rl) } catch (_: Exception) { false }) || allResources.contains(trimmed)
             ResourcePickerType.STRUCTURE -> allResources.contains(trimmed)
+            ResourcePickerType.EFFECT -> (try { BuiltInRegistries.MOB_EFFECT.containsKey(rl) } catch (_: Exception) { false }) || allResources.contains(trimmed)
         }
 
         return if (isRegistered) {
@@ -185,6 +204,7 @@ class ResourcePickerModalWidget(
             ResourcePickerType.ENTITY -> "👾"
             ResourcePickerType.STRUCTURE -> "🏛️"
             ResourcePickerType.ITEM -> "📦"
+            ResourcePickerType.EFFECT -> "🧪"
         }
 
         val result = mutableListOf<ResourceCard>()
@@ -217,6 +237,11 @@ class ResourcePickerModalWidget(
             val path = if (id.contains(":")) id.substringAfter(":") else id
             val ns = if (id.contains(":")) id.substringBefore(":") else "minecraft"
             val icon = when {
+                pickerType == ResourcePickerType.EFFECT && (path.contains("strength") || path.contains("speed") || path.contains("haste") || path.contains("jump")) -> "⚡"
+                pickerType == ResourcePickerType.EFFECT && (path.contains("regen") || path.contains("health") || path.contains("absorption")) -> "💖"
+                pickerType == ResourcePickerType.EFFECT && (path.contains("resist") || path.contains("fire_resist")) -> "🛡️"
+                pickerType == ResourcePickerType.EFFECT && (path.contains("poison") || path.contains("wither") || path.contains("damage") || path.contains("slowness") || path.contains("weakness") || path.contains("blindness") || path.contains("darkness")) -> "💀"
+                pickerType == ResourcePickerType.EFFECT && (path.contains("invisibility") || path.contains("glowing") || path.contains("night_vision")) -> "👁️"
                 pickerType == ResourcePickerType.SOUND && path.contains("music") -> "🎼"
                 pickerType == ResourcePickerType.SOUND && path.contains("player") -> "👤"
                 pickerType == ResourcePickerType.SOUND && path.contains("entity") -> "🐾"
@@ -246,6 +271,7 @@ class ResourcePickerModalWidget(
             ResourcePickerType.ENTITY -> "👾 Native Entity Catalog (EntityTypes)"
             ResourcePickerType.STRUCTURE -> "🏛️ Registered Structures Catalog"
             ResourcePickerType.ITEM -> "📦 Native Item Catalog"
+            ResourcePickerType.EFFECT -> "🧪 Native Potion & Mob Effects Catalog"
         }
         guiGraphics.drawString(font, title, modalX + 10, modalY + 7, 0xFF00FFCC.toInt(), false)
 
