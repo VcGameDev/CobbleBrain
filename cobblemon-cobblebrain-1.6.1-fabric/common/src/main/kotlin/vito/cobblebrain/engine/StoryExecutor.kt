@@ -642,7 +642,11 @@ object StoryExecutor {
 
         val condType = currentNode.params["condType"] ?: "LOCATION"
         val actionSubtype = currentNode.params["actionSubtype"] ?: ""
-        if (currentNode.nodeType == NodeType.ACTION && (actionSubtype == "ANIMATION" || actionSubtype == "ANIMATION_BLOCK") && currentNode.params["waitForCompletion"] == "true") {
+        if (currentNode.nodeType == NodeType.ACTION &&
+            (actionSubtype in listOf("ANIMATION", "ANIMATION_BLOCK", "LOOK_AT", "LOOK_AT_BLOCK")) &&
+            currentNode.params["waitForCompletion"] == "true" &&
+            currentNode.params["durationMode"] != "INDEFINITE" &&
+            currentNode.params["operationMode"] != "RESET_LOOK") {
             val durTicks = currentNode.params["durationTicks"]?.toIntOrNull()?.coerceAtLeast(1) ?: 60
             TickManager.schedule(durTicks) {
                 continueOutgoingConnections(instance, currentNode, stepCount)
@@ -977,6 +981,7 @@ object StoryExecutor {
                     "LOOK_AT", "LOOK_AT_BLOCK" -> LookAtAction().execute(context, node)
                     "ANIMATION", "ANIMATION_BLOCK" -> AnimationAction().execute(context, node)
                     "SET_ENTITY_TEXTURE", "TEXTURE_BLOCK", "ENTITY_TEXTURE" -> SetEntityTextureAction().execute(context, node)
+                    "TAG_BLOCK", "MANAGE_TAG", "TAG_ACTION", "TAG" -> TagAction().execute(context, node)
                     "SPAWN_PARTICLES" -> SpawnParticlesAction().execute(context, node)
                     "PLAY_SOUND", "SOUND" -> PlaySoundAction().execute(context, node)
                     "PLAY_MUSIC" -> PlayMusicAction().execute(context, node)

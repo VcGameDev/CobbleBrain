@@ -7,18 +7,16 @@ import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import com.cobblemon.mod.common.pokemon.Gender
 import com.cobblemon.mod.common.pokemon.Pokemon
 import net.minecraft.core.BlockPos
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
-import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket
-import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
-import net.minecraft.core.particles.ParticleTypes
-import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket
-import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
@@ -28,18 +26,13 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import vito.cobblebrain.blocks.interfaces.IAction
 import vito.cobblebrain.blocks.interfaces.ITrigger
-import vito.cobblebrain.engine.StoryContext
-import vito.cobblebrain.engine.StoryTextFormatter
-import vito.cobblebrain.engine.TickManager
+import vito.cobblebrain.engine.*
 import vito.cobblebrain.model.NodeData
 import vito.cobblebrain.model.NodeType
 import vito.cobblebrain.social.DialogueSystem
 import vito.cobblebrain.social.PokemonQuery
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 // ==========================================================
@@ -342,16 +335,35 @@ class TeleportAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         val player = context.player
         val server = context.server ?: player?.server ?: return
-        val destX = node.params["destX"]?.toDoubleOrNull() ?: player?.x ?: 0.0
-        val destY = node.params["destY"]?.toDoubleOrNull() ?: player?.y ?: 64.0
-        val destZ = node.params["destZ"]?.toDoubleOrNull() ?: player?.z ?: 0.0
+        val level = player?.serverLevel() ?: server.overworld()
 
+        val destTag = node.params["destTag"]?.trim() ?: ""
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            if (destTag.isNotBlank()) "@$destTag ~ ~ ~"
+            else "${node.params["destX"] ?: "~"} ${node.params["destY"] ?: "~"} ${node.params["destZ"] ?: "~"}"
+        } ?: if (destTag.isNotBlank()) "@$destTag ~ ~ ~" else "${node.params["destX"] ?: "~"} ${node.params["destY"] ?: "~"} ${node.params["destZ"] ?: "~"}"
+
+        val safePos = node.params["safePosition"] != "false"
+        val snapGround = node.params["snapToGround"] != "false"
+        val maxRadius = node.params["maxSearchRadius"]?.toIntOrNull() ?: 5
+        val searchPriority = SearchLayerPriority.fromString(node.params["searchPriority"])
+
+        val destVec = CoordinateResolver.resolveSafeVec3(
+            coordInput,
+            level,
+            player,
+            server,
+            safePosition = safePos,
+            snapToGround = snapGround,
+            maxSearchRadius = maxRadius,
+            searchPriority = searchPriority
+        )
         val targetMode = node.params["targetMode"] ?: "PLAYER"
         val targetStoryTag = node.params["targetStoryTag"]?.trim() ?: ""
 
         if (targetMode == "STORY_TAG" && targetStoryTag.isNotBlank()) {
             try {
-                val cmd = "tp @e[tag=$targetStoryTag,limit=1,sort=nearest] $destX $destY $destZ"
+                val cmd = "tp @e[tag=$targetStoryTag,limit=1,sort=nearest] ${destVec.x} ${destVec.y} ${destVec.z}"
                 server.commands.performPrefixedCommand(
                     player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                         ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -361,8 +373,8 @@ class TeleportAction : IAction {
                 e.printStackTrace()
             }
         } else if (player != null) {
-            player.teleportTo(destX, destY, destZ)
-            player.sendSystemMessage(Component.literal("Teleported to: $destX, $destY, $destZ"))
+            player.teleportTo(destVec.x, destVec.y, destVec.z)
+            player.sendSystemMessage(Component.literal("Teleported to: ${destVec.x.toInt()}, ${destVec.y.toInt()}, ${destVec.z.toInt()}"))
         }
     }
 }
@@ -370,10 +382,18 @@ class TeleportAction : IAction {
 class ChangeWeatherAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         val server = context.server ?: context.player?.server ?: return
-        val weatherType = (node.params["weatherType"] ?: "CLEAR").lowercase()
-        val duration = node.params["durationTicks"]?.toIntOrNull() ?: 6000
+        val weatherType = (node.params["weatherType"] ?: "CLEAR").uppercase()
+        val durationTicks = node.params["durationTicks"]?.toIntOrNull() ?: 6000
+        val cmd = when (weatherType) {
+            "RAIN" -> "weather rain $durationTicks"
+            "THUNDER" -> "weather thunder $durationTicks"
+            else -> "weather clear $durationTicks"
+        }
         try {
-            server.commands.performPrefixedCommand(server.createCommandSourceStack().withPermission(4).withSuppressedOutput(), "weather $weatherType $duration")
+            server.commands.performPrefixedCommand(
+                server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                cmd
+            )
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -385,23 +405,40 @@ class SetTimeOfDayAction : IAction {
         val server = context.server ?: context.player?.server ?: return
         val timeTicks = node.params["timeTicks"]?.toIntOrNull() ?: 1000
         try {
-            server.commands.performPrefixedCommand(server.createCommandSourceStack().withPermission(4).withSuppressedOutput(), "time set $timeTicks")
+            server.commands.performPrefixedCommand(
+                server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                "time set $timeTicks"
+            )
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 }
+typealias SetTimeAction = SetTimeOfDayAction
 
 class SpawnBlockAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         val player = context.player
         val server = context.server ?: player?.server ?: return
+        val level = player?.serverLevel() ?: server.overworld()
         val blockId = node.params["blockId"]?.ifBlank { "minecraft:stone" } ?: "minecraft:stone"
-        val px = node.params["posX"]?.ifBlank { "~" } ?: "~"
-        val py = node.params["posY"]?.ifBlank { "~" } ?: "~"
-        val pz = node.params["posZ"]?.ifBlank { "~" } ?: "~"
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+        val safePos = node.params["safePosition"] == "true"
+        val snapGround = node.params["snapToGround"] == "true"
+        val maxRadius = node.params["maxSearchRadius"]?.toIntOrNull() ?: 5
+        val searchPriority = SearchLayerPriority.fromString(node.params["searchPriority"])
+
+        val targetPos = if (safePos || snapGround) {
+            CoordinateResolver.resolveSafeBlockPos(coordInput, level, player, server, safePosition = safePos, snapToGround = snapGround, maxSearchRadius = maxRadius, searchPriority = searchPriority)
+        } else {
+            CoordinateResolver.resolveBlockPos(coordInput, player, server)
+        }
+
         try {
-            val cmd = "setblock $px $py $pz $blockId"
+            val cmd = "setblock ${targetPos.x} ${targetPos.y} ${targetPos.z} $blockId"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                     ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -417,13 +454,15 @@ class ModifyBlockPropertyAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         val player = context.player
         val server = context.server ?: player?.server ?: return
-        val px = node.params["posX"]?.ifBlank { "~" } ?: "~"
-        val py = node.params["posY"]?.ifBlank { "~" } ?: "~"
-        val pz = node.params["posZ"]?.ifBlank { "~" } ?: "~"
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+        val targetPos = CoordinateResolver.resolveBlockPos(coordInput, player, server)
         val propKey = node.params["propertyKey"] ?: "open"
         val propVal = node.params["propertyValue"] ?: "true"
         try {
-            val cmd = "setblock $px $py $pz minecraft:lever[$propKey=$propVal]"
+            val cmd = "setblock ${targetPos.x} ${targetPos.y} ${targetPos.z} minecraft:lever[$propKey=$propVal]"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                     ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -439,6 +478,7 @@ class SpawnEntityAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         val player = context.player
         val server = context.server ?: player?.server ?: return
+        val level = player?.serverLevel() ?: server.overworld()
         val entityId = node.params["entityId"]?.ifBlank { "minecraft:villager" } ?: "minecraft:villager"
         val customName = node.params["entity_customName"]?.ifBlank { node.params["customName"] ?: "" } ?: ""
         val storyTag = node.params["storyTag"]?.ifBlank { node.params["entity_storyTag"] ?: "" } ?: ""
@@ -461,9 +501,25 @@ class SpawnEntityAction : IAction {
         val mainhand = node.params["entity_mainhand"]?.trim()?.takeIf { it.isNotBlank() }
         val offhand = node.params["entity_offhand"]?.trim()?.takeIf { it.isNotBlank() }
 
-        val px = node.params["posX"]?.ifBlank { "~" } ?: "~"
-        val py = node.params["posY"]?.ifBlank { "~" } ?: "~"
-        val pz = node.params["posZ"]?.ifBlank { "~" } ?: "~"
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+        val safePos = node.params["safePosition"] != "false"
+        val snapGround = node.params["snapToGround"] != "false"
+        val maxRadius = node.params["maxSearchRadius"]?.toIntOrNull() ?: 5
+        val searchPriority = SearchLayerPriority.fromString(node.params["searchPriority"])
+
+        val targetVec = CoordinateResolver.resolveSafeVec3(
+            coordInput,
+            level,
+            player,
+            server,
+            safePosition = safePos,
+            snapToGround = snapGround,
+            maxSearchRadius = maxRadius,
+            searchPriority = searchPriority
+        )
 
         try {
             val nbtParts = mutableListOf<String>()
@@ -508,7 +564,7 @@ class SpawnEntityAction : IAction {
             }
 
             val tag = if (nbtParts.isNotEmpty()) " {${nbtParts.joinToString(",")}}" else ""
-            val cmd = "summon $entityId $px $py $pz$tag"
+            val cmd = "summon $entityId ${targetVec.x} ${targetVec.y} ${targetVec.z}$tag"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                     ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -645,9 +701,28 @@ class SpawnCobblemonAction : IAction {
         val form = node.params["form"]
         val storyTag = node.params["storyTag"]?.trim() ?: ""
 
-        val px = node.params["posX"]?.toDoubleOrNull() ?: player.x
-        val py = node.params["posY"]?.toDoubleOrNull() ?: player.y
-        val pz = node.params["posZ"]?.toDoubleOrNull() ?: player.z
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+        val safePos = node.params["safePosition"] != "false"
+        val snapGround = node.params["snapToGround"] != "false"
+        val maxRadius = node.params["maxSearchRadius"]?.toIntOrNull() ?: 5
+        val searchPriority = SearchLayerPriority.fromString(node.params["searchPriority"])
+
+        val targetVec = CoordinateResolver.resolveSafeVec3(
+            coordInput,
+            world,
+            player,
+            context.server ?: player.server,
+            safePosition = safePos,
+            snapToGround = snapGround,
+            maxSearchRadius = maxRadius,
+            searchPriority = searchPriority
+        )
+        val px = targetVec.x
+        val py = targetVec.y
+        val pz = targetVec.z
 
         try {
             val properties = PokemonProperties()
@@ -843,12 +918,13 @@ class SpawnItemAction : IAction {
         val player = context.player
         val server = context.server ?: player?.server ?: return
         val itemId = node.params["itemId"]?.ifBlank { "minecraft:diamond" } ?: "minecraft:diamond"
-        val amount = node.params["amount"]?.toIntOrNull() ?: 1
-        val px = node.params["posX"]?.ifBlank { "~" } ?: "~"
-        val py = node.params["posY"]?.ifBlank { "~" } ?: "~"
-        val pz = node.params["posZ"]?.ifBlank { "~" } ?: "~"
+        val count = node.params["count"]?.toIntOrNull() ?: 1
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        val targetVec = CoordinateResolver.resolveVec3(coordInput, player, server)
         try {
-            val cmd = "summon item $px $py $pz {Item:{id:\"$itemId\",Count:${amount}b}}"
+            val cmd = "summon item ${targetVec.x} ${targetVec.y} ${targetVec.z} {Item:{id:\"$itemId\",Count:${count}b}}"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                     ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -866,11 +942,12 @@ class SpawnParticlesAction : IAction {
         val server = context.server ?: player?.server ?: return
         val particleId = node.params["particleId"]?.ifBlank { "minecraft:totem_of_undying" } ?: "minecraft:totem_of_undying"
         val count = node.params["count"]?.toIntOrNull() ?: 20
-        val px = node.params["posX"]?.ifBlank { "~" } ?: "~"
-        val py = node.params["posY"]?.ifBlank { "~" } ?: "~"
-        val pz = node.params["posZ"]?.ifBlank { "~" } ?: "~"
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+        val targetVec = CoordinateResolver.resolveVec3(coordInput, player, server)
         try {
-            val cmd = "particle $particleId $px $py $pz 0.5 0.5 0.5 0.1 $count"
+            val cmd = "particle $particleId ${targetVec.x} ${targetVec.y} ${targetVec.z} 0.5 0.5 0.5 0.1 $count"
             server.commands.performPrefixedCommand(
                 player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
                     ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
@@ -924,132 +1001,73 @@ class LookAtAction : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         val player = context.player
         val server = context.server ?: player?.server ?: return
+        val sLevel = player?.serverLevel() ?: server.overworld()
 
-        val targetType = node.params["targetType"] ?: "PLAYER_POKEMON"
-        val targetId = node.params["targetIdentifier"] ?: "0"
-        val lookMode = node.params["lookMode"] ?: "PLAYER"
-        val instantLook = node.params["instantLook"] == "true"
+        val operationMode = node.params["operationMode"] ?: "APPLY_LOOK"
 
-        // 1. Resolve Target LivingEntity
-        var targetEntity: LivingEntity? = null
-        if (targetType == "PLAYER_POKEMON" && player != null) {
-            val slotIdx = targetId.toIntOrNull()?.coerceIn(0, 5) ?: 0
-            try {
-                val party = Cobblemon.storage.getParty(player)
-                val poke = party.get(slotIdx)
-                targetEntity = poke?.entity
-            } catch (_: Exception) {}
-            if (targetEntity == null) {
-                try {
-                    val activeList = PokemonQuery.findActivePokemon(player)
-                    targetEntity = activeList.getOrNull(slotIdx)?.entity ?: activeList.firstOrNull()?.entity
-                } catch (_: Exception) {}
-            }
+        // 1. Resolve Subject Type & Identifier
+        val rawSubjectType = node.params["subjectType"] ?: node.params["targetType"] ?: "PLAYER_POKEMON"
+        val subjectType = if (rawSubjectType.equals("NPC_TAG", true) || rawSubjectType.equals("NPC", true) || rawSubjectType.equals("ENTITY", true)) {
+            LookSubjectType.NPC_TAG
         } else {
-            val levels = player?.serverLevel()?.let { listOf(it) } ?: server.allLevels.toList()
-            for (lvl in levels) {
-                val searchBox = player?.boundingBox?.inflate(128.0) ?: AABB(-1000.0, -100.0, -1000.0, 1000.0, 300.0, 1000.0)
-                val candidates = lvl.getEntitiesOfClass(LivingEntity::class.java, searchBox) { it.isAlive && (targetId.isBlank() || it.tags.contains(targetId) || it.type.descriptionId.contains(targetId, true)) }
-                targetEntity = if (player != null) {
-                    candidates.minByOrNull { it.distanceToSqr(player) }
-                } else {
-                    candidates.firstOrNull()
-                }
-                if (targetEntity != null) break
-            }
+            LookSubjectType.PLAYER_POKEMON
+        }
+        val subjectId = node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: "0"
+
+        val subjectEntity = StoryLookAtManager.resolveSubjectEntity(sLevel, player, subjectType, subjectId)
+        if (subjectEntity == null) return
+
+        // 2. Handle RESET_LOOK
+        if (operationMode == "RESET_LOOK") {
+            StoryLookAtManager.resetLookOverride(subjectEntity)
+            return
         }
 
-        if (targetEntity == null) return
-
-        // 2. Compute Target Yaw & Pitch
-        var targetYaw = targetEntity.yRot
-        var targetPitch = targetEntity.xRot
-        var lookTargetPos: Vec3? = null
-
-        when (lookMode) {
-            "PLAYER" -> {
-                if (player != null) {
-                    val dx = player.x - targetEntity.x
-                    val dy = player.eyeY - targetEntity.eyeY
-                    val dz = player.z - targetEntity.z
-                    val dist = sqrt(dx * dx + dz * dz)
-                    targetYaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
-                    targetPitch = Math.toDegrees(atan2(-dy, dist)).toFloat().coerceIn(-90f, 90f)
-                    lookTargetPos = Vec3(player.x, player.eyeY, player.z)
-                }
-            }
-            "AWAY_FROM_PLAYER" -> {
-                if (player != null) {
-                    val dx = targetEntity.x - player.x
-                    val dy = targetEntity.eyeY - player.eyeY
-                    val dz = targetEntity.z - player.z
-                    val dist = sqrt(dx * dx + dz * dz)
-                    targetYaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
-                    targetPitch = Math.toDegrees(atan2(-dy, dist)).toFloat().coerceIn(-90f, 90f)
-                    lookTargetPos = Vec3(targetEntity.x + dx, targetEntity.eyeY + dy, targetEntity.z + dz)
-                }
-            }
-            "SKY" -> {
-                targetPitch = -90f
-                lookTargetPos = Vec3(targetEntity.x, targetEntity.eyeY + 20.0, targetEntity.z)
-            }
-            "GROUND" -> {
-                targetPitch = 90f
-                lookTargetPos = Vec3(targetEntity.x, targetEntity.y - 20.0, targetEntity.z)
-            }
-            "SPECIFIC_DIRECTION" -> {
-                val coordsStr = node.params["coordinates"] ?: "~ ~ ~"
-                val parts = coordsStr.trim().split("\\s+".toRegex())
-                val tx = parseCoord(parts.getOrNull(0), targetEntity.x)
-                val ty = parseCoord(parts.getOrNull(1), targetEntity.eyeY)
-                val tz = parseCoord(parts.getOrNull(2), targetEntity.z)
-
-                val dx = tx - targetEntity.x
-                val dy = ty - targetEntity.eyeY
-                val dz = tz - targetEntity.z
-                val dist = sqrt(dx * dx + dz * dz)
-                targetYaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
-                targetPitch = Math.toDegrees(atan2(-dy, dist)).toFloat().coerceIn(-90f, 90f)
-                lookTargetPos = Vec3(tx, ty, tz)
-            }
-            "OPPOSITE_FACING" -> {
-                targetYaw = (targetEntity.yRot + 180f) % 360f
-                val rad = Math.toRadians(targetYaw.toDouble())
-                lookTargetPos = Vec3(targetEntity.x - sin(rad) * 5.0, targetEntity.eyeY, targetEntity.z + cos(rad) * 5.0)
-            }
+        // 3. Handle APPLY_LOOK
+        val rawLookMode = node.params["lookMode"] ?: "TOWARDS_REFERENCE"
+        val lookMode = when (rawLookMode.uppercase()) {
+            "AWAY_FROM_REFERENCE", "AWAY_FROM_PLAYER", "AWAY" -> LookTargetMode.AWAY_FROM_REFERENCE
+            "SKY" -> LookTargetMode.SKY
+            "GROUND" -> LookTargetMode.GROUND
+            "OPPOSITE_SELF", "OPPOSITE_FACING", "OPPOSITE" -> LookTargetMode.OPPOSITE_SELF
+            else -> LookTargetMode.TOWARDS_REFERENCE
         }
 
-        // 3. Apply Rotation & Synchronize with Clients
-        targetEntity.setYRot(targetYaw)
-        targetEntity.setXRot(targetPitch)
-        targetEntity.yRotO = targetYaw
-        targetEntity.xRotO = targetPitch
-        targetEntity.yHeadRot = targetYaw
-        targetEntity.yHeadRotO = targetYaw
-        targetEntity.yBodyRot = targetYaw
-        targetEntity.yBodyRotO = targetYaw
-
-        if (targetEntity is Mob && lookTargetPos != null) {
-            val speed = if (instantLook) 360f else 30f
-            targetEntity.lookControl.setLookAt(lookTargetPos.x, lookTargetPos.y, lookTargetPos.z, speed, speed)
+        val rawRefType = node.params["referenceType"] ?: when (rawLookMode.uppercase()) {
+            "SPECIFIC_DIRECTION" -> "COORDINATES"
+            "AWAY_FROM_PLAYER", "PLAYER" -> "PLAYER"
+            else -> "PLAYER"
+        }
+        val refType = when (rawRefType.uppercase()) {
+            "MOB_TAG", "MOB", "ENTITY" -> LookReferenceType.MOB_TAG
+            "COORDINATES", "COORDS", "POSITION" -> LookReferenceType.COORDINATES
+            else -> LookReferenceType.PLAYER
         }
 
-        val sLevel = targetEntity.level() as? ServerLevel
-        if (sLevel != null) {
-            sLevel.chunkSource.broadcast(targetEntity, ClientboundRotateHeadPacket(targetEntity, (targetYaw * 256f / 360f).toInt().toByte()))
-            sLevel.chunkSource.broadcast(targetEntity, ClientboundTeleportEntityPacket(targetEntity))
-        }
-    }
+        val refId = node.params["referenceIdentifier"] ?: node.params["coordinates"] ?: ""
 
-    private fun parseCoord(str: String?, base: Double): Double {
-        if (str == null || str.isBlank()) return base
-        val s = str.trim()
-        return if (s.startsWith("~")) {
-            val offset = s.removePrefix("~").toDoubleOrNull() ?: 0.0
-            base + offset
+        val referencePlayerUuid = if (refType == LookReferenceType.PLAYER) player?.uuid else null
+        val referenceMobTag = if (refType == LookReferenceType.MOB_TAG) refId.trim() else null
+        val referenceCoords = if (refType == LookReferenceType.COORDINATES) {
+            CoordinateResolver.resolveVec3(refId, player ?: subjectEntity, server, Vec3(subjectEntity.x, subjectEntity.eyeY, subjectEntity.z))
+        } else null
+
+        val durationMode = node.params["durationMode"] ?: "TEMPORARY"
+        val durationTicks = if (durationMode == "INDEFINITE") {
+            -1
         } else {
-            s.toDoubleOrNull() ?: base
+            node.params["durationTicks"]?.toIntOrNull()?.coerceAtLeast(1) ?: 60
         }
+
+        StoryLookAtManager.applyLookOverride(
+            subject = subjectEntity,
+            referenceType = refType,
+            referencePlayerUuid = referencePlayerUuid,
+            referenceMobTag = referenceMobTag,
+            referenceCoordinates = referenceCoords,
+            lookMode = lookMode,
+            durationTicks = durationTicks
+        )
     }
 }
 
@@ -1257,16 +1275,19 @@ class StoryStartedTrigger : ITrigger {
 class PlayerLocationTrigger : ITrigger {
     override fun evaluate(context: StoryContext, node: NodeData): Boolean {
         val player = context.player ?: return false
-        val tx = node.params["targetX"]?.toDoubleOrNull() ?: 0.0
-        val ty = node.params["targetY"]?.toDoubleOrNull() ?: 64.0
-        val tz = node.params["targetZ"]?.toDoubleOrNull() ?: 0.0
+        val server = context.server ?: player.server
+        val coordInput = node.params["coordinates"]?.ifBlank {
+            "${node.params["targetX"] ?: "0"} ${node.params["targetY"] ?: "64"} ${node.params["targetZ"] ?: "0"}"
+        } ?: "${node.params["targetX"] ?: "0"} ${node.params["targetY"] ?: "64"} ${node.params["targetZ"] ?: "0"}"
+
+        val targetVec = CoordinateResolver.resolveVec3(coordInput, player, server)
         val radius = node.params["radius"]?.toDoubleOrNull() ?: 5.0
 
         val px = player.x
         val py = player.y
         val pz = player.z
 
-        val dist = sqrt((px - tx) * (px - tx) + (py - ty) * (py - ty) + (pz - tz) * (pz - tz))
+        val dist = sqrt((px - targetVec.x) * (px - targetVec.x) + (py - targetVec.y) * (py - targetVec.y) + (pz - targetVec.z) * (pz - targetVec.z))
         val rawResult = dist <= radius
 
         val isIfNot = node.params["triggerCondition"] == "IF_NOT"
@@ -1323,5 +1344,70 @@ class DayNightCheckTrigger : ITrigger {
         val rawResult = (currentPeriod == targetPeriod)
         val isIfNot = node.params["triggerCondition"] == "IF_NOT"
         return if (isIfNot) !rawResult else rawResult
+    }
+}
+
+class TagAction : IAction {
+    override fun execute(context: StoryContext, node: NodeData) {
+        val player = context.player
+        val server = context.server ?: player?.server ?: return
+
+        val category = node.params["targetCategory"] ?: "ENTITY"
+        val selector = node.params["targetSelector"] ?: when (category.uppercase()) {
+            "WORLD_BLOCK", "BLOCK" -> "LOOKING_AT_BLOCK"
+            "PLAYER" -> "INTERACTING_PLAYER"
+            else -> "CLOSEST_MOB"
+        }
+        val identifier = node.params["selectorIdentifier"]?.ifBlank { node.params["targetIdentifier"] ?: "" } ?: ""
+        val operation = node.params["operation"] ?: "ADD_TAG"
+        val tagName = (node.params["tagName"]?.ifBlank { node.params["storyTag"] ?: "" } ?: "").trim()
+
+        when (category.uppercase()) {
+            "ENTITY", "MOB" -> {
+                val entity = StoryTagManager.resolveTargetEntity(player, server, selector, identifier)
+                if (entity != null) {
+                    when (operation.uppercase()) {
+                        "ADD_TAG", "ADD" -> if (tagName.isNotBlank()) entity.addTag(tagName)
+                        "REMOVE_TAG", "REMOVE" -> if (tagName.isNotBlank()) entity.removeTag(tagName)
+                        "CLEAR_TAGS", "CLEAR" -> {
+                            val toRemove = entity.tags.toList()
+                            toRemove.forEach { entity.removeTag(it) }
+                        }
+                    }
+                }
+            }
+            "WORLD_BLOCK", "BLOCK" -> {
+                when (operation.uppercase()) {
+                    "ADD_TAG", "ADD" -> {
+                        if (tagName.isNotBlank()) {
+                            val blockTarget = StoryTagManager.resolveTargetBlock(player, server, selector, identifier)
+                            if (blockTarget != null) {
+                                StoryTagManager.setBlockTag(tagName, blockTarget.first, blockTarget.second)
+                            }
+                        }
+                    }
+                    "REMOVE_TAG", "REMOVE" -> {
+                        if (tagName.isNotBlank()) {
+                            StoryTagManager.removeBlockTag(tagName)
+                        }
+                    }
+                    "CLEAR_TAGS", "CLEAR" -> {
+                        StoryTagManager.clearBlockTags()
+                    }
+                }
+            }
+            "PLAYER" -> {
+                if (player != null) {
+                    when (operation.uppercase()) {
+                        "ADD_TAG", "ADD" -> if (tagName.isNotBlank()) player.addTag(tagName)
+                        "REMOVE_TAG", "REMOVE" -> if (tagName.isNotBlank()) player.removeTag(tagName)
+                        "CLEAR_TAGS", "CLEAR" -> {
+                            val toRemove = player.tags.filter { !it.startsWith("cobblebrain:guaranteed_") }
+                            toRemove.forEach { player.removeTag(it) }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

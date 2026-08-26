@@ -278,15 +278,37 @@ class NodeWidget(val node: NodeData) {
                 NodeType.ACTION -> {
                     val actionType = node.params["actionSubtype"] ?: "MESSAGE"
                     when (actionType) {
+                        "LOOK_AT", "LOOK_AT_BLOCK" -> {
+                            val op = if (node.params["operationMode"] == "RESET_LOOK") "Reset AI" else "Focus"
+                            val subj = if (node.params["subjectType"] == "NPC_TAG") (node.params["subjectIdentifier"]?.ifBlank { "NPC" } ?: "NPC") else "Slot ${node.params["subjectIdentifier"] ?: "0"}"
+                            "👀 Look: $op ($subj)"
+                        }
+                        "TAG_BLOCK", "MANAGE_TAG", "TAG" -> {
+                            val op = when (node.params["operation"]) {
+                                "REMOVE_TAG" -> "Remove"
+                                "CLEAR_TAGS" -> "Clear"
+                                else -> "Add"
+                            }
+                            val tag = node.params["tagName"]?.ifBlank { "tag" } ?: "tag"
+                            val cat = when (node.params["targetCategory"]) {
+                                "WORLD_BLOCK" -> "Block"
+                                "PLAYER" -> "Player"
+                                else -> "Mob"
+                            }
+                            "🏷️ Tag: $op '$tag' ($cat)"
+                        }
                         "VAR_MODIFY" -> "Var: ${node.params["varKey"] ?: "var"} ${node.params["varOp"] ?: "="} ${node.params["varValue"] ?: "1"}"
-                        "TELEPORT" -> "TP: ${node.params["destX"] ?: "0"}, ${node.params["destY"] ?: "64"}, ${node.params["destZ"] ?: "0"}"
-                        "SPAWN" -> "Spawn: ${node.params["species"] ?: "Pikachu"} Lvl ${node.params["level"] ?: "5"}"
+                        "TELEPORT" -> {
+                            val coords = node.params["coordinates"]?.ifBlank { node.params["destTag"]?.ifBlank { "${node.params["destX"] ?: "0"} ${node.params["destY"] ?: "64"} ${node.params["destZ"] ?: "0"}" } ?: "${node.params["destX"] ?: "0"} ${node.params["destY"] ?: "64"} ${node.params["destZ"] ?: "0"}" } ?: "${node.params["destX"] ?: "0"} ${node.params["destY"] ?: "64"} ${node.params["destZ"] ?: "0"}"
+                            "TP: $coords"
+                        }
+                        "SPAWN", "SPAWN_COBBLEMON" -> "Spawn: ${node.params["species"] ?: "Pikachu"} Lvl ${node.params["level"] ?: "5"}"
                         "SOUND" -> "Sound: ${node.params["soundId"] ?: "click"}"
                         else -> "Msg: ${node.content}"
                     }
                 }
                 NodeType.TIMER -> "Timer: ${node.params["timerSeconds"] ?: "5"}s"
-                NodeType.CONDITION_NODE -> "Se: ${node.params["varKey_0"] ?: node.params["varKey"] ?: "var"} ${node.params["varOp_0"] ?: node.params["varOp"] ?: "=="} ${node.params["varValue_0"] ?: node.params["varValue"] ?: "true"}"
+                NodeType.CONDITION_NODE -> "If: ${node.params["varKey_0"] ?: node.params["varKey"] ?: "var"} ${node.params["varOp_0"] ?: node.params["varOp"] ?: "=="} ${node.params["varValue_0"] ?: node.params["varValue"] ?: "true"}"
                 NodeType.COMMAND_NODE -> {
                     val firstCmd = node.content.lines().firstOrNull { it.isNotBlank() } ?: (node.params["commands"]?.lines()?.firstOrNull { it.isNotBlank() } ?: "say Hello")
                     "Cmd: $firstCmd"

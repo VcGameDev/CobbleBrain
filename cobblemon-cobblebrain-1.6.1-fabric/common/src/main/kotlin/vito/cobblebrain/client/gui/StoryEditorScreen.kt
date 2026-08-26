@@ -111,6 +111,7 @@ class StoryEditorScreen(
     var activeEntityConfigModal: EntityConfigModalWidget? = null
     private var activeAnimationSelectorModal: AnimationSelectorModalWidget? = null
     private var activeTextureSelectorModal: TextureSelectorModalWidget? = null
+    var activeCoordinateModal: CoordinateConfigModalWidget? = null
 
     // Context Menu (Right Click)
     var activeContextMenu: ContextMenuWidget? = null
@@ -124,7 +125,7 @@ class StoryEditorScreen(
     var rangeTestEndNode: NodeData? = null
 
     // Dropdown Block Palette Split into 3 DISTINCT SECTIONS
-    data class PaletteEntry(val isHeader: Boolean, val label: String, val type: NodeType = NodeType.DIALOGUE)
+    data class PaletteEntry(val isHeader: Boolean, val label: String, val type: NodeType = NodeType.DIALOGUE, val presetSubtype: String? = null)
     private val paletteEntries = listOf(
         // SECTION 1: Structure & Flow
         PaletteEntry(true, "--- 1. STRUCTURE & FLOW ---"),
@@ -148,6 +149,7 @@ class StoryEditorScreen(
         PaletteEntry(true, "--- 3. ACTIONS & EVENTS ---"),
         PaletteEntry(false, "💬 Dialogue Block", NodeType.DIALOGUE),
         PaletteEntry(false, "⚡ Action", NodeType.ACTION),
+        PaletteEntry(false, "🏷️ Manage Story Tag", NodeType.ACTION, "TAG_BLOCK"),
         PaletteEntry(false, "⌨️ Command", NodeType.COMMAND_NODE),
         PaletteEntry(false, "💾 Save Checkpoint", NodeType.SAVE_STATE_NODE),
         PaletteEntry(false, "🔄 Load Checkpoint", NodeType.LOAD_STATE_NODE),
@@ -391,8 +393,10 @@ class StoryEditorScreen(
         )
     }
 
-    private fun addNode(type: NodeType) {
-        val title = when (type) {
+    private fun addNode(type: NodeType, presetSubtype: String? = null) {
+        val title = if (presetSubtype == "TAG_BLOCK") {
+            "Manage Story Tag"
+        } else when (type) {
             NodeType.BEGIN_SCENE -> "Scene Start"
             NodeType.TRIGGER -> "Trigger"
             NodeType.ACTION -> "Action"
@@ -576,7 +580,18 @@ class StoryEditorScreen(
             ghostNode.params["loopMode"] = "COUNT"
             ghostNode.params["loopCount"] = "5"
             ghostNode.params["loopIntervalSec"] = "1.0"
-        } else if (type == NodeType.SAVE_STATE_NODE) {
+        }
+
+        if (presetSubtype == "TAG_BLOCK" || (type == NodeType.ACTION && presetSubtype == "TAG_BLOCK")) {
+            ghostNode.title = "Manage Story Tag"
+            ghostNode.params["actionSubtype"] = "TAG_BLOCK"
+            ghostNode.params["actionId"] = "TAG_BLOCK"
+            ActionRegistry.getAction("TAG_BLOCK")?.defaultParams?.forEach { (k, v) ->
+                ghostNode.params[k] = v
+            }
+        }
+
+        if (type == NodeType.SAVE_STATE_NODE) {
             ghostNode.params["profileId"] = "checkpoint_1"
             ghostNode.params["scope"] = "PLAYER"
             ghostNode.params["modules"] = "ALL"
@@ -760,6 +775,21 @@ class StoryEditorScreen(
             onOpenAIDialogueModal = { target -> openAIDialogueModalForNode(target) },
             onOpenAnimationSelector = { target, onSelect -> openAnimationSelectorModalForNode(target, onSelect) },
             onOpenTextureSelector = { target, onSelect -> openTextureSelectorModalForNode(target, onSelect) },
+            onOpenCoordinateModal = { target, onSaved ->
+                closeAllTopMenus()
+                activeCoordinateModal = CoordinateConfigModalWidget(
+                    node = target,
+                    font = font,
+                    screenWidth = width,
+                    screenHeight = height,
+                    onClose = { activeCoordinateModal = null },
+                    onDataChanged = {
+                        onSaved()
+                        markDirty()
+                        activeInspector?.buildUi()
+                    }
+                )
+            },
             projectVariables = project.variables
         )
     }
@@ -1060,7 +1090,7 @@ class StoryEditorScreen(
         currentMouseWorldX = screenToWorldX(mouseX.toDouble())
         currentMouseWorldY = screenToWorldY(mouseY.toDouble())
 
-        val isModalOpen = activeDocModal != null || showExitConfirmModal || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null || activeActionTriggerPickerModal != null || activePokemonConfigModal != null || activeResourcePickerModal != null || activeItemPickerModal != null || activeEntityConfigModal != null || activeSaveProfileModal != null || activeAIDialogueModal != null || activeAnimationSelectorModal != null || activeTextureSelectorModal != null
+        val isModalOpen = activeDocModal != null || showExitConfirmModal || activeVariableModal != null || activeMetadataModal != null || activeVarSelectorModal != null || activeActionTriggerPickerModal != null || activePokemonConfigModal != null || activeResourcePickerModal != null || activeItemPickerModal != null || activeEntityConfigModal != null || activeSaveProfileModal != null || activeAIDialogueModal != null || activeAnimationSelectorModal != null || activeTextureSelectorModal != null || activeCoordinateModal != null
 
         // 1. Canvas Background and Grid
         guiGraphics.fill(0, 0, width, height, 0xFF141418.toInt())
@@ -1254,6 +1284,7 @@ class StoryEditorScreen(
             activeTextureSelectorModal != null -> activeTextureSelectorModal?.render(guiGraphics, mouseX, mouseY, partialTick)
             activeSaveProfileModal != null -> activeSaveProfileModal?.render(guiGraphics, mouseX, mouseY, partialTick)
             activeAIDialogueModal != null -> activeAIDialogueModal?.render(guiGraphics, mouseX, mouseY, partialTick)
+            activeCoordinateModal != null -> activeCoordinateModal?.render(guiGraphics, mouseX, mouseY, partialTick)
             activeActionTriggerPickerModal != null -> activeActionTriggerPickerModal?.render(guiGraphics, mouseX, mouseY, partialTick)
             activeVarSelectorModal != null -> activeVarSelectorModal?.render(guiGraphics, mouseX, mouseY, partialTick)
             activeMetadataModal != null -> activeMetadataModal?.render(guiGraphics, mouseX, mouseY, partialTick)
@@ -1290,7 +1321,7 @@ class StoryEditorScreen(
         if (isAddMenuOpen) {
             val dropW = 160
             val dropX = addMenuX
-            val items = listOf("🎬 New Scene", "💬 Dialogue Block", "📋 Manage Catalog", "🔹 Variable Block (Get)", "✏️ Modifier Block (Set)", "+ Blocks")
+            val items = listOf("🎬 New Scene", "💬 Dialogue Block", "🏷️ Manage Story Tag", "📋 Manage Variables", "🔹 Variable Block (Get)", "✏️ Modifier Block (Set)", "+ Blocks")
             val dropH = itemH * items.size + 4
 
             guiGraphics.fill(dropX, dropY, dropX + dropW, dropY + dropH, 0xF018181C.toInt())
@@ -1826,16 +1857,19 @@ class StoryEditorScreen(
         if (activePokemonConfigModal != null) return activePokemonConfigModal!!.mouseClicked(mouseX, mouseY, button)
         if (activeEntityConfigModal != null) return activeEntityConfigModal!!.mouseClicked(mouseX, mouseY, button)
         if (activeAnimationSelectorModal != null) {
-            if (activeAnimationSelectorModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+            if (activeAnimationSelectorModal?.mouseClicked(mouseX, mouseY, button) == true) return true
         }
         if (activeTextureSelectorModal != null) {
-            if (activeTextureSelectorModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+            if (activeTextureSelectorModal?.mouseClicked(mouseX, mouseY, button) == true) return true
         }
         if (activeSaveProfileModal != null) {
-            if (activeSaveProfileModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+            if (activeSaveProfileModal?.mouseClicked(mouseX, mouseY, button) == true) return true
         }
         if (activeAIDialogueModal != null) {
-            if (activeAIDialogueModal?.mouseClicked(mouseX.toDouble(), mouseY.toDouble(), button) == true) return true
+            if (activeAIDialogueModal?.mouseClicked(mouseX, mouseY, button) == true) return true
+        }
+        if (activeCoordinateModal != null) {
+            if (activeCoordinateModal?.mouseClicked(mouseX, mouseY, button) == true) return true
         }
         if (activeActionTriggerPickerModal != null) return activeActionTriggerPickerModal!!.mouseClicked(mouseX, mouseY, button)
         if (activeVarSelectorModal != null) return activeVarSelectorModal!!.mouseClicked(mouseX, mouseY, button)
@@ -1922,7 +1956,7 @@ class StoryEditorScreen(
         if (isAddMenuOpen) {
             val dropW = 160
             val dropX = addMenuX
-            val itemsCount = 6
+            val itemsCount = 7
             if (mouseX >= dropX && mouseX <= dropX + dropW && mouseY >= dropY && mouseY < dropY + itemH * itemsCount) {
                 val idx = ((mouseY - (dropY + 2)) / itemH).toInt()
                 when (idx) {
@@ -1932,6 +1966,10 @@ class StoryEditorScreen(
                         isAddMenuOpen = false
                     }
                     2 -> {
+                        addNode(NodeType.ACTION, "TAG_BLOCK")
+                        isAddMenuOpen = false
+                    }
+                    3 -> {
                         activeVariableModal = StoryVariableManagerModalWidget(
                             project = project,
                             font = font,
@@ -1942,15 +1980,15 @@ class StoryEditorScreen(
                         )
                         isAddMenuOpen = false
                     }
-                    3 -> {
+                    4 -> {
                         addNode(NodeType.VARIABLE_GET)
                         isAddMenuOpen = false
                     }
-                    4 -> {
+                    5 -> {
                         addNode(NodeType.VARIABLE_SET)
                         isAddMenuOpen = false
                     }
-                    5 -> {
+                    6 -> {
                         isBlockPaletteOpen = true
                         isAddMenuOpen = false
                     }
@@ -2025,7 +2063,7 @@ class StoryEditorScreen(
                 if (idx in paletteEntries.indices) {
                     val entry = paletteEntries[idx]
                     if (!entry.isHeader) {
-                        addNode(entry.type)
+                        addNode(entry.type, entry.presetSubtype)
                     }
                 }
                 isBlockPaletteOpen = false
@@ -2290,7 +2328,7 @@ class StoryEditorScreen(
             }
         }
 
-        val isShiftOrCtrl = Screen.hasShiftDown() || Screen.hasControlDown()
+        val isShiftOrCtrl = hasShiftDown() || hasControlDown()
 
         var clickedOnNode = false
         for (widget in nodeWidgets.reversed()) {
@@ -2376,7 +2414,7 @@ class StoryEditorScreen(
         if (!clickedOnNode && draggedScene == null && resizingScene == null) {
             val now = System.currentTimeMillis()
             val isDoubleClick = (now - lastEmptyCanvasClickTime < 350) && (Math.hypot(mouseX - lastEmptyCanvasClickX, mouseY - lastEmptyCanvasClickY) < 15.0)
-            val isShiftOrCtrl = Screen.hasShiftDown() || Screen.hasControlDown()
+            val isShiftOrCtrl = hasShiftDown() || hasControlDown()
 
             lastEmptyCanvasClickTime = now
             lastEmptyCanvasClickX = mouseX
@@ -2682,7 +2720,7 @@ class StoryEditorScreen(
         if (activeTextureSelectorModal?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
         if (activeSaveProfileModal?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
         if (activeMetadataModal?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
-        if (showExitConfirmModal || activeDocModal != null || activeVariableModal != null || activeVarSelectorModal != null || activePokemonConfigModal != null || activeActionTriggerPickerModal != null || activeAIDialogueModal != null || activeAnimationSelectorModal != null || activeTextureSelectorModal != null) return true
+        if (showExitConfirmModal || activeDocModal != null || activeVariableModal != null || activeVarSelectorModal != null || activePokemonConfigModal != null || activeActionTriggerPickerModal != null || activeAIDialogueModal != null || activeAnimationSelectorModal != null || activeTextureSelectorModal != null || activeCoordinateModal != null) return true
 
         val now = System.currentTimeMillis()
 
@@ -2711,7 +2749,7 @@ class StoryEditorScreen(
             val selMinY = minOf(selectionOriginWorldY, selectionCurrentWorldY)
             val selMaxY = maxOf(selectionOriginWorldY, selectionCurrentWorldY)
 
-            val isShiftOrCtrl = Screen.hasShiftDown() || Screen.hasControlDown()
+            val isShiftOrCtrl = hasShiftDown() || hasControlDown()
 
             for (widget in nodeWidgets) {
                 val nodeX = widget.node.x
@@ -3062,6 +3100,7 @@ class StoryEditorScreen(
         if (activeTextureSelectorModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeSaveProfileModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeAIDialogueModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (activeCoordinateModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeMetadataModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeVariableModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeVarSelectorModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
@@ -3126,6 +3165,7 @@ class StoryEditorScreen(
         if (activeTextureSelectorModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeSaveProfileModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeAIDialogueModal?.charTyped(codePoint, modifiers) == true) return true
+        if (activeCoordinateModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeInspector?.charTyped(codePoint, modifiers) == true) return true
         if (activeSceneInspector?.charTyped(codePoint, modifiers) == true) return true
         return super.charTyped(codePoint, modifiers)
@@ -3209,6 +3249,12 @@ class StoryEditorScreen(
             return true
         }
 
+        if (activeCoordinateModal != null) {
+            if (activeCoordinateModal?.keyPressed(keyCode, scanCode, modifiers) == true) return true
+            if (keyCode == 256) { activeCoordinateModal = null; return true }
+            return true
+        }
+
         if (showExitConfirmModal) {
             if (keyCode == 256) { showExitConfirmModal = false; return true }
             return true
@@ -3222,7 +3268,7 @@ class StoryEditorScreen(
             return true
         }
 
-        if (Screen.hasControlDown()) {
+        if (hasControlDown()) {
             if (keyCode == 67) { // Ctrl+C (Copy)
                 val nodesToCopy = if (selectedWidgets.isNotEmpty()) selectedWidgets.map { it.node }.toList() else (selectedWidget?.let { listOf(it.node) } ?: emptyList())
                 if (nodesToCopy.isNotEmpty()) {

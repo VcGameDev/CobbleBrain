@@ -161,6 +161,7 @@ class DialogueSystemNeoForge {
     @SubscribeEvent
     fun onTick(event: ServerTickEvent.Post) {
         DialogueSystem.onServerTick(event.server)
+        vito.cobblebrain.engine.StoryListenerManager.onServerTick()
     }
 
     @SubscribeEvent

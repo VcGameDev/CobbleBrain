@@ -6,14 +6,7 @@ import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.network.chat.Component
-import vito.cobblebrain.model.ActionRegistry
-import vito.cobblebrain.model.NodeData
-import vito.cobblebrain.model.NodeType
-import vito.cobblebrain.model.PortData
-import vito.cobblebrain.model.PortType
-import vito.cobblebrain.model.StoryVariable
-import vito.cobblebrain.model.TriggerRegistry
-import vito.cobblebrain.model.VariableType
+import vito.cobblebrain.model.*
 
 class NodeInspectorWidget(
     val node: NodeData,
@@ -36,6 +29,7 @@ class NodeInspectorWidget(
     val onOpenAIDialogueModal: ((NodeData) -> Unit)? = null,
     val onOpenAnimationSelector: ((node: NodeData, onSelected: (String) -> Unit) -> Unit)? = null,
     val onOpenTextureSelector: ((node: NodeData, onSelected: (String) -> Unit) -> Unit)? = null,
+    val onOpenCoordinateModal: ((node: NodeData, onSaved: () -> Unit) -> Unit)? = null,
     val projectVariables: List<StoryVariable> = emptyList()
 ) {
     private data class InspectorLabel(val text: String, val relY: Int, val color: Int = 0xFFA0A0A0.toInt())
@@ -137,93 +131,197 @@ class NodeInspectorWidget(
                 // Strictly Contextual Inputs for Active Action
                 when (actionDef.id) {
                     "LOOK_AT", "LOOK_AT_BLOCK" -> {
-                        val targetType = node.params["targetType"] ?: "PLAYER_POKEMON"
+                        val operationMode = node.params["operationMode"] ?: "APPLY_LOOK"
                         val halfW = (inputW - 2) / 2
 
-                        labels.add(InspectorLabel("Target Entity Type:", relY))
+                        // 1. Operation Mode Selector
+                        labels.add(InspectorLabel("Operation Mode:", relY))
+                        relY += 12
+                        val bApply = Button.builder(Component.literal("🎯 Apply Look")) {
+                            node.params["operationMode"] = "APPLY_LOOK"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (operationMode == "APPLY_LOOK") bApply.active = false
+
+                        val bReset = Button.builder(Component.literal("🔄 Reset AI Look")) {
+                            node.params["operationMode"] = "RESET_LOOK"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                        if (operationMode == "RESET_LOOK") bReset.active = false
+
+                        addWidgetItem(bApply, relY, 14); addWidgetItem(bReset, relY, 14)
+                        relY += 20
+
+                        // 2. Subject Fields (Who is performing the look)
+                        val subjectType = node.params["subjectType"] ?: node.params["targetType"] ?: "PLAYER_POKEMON"
+                        labels.add(InspectorLabel("Subject Type:", relY))
                         relY += 12
                         val bPoke = Button.builder(Component.literal("🐾 Cobblemon")) {
+                            node.params["subjectType"] = "PLAYER_POKEMON"
                             node.params["targetType"] = "PLAYER_POKEMON"
                             buildUi()
                             onDataChanged()
                         }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
-                        if (targetType == "PLAYER_POKEMON") bPoke.active = false
+                        if (subjectType == "PLAYER_POKEMON") bPoke.active = false
 
                         val bNpc = Button.builder(Component.literal("👤 NPC / Mob")) {
+                            node.params["subjectType"] = "NPC_TAG"
                             node.params["targetType"] = "NPC_TAG"
                             buildUi()
                             onDataChanged()
                         }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
-                        if (targetType == "NPC_TAG") bNpc.active = false
+                        if (subjectType == "NPC_TAG") bNpc.active = false
 
                         addWidgetItem(bPoke, relY, 14); addWidgetItem(bNpc, relY, 14)
                         relY += 20
 
-                        if (targetType == "PLAYER_POKEMON") {
+                        if (subjectType == "PLAYER_POKEMON") {
                             labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
                             relY += 12
-                            val curSlot = ((node.params["targetIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                            val rawSlot = node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: "0"
+                            val curSlot = ((rawSlot.toIntOrNull() ?: 0) + 1).toString()
                             val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
                                 val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
+                                node.params["subjectIdentifier"] = slotIdx.toString()
                                 node.params["targetIdentifier"] = slotIdx.toString()
                             }
                             addWidgetItem(fSlot, relY, 16)
                             relY += 22
                         } else {
-                            labels.add(InspectorLabel("Entity Story Tag:", relY))
+                            labels.add(InspectorLabel("Subject Story Tag:", relY))
                             relY += 12
                             val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
-                            fTag.setHint(Component.literal("§8Entity Story Tag (e.g. guide_npc)"))
-                            fTag.value = node.params["targetIdentifier"] ?: ""
-                            fTag.setResponder { node.params["targetIdentifier"] = it; onDataChanged() }
+                            fTag.setHint(Component.literal("§8e.g. guide_npc, quest_boss"))
+                            fTag.value = node.params["subjectIdentifier"] ?: node.params["targetIdentifier"] ?: ""
+                            fTag.setResponder {
+                                node.params["subjectIdentifier"] = it
+                                node.params["targetIdentifier"] = it
+                                onDataChanged()
+                            }
                             addWidgetItem(fTag, relY, 16)
                             relY += 22
                         }
 
-                        val lookModes = listOf(
-                            "PLAYER" to "👤 Face Player",
-                            "AWAY_FROM_PLAYER" to "↪️ Away From Player (180°)",
-                            "SKY" to "☁️ Sky (Pitch -90°)",
-                            "GROUND" to "⬇️ Ground (Pitch 90°)",
-                            "SPECIFIC_DIRECTION" to "📍 Coordinates X,Y,Z",
-                            "OPPOSITE_FACING" to "🔄 Opposite Facing (180°)"
-                        )
-                        val curMode = node.params["lookMode"] ?: "PLAYER"
-                        val curModeLabel = lookModes.find { it.first == curMode }?.second ?: "👤 Face Player"
+                        // 3. APPLY_LOOK Controls
+                        if (operationMode == "APPLY_LOOK") {
+                            // Look Mode
+                            val lookModes = listOf(
+                                "TOWARDS_REFERENCE" to "🎯 Towards Reference",
+                                "AWAY_FROM_REFERENCE" to "↪️ Away From Ref (180°)",
+                                "SKY" to "☁️ Sky (Pitch -90°)",
+                                "GROUND" to "⬇️ Ground (Pitch +90°)",
+                                "OPPOSITE_SELF" to "🔄 Opposite Self (180°)"
+                            )
+                            val curLookMode = node.params["lookMode"] ?: "TOWARDS_REFERENCE"
+                            val curModeLabel = lookModes.find { it.first == curLookMode }?.second ?: "🎯 Towards Reference"
 
-                        labels.add(InspectorLabel("Look Direction Mode:", relY))
-                        relY += 12
-                        val bMode = Button.builder(Component.literal(curModeLabel)) {
-                            val curIdx = lookModes.indexOfFirst { it.first == curMode }
-                            val nextIdx = (curIdx + 1) % lookModes.size
-                            node.params["lookMode"] = lookModes[nextIdx].first
-                            buildUi()
-                            onDataChanged()
-                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
-                        addWidgetItem(bMode, relY, 16)
-                        relY += 22
-
-                        if (curMode == "SPECIFIC_DIRECTION") {
-                            labels.add(InspectorLabel("Target Coordinates (X Y Z):", relY))
+                            labels.add(InspectorLabel("Direction Mode:", relY))
                             relY += 12
-                            val fCoords = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Coordinates"))
-                            fCoords.setHint(Component.literal("§8X Y Z (e.g. 100 64 -200 or ~ ~ ~)"))
-                            fCoords.value = node.params["coordinates"] ?: "~ ~ ~"
-                            fCoords.setResponder { node.params["coordinates"] = it; onDataChanged() }
-                            addWidgetItem(fCoords, relY, 16)
+                            val bMode = Button.builder(Component.literal(curModeLabel)) {
+                                val curIdx = lookModes.indexOfFirst { it.first == curLookMode }.coerceAtLeast(0)
+                                val nextIdx = (curIdx + 1) % lookModes.size
+                                node.params["lookMode"] = lookModes[nextIdx].first
+                                buildUi()
+                                onDataChanged()
+                            }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                            addWidgetItem(bMode, relY, 16)
                             relY += 22
-                        }
 
-                        val isInstant = node.params["instantLook"] == "true"
-                        labels.add(InspectorLabel("Head Rotation Timing:", relY))
-                        relY += 12
-                        val bTiming = Button.builder(Component.literal(if (isInstant) "⚡ Instant Snap" else "🔄 Smooth Look Control")) {
-                            node.params["instantLook"] = if (isInstant) "false" else "true"
-                            buildUi()
-                            onDataChanged()
-                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
-                        addWidgetItem(bTiming, relY, 16)
-                        relY += 22
+                            // Reference Fields (if Towards or Away)
+                            if (curLookMode == "TOWARDS_REFERENCE" || curLookMode == "AWAY_FROM_REFERENCE") {
+                                val refType = node.params["referenceType"] ?: "PLAYER"
+                                val thirdW = (inputW - 4) / 3
+
+                                labels.add(InspectorLabel("Reference Target:", relY))
+                                relY += 12
+                                val bRefPlayer = Button.builder(Component.literal("👤 Player")) {
+                                    node.params["referenceType"] = "PLAYER"
+                                    buildUi()
+                                    onDataChanged()
+                                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                                if (refType == "PLAYER") bRefPlayer.active = false
+
+                                val bRefMob = Button.builder(Component.literal("👾 Mob")) {
+                                    node.params["referenceType"] = "MOB_TAG"
+                                    buildUi()
+                                    onDataChanged()
+                                }.bounds(inputX + thirdW + 2, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                                if (refType == "MOB_TAG") bRefMob.active = false
+
+                                val bRefCoords = Button.builder(Component.literal("📍 Coords")) {
+                                    node.params["referenceType"] = "COORDINATES"
+                                    buildUi()
+                                    onDataChanged()
+                                }.bounds(inputX + (thirdW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                                if (refType == "COORDINATES") bRefCoords.active = false
+
+                                addWidgetItem(bRefPlayer, relY, 14); addWidgetItem(bRefMob, relY, 14); addWidgetItem(bRefCoords, relY, 14)
+                                relY += 20
+
+                                if (refType == "MOB_TAG") {
+                                    labels.add(InspectorLabel("Target Mob Story Tag:", relY))
+                                    relY += 12
+                                    val fRefTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Target Tag"))
+                                    fRefTag.setHint(Component.literal("§8Target Mob Story Tag"))
+                                    fRefTag.value = node.params["referenceIdentifier"] ?: ""
+                                    fRefTag.setResponder { node.params["referenceIdentifier"] = it; onDataChanged() }
+                                    addWidgetItem(fRefTag, relY, 16)
+                                    relY += 22
+                                } else if (refType == "COORDINATES") {
+                                    val initCoord = node.params["referenceIdentifier"]?.ifBlank { node.params["coordinates"] ?: "~ ~ ~" } ?: "~ ~ ~"
+                                    relY = addCoordinateInputSection("Target Coordinates:", initCoord, inputX, inputW, relY, showSafetyControls = false) {
+                                        node.params["referenceIdentifier"] = it
+                                        node.params["coordinates"] = it
+                                    }
+                                }
+                            }
+
+                            // Duration Controls
+                            val durationMode = node.params["durationMode"] ?: "TEMPORARY"
+                            labels.add(InspectorLabel("Duration Mode:", relY))
+                            relY += 12
+                            val bTemp = Button.builder(Component.literal("⏳ Temporary")) {
+                                node.params["durationMode"] = "TEMPORARY"
+                                buildUi()
+                                onDataChanged()
+                            }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                            if (durationMode == "TEMPORARY") bTemp.active = false
+
+                            val bIndef = Button.builder(Component.literal("♾️ Indefinite")) {
+                                node.params["durationMode"] = "INDEFINITE"
+                                buildUi()
+                                onDataChanged()
+                            }.bounds(inputX + halfW + 2, (panelY + 20 + relY - scrollOffset).toInt(), halfW, 14).build()
+                            if (durationMode == "INDEFINITE") bIndef.active = false
+
+                            addWidgetItem(bTemp, relY, 14); addWidgetItem(bIndef, relY, 14)
+                            relY += 20
+
+                            if (durationMode == "TEMPORARY") {
+                                labels.add(InspectorLabel("Duration (Ticks):", relY))
+                                relY += 12
+                                val curTicks = node.params["durationTicks"] ?: "60"
+                                val fTicks = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Ticks", curTicks) {
+                                    node.params["durationTicks"] = it
+                                }
+                                addWidgetItem(fTicks, relY, 16)
+                                relY += 22
+
+                                val isWait = node.params["waitForCompletion"] == "true"
+                                val bWait = Button.builder(Component.literal(if (isWait) "☑ Wait For Completion" else "☐ Wait For Completion")) {
+                                    node.params["waitForCompletion"] = if (isWait) "false" else "true"
+                                    buildUi()
+                                    onDataChanged()
+                                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                                addWidgetItem(bWait, relY, 16)
+                                relY += 22
+                            }
+                        } else {
+                            labels.add(InspectorLabel("ℹ️ Clears active look lock and restores default wandering AI.", relY, 0xFF38BDF8.toInt()))
+                            relY += 20
+                        }
                     }
 
                     "ANIMATION", "ANIMATION_BLOCK" -> {
@@ -417,6 +515,193 @@ class NodeInspectorWidget(
                             relY += 22
                         }
                     }
+
+                    "TAG_BLOCK", "MANAGE_TAG", "TAG_ACTION", "TAG" -> {
+                        val category = node.params["targetCategory"] ?: "ENTITY"
+                        val thirdW = (inputW - 4) / 3
+
+                        // 1. Target Category
+                        labels.add(InspectorLabel("Target Category:", relY))
+                        relY += 12
+                        val bCatEnt = Button.builder(Component.literal("👾 Entity")) {
+                            node.params["targetCategory"] = "ENTITY"
+                            node.params["targetSelector"] = "CLOSEST_MOB"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                        if (category == "ENTITY") bCatEnt.active = false
+
+                        val bCatBlock = Button.builder(Component.literal("🧱 Block")) {
+                            node.params["targetCategory"] = "WORLD_BLOCK"
+                            node.params["targetSelector"] = "LOOKING_AT_BLOCK"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + thirdW + 2, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                        if (category == "WORLD_BLOCK") bCatBlock.active = false
+
+                        val bCatPlayer = Button.builder(Component.literal("👤 Player")) {
+                            node.params["targetCategory"] = "PLAYER"
+                            node.params["targetSelector"] = "INTERACTING_PLAYER"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + (thirdW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                        if (category == "PLAYER") bCatPlayer.active = false
+
+                        addWidgetItem(bCatEnt, relY, 14); addWidgetItem(bCatBlock, relY, 14); addWidgetItem(bCatPlayer, relY, 14)
+                        relY += 20
+
+                        // 2. Target Selector & Identifier
+                        when (category.uppercase()) {
+                            "ENTITY", "MOB" -> {
+                                val selectors = listOf(
+                                    "CLOSEST_MOB" to "📍 Nearest Mob in Radius",
+                                    "LOOKING_AT_MOB" to "🎯 Crosshair Target Mob",
+                                    "BY_EXISTING_TAG" to "🏷️ By Existing Tag",
+                                    "PLAYER_POKEMON_SLOT" to "🐾 Player Pokémon Slot"
+                                )
+                                val curSelector = node.params["targetSelector"] ?: "CLOSEST_MOB"
+                                val selLabel = selectors.find { it.first == curSelector }?.second ?: "📍 Nearest Mob in Radius"
+
+                                labels.add(InspectorLabel("Target Selector:", relY))
+                                relY += 12
+                                val bSel = Button.builder(Component.literal(selLabel)) {
+                                    val curIdx = selectors.indexOfFirst { it.first == curSelector }.coerceAtLeast(0)
+                                    val nextIdx = (curIdx + 1) % selectors.size
+                                    node.params["targetSelector"] = selectors[nextIdx].first
+                                    buildUi()
+                                    onDataChanged()
+                                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                                addWidgetItem(bSel, relY, 16)
+                                relY += 22
+
+                                when (curSelector) {
+                                    "CLOSEST_MOB" -> {
+                                        labels.add(InspectorLabel("Search Radius (Blocks):", relY))
+                                        relY += 12
+                                        val fRad = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Radius", node.params["selectorIdentifier"] ?: "16") {
+                                            node.params["selectorIdentifier"] = it
+                                        }
+                                        addWidgetItem(fRad, relY, 16)
+                                        relY += 22
+                                    }
+                                    "LOOKING_AT_MOB" -> {
+                                        labels.add(InspectorLabel("Max Raycast Distance:", relY))
+                                        relY += 12
+                                        val fDist = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Max Dist", node.params["selectorIdentifier"] ?: "32") {
+                                            node.params["selectorIdentifier"] = it
+                                        }
+                                        addWidgetItem(fDist, relY, 16)
+                                        relY += 22
+                                    }
+                                    "BY_EXISTING_TAG" -> {
+                                        labels.add(InspectorLabel("Existing Story Tag:", relY))
+                                        relY += 12
+                                        val fExist = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Existing Tag"))
+                                        fExist.setHint(Component.literal("§8Target mob existing tag"))
+                                        fExist.value = node.params["selectorIdentifier"] ?: ""
+                                        fExist.setResponder { node.params["selectorIdentifier"] = it; onDataChanged() }
+                                        addWidgetItem(fExist, relY, 16)
+                                        relY += 22
+                                    }
+                                    "PLAYER_POKEMON_SLOT" -> {
+                                        labels.add(InspectorLabel("Party Slot (1 - 6):", relY))
+                                        relY += 12
+                                        val curSlot = ((node.params["selectorIdentifier"]?.toIntOrNull() ?: 0) + 1).toString()
+                                        val fSlot = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Slot", curSlot) {
+                                            val slotIdx = (it.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
+                                            node.params["selectorIdentifier"] = slotIdx.toString()
+                                        }
+                                        addWidgetItem(fSlot, relY, 16)
+                                        relY += 22
+                                    }
+                                }
+                            }
+                            "WORLD_BLOCK", "BLOCK" -> {
+                                val selectors = listOf(
+                                    "LOOKING_AT_BLOCK" to "🎯 Crosshair Target Block",
+                                    "BLOCK_UNDER_PLAYER" to "⬇️ Block Under Player",
+                                    "COORDINATES" to "📍 Specific Coordinates"
+                                )
+                                val curSelector = node.params["targetSelector"] ?: "LOOKING_AT_BLOCK"
+                                val selLabel = selectors.find { it.first == curSelector }?.second ?: "🎯 Crosshair Target Block"
+
+                                labels.add(InspectorLabel("Block Selector:", relY))
+                                relY += 12
+                                val bSel = Button.builder(Component.literal(selLabel)) {
+                                    val curIdx = selectors.indexOfFirst { it.first == curSelector }.coerceAtLeast(0)
+                                    val nextIdx = (curIdx + 1) % selectors.size
+                                    node.params["targetSelector"] = selectors[nextIdx].first
+                                    buildUi()
+                                    onDataChanged()
+                                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                                addWidgetItem(bSel, relY, 16)
+                                relY += 22
+
+                                if (curSelector == "LOOKING_AT_BLOCK") {
+                                    labels.add(InspectorLabel("Max Raycast Distance:", relY))
+                                    relY += 12
+                                    val fDist = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Max Dist", node.params["selectorIdentifier"] ?: "32") {
+                                        node.params["selectorIdentifier"] = it
+                                    }
+                                    addWidgetItem(fDist, relY, 16)
+                                    relY += 22
+                                } else if (curSelector == "COORDINATES") {
+                                    val initCoord = node.params["selectorIdentifier"]?.ifBlank { "~ ~ ~" } ?: "~ ~ ~"
+                                    relY = addCoordinateInputSection("Target Block Coordinates:", initCoord, inputX, inputW, relY, showSafetyControls = false) {
+                                        node.params["selectorIdentifier"] = it
+                                    }
+                                }
+                            }
+                            "PLAYER" -> {
+                                labels.add(InspectorLabel("Target: Interacting Story Player", relY, 0xFF38BDF8.toInt()))
+                                relY += 16
+                            }
+                        }
+
+                        // 3. Operation Mode
+                        val operation = node.params["operation"] ?: "ADD_TAG"
+                        labels.add(InspectorLabel("Tag Operation:", relY))
+                        relY += 12
+
+                        val bOpAdd = Button.builder(Component.literal("➕ Add")) {
+                            node.params["operation"] = "ADD_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                        if (operation == "ADD_TAG") bOpAdd.active = false
+
+                        val bOpRem = Button.builder(Component.literal("➖ Remove")) {
+                            node.params["operation"] = "REMOVE_TAG"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + thirdW + 2, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                        if (operation == "REMOVE_TAG") bOpRem.active = false
+
+                        val bOpClr = Button.builder(Component.literal("🧹 Clear")) {
+                            node.params["operation"] = "CLEAR_TAGS"
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX + (thirdW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), thirdW, 14).build()
+                        if (operation == "CLEAR_TAGS") bOpClr.active = false
+
+                        addWidgetItem(bOpAdd, relY, 14); addWidgetItem(bOpRem, relY, 14); addWidgetItem(bOpClr, relY, 14)
+                        relY += 20
+
+                        // 4. Tag Name Field (if not CLEAR_TAGS)
+                        if (operation != "CLEAR_TAGS") {
+                            labels.add(InspectorLabel("Story Tag Name:", relY))
+                            relY += 12
+                            val fTag = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Story Tag"))
+                            fTag.setHint(Component.literal("§8e.g. quest_boss, active_portal"))
+                            fTag.value = node.params["tagName"] ?: ""
+                            fTag.setResponder { node.params["tagName"] = it; onDataChanged() }
+                            addWidgetItem(fTag, relY, 16)
+                            relY += 22
+                        } else {
+                            labels.add(InspectorLabel("ℹ️ Clears all tags from the resolved target.", relY, 0xFFF59E0B.toInt()))
+                            relY += 20
+                        }
+                    }
                     "AI_DIALOGUE" -> {
                         labels.add(InspectorLabel("AI Dialogue Configuration:", relY))
                         relY += 12
@@ -491,23 +776,18 @@ class NodeInspectorWidget(
                             relY += 22
                         }
 
-                        labels.add(InspectorLabel("Destination X:", relY))
-                        relY += 12
-                        val f1 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "X", node.params["destX"] ?: "0") { node.params["destX"] = it }
-                        addWidgetItem(f1, relY, 16)
-                        relY += 22
+                        val initDest = node.params["coordinates"]?.ifBlank {
+                            node.params["destTag"]?.ifBlank {
+                                "${node.params["destX"] ?: "~"} ${node.params["destY"] ?: "~"} ${node.params["destZ"] ?: "~"}"
+                            }
+                        } ?: "${node.params["destX"] ?: "~"} ${node.params["destY"] ?: "~"} ${node.params["destZ"] ?: "~"}"
 
-                        labels.add(InspectorLabel("Destination Y:", relY))
-                        relY += 12
-                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Y", node.params["destY"] ?: "64") { node.params["destY"] = it }
-                        addWidgetItem(f2, relY, 16)
-                        relY += 22
-
-                        labels.add(InspectorLabel("Destination Z:", relY))
-                        relY += 12
-                        val f3 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Z", node.params["destZ"] ?: "0") { node.params["destZ"] = it }
-                        addWidgetItem(f3, relY, 16)
-                        relY += 22
+                        relY = addCoordinateInputSection("Destination Coordinates / Tag:", initDest, inputX, inputW, relY) {
+                            node.params["coordinates"] = it
+                            if (it.startsWith("@")) {
+                                node.params["destTag"] = it.removePrefix("@").trim()
+                            }
+                        }
                     }
 
                     "CHANGE_WEATHER" -> {
@@ -557,20 +837,13 @@ class NodeInspectorWidget(
                         addWidgetItem(f1, relY, 16)
                         relY += 22
 
-                        labels.add(InspectorLabel("Position X, Y, Z:", relY))
-                        relY += 12
-                        val colW = (inputW - 4) / 3
-                        val fx = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("X"))
-                        fx.value = node.params["posX"] ?: "~"
-                        fx.setResponder { node.params["posX"] = it; onDataChanged() }
-                        val fy = EditBox(font, inputX + colW + 2, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("Y"))
-                        fy.value = node.params["posY"] ?: "~"
-                        fy.setResponder { node.params["posY"] = it; onDataChanged() }
-                        val fz = EditBox(font, inputX + (colW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("Z"))
-                        fz.value = node.params["posZ"] ?: "~"
-                        fz.setResponder { node.params["posZ"] = it; onDataChanged() }
-                        addWidgetItem(fx, relY, 16); addWidgetItem(fy, relY, 16); addWidgetItem(fz, relY, 16)
-                        relY += 22
+                        val initCoords = node.params["coordinates"]?.ifBlank {
+                            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+                        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+                        relY = addCoordinateInputSection("Block Coordinates:", initCoords, inputX, inputW, relY) {
+                            node.params["coordinates"] = it
+                        }
                     }
 
                     "MODIFY_BLOCK_PROPERTY" -> {
@@ -619,20 +892,13 @@ class NodeInspectorWidget(
                         addWidgetItem(tagBox, relY, 16)
                         relY += 22
 
-                        labels.add(InspectorLabel("Position X, Y, Z:", relY))
-                        relY += 12
-                        val colW = (inputW - 4) / 3
-                        val fx = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("X"))
-                        fx.value = node.params["posX"] ?: "~"
-                        fx.setResponder { node.params["posX"] = it; onDataChanged() }
-                        val fy = EditBox(font, inputX + colW + 2, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("Y"))
-                        fy.value = node.params["posY"] ?: "~"
-                        fy.setResponder { node.params["posY"] = it; onDataChanged() }
-                        val fz = EditBox(font, inputX + (colW + 2) * 2, (panelY + 20 + relY - scrollOffset).toInt(), colW, 16, Component.literal("Z"))
-                        fz.value = node.params["posZ"] ?: "~"
-                        fz.setResponder { node.params["posZ"] = it; onDataChanged() }
-                        addWidgetItem(fx, relY, 16); addWidgetItem(fy, relY, 16); addWidgetItem(fz, relY, 16)
-                        relY += 22
+                        val initCoords = node.params["coordinates"]?.ifBlank {
+                            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+                        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+                        relY = addCoordinateInputSection("Spawn Coordinates:", initCoords, inputX, inputW, relY) {
+                            node.params["coordinates"] = it
+                        }
 
                         val cfgBtn = Button.builder(Component.literal("⚙️ Configure Entity...")) {
                             onOpenEntityConfig?.invoke(node)
@@ -817,6 +1083,14 @@ class NodeInspectorWidget(
                         val shinyText = if (isShiny) "✨ Shiny: YES" else "⚪ Shiny: NO"
                         labels.add(InspectorLabel(shinyText, relY, if (isShiny) 0xFFFFD700.toInt() else 0xFFA0A0A0.toInt()))
                         relY += 14
+
+                        val initCoords = node.params["coordinates"]?.ifBlank {
+                            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+                        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+                        relY = addCoordinateInputSection("Spawn Coordinates:", initCoords, inputX, inputW, relY) {
+                            node.params["coordinates"] = it
+                        }
 
                         val cfgBtn = Button.builder(Component.literal("⚙️ Configure Details...")) {
                             onOpenPokemonConfig?.invoke(node)
@@ -1035,6 +1309,14 @@ class NodeInspectorWidget(
                         val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Qty", node.params["count"] ?: "20") { node.params["count"] = it }
                         addWidgetItem(f2, relY, 16)
                         relY += 22
+
+                        val initCoords = node.params["coordinates"]?.ifBlank {
+                            "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+                        } ?: "${node.params["posX"] ?: "~"} ${node.params["posY"] ?: "~"} ${node.params["posZ"] ?: "~"}"
+
+                        relY = addCoordinateInputSection("Particle Center Coordinates:", initCoords, inputX, inputW, relY, showSafetyControls = false) {
+                            node.params["coordinates"] = it
+                        }
                     }
 
                     "PLAY_SOUND", "SOUND" -> {
@@ -1294,23 +1576,13 @@ class NodeInspectorWidget(
                     }
 
                     "PLAYER_COORDINATES", "LOCATION" -> {
-                        labels.add(InspectorLabel("Target X:", relY))
-                        relY += 12
-                        val f1 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "X", node.params["targetX"] ?: "0") { node.params["targetX"] = it }
-                        addWidgetItem(f1, relY, 16)
-                        relY += 22
+                        val initCoords = node.params["coordinates"]?.ifBlank {
+                            "${node.params["targetX"] ?: "0"} ${node.params["targetY"] ?: "64"} ${node.params["targetZ"] ?: "0"}"
+                        } ?: "${node.params["targetX"] ?: "0"} ${node.params["targetY"] ?: "64"} ${node.params["targetZ"] ?: "0"}"
 
-                        labels.add(InspectorLabel("Target Y:", relY))
-                        relY += 12
-                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Y", node.params["targetY"] ?: "64") { node.params["targetY"] = it }
-                        addWidgetItem(f2, relY, 16)
-                        relY += 22
-
-                        labels.add(InspectorLabel("Target Z:", relY))
-                        relY += 12
-                        val f3 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Z", node.params["targetZ"] ?: "0") { node.params["targetZ"] = it }
-                        addWidgetItem(f3, relY, 16)
-                        relY += 22
+                        relY = addCoordinateInputSection("Target Center Coordinates:", initCoords, inputX, inputW, relY, showSafetyControls = false) {
+                            node.params["coordinates"] = it
+                        }
 
                         labels.add(InspectorLabel("Radius (Blocks):", relY))
                         relY += 12
@@ -2910,6 +3182,58 @@ class NodeInspectorWidget(
         return eb
     }
 
+    private fun addCoordinateInputSection(
+        label: String,
+        initialValue: String,
+        inputX: Int,
+        inputW: Int,
+        relYStart: Int,
+        showSafetyControls: Boolean = true,
+        onUpdate: (String) -> Unit
+    ): Int {
+        var curY = relYStart
+        labels.add(InspectorLabel(label, curY))
+        curY += 12
+
+        val coordEdit = EditBox(font, inputX, (panelY + 20 + curY - scrollOffset).toInt(), inputW, 16, Component.literal(label))
+        coordEdit.setHint(Component.literal("§8~0 ~0 ~0, ^0 ^0 ^3, @tag"))
+        coordEdit.value = initialValue
+        coordEdit.setMaxLength(128)
+        coordEdit.setResponder {
+            onUpdate(it)
+            onDataChanged()
+        }
+        addWidgetItem(coordEdit, curY, 16)
+        curY += 20
+
+        val bModal = Button.builder(Component.literal("🧭 Positioning & Safety...")) {
+            onOpenCoordinateModal?.invoke(node) {
+                buildUi()
+                onDataChanged()
+            }
+        }.bounds(inputX, (panelY + 20 + curY - scrollOffset).toInt(), inputW, 16).build()
+        addWidgetItem(bModal, curY, 16)
+        curY += 18
+
+        if (showSafetyControls) {
+            val isSafe = node.params["safePosition"] != "false"
+            val isSnap = node.params["snapToGround"] != "false"
+            val prio = node.params["searchPriority"] ?: "CLOSEST"
+            val safeIcon = if (isSafe) "§a🛡️Safe" else "§7🛡️Off"
+            val snapIcon = if (isSnap) "§b⚓Ground" else "§7⚓Off"
+            val prioIcon = when (prio) {
+                "SURFACE" -> "§e☀️Surface"
+                "UNDERGROUND" -> "§6⛏️Caves"
+                "RANDOM" -> "§d🎲Random"
+                else -> "§3🎯Closest"
+            }
+            labels.add(InspectorLabel("$safeIcon §8| $snapIcon §8| $prioIcon", curY, 0xFF94A3B8.toInt()))
+            curY += 14
+        }
+
+        return curY
+    }
+
     private fun renderMiniMap(guiGraphics: GuiGraphics, x: Int, y: Int, w: Int, h: Int) {
         guiGraphics.fill(x, y, x + w, y + h, 0xFF0D0D12.toInt())
         guiGraphics.fill(x - 1, y - 1, x + w + 1, y, 0xFF3D5AFE.toInt())
@@ -2919,7 +3243,7 @@ class NodeInspectorWidget(
 
         val inner = node.innerNodes
         if (inner.isEmpty()) {
-            guiGraphics.drawString(font, "Vazio", x + w / 2 - 12, y + h / 2 - 4, 0xFF555566.toInt(), false)
+            guiGraphics.drawString(font, "Empty", x + w / 2 - 12, y + h / 2 - 4, 0xFF555566.toInt(), false)
             return
         }
 

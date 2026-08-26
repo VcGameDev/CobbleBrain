@@ -38,7 +38,15 @@ object ActionRegistry {
             name = "Teleport",
             icon = "🌀",
             description = "Teleports player or target entity to specified X, Y, Z coordinates.",
-            defaultParams = mapOf("targetMode" to "PLAYER", "targetStoryTag" to "", "destX" to "0", "destY" to "64", "destZ" to "0")
+            defaultParams = mapOf(
+                "targetMode" to "PLAYER",
+                "targetStoryTag" to "",
+                "coordinates" to "~ ~ ~",
+                "safePosition" to "true",
+                "snapToGround" to "true",
+                "maxSearchRadius" to "5",
+                "searchPriority" to "CLOSEST"
+            )
         ),
         ActionDefinition(
             id = "CHANGE_WEATHER",
@@ -64,7 +72,14 @@ object ActionRegistry {
             name = "Place Block",
             icon = "🧱",
             description = "Places or replaces a block at specified coordinates.",
-            defaultParams = mapOf("blockId" to "minecraft:stone", "posX" to "~", "posY" to "~", "posZ" to "~")
+            defaultParams = mapOf(
+                "blockId" to "minecraft:stone",
+                "coordinates" to "~ ~ ~",
+                "safePosition" to "false",
+                "snapToGround" to "false",
+                "maxSearchRadius" to "5",
+                "searchPriority" to "CLOSEST"
+            )
         ),
         ActionDefinition(
             id = "MODIFY_BLOCK_PROPERTY",
@@ -72,7 +87,7 @@ object ActionRegistry {
             name = "Modify Block",
             icon = "🔧",
             description = "Changes block state properties (e.g. powered=true, open=true).",
-            defaultParams = mapOf("posX" to "~", "posY" to "~", "posZ" to "~", "propertyKey" to "open", "propertyValue" to "true")
+            defaultParams = mapOf("coordinates" to "~ ~ ~", "propertyKey" to "open", "propertyValue" to "true")
         ),
 
         // 👾 ENTITIES
@@ -82,7 +97,16 @@ object ActionRegistry {
             name = "Spawn Entity",
             icon = "👾",
             description = "Spawns an entity or mob (Vanilla or mod) at specified coordinates.",
-            defaultParams = mapOf("entityId" to "minecraft:villager", "customName" to "", "storyTag" to "", "posX" to "~", "posY" to "~", "posZ" to "~")
+            defaultParams = mapOf(
+                "entityId" to "minecraft:villager",
+                "customName" to "",
+                "storyTag" to "",
+                "coordinates" to "~ ~ ~",
+                "safePosition" to "true",
+                "snapToGround" to "true",
+                "maxSearchRadius" to "5",
+                "searchPriority" to "CLOSEST"
+            )
         ),
         ActionDefinition(
             id = "KILL_ENTITY",
@@ -119,15 +143,19 @@ object ActionRegistry {
         ActionDefinition(
             id = "LOOK_AT",
             category = ActionCategory.ENTITIES,
-            name = "Look At Entity",
+            name = "Look At / Focus Entity",
             icon = "👀",
-            description = "Rotates target entity (Cobblemon or NPC/Mob) towards player, coordinates, sky, ground, or opposite direction.",
+            description = "Rotates or continuously tracks player, mob, coordinates, sky, ground, or opposite direction with duration and AI override lock.",
             defaultParams = mapOf(
-                "targetType" to "PLAYER_POKEMON",
-                "targetIdentifier" to "0",
-                "lookMode" to "PLAYER",
-                "coordinates" to "~ ~ ~",
-                "instantLook" to "false"
+                "operationMode" to "APPLY_LOOK",
+                "subjectType" to "PLAYER_POKEMON",
+                "subjectIdentifier" to "0",
+                "referenceType" to "PLAYER",
+                "referenceIdentifier" to "",
+                "lookMode" to "TOWARDS_REFERENCE",
+                "durationMode" to "TEMPORARY",
+                "durationTicks" to "60",
+                "waitForCompletion" to "false"
             )
         ),
         ActionDefinition(
@@ -159,6 +187,20 @@ object ActionRegistry {
                 "resetToDefault" to "false"
             )
         ),
+        ActionDefinition(
+            id = "TAG_BLOCK",
+            category = ActionCategory.ENTITIES,
+            name = "Manage Story Tag",
+            icon = "🏷️",
+            description = "Dynamically adds, removes, or clears story tags on entities, world blocks, or players.",
+            defaultParams = mapOf(
+                "targetCategory" to "ENTITY",
+                "targetSelector" to "CLOSEST_MOB",
+                "selectorIdentifier" to "16",
+                "operation" to "ADD_TAG",
+                "tagName" to "quest_target"
+            )
+        ),
 
         // 🐾 POKÉMON
         ActionDefinition(
@@ -167,7 +209,17 @@ object ActionRegistry {
             name = "Spawn Cobblemon",
             icon = "🐾",
             description = "Spawns a Pokémon with configured level, shiny status, moves, and attributes.",
-            defaultParams = mapOf("species" to "Pikachu", "level" to "5", "shiny" to "false", "storyTag" to "")
+            defaultParams = mapOf(
+                "species" to "Pikachu",
+                "level" to "5",
+                "shiny" to "false",
+                "storyTag" to "",
+                "coordinates" to "~ ~ ~",
+                "safePosition" to "true",
+                "snapToGround" to "true",
+                "maxSearchRadius" to "5",
+                "searchPriority" to "CLOSEST"
+            )
         ),
         ActionDefinition(
             id = "GIVE_POKEMON",
@@ -342,8 +394,14 @@ object ActionRegistry {
             "LOOK_AT_BLOCK" -> "LOOK_AT"
             "ANIMATION_BLOCK" -> "ANIMATION"
             "TEXTURE_BLOCK", "ENTITY_TEXTURE", "SET_TEXTURE" -> "SET_ENTITY_TEXTURE"
+            "MANAGE_TAG", "TAG_ACTION", "TAG", "MANAGE_TAGS" -> "TAG_BLOCK"
             else -> id
         }
         return actions.find { it.id == normalized } ?: actions.first()
+    }
+
+    fun getAction(id: String?): ActionDefinition? {
+        if (id == null) return null
+        return actions.find { it.id.equals(id, ignoreCase = true) } ?: find(id)
     }
 }

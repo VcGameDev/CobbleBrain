@@ -13,6 +13,8 @@ object StoryListenerManager {
      * such as elapsed time, player coordinates, biome, day/night, weather, etc.
      */
     fun onServerTick() {
+        StoryLookAtManager.onServerTick()
+
         val activeList = StoryExecutor.activeStories.values.toList()
         for (instance in activeList) {
             val player = instance.context.player ?: continue
