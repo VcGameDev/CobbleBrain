@@ -53,6 +53,15 @@ object CobblebrainPayloadRegistrarNeoForge {
         }
 
         registrar.playToClient(
+            CobblebrainPayloads.BackgroundPromptPayload.TYPE,
+            CobblebrainPayloads.BackgroundPromptPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onBackgroundPrompt(payload)
+            }
+        }
+
+        registrar.playToClient(
             CobblebrainPayloads.SyncCooldownsPayload.TYPE,
             CobblebrainPayloads.SyncCooldownsPayload.CODEC
         ) { payload, context ->
@@ -84,6 +93,17 @@ object CobblebrainPayloadRegistrarNeoForge {
 
             context.enqueueWork {
                 CobblebrainServerHandlers.onAIResponse(player, payload)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.BackgroundResponsePayload.TYPE,
+            CobblebrainPayloads.BackgroundResponsePayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+
+            context.enqueueWork {
+                CobblebrainServerHandlers.onBackgroundResponse(player, payload)
             }
         }
 
@@ -221,6 +241,44 @@ object CobblebrainPayloadRegistrarNeoForge {
             }
         }
 
+        // =========================
+        // AI DIALOGUE BOX PAYLOADS
+        // =========================
+
+        registrar.playToClient(
+            CobblebrainPayloads.AIDialogueBoxPayload.TYPE,
+            CobblebrainPayloads.AIDialogueBoxPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                vito.cobblebrain.client.DialogueHudOverlay.showDialogue(
+                    speaker = payload.speakerName,
+                    type = payload.speakerType,
+                    text = payload.dialogueText,
+                    freeze = payload.freezePlayer,
+                    instId = payload.instanceId,
+                    nId = payload.nodeId
+                )
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.AdvanceAIDialoguePayload.TYPE,
+            CobblebrainPayloads.AdvanceAIDialoguePayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                val inst = vito.cobblebrain.engine.StoryExecutor.activeStories.values.find { it.storyId == payload.instanceId }
+                if (inst != null) {
+                    val node = inst.project.scenes.flatMap { it.nodes }.find { it.id == payload.nodeId }
+                    if (node != null) {
+                        val outPort = node.outputs.find { it.name.equals("OUT", true) || it.name.equals("OUT_SUCCESS", true) } ?: node.outputs.firstOrNull()
+                        if (outPort != null) {
+                            vito.cobblebrain.engine.StoryExecutor.continuePortConnections(inst, node, outPort.id, 1)
+                        }
+                    }
+                }
+            }
+        }
+
         registrar.playToClient(
             CobblebrainPayloads.SetEntityTexturePayload.TYPE,
             CobblebrainPayloads.SetEntityTexturePayload.CODEC
@@ -268,6 +326,19 @@ object CobblebrainPayloadRegistrarNeoForge {
         ) { payload, context ->
             context.enqueueWork {
                 vito.cobblebrain.engine.StoryDebugger.updateSessionStateFromPayload(payload)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.StoryControlRequestPayload.TYPE,
+            CobblebrainPayloads.StoryControlRequestPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                when (payload.action) {
+                    "PAUSE" -> vito.cobblebrain.engine.StoryExecutor.pauseStory(payload.storyId)
+                    "RESUME" -> vito.cobblebrain.engine.StoryExecutor.resumeStory(payload.storyId)
+                    "STOP" -> vito.cobblebrain.engine.StoryExecutor.stopStory(payload.storyId)
+                }
             }
         }
     }

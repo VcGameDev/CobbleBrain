@@ -50,50 +50,82 @@ class StoryRuntimeDebugScreen(
         super.init()
         clearWidgets()
 
-        val searchW = 150.coerceAtMost((width / 3).coerceAtLeast(100))
+        val searchW = 100.coerceAtMost((width / 4).coerceAtLeast(75))
         val searchX = width - searchW - 10
         val searchY = 6
 
         searchBox = EditBox(font, searchX, searchY, searchW, 16, Component.literal("Search"))
         searchBox.setMaxLength(100)
-        searchBox.setHint(Component.literal("§8🔍 Filter logs..."))
+        searchBox.setHint(Component.literal("§8🔍 Filter..."))
         searchBox.setEditable(true)
         searchBox.active = true
         searchBox.setResponder { logScrollOffset = 0f }
         addRenderableWidget(searchBox)
 
-        // Footer buttons
-        val btnY = height - 26
-        val btnH = 20
+        // Story Execution Controls in Header (Play, Pause, Stop)
+        val session = StoryDebugger.activeSessionState
+        val targetStoryId = initialStoryId?.takeIf { it.isNotBlank() } ?: session.storyId
 
-        val bPauseW = 120.coerceAtMost(width / 4)
-        val bPause = Button.builder(Component.literal(if (isAutoScrollPaused) "▶ Resume Auto-Scroll" else "⏸ Pause Auto-Scroll")) { btn ->
-            isAutoScrollPaused = !isAutoScrollPaused
-            btn.message = Component.literal(if (isAutoScrollPaused) "▶ Resume Auto-Scroll" else "⏸ Pause Auto-Scroll")
-        }.bounds(10, btnY, bPauseW, btnH).build()
+        val ctrlBtnY = 6
+        val ctrlBtnH = 16
+        val bStopW = 46
+        val bPauseW = 50
+        val bPlayW = 48
+
+        val bStopX = searchX - bStopW - 4
+        val bPauseX = bStopX - bPauseW - 3
+        val bPlayX = bPauseX - bPlayW - 3
+
+        val bPlay = Button.builder(Component.literal("▶ Play")) {
+            val id = targetStoryId.ifBlank { StoryDebugger.activeSessionState.storyId }
+            vito.cobblebrain.client.StoryControlClient.resume(id)
+            showToast("Story resumed.")
+            init()
+        }.bounds(bPlayX, ctrlBtnY, bPlayW, ctrlBtnH).build()
+        addRenderableWidget(bPlay)
+
+        val bPause = Button.builder(Component.literal("⏸ Pause")) {
+            val id = targetStoryId.ifBlank { StoryDebugger.activeSessionState.storyId }
+            vito.cobblebrain.client.StoryControlClient.pause(id)
+            showToast("Story paused.")
+            init()
+        }.bounds(bPauseX, ctrlBtnY, bPauseW, ctrlBtnH).build()
         addRenderableWidget(bPause)
 
-        val bClearW = 85.coerceAtMost(width / 5)
-        val bClearX = 10 + bPauseW + 6
-        val bClear = Button.builder(Component.literal("🗑 Clear Logs")) {
+        val bStop = Button.builder(Component.literal("⏹ Stop")) {
+            val id = targetStoryId.ifBlank { StoryDebugger.activeSessionState.storyId }
+            vito.cobblebrain.client.StoryControlClient.stop(id)
+            showToast("Story terminated.")
+            init()
+        }.bounds(bStopX, ctrlBtnY, bStopW, ctrlBtnH).build()
+        addRenderableWidget(bStop)
+
+        // Footer buttons (Compact size)
+        val btnY = height - 24
+        val btnH = 18
+
+        val bPauseScroll = Button.builder(Component.literal(if (isAutoScrollPaused) "▶ Scroll" else "⏸ Scroll")) { btn ->
+            isAutoScrollPaused = !isAutoScrollPaused
+            btn.message = Component.literal(if (isAutoScrollPaused) "▶ Scroll" else "⏸ Scroll")
+        }.bounds(10, btnY, 65, btnH).build()
+        addRenderableWidget(bPauseScroll)
+
+        val bClear = Button.builder(Component.literal("🗑 Clear")) {
             val targetId = initialStoryId?.takeIf { it.isNotBlank() }
             StoryDebugger.clearLogs(targetId)
             logScrollOffset = 0f
             showToast("Logs cleared.")
-        }.bounds(bClearX, btnY, bClearW, btnH).build()
+        }.bounds(10 + 65 + 4, btnY, 55, btnH).build()
         addRenderableWidget(bClear)
 
-        val bExportW = 135.coerceAtMost(width / 3)
-        val bExportX = bClearX + bClearW + 6
-        val bExport = Button.builder(Component.literal("💾 Export Report (.txt)")) {
+        val bExport = Button.builder(Component.literal("💾 Export")) {
             exportReport()
-        }.bounds(bExportX, btnY, bExportW, btnH).build()
+        }.bounds(10 + 65 + 4 + 55 + 4, btnY, 65, btnH).build()
         addRenderableWidget(bExport)
 
-        val bCloseW = 75
         val bClose = Button.builder(Component.literal("Close (Esc)")) {
             onClose()
-        }.bounds(width - bCloseW - 10, btnY, bCloseW, btnH).build()
+        }.bounds(width - 70, btnY, 60, btnH).build()
         addRenderableWidget(bClose)
     }
 
@@ -255,27 +287,31 @@ class StoryRuntimeDebugScreen(
         val currentStoryId = session.storyId.ifBlank { initialStoryId ?: "" }
         val isLive = session.isActive || currentStoryId.isNotBlank()
 
-        val title = "🐞 Story Debugger & Variable Inspector"
+        val title = "🐞 Debugger"
         guiGraphics.drawString(font, title, 10, 8, 0xFF38BDF8.toInt(), true)
 
-        val statusText = if (isLive) "§a● LIVE: §f${currentStoryId.ifBlank { "active" }}" else "§7○ STANDBY / IDLE"
-        guiGraphics.drawString(font, statusText, 10 + font.width(title) + 12, 8, 0xFFFFFFFF.toInt(), false)
+        val statusText = when {
+            session.isPaused -> "§e⏸ PAUSED: §f${currentStoryId.ifBlank { "active" }.take(10)}"
+            isLive -> "§a● LIVE: §f${currentStoryId.ifBlank { "active" }.take(10)}"
+            else -> "§7○ IDLE"
+        }
+        guiGraphics.drawString(font, statusText, 10 + font.width(title) + 6, 8, 0xFFFFFFFF.toInt(), false)
 
-        // Row 2: Filter Category Tabs
+        // Row 2: Filter Category Tabs (Compact)
         val filterTabs = listOf(
             Pair(RuntimeDebugCategoryFilter.ALL, "All (${StoryDebugger.logs.size})"),
-            Pair(RuntimeDebugCategoryFilter.ACTIONS, "⚡ Actions"),
-            Pair(RuntimeDebugCategoryFilter.VARIABLES, "📊 Variables"),
+            Pair(RuntimeDebugCategoryFilter.ACTIONS, "⚡ Action"),
+            Pair(RuntimeDebugCategoryFilter.VARIABLES, "📊 Vars"),
             Pair(RuntimeDebugCategoryFilter.AI, "🤖 AI"),
-            Pair(RuntimeDebugCategoryFilter.ERRORS_ONLY, "❌ Errors (${StoryDebugger.getErrorCount()})")
+            Pair(RuntimeDebugCategoryFilter.ERRORS_ONLY, "❌ Err (${StoryDebugger.getErrorCount()})")
         )
 
         var tabX = 10
-        val tabY = 26
-        val tabH = 18
+        val tabY = 27
+        val tabH = 15
 
         filterTabs.forEach { (filter, label) ->
-            val tabW = font.width(label) + 12
+            val tabW = font.width(label) + 8
             val isSelected = activeFilter == filter
             val isHover = mouseX >= tabX && mouseX <= tabX + tabW && mouseY >= tabY && mouseY <= tabY + tabH
             val bg = when {
@@ -284,8 +320,8 @@ class StoryRuntimeDebugScreen(
                 else -> 0xFF1E293B.toInt()
             }
             guiGraphics.fill(tabX, tabY, tabX + tabW, tabY + tabH, bg)
-            guiGraphics.drawString(font, label, tabX + 6, tabY + 5, if (isSelected) 0xFFFFFFFF.toInt() else 0xFFCBD5E1.toInt(), false)
-            tabX += tabW + 6
+            guiGraphics.drawString(font, label, tabX + 4, tabY + 3, if (isSelected) 0xFFFFFFFF.toInt() else 0xFFCBD5E1.toInt(), false)
+            tabX += tabW + 4
         }
 
         // 3. Split Body Layout
@@ -477,7 +513,11 @@ class StoryRuntimeDebugScreen(
         guiGraphics.drawString(font, "🎯 Target Entity: §f$targetDesc", x + 8, cardY, 0xFF94A3B8.toInt(), false)
         cardY += rowH
 
-        val statusStr = if (session.isActive) "§a● RUNNING" else "§7○ STANDBY"
+        val statusStr = when {
+            session.isPaused -> "§e⏸ PAUSED"
+            session.isActive -> "§a● RUNNING"
+            else -> "§7○ STANDBY"
+        }
         guiGraphics.drawString(font, "Status: $statusStr", x + 8, cardY, 0xFF94A3B8.toInt(), false)
 
         // 2. Real-Time Variable Inspector (Bottom Half)
@@ -565,27 +605,27 @@ class StoryRuntimeDebugScreen(
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (button == 0) {
-            // Filter tabs at tabY = 26, tabH = 18
-            val tabY = 26
-            val tabH = 18
+            // Filter tabs at tabY = 27, tabH = 15
+            val tabY = 27
+            val tabH = 15
 
             val filterTabs = listOf(
                 Pair(RuntimeDebugCategoryFilter.ALL, "All (${StoryDebugger.logs.size})"),
-                Pair(RuntimeDebugCategoryFilter.ACTIONS, "⚡ Actions"),
-                Pair(RuntimeDebugCategoryFilter.VARIABLES, "📊 Variables"),
+                Pair(RuntimeDebugCategoryFilter.ACTIONS, "⚡ Action"),
+                Pair(RuntimeDebugCategoryFilter.VARIABLES, "📊 Vars"),
                 Pair(RuntimeDebugCategoryFilter.AI, "🤖 AI"),
-                Pair(RuntimeDebugCategoryFilter.ERRORS_ONLY, "❌ Errors (${StoryDebugger.getErrorCount()})")
+                Pair(RuntimeDebugCategoryFilter.ERRORS_ONLY, "❌ Err (${StoryDebugger.getErrorCount()})")
             )
 
             var tabX = 10
             filterTabs.forEach { (filter, label) ->
-                val tabW = font.width(label) + 12
+                val tabW = font.width(label) + 8
                 if (mouseX >= tabX && mouseX <= tabX + tabW && mouseY >= tabY && mouseY <= tabY + tabH) {
                     activeFilter = filter
                     logScrollOffset = 0f
                     return true
                 }
-                tabX += tabW + 6
+                tabX += tabW + 4
             }
 
             // Left panel jump buttons

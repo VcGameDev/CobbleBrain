@@ -62,7 +62,8 @@ data class StoryActiveSessionState(
     val variables: Map<String, String> = emptyMap(),
     val lastUpdatedVarKey: String? = null,
     val lastVarUpdateTime: Long = 0L,
-    val isActive: Boolean = false
+    val isActive: Boolean = false,
+    val isPaused: Boolean = false
 )
 
 object StoryDebugger {
@@ -233,7 +234,8 @@ object StoryDebugger {
             variables = varsMap,
             lastUpdatedVarKey = payload.lastUpdatedVarKey.ifBlank { null },
             lastVarUpdateTime = if (payload.lastUpdatedVarKey.isNotBlank()) System.currentTimeMillis() else activeSessionState.lastVarUpdateTime,
-            isActive = payload.isActive
+            isActive = payload.isActive,
+            isPaused = payload.isPaused
         )
     }
 
@@ -250,7 +252,8 @@ object StoryDebugger {
         targetEntityId: String,
         variables: Map<String, Any?>,
         updatedVarKey: String? = null,
-        isActive: Boolean = true
+        isActive: Boolean = true,
+        isPaused: Boolean = false
     ) {
         val safeStoryId = storyId.ifBlank { "default_story" }
         val varsMap = variables.mapValues { it.value?.toString() ?: "null" }
@@ -269,7 +272,8 @@ object StoryDebugger {
             variables = varsMap,
             lastUpdatedVarKey = updatedVarKey,
             lastVarUpdateTime = if (updatedVarKey != null) System.currentTimeMillis() else activeSessionState.lastVarUpdateTime,
-            isActive = isActive
+            isActive = isActive,
+            isPaused = isPaused
         )
 
         if (server != null) {
@@ -285,7 +289,8 @@ object StoryDebugger {
                 targetEntityId = targetEntityId,
                 variablesJson = varsJson,
                 lastUpdatedVarKey = updatedVarKey ?: "",
-                isActive = isActive
+                isActive = isActive,
+                isPaused = isPaused
             )
             server.playerList.players.forEach { p ->
                 sendSessionStateSync?.invoke(p, payload)

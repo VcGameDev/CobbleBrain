@@ -52,11 +52,17 @@ object DialogueSystemFabric {
             vito.cobblebrain.engine.StoryListenerManager.onServerTick()
         }
 
-        // connects to network
         DialogueSystem.sendToPlayer = { player, prompt ->
             ServerPlayNetworking.send(
                 player,
                 CobblebrainPayloads.PromptPayload(prompt)
+            )
+        }
+
+        DialogueSystem.sendToPlayerBackground = { player, prompt ->
+            ServerPlayNetworking.send(
+                player,
+                CobblebrainPayloads.BackgroundPromptPayload(prompt)
             )
         }
 

@@ -29,6 +29,7 @@ class NodeWidget(val node: NodeData) {
     fun getRectShape(): NodeRectShape {
         return when (node.nodeType) {
             NodeType.BEGIN_SCENE, NodeType.END_SCENE, NodeType.GATE,
+            NodeType.BEGIN_CONSTRUCTION, NodeType.END_CONSTRUCTION,
             NodeType.LINK_SEND, NodeType.LINK_RECEIVE,
             NodeType.VARIABLE_GET -> NodeRectShape.HORIZONTAL_RECTANGLE
 
@@ -48,6 +49,8 @@ class NodeWidget(val node: NodeData) {
             // SECTION 1: Structure & Flow (Emerald Green & Teal Shades)
             NodeType.BEGIN_SCENE -> 0xFF2E7D32.toInt()  // Emerald Green
             NodeType.END_SCENE -> 0xFF1B5E20.toInt()    // Dark Green
+            NodeType.BEGIN_CONSTRUCTION -> 0xFFD97706.toInt() // Amber Construction Start
+            NodeType.END_CONSTRUCTION -> 0xFFB45309.toInt()   // Dark Amber Construction Finish
             NodeType.GATE -> 0xFF00838F.toInt()         // Synchronizer Teal
             NodeType.CONSTRUCTION -> 0xFF00695C.toInt()  // Sub-graph Dark Teal
             NodeType.LINK_SEND -> 0xFF009688.toInt()    // Transmitter Sea Green
@@ -205,17 +208,25 @@ class NodeWidget(val node: NodeData) {
             return
         }
 
-        // Diagnostic Debug Status
+        // Diagnostic Debug Status & Active Execution Detection
         val debugStatus = vito.cobblebrain.engine.StoryDebugger.getNodeStatus(storyId, node.id)
         val debugErrMsg = vito.cobblebrain.engine.StoryDebugger.getNodeErrorMessage(storyId, node.id)
+        val sessionState = vito.cobblebrain.engine.StoryDebugger.activeSessionState
+        val isExecutingLive = debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING ||
+            (sessionState.isActive && sessionState.activeNodeId == node.id)
+
+        // Pulsing Execution Outer Glow
+        if (isExecutingLive) {
+            val pulse = ((kotlin.math.sin(System.currentTimeMillis() / 150.0) + 1.0) * 0.5 * 180 + 75).toInt().coerceIn(60, 255)
+            val glowColor = (pulse shl 24) or 0x0038BDF8
+            guiGraphics.fill(x - 5, y - 5, x + w + 5, y + h + 5, glowColor)
+            guiGraphics.fill(x - 3, y - 3, x + w + 3, y + h + 3, 0xFF38BDF8.toInt())
+        }
 
         val borderColor = when {
+            isExecutingLive -> 0xFF38BDF8.toInt()
             debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED -> 0xFFFF3333.toInt()
             debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED -> 0xFFF59E0B.toInt()
-            debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING -> {
-                val pulse = ((kotlin.math.sin(System.currentTimeMillis() / 150.0) + 1.0) * 0.5 * 180 + 75).toInt()
-                (pulse shl 24) or 0x0038BDF8
-            }
             debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS -> 0xFF22C55E.toInt()
             isStartTestNode -> 0xFF00FFCC.toInt()
             isEndTestNode -> 0xFFFF5555.toInt()
@@ -226,7 +237,7 @@ class NodeWidget(val node: NodeData) {
         val headerColor = getHeaderColor()
 
         // Extra thick outline for debug error/running states
-        val borderThickness = if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED || debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING) 3 else 2
+        val borderThickness = if (isExecutingLive || debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED) 3 else 2
         guiGraphics.fill(x - borderThickness, y - borderThickness, x + w + borderThickness, y + h + borderThickness, borderColor)
         guiGraphics.fill(x, y, x + w, y + h, 0xFF1E1E24.toInt())
         guiGraphics.fill(x, y, x + w, y + headerHeight, headerColor)
@@ -246,11 +257,29 @@ class NodeWidget(val node: NodeData) {
             val by = y - 6
             guiGraphics.fill(bx, by, bx + 16, by + 14, 0xFFD97706.toInt())
             guiGraphics.drawString(font, "⚠", bx + 3, by + 3, 0xFFFFFFFF.toInt(), false)
-        } else if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING) {
+        } else if (isExecutingLive) {
             val bx = x + w - 14
             val by = y - 6
             guiGraphics.fill(bx, by, bx + 16, by + 14, 0xFF0284C7.toInt())
             guiGraphics.drawString(font, "⚡", bx + 3, by + 3, 0xFFFFFFFF.toInt(), false)
+        }
+
+        // Timing Delays Badge (Pre-Delay IN & Post-Delay OUT)
+        val totalDelayTicks = node.preDelayTicks + node.postDelayTicks
+        if (totalDelayTicks > 0) {
+            val totalSec = totalDelayTicks / 20.0
+            val formattedTime = if (totalDelayTicks % 20 == 0) "${totalDelayTicks / 20}s" else "${"%.1f".format(totalSec)}s"
+            val badgeText = "⏱ $formattedTime"
+            val badgeW = font.width(badgeText) + 6
+            val badgeH = 11
+            val badgeX = x + (w - badgeW) / 2
+            val badgeY = y - 6
+            guiGraphics.fill(badgeX, badgeY, badgeX + badgeW, badgeY + badgeH, 0xEE0F172A.toInt())
+            guiGraphics.fill(badgeX - 1, badgeY, badgeX, badgeY + badgeH, 0xFF38BDF8.toInt())
+            guiGraphics.fill(badgeX + badgeW, badgeY, badgeX + badgeW + 1, badgeY + badgeH, 0xFF38BDF8.toInt())
+            guiGraphics.fill(badgeX, badgeY - 1, badgeX + badgeW, badgeY, 0xFF38BDF8.toInt())
+            guiGraphics.fill(badgeX, badgeY + badgeH, badgeX + badgeW, badgeY + badgeH + 1, 0xFF38BDF8.toInt())
+            guiGraphics.drawString(font, badgeText, badgeX + 3, badgeY + 2, 0xFF38BDF8.toInt(), false)
         }
 
         // Hide node text ONLY if colliding with overlay menu/inspector
@@ -268,6 +297,9 @@ class NodeWidget(val node: NodeData) {
             val contentY = y + headerHeight + 4
             val rawSummary = when (node.nodeType) {
                 NodeType.BEGIN_SCENE -> "🟢 Scene Start"
+                NodeType.END_SCENE -> "🛑 Finish Scene"
+                NodeType.BEGIN_CONSTRUCTION -> "🏗️ Build: ${node.params["constructionName"] ?: "Construction"} (${node.params["buildSpeedMode"] ?: "INSTANT"})"
+                NodeType.END_CONSTRUCTION -> "🏁 End Build (Sound: ${if (node.params["playCompletionSound"] == "true") "Yes" else "No"})"
                 NodeType.TRIGGER -> {
                     val condMode = if (node.params["triggerCondition"] == "IF_NOT") "IF NOT" else "IF"
                     val trigType = node.params["triggerType"] ?: "START"
@@ -364,7 +396,13 @@ class NodeWidget(val node: NodeData) {
             val ipx = px.toInt()
             val ipy = py.toInt()
             val r = portRadius.toInt()
-            val color = if (hoveredPort?.id == port.id) 0xFF55FF55.toInt() else 0xFF4CAF50.toInt()
+            val color = if (hoveredPort?.id == port.id) {
+                0xFF55FF55.toInt()
+            } else if (port.id == "BUILD_IN" || port.name.contains("Build", true)) {
+                0xFFF59E0B.toInt()
+            } else {
+                0xFF4CAF50.toInt()
+            }
 
             guiGraphics.fill(ipx - r, ipy - r, ipx + r, ipy + r, color)
             guiGraphics.fill(ipx - r + 1, ipy - r + 1, ipx + r - 1, ipy + r - 1, 0xFF1E1E24.toInt())
@@ -385,6 +423,7 @@ class NodeWidget(val node: NodeData) {
             val color = if (hoveredPort?.id == port.id) {
                 0xFFFFB74D.toInt()
             } else when {
+                port.id == "BUILD_OUT" || port.name.contains("Build", true) -> 0xFFF59E0B.toInt()
                 port.id == "ON_CHANGED_OUT" || port.name.contains("Changed", true) -> 0xFF00E5FF.toInt()
                 port.id == "OUT_IF" || port.name.equals("SE", true) || port.name.equals("IF", true) -> 0xFF4CAF50.toInt()
                 port.name.contains("SENÃO SE", true) || port.name.contains("SENAO SE", true) || port.name.contains("ELSE IF", true) -> 0xFFFFB74D.toInt()

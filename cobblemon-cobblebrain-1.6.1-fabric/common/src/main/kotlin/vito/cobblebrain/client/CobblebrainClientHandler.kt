@@ -10,6 +10,7 @@ object CobblebrainClientCommon {
 
     // Fabric/NeoForge vão injetar isso
     var sendToServer: ((String) -> Unit)? = null
+    var sendBackgroundToServer: ((String) -> Unit)? = null
     var callTeamAction: ((String) -> Unit)? = null
     var sendNicknameToServer: ((String) -> Unit)? = null
     var sendOfflineSettingsToServer: ((Boolean, Boolean) -> Unit)? = null
@@ -89,6 +90,15 @@ object CobblebrainClientCommon {
 
     fun onSummaryPromptReceived(contextData: String) {
         AIClientHandler.sendSummaryPrompt(contextData)
+    }
+
+    fun onBackgroundPromptReceived(prompt: String) {
+        AIClientHandler.sendBackgroundPrompt(prompt).thenAccept { response ->
+            sendBackgroundToServer?.invoke(response)
+        }.exceptionally { e ->
+            println("[CobbleBrain AI Client] Background prompt execution failed: ${e.message}")
+            null
+        }
     }
 
     fun onCooldownsSynced(buff: Long, repair: Long, shift: Long, debuff: Long) {

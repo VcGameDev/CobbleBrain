@@ -343,6 +343,31 @@ object ActionRegistry {
             description = "Restores state and rewinds execution to previous checkpoint.",
             defaultParams = mapOf("targetSceneId" to "")
         ),
+        ActionDefinition(
+            id = "BEGIN_CONSTRUCTION",
+            category = ActionCategory.FLOW,
+            name = "Begin Construction",
+            icon = "🏗️",
+            description = "Marks the start of a scoped construction sequence. Holds main flow until End Construction completes.",
+            defaultParams = mapOf(
+                "constructionName" to "New Construction",
+                "buildSpeedMode" to "INSTANT",
+                "tickDelayBetweenSteps" to "5",
+                "timeoutTicks" to "600"
+            )
+        ),
+        ActionDefinition(
+            id = "END_CONSTRUCTION",
+            category = ActionCategory.FLOW,
+            name = "End Construction",
+            icon = "🏁",
+            description = "Marks completion of construction, finalizes placed blocks, and releases main story flow.",
+            defaultParams = mapOf(
+                "finalizeTags" to "true",
+                "playCompletionSound" to "true",
+                "completionSoundId" to "minecraft:block.anvil.use"
+            )
+        ),
 
         // 💬 INTERFACE
         ActionDefinition(

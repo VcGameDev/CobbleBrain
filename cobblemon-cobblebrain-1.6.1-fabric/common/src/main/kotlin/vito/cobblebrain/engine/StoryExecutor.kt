@@ -202,8 +202,82 @@ object StoryExecutor {
         }
     }
 
+    fun pauseStory(storyId: String) {
+        val instance = activeStories[storyId] ?: activeStories.values.find { it.project.id.equals(storyId, true) || it.project.name.equals(storyId, true) }
+        if (instance != null) {
+            instance.context.isPaused = true
+            val server = instance.context.server ?: instance.context.player?.server
+            StoryDebugger.recordLog(
+                storyId = instance.storyId,
+                blockId = instance.context.currentNodeId ?: "",
+                blockType = NodeType.ACTION,
+                status = NodeExecutionStatus.RUNNING,
+                level = "INFO",
+                message = "Story execution PAUSED.",
+                server = server
+            )
+            StoryDebugger.broadcastSessionState(
+                server = server,
+                storyId = instance.storyId,
+                packName = instance.project.name.ifBlank { "Story Pack" },
+                sceneName = instance.project.getActiveScene()?.title ?: "Main Scene",
+                activeNodeId = instance.context.currentNodeId ?: "",
+                activeNodeType = "PAUSED",
+                targetEntityName = "",
+                targetEntityTag = "",
+                targetEntitySlot = "",
+                targetEntityId = "",
+                variables = instance.context.variables,
+                isActive = true,
+                isPaused = true
+            )
+        }
+    }
+
+    fun resumeStory(storyId: String) {
+        val instance = activeStories[storyId] ?: activeStories.values.find { it.project.id.equals(storyId, true) || it.project.name.equals(storyId, true) }
+        if (instance != null) {
+            instance.context.isPaused = false
+            val server = instance.context.server ?: instance.context.player?.server
+            StoryDebugger.recordLog(
+                storyId = instance.storyId,
+                blockId = instance.context.currentNodeId ?: "",
+                blockType = NodeType.ACTION,
+                status = NodeExecutionStatus.RUNNING,
+                level = "INFO",
+                message = "Story execution RESUMED.",
+                server = server
+            )
+            StoryDebugger.broadcastSessionState(
+                server = server,
+                storyId = instance.storyId,
+                packName = instance.project.name.ifBlank { "Story Pack" },
+                sceneName = instance.project.getActiveScene()?.title ?: "Main Scene",
+                activeNodeId = instance.context.currentNodeId ?: "",
+                activeNodeType = "RUNNING",
+                targetEntityName = "",
+                targetEntityTag = "",
+                targetEntitySlot = "",
+                targetEntityId = "",
+                variables = instance.context.variables,
+                isActive = true,
+                isPaused = false
+            )
+            val pending = instance.context.pendingResumes.toList()
+            instance.context.pendingResumes.clear()
+            pending.forEach { it.invoke() }
+        }
+    }
+
     fun executeNodeChain(instance: ActiveStoryInstance, currentNode: NodeData, targetPortId: String? = null, stepCount: Int = 0) {
         if (instance.context.isCancelled) return
+
+        if (instance.context.isPaused) {
+            instance.context.pendingResumes.add {
+                executeNodeChain(instance, currentNode, targetPortId, stepCount)
+            }
+            return
+        }
 
         if (stepCount >= MAX_NODES_PER_TICK) {
             TickManager.schedule(1) {
@@ -211,6 +285,36 @@ object StoryExecutor {
             }
             return
         }
+
+        // 1. Input Trigger & Pre-Delay Handling
+        if (currentNode.preDelayTicks > 0) {
+            instance.context.currentNodeId = currentNode.id
+            val storyId = instance.storyId.ifBlank { instance.project.id }
+            val server = instance.context.server ?: instance.context.player?.server
+
+            StoryDebugger.recordLog(
+                storyId = storyId,
+                blockId = currentNode.id,
+                blockType = currentNode.nodeType,
+                status = NodeExecutionStatus.RUNNING,
+                level = "INFO",
+                message = "Pre-delay active for ${currentNode.preDelayTicks} ticks (${currentNode.preDelayTicks / 20.0}s) on '${currentNode.title.ifBlank { currentNode.nodeType.name }}'",
+                server = server
+            )
+
+            TickManager.schedule(currentNode.preDelayTicks) {
+                if (!instance.context.isCancelled) {
+                    executeNodeCore(instance, currentNode, targetPortId, stepCount)
+                }
+            }
+            return
+        }
+
+        executeNodeCore(instance, currentNode, targetPortId, stepCount)
+    }
+
+    private fun executeNodeCore(instance: ActiveStoryInstance, currentNode: NodeData, targetPortId: String? = null, stepCount: Int = 0) {
+        if (instance.context.isCancelled) return
 
         instance.context.currentNodeId = currentNode.id
         val storyId = instance.storyId.ifBlank { instance.project.id }
@@ -271,7 +375,10 @@ object StoryExecutor {
         if (currentNode.nodeType == NodeType.LINK_SEND) {
             val channelTag = currentNode.params["channelTag"] ?: "channel_1"
             val allNodes = mutableListOf<NodeData>()
-            instance.project.scenes.forEach { scene -> allNodes.addAll(scene.nodes) }
+            instance.project.scenes.forEach { scene ->
+                allNodes.addAll(scene.nodes)
+                scene.nodes.filter { it.nodeType == NodeType.CONSTRUCTION }.forEach { allNodes.addAll(it.innerNodes) }
+            }
 
             val targetReceivers = allNodes.filter { it.nodeType == NodeType.LINK_RECEIVE && it.params["channelTag"] == channelTag }
             for (receiver in targetReceivers) {
@@ -506,24 +613,23 @@ object StoryExecutor {
 
         // 8. GATE SYNCHRONIZER BLOCK (GATE)
         if (currentNode.nodeType == NodeType.GATE) {
-            val scene = instance.project.getActiveScene()
-            if (scene != null) {
-                val activeInputPortIds = scene.connections.filter { it.toNodeId == currentNode.id }.map { it.toPortId }.toSet()
-                val receivedPorts = instance.context.gateState.getOrPut(currentNode.id) { mutableSetOf() }
+            val parentConstr = findParentConstruction(instance, currentNode.id)
+            val allConns = if (parentConstr != null) parentConstr.innerConnections else instance.project.getActiveScene()?.connections ?: emptyList()
+            val activeInputPortIds = allConns.filter { it.toNodeId == currentNode.id }.map { it.toPortId }.toSet()
+            val receivedPorts = instance.context.gateState.getOrPut(currentNode.id) { mutableSetOf() }
 
-                if (targetPortId != null) {
-                    receivedPorts.add(targetPortId)
-                } else if (currentNode.inputs.isNotEmpty()) {
-                    receivedPorts.add(currentNode.inputs.first().id)
-                }
-
-                // Only advance execution when ALL connected IN ports have received input signal
-                if (activeInputPortIds.isEmpty() || receivedPorts.containsAll(activeInputPortIds)) {
-                    instance.context.gateState.remove(currentNode.id)
-                    continueOutgoingConnections(instance, currentNode, stepCount + 1)
-                }
-                return
+            if (targetPortId != null) {
+                receivedPorts.add(targetPortId)
+            } else if (currentNode.inputs.isNotEmpty()) {
+                receivedPorts.add(currentNode.inputs.first().id)
             }
+
+            // Only advance execution when ALL connected IN ports have received input signal
+            if (activeInputPortIds.isEmpty() || receivedPorts.containsAll(activeInputPortIds)) {
+                instance.context.gateState.remove(currentNode.id)
+                continueOutgoingConnections(instance, currentNode, stepCount + 1)
+            }
+            return
         }
 
         // 9. SAVE STATE CHECKPOINT BLOCK
@@ -605,6 +711,85 @@ object StoryExecutor {
                 ?: currentNode.outputs.firstOrNull()?.id
             if (successPort != null) {
                 continuePortConnections(instance, currentNode, successPort, stepCount + 1)
+            }
+            return
+        }
+
+        if (currentNode.nodeType == NodeType.BEGIN_CONSTRUCTION) {
+            val constrName = currentNode.params["constructionName"]?.ifBlank { "Construction" } ?: "Construction"
+            val speedMode = currentNode.params["buildSpeedMode"] ?: "INSTANT"
+
+            StoryDebugger.recordLog(
+                storyId = storyId,
+                blockId = currentNode.id,
+                blockType = currentNode.nodeType,
+                status = NodeExecutionStatus.RUNNING,
+                level = "INFO",
+                message = "Begin Construction entry point fired: '$constrName' (Speed: $speedMode)",
+                server = server
+            )
+
+            // Dispatch flow to internal nodes via single OUT port
+            continueOutgoingConnections(instance, currentNode, stepCount + 1)
+            return
+        }
+
+        if (currentNode.nodeType == NodeType.END_CONSTRUCTION) {
+            val finalizeTags = currentNode.params["finalizeTags"] != "false"
+            val playSound = currentNode.params["playCompletionSound"] == "true"
+            val soundId = currentNode.params["completionSoundId"]?.ifBlank { "minecraft:block.anvil.use" } ?: "minecraft:block.anvil.use"
+
+            val parentConstr = findParentConstruction(instance, currentNode.id)
+            if (parentConstr != null) {
+                val scope = instance.context.activeConstructions[parentConstr.id]
+                if (scope != null) {
+                    if (scope.isCompleted) return // Prevent multiple activations
+                    scope.isCompleted = true
+                    scope.endNodeId = currentNode.id
+                }
+            } else {
+                val openScopes = instance.context.activeConstructions.values.filter { !it.isCompleted }
+                openScopes.forEach {
+                    it.isCompleted = true
+                    it.endNodeId = currentNode.id
+                }
+            }
+
+            if (playSound && server != null) {
+                val player = instance.context.player
+                if (player != null) {
+                    try {
+                        val soundRes = net.minecraft.resources.ResourceLocation.tryParse(soundId)
+                        val soundEvent = if (soundRes != null) net.minecraft.core.registries.BuiltInRegistries.SOUND_EVENT.get(soundRes) else null
+                        if (soundEvent != null) {
+                            player.level().playSound(
+                                null,
+                                player.x, player.y, player.z,
+                                soundEvent,
+                                net.minecraft.sounds.SoundSource.PLAYERS,
+                                1.0f, 1.0f
+                            )
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+
+            StoryDebugger.recordLog(
+                storyId = storyId,
+                blockId = currentNode.id,
+                blockType = currentNode.nodeType,
+                status = NodeExecutionStatus.SUCCESS,
+                level = "INFO",
+                message = "End Construction reached. Construction finalized (Tags: $finalizeTags, Sound: $playSound). Releasing outer flow.",
+                server = server
+            )
+
+            if (parentConstr != null) {
+                continueOutgoingConnections(instance, parentConstr, stepCount + 1)
+            } else {
+                continueOutgoingConnections(instance, currentNode, stepCount + 1)
             }
             return
         }
@@ -787,40 +972,137 @@ object StoryExecutor {
         }
     }
 
+    fun findParentConstruction(instance: ActiveStoryInstance, nodeId: String): NodeData? {
+        fun searchIn(nodes: List<NodeData>): NodeData? {
+            for (node in nodes) {
+                if (node.nodeType == NodeType.CONSTRUCTION) {
+                    if (node.innerNodes.any { it.id == nodeId }) {
+                        return node
+                    }
+                    val nested = searchIn(node.innerNodes)
+                    if (nested != null) return nested
+                }
+            }
+            return null
+        }
+
+        for (scene in instance.project.scenes) {
+            val found = searchIn(scene.nodes)
+            if (found != null) return found
+        }
+        return null
+    }
+
     private fun executeConstruction(instance: ActiveStoryInstance, constructionNode: NodeData, stepCount: Int) {
         val subNodes = constructionNode.innerNodes
-        val subConns = constructionNode.innerConnections
-
         if (subNodes.isEmpty()) {
             continueOutgoingConnections(instance, constructionNode, stepCount)
             return
         }
 
-        val firstSubNode = subNodes.firstOrNull() ?: return
+        val beginNode = subNodes.find { it.nodeType == NodeType.BEGIN_CONSTRUCTION }
+            ?: subNodes.firstOrNull() ?: return
 
-        fun runSubNode(currentSubNode: NodeData, subStep: Int) {
-            if (instance.context.isCancelled) return
+        val constrName = beginNode.params["constructionName"]?.ifBlank { constructionNode.title.ifBlank { "Construction" } }
+            ?: constructionNode.title.ifBlank { "Construction" }
+        val speedMode = beginNode.params["buildSpeedMode"] ?: "INSTANT"
+        val stepDelay = beginNode.params["tickDelayBetweenSteps"]?.toIntOrNull() ?: 5
+        val timeoutTicks = beginNode.params["timeoutTicks"]?.toIntOrNull() ?: 600
 
-            executeNodeAction(instance.context, currentSubNode)
+        val scope = ActiveConstructionScope(
+            beginNodeId = beginNode.id,
+            constructionName = constrName,
+            buildSpeedMode = speedMode,
+            tickDelayBetweenSteps = stepDelay,
+            timeoutTicks = timeoutTicks
+        )
+        instance.context.activeConstructions[constructionNode.id] = scope
+        instance.context.activeConstructions[beginNode.id] = scope
 
-            val outgoingSub = subConns.filter { it.fromNodeId == currentSubNode.id }
-            if (outgoingSub.isNotEmpty()) {
-                for (conn in outgoingSub) {
-                    val nextSubNode = subNodes.find { it.id == conn.toNodeId }
-                    if (nextSubNode != null) {
-                        runSubNode(nextSubNode, subStep + 1)
-                    }
+        val server = instance.context.server ?: instance.context.player?.server
+
+        StoryDebugger.recordLog(
+            storyId = instance.project.id,
+            blockId = constructionNode.id,
+            blockType = constructionNode.nodeType,
+            status = NodeExecutionStatus.RUNNING,
+            level = "INFO",
+            message = "Construction initiated: '$constrName' (Speed: $speedMode, Timeout: ${timeoutTicks}t)",
+            server = server
+        )
+
+        // Anti-softlock timeout protection
+        if (timeoutTicks > 0) {
+            TickManager.schedule(timeoutTicks) {
+                if (!instance.context.isCancelled && !scope.isCompleted) {
+                    scope.isCompleted = true
+                    StoryDebugger.recordLog(
+                        storyId = instance.project.id,
+                        blockId = constructionNode.id,
+                        blockType = constructionNode.nodeType,
+                        status = NodeExecutionStatus.FALLBACK_TRIGGERED,
+                        level = "WARN",
+                        message = "Construction '$constrName' timed out after ${timeoutTicks} ticks! Releasing main flow.",
+                        details = "Anti-softlock safety guard triggered to prevent story progression stall.",
+                        server = server
+                    )
+                    continueOutgoingConnections(instance, constructionNode, stepCount + 1)
                 }
-            } else {
-                continueOutgoingConnections(instance, constructionNode, stepCount + 1)
             }
         }
 
-        runSubNode(firstSubNode, 0)
+        // Execute internal chain starting at BEGIN_CONSTRUCTION with full native pipeline support (delays, timers, branching)
+        executeNodeChain(instance, beginNode, targetPortId = null, stepCount = stepCount + 1)
     }
 
     fun continuePortConnections(instance: ActiveStoryInstance, currentNode: NodeData, portId: String, stepCount: Int) {
         if (instance.context.isCancelled) return
+
+        if (instance.context.isPaused) {
+            instance.context.pendingResumes.add {
+                continuePortConnections(instance, currentNode, portId, stepCount)
+            }
+            return
+        }
+
+        // Post-Delay Timing (OUT)
+        if (currentNode.postDelayTicks > 0) {
+            val server = instance.context.server ?: instance.context.player?.server
+            StoryDebugger.recordLog(
+                storyId = instance.storyId.ifBlank { instance.project.id },
+                blockId = currentNode.id,
+                blockType = currentNode.nodeType,
+                status = NodeExecutionStatus.RUNNING,
+                level = "INFO",
+                message = "Post-delay waiting ${currentNode.postDelayTicks} ticks (${currentNode.postDelayTicks / 20.0}s) on '${currentNode.title.ifBlank { currentNode.nodeType.name }}'",
+                server = server
+            )
+            TickManager.schedule(currentNode.postDelayTicks) {
+                if (!instance.context.isCancelled) {
+                    dispatchPortConnections(instance, currentNode, portId, stepCount)
+                }
+            }
+            return
+        }
+
+        dispatchPortConnections(instance, currentNode, portId, stepCount)
+    }
+
+    private fun dispatchPortConnections(instance: ActiveStoryInstance, currentNode: NodeData, portId: String, stepCount: Int) {
+        if (instance.context.isCancelled) return
+
+        val parentConstr = findParentConstruction(instance, currentNode.id)
+        if (parentConstr != null) {
+            val outgoingConnections = parentConstr.innerConnections.filter { it.fromNodeId == currentNode.id && it.fromPortId == portId }
+            for (conn in outgoingConnections) {
+                val targetNode = parentConstr.innerNodes.find { it.id == conn.toNodeId }
+                if (targetNode != null) {
+                    executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
+                }
+            }
+            return
+        }
+
         val scene = instance.project.getActiveScene() ?: return
         val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id && it.fromPortId == portId }
 
@@ -858,40 +1140,82 @@ object StoryExecutor {
 
     fun continueOutgoingConnections(instance: ActiveStoryInstance, currentNode: NodeData, stepCount: Int = 0) {
         if (instance.context.isCancelled) return
-        val scene = instance.project.getActiveScene() ?: return
-        val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id }
-        val interConnections = instance.project.sceneConnections.filter { it.fromNodeId == currentNode.id }
 
-        if (outgoingConnections.isNotEmpty() || interConnections.isNotEmpty()) {
+        if (instance.context.isPaused) {
+            instance.context.pendingResumes.add {
+                continueOutgoingConnections(instance, currentNode, stepCount)
+            }
+            return
+        }
+
+        // Post-Delay Timing (OUT)
+        if (currentNode.postDelayTicks > 0) {
+            val server = instance.context.server ?: instance.context.player?.server
+            StoryDebugger.recordLog(
+                storyId = instance.storyId.ifBlank { instance.project.id },
+                blockId = currentNode.id,
+                blockType = currentNode.nodeType,
+                status = NodeExecutionStatus.RUNNING,
+                level = "INFO",
+                message = "Post-delay waiting ${currentNode.postDelayTicks} ticks (${currentNode.postDelayTicks / 20.0}s) on '${currentNode.title.ifBlank { currentNode.nodeType.name }}'",
+                server = server
+            )
+            TickManager.schedule(currentNode.postDelayTicks) {
+                if (!instance.context.isCancelled) {
+                    dispatchOutgoingConnections(instance, currentNode, stepCount)
+                }
+            }
+            return
+        }
+
+        dispatchOutgoingConnections(instance, currentNode, stepCount)
+    }
+
+    private fun dispatchOutgoingConnections(instance: ActiveStoryInstance, currentNode: NodeData, stepCount: Int) {
+        if (instance.context.isCancelled) return
+
+        val parentConstr = findParentConstruction(instance, currentNode.id)
+        if (parentConstr != null) {
+            val outgoingConnections = parentConstr.innerConnections.filter { it.fromNodeId == currentNode.id }
             for (conn in outgoingConnections) {
-                val targetNode = scene.nodes.find { it.id == conn.toNodeId }
+                val targetNode = parentConstr.innerNodes.find { it.id == conn.toNodeId }
                 if (targetNode != null) {
                     executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
                 }
             }
-            for (conn in interConnections) {
-                val targetScene = instance.project.scenes.find { it.id == conn.toNodeId }
-                if (targetScene != null) {
-                    instance.project.activeSceneId = targetScene.id
-                    val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
-                        ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
-                        ?: targetScene.nodes.firstOrNull()
-                    if (initialNode != null) {
-                        executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
+            return
+        }
+
+        val scene = instance.project.getActiveScene() ?: return
+        val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id }
+        val interConnections = instance.project.sceneConnections.filter { it.fromNodeId == currentNode.id }
+
+        for (conn in outgoingConnections) {
+            val targetNode = scene.nodes.find { it.id == conn.toNodeId }
+            if (targetNode != null) {
+                executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
+            }
+        }
+        for (conn in interConnections) {
+            val targetScene = instance.project.scenes.find { it.id == conn.toNodeId }
+            if (targetScene != null) {
+                instance.project.activeSceneId = targetScene.id
+                val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
+                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
+                    ?: targetScene.nodes.firstOrNull()
+                if (initialNode != null) {
+                    executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
+                }
+            } else {
+                val allNodes = instance.project.scenes.flatMap { it.nodes }
+                val targetNode = allNodes.find { it.id == conn.toNodeId }
+                if (targetNode != null) {
+                    if (!targetNode.parentSceneId.isNullOrBlank()) {
+                        instance.project.activeSceneId = targetNode.parentSceneId!!
                     }
-                } else {
-                    val allNodes = instance.project.scenes.flatMap { it.nodes }
-                    val targetNode = allNodes.find { it.id == conn.toNodeId }
-                    if (targetNode != null) {
-                        if (!targetNode.parentSceneId.isNullOrBlank()) {
-                            instance.project.activeSceneId = targetNode.parentSceneId!!
-                        }
-                        executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
-                    }
+                    executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
                 }
             }
-        } else {
-            finishSceneExecution(instance, stepCount)
         }
     }
 
@@ -1011,7 +1335,7 @@ object StoryExecutor {
                     StoryMissionManager.startMission(inst, node)
                 }
             }
-            NodeType.TIMER, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT, NodeType.VARIABLE_GET, NodeType.VARIABLE_SET -> {
+            NodeType.TIMER, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.CONSTRUCTION, NodeType.BEGIN_CONSTRUCTION, NodeType.END_CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT, NodeType.VARIABLE_GET, NodeType.VARIABLE_SET -> {
                 // Executed by graph flow control logic
             }
             else -> {}

@@ -20,7 +20,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Resposta da IA
+        // Resposta da IA (Stage 1 Foreground)
         ServerPlayNetworking.registerGlobalReceiver(AIResponsePayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -28,6 +28,17 @@ object CobblebrainServerHandlerFabric {
 
                 // chama o Common
                 CobblebrainServerHandler.processIaResponse(player.server, player, payload.content)
+            }
+        }
+
+        // Resposta de Background (Stage 2 Background State Resolution)
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.BackgroundResponsePayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                println("[SERVER RECEIVED BACKGROUND RESPONSE] from ${player.name.string}")
+
+                // chama o Common
+                CobblebrainServerHandler.processBackgroundResponse(player.server, player, payload.content)
             }
         }
 
@@ -138,6 +149,16 @@ object CobblebrainServerHandlerFabric {
                             vito.cobblebrain.engine.StoryExecutor.continuePortConnections(inst, node, outPort.id, 1)
                         }
                     }
+                }
+            }
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.StoryControlRequestPayload.TYPE) { payload, context ->
+            context.server().execute {
+                when (payload.action) {
+                    "PAUSE" -> vito.cobblebrain.engine.StoryExecutor.pauseStory(payload.storyId)
+                    "RESUME" -> vito.cobblebrain.engine.StoryExecutor.resumeStory(payload.storyId)
+                    "STOP" -> vito.cobblebrain.engine.StoryExecutor.stopStory(payload.storyId)
                 }
             }
         }

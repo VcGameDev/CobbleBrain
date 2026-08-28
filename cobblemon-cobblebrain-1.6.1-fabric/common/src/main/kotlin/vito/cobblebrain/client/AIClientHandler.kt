@@ -37,5 +37,16 @@ object AIClientHandler {
             }
         }
     }
+
+    fun sendBackgroundPrompt(prompt: String): CompletableFuture<String> {
+        return CompletableFuture.supplyAsync {
+            try {
+                val handler = createHandler()
+                handler.generateBackgroundState(prompt)
+            } catch (e: Exception) {
+                "Background state evaluation error: ${e.message}"
+            }
+        }
+    }
 }
 

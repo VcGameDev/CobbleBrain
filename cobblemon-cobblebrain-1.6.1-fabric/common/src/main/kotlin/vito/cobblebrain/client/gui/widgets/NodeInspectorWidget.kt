@@ -42,6 +42,7 @@ class NodeInspectorWidget(
     private var focusedEditBox: EditBox? = null
     private var scrollOffset: Double = 0.0
     private var totalContentHeight: Double = 0.0
+    private var isTimingSectionCollapsed: Boolean = false
 
     private val closeBtn: Button
 
@@ -2525,7 +2526,9 @@ class NodeInspectorWidget(
 
                         labels.add(InspectorLabel("Radius (Blocks):", relY))
                         relY += 12
-                        val radEdit = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Radius", node.params["audioRadius"] ?: "16") { node.params["audioRadius"] = it }
+                        val radEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Radius"))
+                        radEdit.value = node.params["audioRadius"] ?: "16"
+                        radEdit.setResponder { node.params["audioRadius"] = it; onDataChanged() }
                         addWidgetItem(radEdit, relY, 16)
                         relY += 22
                     }
@@ -2562,9 +2565,9 @@ class NodeInspectorWidget(
                     labels.add(InspectorLabel("Repetitions (Qty):", relY))
                     relY += 12
 
-                    val countEdit = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Qty", node.params["loopCount"] ?: "5") { valText ->
-                        node.params["loopCount"] = valText
-                    }
+                    val countEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Qty"))
+                    countEdit.value = node.params["loopCount"] ?: "5"
+                    countEdit.setResponder { node.params["loopCount"] = it; onDataChanged() }
                     addWidgetItem(countEdit, relY, 16)
                     relY += 22
                 }
@@ -2572,9 +2575,9 @@ class NodeInspectorWidget(
                 labels.add(InspectorLabel("Interval (Sec):", relY))
                 relY += 12
 
-                val intervalEdit = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Sec", node.params["loopIntervalSec"] ?: "1.0") { valText ->
-                    node.params["loopIntervalSec"] = valText
-                }
+                val intervalEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Sec"))
+                intervalEdit.value = node.params["loopIntervalSec"] ?: "1.0"
+                intervalEdit.setResponder { node.params["loopIntervalSec"] = it; onDataChanged() }
                 addWidgetItem(intervalEdit, relY, 16)
                 relY += 22
             }
@@ -2591,6 +2594,93 @@ class NodeInspectorWidget(
                 relY += 12
                 labels.add(InspectorLabel("Fires OUT output.", relY))
                 relY += 16
+            }
+
+            NodeType.BEGIN_CONSTRUCTION -> {
+                labels.add(InspectorLabel("🏗️ Construction Scope Start", relY))
+                relY += 14
+
+                labels.add(InspectorLabel("Construction Name:", relY))
+                relY += 12
+                val nameEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Name"))
+                nameEdit.value = node.params["constructionName"] ?: "New Construction"
+                nameEdit.setResponder { node.params["constructionName"] = it; onDataChanged() }
+                addWidgetItem(nameEdit, relY, 16)
+                relY += 22
+
+                labels.add(InspectorLabel("Build Speed Mode:", relY))
+                relY += 12
+                val speedModes = listOf("INSTANT", "ANIMATED_LAYER_BY_LAYER", "TIMED_STEP")
+                val curSpeed = node.params["buildSpeedMode"] ?: "INSTANT"
+                val speedBtn = Button.builder(Component.literal("⚡ $curSpeed")) { btn ->
+                    val nextIdx = (speedModes.indexOf(node.params["buildSpeedMode"] ?: "INSTANT") + 1) % speedModes.size
+                    val nextSpeed = speedModes[nextIdx]
+                    node.params["buildSpeedMode"] = nextSpeed
+                    btn.message = Component.literal("⚡ $nextSpeed")
+                    onDataChanged()
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                addWidgetItem(speedBtn, relY, 16)
+                relY += 22
+
+                labels.add(InspectorLabel("Delay Between Steps (Ticks):", relY))
+                relY += 12
+                val delayEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("5"))
+                delayEdit.value = node.params["tickDelayBetweenSteps"] ?: "5"
+                delayEdit.setResponder { node.params["tickDelayBetweenSteps"] = it; onDataChanged() }
+                addWidgetItem(delayEdit, relY, 16)
+                relY += 22
+
+                labels.add(InspectorLabel("Timeout Threshold (Ticks):", relY))
+                relY += 12
+                val timeoutEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("600"))
+                timeoutEdit.value = node.params["timeoutTicks"] ?: "600"
+                timeoutEdit.setResponder { node.params["timeoutTicks"] = it; onDataChanged() }
+                addWidgetItem(timeoutEdit, relY, 16)
+                relY += 22
+            }
+
+            NodeType.END_CONSTRUCTION -> {
+                labels.add(InspectorLabel("🏁 Construction Scope Finish", relY))
+                relY += 14
+
+                val isFinalizeTags = node.params["finalizeTags"] != "false"
+                val finalizeBtn = Button.builder(Component.literal("🏷️ Finalize Tags: ${if (isFinalizeTags) "YES" else "NO"}")) { btn ->
+                    val cur = node.params["finalizeTags"] != "false"
+                    val next = !cur
+                    node.params["finalizeTags"] = next.toString()
+                    btn.message = Component.literal("🏷️ Finalize Tags: ${if (next) "YES" else "NO"}")
+                    onDataChanged()
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                addWidgetItem(finalizeBtn, relY, 16)
+                relY += 22
+
+                val isPlaySound = node.params["playCompletionSound"] == "true"
+                val soundToggleBtn = Button.builder(Component.literal("🔊 Play Sound: ${if (isPlaySound) "YES" else "NO"}")) { btn ->
+                    val cur = node.params["playCompletionSound"] == "true"
+                    val next = !cur
+                    node.params["playCompletionSound"] = next.toString()
+                    btn.message = Component.literal("🔊 Play Sound: ${if (next) "YES" else "NO"}")
+                    buildUi()
+                    onDataChanged()
+                }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                addWidgetItem(soundToggleBtn, relY, 16)
+                relY += 22
+
+                if (node.params["playCompletionSound"] == "true") {
+                    val currentSound = node.params["completionSoundId"] ?: "minecraft:block.anvil.use"
+                    labels.add(InspectorLabel("Completion Sound ID:", relY))
+                    relY += 12
+
+                    val soundPickBtn = Button.builder(Component.literal("🎵 $currentSound")) {
+                        onOpenResourcePicker?.invoke(ResourcePickerType.SOUND) { chosen ->
+                            node.params["completionSoundId"] = chosen
+                            buildUi()
+                            onDataChanged()
+                        }
+                    }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                    addWidgetItem(soundPickBtn, relY, 16)
+                    relY += 22
+                }
             }
 
             NodeType.GATE -> {
@@ -3392,8 +3482,57 @@ class NodeInspectorWidget(
             }
         }
 
-        // 3. Node Lifecycle Actions: Dissociate & Delete
-        relY += 10
+        // 3. Timing & Execution Delays Section
+        relY += 8
+        val hasCustomDelays = node.preDelayTicks > 0 || node.postDelayTicks > 0
+        val collapseArrow = if (isTimingSectionCollapsed) "▶" else "▼"
+        val delayBadge = if (hasCustomDelays) " (${(node.preDelayTicks + node.postDelayTicks) / 20.0}s)" else ""
+        val timingSectionBtn = Button.builder(Component.literal("$collapseArrow ⏱️ Timing & Delays$delayBadge")) {
+            isTimingSectionCollapsed = !isTimingSectionCollapsed
+            buildUi()
+            onDataChanged()
+        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+        addWidgetItem(timingSectionBtn, relY, 16)
+        relY += 20
+
+        if (!isTimingSectionCollapsed) {
+            labels.add(InspectorLabel("Pre-Delay IN (Seconds / Ticks):", relY, 0xFF38BDF8.toInt()))
+            relY += 12
+
+            val preDelayText = if (node.preDelayTicks == 0) "0s" else if (node.preDelayTicks % 20 == 0) "${node.preDelayTicks / 20}s" else "${node.preDelayTicks / 20.0}s"
+            val preDelayEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Pre-Delay"))
+            preDelayEdit.setHint(Component.literal("§8e.g. 1.5s or 30t"))
+            preDelayEdit.value = preDelayText
+            preDelayEdit.setResponder { raw ->
+                val parsed = parseDelayInputToTicks(raw)
+                if (parsed != node.preDelayTicks) {
+                    node.preDelayTicks = parsed
+                    onDataChanged()
+                }
+            }
+            addWidgetItem(preDelayEdit, relY, 16)
+            relY += 22
+
+            labels.add(InspectorLabel("Post-Delay OUT (Seconds / Ticks):", relY, 0xFF38BDF8.toInt()))
+            relY += 12
+
+            val postDelayText = if (node.postDelayTicks == 0) "0s" else if (node.postDelayTicks % 20 == 0) "${node.postDelayTicks / 20}s" else "${node.postDelayTicks / 20.0}s"
+            val postDelayEdit = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Post-Delay"))
+            postDelayEdit.setHint(Component.literal("§8e.g. 1.0s or 20t"))
+            postDelayEdit.value = postDelayText
+            postDelayEdit.setResponder { raw ->
+                val parsed = parseDelayInputToTicks(raw)
+                if (parsed != node.postDelayTicks) {
+                    node.postDelayTicks = parsed
+                    onDataChanged()
+                }
+            }
+            addWidgetItem(postDelayEdit, relY, 16)
+            relY += 22
+        }
+
+        // 4. Node Lifecycle Actions: Dissociate & Delete
+        relY += 6
         labels.add(InspectorLabel("─ Actions ─", relY, 0xFF555566.toInt()))
         relY += 14
 
@@ -3413,6 +3552,23 @@ class NodeInspectorWidget(
 
         totalContentHeight = relY.toDouble()
         updateWidgetPositions()
+    }
+
+    private fun parseDelayInputToTicks(raw: String): Int {
+        val trimmed = raw.trim().lowercase()
+        if (trimmed.isBlank() || trimmed == "0" || trimmed == "0s" || trimmed == "0t") return 0
+        if (trimmed.endsWith("ticks")) {
+            return (trimmed.removeSuffix("ticks").trim().toIntOrNull() ?: 0).coerceAtLeast(0)
+        }
+        if (trimmed.endsWith("t")) {
+            return (trimmed.removeSuffix("t").trim().toIntOrNull() ?: 0).coerceAtLeast(0)
+        }
+        if (trimmed.endsWith("s")) {
+            val sec = trimmed.removeSuffix("s").trim().toDoubleOrNull() ?: 0.0
+            return (sec * 20.0).toInt().coerceAtLeast(0)
+        }
+        val num = trimmed.toDoubleOrNull() ?: 0.0
+        return (num * 20.0).toInt().coerceAtLeast(0)
     }
 
     private class NumEditBox(font: Font, x: Int, y: Int, w: Int, h: Int, title: Component) : EditBox(font, x, y, w, h, title)
@@ -3567,6 +3723,8 @@ class NodeInspectorWidget(
 
             val color = when (sub.nodeType) {
                 NodeType.BEGIN_SCENE -> 0xFF388E3C.toInt()
+                NodeType.BEGIN_CONSTRUCTION -> 0xFFD97706.toInt()
+                NodeType.END_CONSTRUCTION -> 0xFFB45309.toInt()
                 NodeType.TRIGGER -> 0xFF2E7D32.toInt()
                 NodeType.ACTION -> 0xFFC62828.toInt()
                 NodeType.TIMER -> 0xFF6A1B9A.toInt()

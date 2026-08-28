@@ -23,6 +23,14 @@ class DialogueSystemNeoForge {
                 CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
             }
 
+            DialogueSystem.sendToPlayerBackground = { player, prompt ->
+                CobblebrainNetworkingNeoForge.sendBackgroundToPlayer(player, prompt)
+            }
+
+            DialogueSystem.sendToPlayerSummary = { player, contextData ->
+                CobblebrainNetworkingNeoForge.sendSummaryToPlayer(player, contextData)
+            }
+
             DialogueSystem.sendPersonalityList = { player, dataJson ->
                 CobblebrainNetworkingNeoForge.sendPersonalityList(player, dataJson)
             }

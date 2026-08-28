@@ -569,6 +569,7 @@ object CobblebrainConfigScreen {
         var favoriteMemorySlots = 5
         var baseCandidateMemories = 10
         var enableAiMemoryRetrieval = false
+        var optimizedMode = true
 
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
@@ -1043,6 +1044,17 @@ object CobblebrainConfigScreen {
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.debugLogging = value }
             .setTooltip(Component.translatable("cobblebrain.config.debug_logging.tooltip"))
+            .build()
+
+        val optimizedModeEntry = entryBuilder.startBooleanToggle(
+            Component.literal("Optimized Pipeline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.optimizedMode
+        ).setDefaultValue(true)
+            .setSaveConsumer { value ->
+                clientConfig.optimizedMode = value
+                optimizedMode = value
+            }
+            .setTooltip(Component.literal("Splits AI processing into two stages: delivers immediate in-game dialogue and actions first, then resolves all other systems (memory, traits, quests, state updates) asynchronously in the background."))
             .build()
 
         val showHungerEntry = entryBuilder.startBooleanToggle(
@@ -1701,6 +1713,7 @@ object CobblebrainConfigScreen {
         category.entries.add(requestTimeoutEntry)
         category.entries.add(debugLoggingEntry)
         category.entries.add(apiKeyEntry)
+        category.entries.add(optimizedModeEntry)
         category.entries.add(keyRotationTriggerEntry)
         category.entries.add(aiModelEntry)
         category.entries.add(modelRotationTriggerEntry)
@@ -1798,7 +1811,8 @@ object CobblebrainConfigScreen {
                 favoriteMemorySlots,
                 baseCandidateMemories,
                 config.allowClientPersonalityEditing,
-                enableAiMemoryRetrieval
+                enableAiMemoryRetrieval,
+                optimizedMode
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)

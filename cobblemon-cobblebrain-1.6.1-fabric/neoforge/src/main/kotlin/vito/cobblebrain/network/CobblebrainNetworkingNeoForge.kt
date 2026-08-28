@@ -39,10 +39,23 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendBackgroundToPlayer(player: ServerPlayer, prompt: String) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.BackgroundPromptPayload(prompt)
+        )
+    }
+
     // CLIENT → SERVER
     fun sendToServer(response: String) {
         PacketDistributor.sendToServer(
             CobblebrainPayloads.AIResponsePayload(response)
+        )
+    }
+
+    fun sendBackgroundToServer(response: String) {
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.BackgroundResponsePayload(response)
         )
     }
 
@@ -86,6 +99,7 @@ object CobblebrainNetworkingNeoForge {
             cfg.allowClientPersonalityEditing,
             cfg.forceOfflineMode,
             cfg.enableAiMemoryRetrieval,
+            cfg.optimizedMode,
             com.google.gson.Gson().toJson(cfg.actionSettings)
         )
 

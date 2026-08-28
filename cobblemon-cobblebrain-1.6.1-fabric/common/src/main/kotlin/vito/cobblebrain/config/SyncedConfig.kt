@@ -45,6 +45,8 @@ object SyncedConfig {
         private set
     var enableAiMemoryRetrieval = false
         private set
+    var optimizedMode = true
+        private set
     var actionSettings: ActionSettings = ActionSettings()
         private set
 
@@ -98,6 +100,7 @@ object SyncedConfig {
         allowClientPersonalityEditing = payload.allowClientPersonalityEditing
         forceOfflineMode = payload.forceOfflineMode
         enableAiMemoryRetrieval = payload.enableAiMemoryRetrieval
+        optimizedMode = payload.optimizedMode
         if (payload.actionSettingsJson.isNotBlank()) {
             try {
                 actionSettings = com.google.gson.Gson().fromJson(payload.actionSettingsJson, ActionSettings::class.java) ?: ActionSettings()
@@ -128,7 +131,8 @@ object SyncedConfig {
         favoriteMemorySlots: Int = 5,
         baseCandidateMemories: Int = 10,
         allowClientPersonalityEditing: Boolean,
-        enableAiMemoryRetrieval: Boolean = false
+        enableAiMemoryRetrieval: Boolean = false,
+        optimizedMode: Boolean = true
     ) {
         if (isServerControlled) {
             println("Attempt to change config blocked (server-controlled)")
@@ -152,6 +156,7 @@ object SyncedConfig {
         this.baseCandidateMemories = baseCandidateMemories
         this.allowClientPersonalityEditing = allowClientPersonalityEditing
         this.enableAiMemoryRetrieval = enableAiMemoryRetrieval
+        this.optimizedMode = optimizedMode
 
         val cfg = ConfigHandler.config
 
@@ -172,6 +177,7 @@ object SyncedConfig {
         cfg.baseCandidateMemories = baseCandidateMemories
         cfg.allowClientPersonalityEditing = allowClientPersonalityEditing
         cfg.enableAiMemoryRetrieval = enableAiMemoryRetrieval
+        cfg.optimizedMode = optimizedMode
 
         ConfigHandler.save()
     }

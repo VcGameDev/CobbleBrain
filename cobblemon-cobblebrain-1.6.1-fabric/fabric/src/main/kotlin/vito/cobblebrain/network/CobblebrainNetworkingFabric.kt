@@ -28,6 +28,13 @@ object CobblebrainNetworkingFabric {
         )
     }
 
+    fun sendBackgroundToPlayer(player: ServerPlayer, prompt: String) {
+        ServerPlayNetworking.send(
+            player,
+            CobblebrainPayloads.BackgroundPromptPayload(prompt)
+        )
+    }
+
     fun sendActionToServer(action: String) {
         ClientPlayNetworking.send(CobblebrainPayloads.ActionPayload(action))
     }
@@ -56,6 +63,7 @@ object CobblebrainNetworkingFabric {
             config.allowClientPersonalityEditing,
             config.forceOfflineMode,
             config.enableAiMemoryRetrieval,
+            config.optimizedMode,
             com.google.gson.Gson().toJson(config.actionSettings)
         )
 

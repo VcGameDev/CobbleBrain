@@ -17,6 +17,7 @@ data class CobblebrainConfig(
 
     var dialogueInChat: Boolean = true,
     var chatbubbles: Boolean = true,
+    var optimizedMode: Boolean = true,
     var forceOfflineMode: Boolean = false,
     var disableWelcomeMessage: Boolean = false,
 

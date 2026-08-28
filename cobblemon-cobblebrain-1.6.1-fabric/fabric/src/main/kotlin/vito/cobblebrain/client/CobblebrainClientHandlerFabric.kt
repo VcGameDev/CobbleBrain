@@ -19,6 +19,12 @@ object CobblebrainClientHandlerFabric {
             )
         }
 
+        CobblebrainClientCommon.sendBackgroundToServer = { response ->
+            ClientPlayNetworking.send(
+                CobblebrainPayloads.BackgroundResponsePayload(response)
+            )
+        }
+
         CobblebrainClientCommon.callTeamAction = { action ->
             ClientPlayNetworking.send(
                 CobblebrainPayloads.ActionPayload(action)
@@ -142,6 +148,14 @@ object CobblebrainClientHandlerFabric {
         }
 
         ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.BackgroundPromptPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                CobblebrainClientCommon.onBackgroundPromptReceived(payload.prompt)
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
             CobblebrainPayloads.SyncCooldownsPayload.TYPE
         ) { payload, context ->
             context.client().execute {
@@ -227,6 +241,10 @@ object CobblebrainClientHandlerFabric {
             context.client().execute {
                 vito.cobblebrain.engine.StoryDebugger.updateSessionStateFromPayload(payload)
             }
+        }
+
+        StoryControlClient.sendControlRequest = { payload ->
+            ClientPlayNetworking.send(payload)
         }
     }
 }

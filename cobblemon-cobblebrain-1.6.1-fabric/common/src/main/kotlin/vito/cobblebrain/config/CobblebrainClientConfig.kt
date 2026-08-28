@@ -24,6 +24,7 @@ data class CobblebrainClientConfig(
     var offlineTalkMode: Boolean = false,
     var psychicTranslation: Boolean = false,
     var enableAiMemoryRetrieval: Boolean = false,
+    var optimizedMode: Boolean = true,
     var enableStt: Boolean = false,
     var seenMigrationNotice140: Boolean = false,
 

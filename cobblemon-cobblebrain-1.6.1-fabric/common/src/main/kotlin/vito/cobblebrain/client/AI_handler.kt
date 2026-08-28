@@ -1,5 +1,7 @@
 package vito.cobblebrain.client
 
+import com.cobblemon.mod.common.client.CobblemonClient
+import com.cobblemon.mod.common.pokemon.Pokemon
 import com.google.gson.Gson
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
@@ -147,28 +149,35 @@ class AIHandler {
         """
 
         fun getActionSection(): String {
+            val party: List<Pokemon> = try {
+                CobblemonClient.storage.party.filterNotNull().filter { it.currentHealth > 0 }
+            } catch (_: Throwable) {
+                emptyList()
+            }
+            val presentTypes = party.flatMap { it.types }.map { it.name.lowercase() }.toSet()
+
             val available = mutableListOf<String>()
 
-            if (SyncedConfig.isActionActive("attack")) available += "A (attack a mob)"
-            if (SyncedConfig.isActionActive("eat")) available += "E (eat/ask for food)"
+            if (SyncedConfig.isActionActive("attack")) available += "A (attack)"
+            if (SyncedConfig.isActionActive("eat")) available += "E (eat)"
             if (SyncedConfig.isActionActive("buff")) available += "B (buff owner)"
             if (SyncedConfig.isActionActive("debuff_enemy")) available += "D (debuff enemy)"
-            if (SyncedConfig.isActionActive("sit")) available += "S (sit)"
-            if (SyncedConfig.isActionActive("protect")) available += "P (protect owner/attack agressive mobs)"
+            if (SyncedConfig.isActionActive("sit")) available += "S (sit/rest)"
+            if (SyncedConfig.isActionActive("protect")) available += "P (protect owner)"
             if (SyncedConfig.isActionActive("idle")) available += "I (idle)"
 
             val typeActions = mutableListOf<String>()
-            if (SyncedConfig.isActionActive("cook")) typeActions += "fire type: C (cook/smelt ores)"
-            if (SyncedConfig.isActionActive("repair")) typeActions += "steel type: R (repair tools)"
-            if (SyncedConfig.isActionActive("grow")) typeActions += "grass type: G (grow crops/saplings)"
-            if (SyncedConfig.isActionActive("shift")) typeActions += "ghost type: SH (shift)"
-            if (SyncedConfig.isActionActive("nightmare")) typeActions += "dark type: N (nightmare aura)"
-            if (SyncedConfig.isActionActive("scout")) typeActions += "fly type: SC (scout)"
-            if (SyncedConfig.isActionActive("light")) typeActions += "electric type: L (light)"
-            if (SyncedConfig.isActionActive("fish")) typeActions += "water type: F (fish)"
-            if (SyncedConfig.isActionActive("excavate")) typeActions += "steel type: EX (excavate tunnel)"
-            if (SyncedConfig.isActionActive("prospect")) typeActions += "rock type: PR (prospect mineral)"
-            //if (vito.cobblebrain.config.SyncedConfig.isActionActive("teleport")) typeActions += "psychic type: T (teleport)"
+            if (SyncedConfig.isActionActive("cook") && ("fire" in presentTypes || presentTypes.isEmpty())) typeActions += "fire type: C (cook/smelt ores)"
+            if (SyncedConfig.isActionActive("repair") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: R (repair tools)"
+            if (SyncedConfig.isActionActive("excavate") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: EX (excavate tunnel)"
+            if (SyncedConfig.isActionActive("grow") && ("grass" in presentTypes || presentTypes.isEmpty())) typeActions += "grass type: G (grow crops)"
+            if (SyncedConfig.isActionActive("shift") && ("ghost" in presentTypes || presentTypes.isEmpty())) typeActions += "ghost type: SH (shift)"
+            if (SyncedConfig.isActionActive("nightmare") && ("dark" in presentTypes || presentTypes.isEmpty())) typeActions += "dark type: N (nightmare aura)"
+            if (SyncedConfig.isActionActive("scout") && ("flying" in presentTypes || presentTypes.isEmpty())) typeActions += "flying type: SC (scout)"
+            if (SyncedConfig.isActionActive("light") && ("electric" in presentTypes || presentTypes.isEmpty())) typeActions += "electric type: L (light)"
+            if (SyncedConfig.isActionActive("fish") && ("water" in presentTypes || presentTypes.isEmpty())) typeActions += "water type: F (fish)"
+            if (SyncedConfig.isActionActive("prospect") && ("rock" in presentTypes || presentTypes.isEmpty())) typeActions += "rock type: PR (prospect mineral)"
+            if (SyncedConfig.isActionActive("teleport") && ("psychic" in presentTypes || presentTypes.isEmpty())) typeActions += "psychic type: T (teleport)"
 
             if (available.isEmpty() && typeActions.isEmpty()) return ""
 
@@ -176,9 +185,14 @@ class AIHandler {
                 appendLine("ACTION FORMAT")
                 appendLine("Use actions only when appropriate to the dialogue, environment, or situation.")
                 appendLine("Format: #<PokemonName>:<action_code>")
-                appendLine("Action codes:")
-                if (available.isNotEmpty()) appendLine(available.joinToString(", "))
-                if (typeActions.isNotEmpty()) appendLine(typeActions.joinToString(" | "))
+                if (available.isNotEmpty()) {
+                    appendLine("Universal actions (any Pokémon):")
+                    appendLine("  ${available.joinToString(", ")}")
+                }
+                if (typeActions.isNotEmpty()) {
+                    appendLine("Type-specific actions (available for current Pokémon types):")
+                    appendLine("  ${typeActions.joinToString(" | ")}")
+                }
             }.trim()
         }
 
@@ -328,6 +342,41 @@ class AIHandler {
     }
 
     private fun getDefaultOutputFormat(): String {
+        if (SyncedConfig.optimizedMode) {
+            val sections = mutableListOf<String>()
+            sections += HEADER
+            resolveDialogueSection(
+                SyncedConfig.needsPokemonTranslator,
+                SyncedConfig.outputDialogue,
+                SyncedConfig.outputPokemonLanguage
+            )?.let { sections += it }
+
+            if (SyncedConfig.outputActions) {
+                val actionSec = getActionSection()
+                if (actionSec.isNotBlank()) sections += actionSec
+            }
+
+            if (clientConfig.psychicTranslation) sections += PSYCHIC_TRANSLATION
+            sections += GENERAL
+            sections += """
+            ##ROUTING FLAGS##
+            Append applicable tags at the very end of your response (omit entirely if mundane):
+            Format: [FLAG: TAG1, TAG2]
+
+            - FRIENDSHIP: Meaningful emotional impact (praise, comfort, affection, insult). Skip small-talk/orders.
+            - QUEST: Active quest discussion, progress, completion, or advice.
+            - MEMORY: Memorable bonding, humor, secrets, promises, battle milestones. Skip routine small-talk.
+            - TRAIT: Major psychological/worldview shift (trauma, overcoming fear, huge victory). Never for routine chatter or open slots.
+            - QUIRK: Developing or breaking a distinct habit, tic, or ritual from a profound event. Never for routine actions or open slots.
+            - CATCH: Wild Pokémon persuaded and explicitly agrees to join team (wild only).
+            
+            ##STAGE 1 RESTRICTIONS##
+            Generate ONLY in-character spoken dialogue, optional # actions and flags.
+            """.trimIndent()
+
+            return sections.joinToString("\n\n")
+        }
+
         return buildOutputFormat(
             dialogue = SyncedConfig.outputDialogue,
             actions = SyncedConfig.outputActions,
@@ -686,25 +735,63 @@ class AIHandler {
 
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
 
-        // Processa !RESUME para a memória local
-        val parts = formatted.split("|")
-        println("[DEBUG] Parsing AI response lines for resumes. Total parts: ${parts.size}")
-        parts.forEach { line ->
-            val trimmed = line.trim()
-            println("[DEBUG] Checking line: \"$trimmed\"")
+        // Processa LAST INTERACTIONS para a memória local (ConversationMemory)
+        val parts = formatted.split("|").map { it.trim() }
+        println("[DEBUG] Parsing AI response lines for conversation memory. Total parts: ${parts.size}")
+        
+        // 1. Tenta extrair resumo explícito legado (!RESUME ou =)
+        var savedExplicit = false
+        parts.forEach { trimmed ->
             if (trimmed.startsWith("!RESUME", ignoreCase = true)) {
                 val resumeText = trimmed.substringAfter("!RESUME")
                     .removePrefix(":")
                     .trim()
                 if (resumeText.isNotBlank()) {
                     ConversationMemory.save(resumeText)
+                    savedExplicit = true
                 }
             } else if (trimmed.startsWith("=")) {
                 val resumeText = trimmed.removePrefix("=")
                     .trim()
                 if (resumeText.isNotBlank()) {
                     ConversationMemory.save(resumeText)
+                    savedExplicit = true
                 }
+            }
+        }
+
+        // 2. Se não houver resumo explícito (como no modo otimizado), sintetiza localmente: Player Input -> Pokémon Dialogue
+        if (!savedExplicit) {
+            val playerMsg = if (cleanPrompt.contains("[PLAYER_MESSAGE]")) {
+                cleanPrompt.substringAfter("[PLAYER_MESSAGE]").substringBefore("[").trim()
+            } else {
+                ""
+            }
+
+            val dialogueLines = parts.filter { line ->
+                line.isNotBlank() &&
+                !line.startsWith("#") &&
+                !line.startsWith("&") &&
+                !line.startsWith("%") &&
+                !line.startsWith("!") &&
+                !line.startsWith("=") &&
+                !line.startsWith("[FLAG:", ignoreCase = true) &&
+                line.contains(":")
+            }
+
+            val pokesSpeech = dialogueLines.joinToString(" | ")
+            val entry = when {
+                playerMsg.isNotBlank() && pokesSpeech.isNotBlank() ->
+                    "Player: \"$playerMsg\" -> $pokesSpeech"
+                pokesSpeech.isNotBlank() ->
+                    pokesSpeech
+                playerMsg.isNotBlank() ->
+                    "Player: \"$playerMsg\""
+                else -> ""
+            }
+
+            if (entry.isNotBlank()) {
+                ConversationMemory.save(entry)
             }
         }
 
@@ -739,6 +826,40 @@ class AIHandler {
 
         // Envia de volta para o servidor processar
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
+    }
+
+    fun generateBackgroundState(prompt: String): String {
+        val systemOverride = "You are the background state analysis engine for CobbleBrain. Analyze the conversation and player input, and output state updates for remaining systems (traits, quirks, memory diary, quest scoring, friendship, guaranteed catch) following the specified format strictly. Do NOT output dialogue or greeting text."
+
+        val responseText = try {
+            when {
+                apiBase.contains("generativelanguage.googleapis.com") -> {
+                    callGoogleGemma(prompt, systemOverride)
+                }
+                isLocalApi(apiBase) -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+                else -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+            }
+        } catch (e: Exception) {
+            println("[CobbleBrain AI] Background state evaluation error: ${e.message}")
+            "Error: ${e.message}"
+        }
+
+        if (responseText.isBlank() || responseText.startsWith("Error")) {
+            val msg = extractErrorMessage(responseText)
+            log("Background state error for prompt ${sha256(prompt)}: $msg")
+            return msg
+        }
+
+        val formatted = responseText
+            .replace("\\n", "\n")
+            .replace("\n", "|")
+            .replace("\\", "")
+
+        return formatted
     }
 
 
@@ -887,13 +1008,13 @@ class AIHandler {
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
         // Se for Player2, não inclui "model"
-        val outputFormatToUse = if (SyncedConfig.useDefaultOutput) {
+        val outputFormatToUse = if (SyncedConfig.optimizedMode || SyncedConfig.useDefaultOutput) {
             getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat
         }
 
-        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
+        val systemContent = systemOverride ?: if (INSTRUCTS.isNotBlank()) "$INSTRUCTS\n\n$outputFormatToUse" else outputFormatToUse
 
         return if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true) &&
@@ -974,13 +1095,13 @@ class AIHandler {
 
         val url = "$apiBase/v1beta/models/$currentModel:generateContent?key=$currentKey"
 
-        val outputFormatToUse = if (SyncedConfig.useDefaultOutput) {
+        val outputFormatToUse = if (SyncedConfig.optimizedMode || SyncedConfig.useDefaultOutput) {
             getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat
         }
 
-        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
+        val systemContent = systemOverride ?: if (INSTRUCTS.isNotBlank()) "$INSTRUCTS\n\n$outputFormatToUse" else outputFormatToUse
 
         val contents = if (systemOverride != null) {
             listOf(

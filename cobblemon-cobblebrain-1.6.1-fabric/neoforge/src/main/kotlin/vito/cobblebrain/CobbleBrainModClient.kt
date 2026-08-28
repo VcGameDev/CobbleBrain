@@ -51,6 +51,12 @@ object CobbleBrainModClientNeoForge {
         "category.cobblebrain"
     )
 
+    private val CMD_MODE = KeyMapping(
+        "key.cobblebrain.cmd_mode",
+        GLFW.GLFW_KEY_M,
+        "category.cobblebrain"
+    )
+
     private val KEY_PING = KeyMapping(
         "key.cobblebrain.ping",
         GLFW.GLFW_KEY_G,
@@ -96,6 +102,7 @@ object CobbleBrainModClientNeoForge {
         CobblebrainClientCommon.keyDown = CMD_DOWN
         CobblebrainClientCommon.keyExecute = CMD_EXECUTE
         CobblebrainClientCommon.keyToggle = CMD_TOGGLE
+        CobblebrainClientCommon.keyMode = CMD_MODE
         CobblebrainClientCommon.keyPing = KEY_PING
         CobblebrainClientCommon.keyVoice = KEY_VOICE
         CobblebrainClientCommon.keyDebug = KEY_DEBUG
@@ -108,6 +115,7 @@ object CobbleBrainModClientNeoForge {
         event.register(CMD_DOWN)
         event.register(CMD_EXECUTE)
         event.register(CMD_TOGGLE)
+        event.register(CMD_MODE)
         event.register(KEY_PING)
         event.register(KEY_VOICE)
         event.register(KEY_DEBUG)
@@ -133,6 +141,9 @@ object CobbleBrainModClientNeoForge {
         }
         while (CMD_TOGGLE.consumeClick()) {
             HudSystem.toggleVisibility()
+        }
+        while (CMD_MODE.consumeClick()) {
+            HudSystem.toggleTargetMode()
         }
         while (KEY_PING.consumeClick()) {
             vito.cobblebrain.client.PingClient.triggerPingRaycast()

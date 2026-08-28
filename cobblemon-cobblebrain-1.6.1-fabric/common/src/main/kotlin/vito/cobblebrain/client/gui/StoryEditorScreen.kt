@@ -131,6 +131,8 @@ class StoryEditorScreen(
         PaletteEntry(true, "--- 1. STRUCTURE & FLOW ---"),
         PaletteEntry(false, "🟢 Scene Start", NodeType.BEGIN_SCENE),
         PaletteEntry(false, "🛑 Finish Scene", NodeType.END_SCENE),
+        PaletteEntry(false, "🏗️ Begin Construction", NodeType.BEGIN_CONSTRUCTION),
+        PaletteEntry(false, "🏁 End Construction", NodeType.END_CONSTRUCTION),
         PaletteEntry(false, "🏆 Mission (Quest)", NodeType.QUEST),
         PaletteEntry(false, "⚡ Synchronizer (GATE)", NodeType.GATE),
         PaletteEntry(false, "🏗️ Construction", NodeType.CONSTRUCTION),
@@ -357,14 +359,20 @@ class StoryEditorScreen(
             )
         }
 
-        // Botão [▶ Testar ▾] (Canto Inferior Direito)
-        val testLabel = "▶ Test ▾"
-        val testW = getBtnWidth(testLabel)
+        // Botão [▶ Test ▾] e Controles de Teste (Canto Inferior Direito - Sempre Visíveis)
+        val session = vito.cobblebrain.engine.StoryDebugger.activeSessionState
+        val isStoryActive = session.isActive || StoryExecutor.activeStories.containsKey(project.id)
+        val isStoryPaused = session.isPaused
+
+        val testLabel = if (isStoryPaused) "⏸ Test (Paused) ▾" else if (isStoryActive) "⚡ Testing... ▾" else "▶ Test ▾"
+        val testW = getBtnWidth(testLabel).coerceAtLeast(60)
         val testH = 16
         val testX = width - testW - 10
-        val testY = height - testH - 10
+        val testY = height - testH - 8
         testBtnX = testX
         testBtnY = testY
+
+        // 1. [▶ Test ▾] Menu Button
         addRenderableWidget(
             Button.builder(Component.literal(testLabel)) {
                 val next = !isTestMenuOpen
@@ -372,6 +380,49 @@ class StoryEditorScreen(
                 isTestMenuOpen = next
             }.bounds(testX, testY, testW, testH).build()
         )
+
+        // 2. [⏸ Pause / ▶ Resume] Button (Sempre adicionado)
+        val pauseLabel = if (isStoryPaused) "▶ Resume" else "⏸ Pause"
+        val pauseW = getBtnWidth(pauseLabel).coerceAtLeast(54)
+        val pauseX = testX - pauseW - 4
+        addRenderableWidget(
+            Button.builder(Component.literal(pauseLabel)) {
+                val isCurrentlyPaused = vito.cobblebrain.engine.StoryDebugger.activeSessionState.isPaused
+                if (isCurrentlyPaused) {
+                    vito.cobblebrain.client.StoryControlClient.resume(project.id)
+                    showStatus("Test execution resumed.")
+                } else {
+                    vito.cobblebrain.client.StoryControlClient.pause(project.id)
+                    showStatus("Test execution paused.")
+                }
+                init()
+            }.bounds(pauseX, testY, pauseW, testH).build()
+        )
+
+        // 3. [⏹ Stop] Button (Sempre adicionado)
+        val stopLabel = "⏹ Stop"
+        val stopW = getBtnWidth(stopLabel).coerceAtLeast(46)
+        val stopX = pauseX - stopW - 4
+        addRenderableWidget(
+            Button.builder(Component.literal(stopLabel)) {
+                vito.cobblebrain.client.StoryControlClient.stop(project.id)
+                showStatus("Test execution stopped.")
+                init()
+            }.bounds(stopX, testY, stopW, testH).build()
+        )
+
+        // 4. [🎯 Focus #] Button (quando houver bloco ativo)
+        if (session.activeNodeId.isNotBlank()) {
+            val focusLabel = "🎯 Focus #"
+            val focusW = getBtnWidth(focusLabel).coerceAtLeast(56)
+            val focusX = stopX - focusW - 4
+            addRenderableWidget(
+                Button.builder(Component.literal(focusLabel)) {
+                    focusOnNode(session.activeNodeId)
+                    showStatus("Focused on active block #${session.activeNodeId.take(8)}")
+                }.bounds(focusX, testY, focusW, testH).build()
+            )
+        }
 
         val pendingId = pendingFocusNodeId
         if (pendingId != null) {
@@ -414,6 +465,8 @@ class StoryEditorScreen(
             NodeType.CONDITION_NODE -> "Condition"
             NodeType.DIALOGUE -> "Dialogue"
             NodeType.CONSTRUCTION -> "Construction"
+            NodeType.BEGIN_CONSTRUCTION -> "Begin Construction"
+            NodeType.END_CONSTRUCTION -> "End Construction"
             NodeType.LINK_SEND -> "Link Send"
             NodeType.LINK_RECEIVE -> "Link Receiver"
             NodeType.LOOP -> "Loop Repeater"
@@ -468,6 +521,14 @@ class StoryEditorScreen(
             }
             NodeType.BEGIN_SCENE -> {
                 outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
+                w = 160.0; h = 55.0
+            }
+            NodeType.BEGIN_CONSTRUCTION -> {
+                outputs.add(PortData(name = "Out", type = PortType.OUTPUT))
+                w = 160.0; h = 55.0
+            }
+            NodeType.END_CONSTRUCTION -> {
+                inputs.add(PortData(name = "In", type = PortType.INPUT))
                 w = 160.0; h = 55.0
             }
             NodeType.TRIGGER -> {
@@ -588,6 +649,51 @@ class StoryEditorScreen(
             ghostNode.params["loopMode"] = "COUNT"
             ghostNode.params["loopCount"] = "5"
             ghostNode.params["loopIntervalSec"] = "1.0"
+        } else if (type == NodeType.CONSTRUCTION) {
+            if (ghostNode.innerNodes.isEmpty()) {
+                val startConstr = NodeData(
+                    title = "Begin Construction",
+                    nodeType = NodeType.BEGIN_CONSTRUCTION,
+                    x = 40.0,
+                    y = 60.0,
+                    width = 160.0,
+                    height = 55.0,
+                    inputs = mutableListOf(),
+                    outputs = mutableListOf(PortData(name = "Out", type = PortType.OUTPUT)),
+                    params = mutableMapOf(
+                        "constructionName" to "New Construction",
+                        "buildSpeedMode" to "INSTANT",
+                        "tickDelayBetweenSteps" to "5",
+                        "timeoutTicks" to "600"
+                    )
+                )
+                val finishConstr = NodeData(
+                    title = "End Construction",
+                    nodeType = NodeType.END_CONSTRUCTION,
+                    x = 280.0,
+                    y = 60.0,
+                    width = 160.0,
+                    height = 55.0,
+                    inputs = mutableListOf(PortData(name = "In", type = PortType.INPUT)),
+                    outputs = mutableListOf(),
+                    params = mutableMapOf(
+                        "finalizeTags" to "true",
+                        "playCompletionSound" to "true",
+                        "completionSoundId" to "minecraft:block.anvil.use"
+                    )
+                )
+                ghostNode.innerNodes.add(startConstr)
+                ghostNode.innerNodes.add(finishConstr)
+            }
+        } else if (type == NodeType.BEGIN_CONSTRUCTION) {
+            ghostNode.params["constructionName"] = "New Construction"
+            ghostNode.params["buildSpeedMode"] = "INSTANT"
+            ghostNode.params["tickDelayBetweenSteps"] = "5"
+            ghostNode.params["timeoutTicks"] = "600"
+        } else if (type == NodeType.END_CONSTRUCTION) {
+            ghostNode.params["finalizeTags"] = "true"
+            ghostNode.params["playCompletionSound"] = "true"
+            ghostNode.params["completionSoundId"] = "minecraft:block.anvil.use"
         }
 
         if (presetSubtype == "TAG_BLOCK" || (type == NodeType.ACTION && presetSubtype == "TAG_BLOCK")) {
@@ -973,6 +1079,8 @@ class StoryEditorScreen(
             y = currentMouseWorldY - node.height / 2.0,
             width = node.width,
             height = node.height,
+            preDelayTicks = node.preDelayTicks,
+            postDelayTicks = node.postDelayTicks,
             inputs = inputs,
             outputs = outputs,
             params = HashMap(node.params),
@@ -1490,26 +1598,46 @@ class StoryEditorScreen(
     }
 
     private fun renderTestMenu(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int) {
-        val testW = 195
-        val itemH = 20
-        val dropdownH = itemH * 2 + 4
+        val session = vito.cobblebrain.engine.StoryDebugger.activeSessionState
+        val isStoryActive = session.isActive || vito.cobblebrain.engine.StoryExecutor.activeStories.containsKey(project.id)
+        val isStoryPaused = session.isPaused
 
-        val testX = (testBtnX + getBtnWidth("▶ Test ▾") - testW).coerceAtMost(width - testW - 5).coerceAtLeast(5)
+        val menuItems = mutableListOf<Pair<String, Int>>()
+        menuItems.add(Pair("▶ Live Test on Canvas", 0xFF00FFCC.toInt()))
+        menuItems.add(Pair("▶ Test in-Game (Close)", 0xFFFFFFFF.toInt()))
+        menuItems.add(Pair("🎯 Test Selection Range", 0xFFFFFFFF.toInt()))
+        if (isStoryActive) {
+            if (isStoryPaused) {
+                menuItems.add(Pair("▶ Resume Test Execution", 0xFF38BDF8.toInt()))
+            } else {
+                menuItems.add(Pair("⏸ Pause Test Execution", 0xFFF59E0B.toInt()))
+            }
+            menuItems.add(Pair("⏹ Stop Test Execution", 0xFFEF4444.toInt()))
+        }
+        menuItems.add(Pair("🐞 Open Story Debugger", 0xFFA855F7.toInt()))
+
+        val testW = 210
+        val itemH = 20
+        val dropdownH = itemH * menuItems.size + 4
+
+        val testBtnW = getBtnWidth(if (isStoryPaused) "⏸ Test (Paused) ▾" else if (isStoryActive) "⚡ Testing... ▾" else "▶ Test ▾")
+        val testX = (testBtnX + testBtnW - testW).coerceAtMost(width - testW - 5).coerceAtLeast(5)
         val testY = testBtnY - dropdownH - 4
 
         guiGraphics.fill(testX, testY, testX + testW, testY + dropdownH, 0xF018181C.toInt())
-        guiGraphics.fill(testX, testY, testX + 1, testY + dropdownH, 0xFF4CAF50.toInt())
-        guiGraphics.fill(testX + testW - 1, testY, testX + testW, testY + dropdownH, 0xFF4CAF50.toInt())
-        guiGraphics.fill(testX, testY, testX + testW, testY + 1, 0xFF4CAF50.toInt())
-        guiGraphics.fill(testX, testY + dropdownH - 1, testX + testW, testY + dropdownH, 0xFF4CAF50.toInt())
+        val borderColor = if (isStoryActive) 0xFF38BDF8.toInt() else 0xFF4CAF50.toInt()
+        guiGraphics.fill(testX, testY, testX + 1, testY + dropdownH, borderColor)
+        guiGraphics.fill(testX + testW - 1, testY, testX + testW, testY + dropdownH, borderColor)
+        guiGraphics.fill(testX, testY, testX + testW, testY + 1, borderColor)
+        guiGraphics.fill(testX, testY + dropdownH - 1, testX + testW, testY + dropdownH, borderColor)
 
-        val h1 = mouseX >= testX && mouseX <= testX + testW && mouseY >= testY + 2 && mouseY < testY + 2 + itemH
-        guiGraphics.fill(testX + 3, testY + 2, testX + testW - 3, testY + itemH, if (h1) 0xFF4CAF50.toInt() else 0xFF222228.toInt())
-        guiGraphics.drawString(font, "▶ Test from Beginning", testX + 8, testY + 6, 0xFFFFFFFF.toInt(), false)
-
-        val h2 = mouseX >= testX && mouseX <= testX + testW && mouseY >= testY + 2 + itemH && mouseY < testY + 2 + itemH * 2
-        guiGraphics.fill(testX + 3, testY + 2 + itemH, testX + testW - 3, testY + itemH * 2, if (h2) 0xFF4CAF50.toInt() else 0xFF222228.toInt())
-        guiGraphics.drawString(font, "🎯 Test Selection Range", testX + 8, testY + 6 + itemH, 0xFFFFFFFF.toInt(), false)
+        menuItems.forEachIndexed { idx, (label, color) ->
+            val iy = testY + 2 + idx * itemH
+            val isHover = mouseX >= testX && mouseX <= testX + testW && mouseY >= iy && mouseY < iy + itemH
+            val bg = if (isHover) 0xFF334155.toInt() else 0xFF222228.toInt()
+            guiGraphics.fill(testX + 3, iy, testX + testW - 3, iy + itemH - 2, bg)
+            guiGraphics.drawString(font, label, testX + 8, iy + 5, if (isHover) 0xFFFFFFFF.toInt() else color, false)
+        }
     }
 
     private fun renderExitConfirmModal(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int) {
@@ -2042,32 +2170,80 @@ class StoryEditorScreen(
         }
 
         if (isTestMenuOpen) {
-            val testW = 195
-            val dropdownH = itemH * 2 + 4
+            val session = vito.cobblebrain.engine.StoryDebugger.activeSessionState
+            val isStoryActive = session.isActive || vito.cobblebrain.engine.StoryExecutor.activeStories.containsKey(project.id)
+            val isStoryPaused = session.isPaused
 
-            val testX = (testBtnX + getBtnWidth("▶ Test ▾") - testW).coerceAtMost(width - testW - 5).coerceAtLeast(5)
+            val menuActions = mutableListOf<String>()
+            menuActions.add("LIVE_TEST")
+            menuActions.add("START_ALL")
+            menuActions.add("RANGE_SELECT")
+            if (isStoryActive) {
+                if (isStoryPaused) {
+                    menuActions.add("RESUME")
+                } else {
+                    menuActions.add("PAUSE")
+                }
+                menuActions.add("STOP")
+            }
+            menuActions.add("DEBUG")
+
+            val testW = 210
+            val itemH = 20
+            val dropdownH = itemH * menuActions.size + 4
+
+            val testBtnW = getBtnWidth(if (isStoryPaused) "⏸ Test (Paused) ▾" else if (isStoryActive) "⚡ Testing... ▾" else "▶ Test ▾")
+            val testX = (testBtnX + testBtnW - testW).coerceAtMost(width - testW - 5).coerceAtLeast(5)
             val testY = testBtnY - dropdownH - 4
 
             if (mouseX >= testX && mouseX <= testX + testW && mouseY >= testY && mouseY <= testY + dropdownH) {
-                val relY = mouseY - (testY + 2)
-                if (relY >= 0 && relY < itemH) {
-                    saveProject()
-                    val serverPlayer = minecraft?.player?.uuid?.let { minecraft?.singleplayerServer?.playerList?.getPlayer(it) }
-                    StoryExecutor.startStory(project, serverPlayer)
-                    minecraft?.setScreen(null)
-                } else if (relY >= itemH && relY < itemH * 2) {
-                    isRangeTestSelectionMode = true
-                    rangeTestStartNode = null
-                    rangeTestEndNode = null
-                    rebuildNodeWidgets()
-                    showStatus("🎯 Click on the 1st block to set the START of the test. (Free move/pan on screen)")
+                val idx = ((mouseY - (testY + 2)) / itemH).toInt()
+                if (idx in menuActions.indices) {
+                    when (menuActions[idx]) {
+                        "LIVE_TEST" -> {
+                            saveProject()
+                            val serverPlayer = minecraft?.player?.uuid?.let { minecraft?.singleplayerServer?.playerList?.getPlayer(it) }
+                            StoryExecutor.startStory(project, serverPlayer)
+                            showStatus("⚡ Story test running live on canvas! Watching block execution.")
+                            init()
+                        }
+                        "START_ALL" -> {
+                            saveProject()
+                            val serverPlayer = minecraft?.player?.uuid?.let { minecraft?.singleplayerServer?.playerList?.getPlayer(it) }
+                            StoryExecutor.startStory(project, serverPlayer)
+                            minecraft?.setScreen(null)
+                        }
+                        "RANGE_SELECT" -> {
+                            isRangeTestSelectionMode = true
+                            rangeTestStartNode = null
+                            rangeTestEndNode = null
+                            rebuildNodeWidgets()
+                            showStatus("🎯 Click on the 1st block to set the START of the test. (Free move/pan on screen)")
+                        }
+                        "PAUSE" -> {
+                            vito.cobblebrain.client.StoryControlClient.pause(project.id)
+                            showStatus("Test execution paused.")
+                            init()
+                        }
+                        "RESUME" -> {
+                            vito.cobblebrain.client.StoryControlClient.resume(project.id)
+                            showStatus("Test execution resumed.")
+                            init()
+                        }
+                        "STOP" -> {
+                            vito.cobblebrain.client.StoryControlClient.stop(project.id)
+                            showStatus("Test execution stopped.")
+                            init()
+                        }
+                        "DEBUG" -> {
+                            openDebugConsole()
+                        }
+                    }
                 }
                 isTestMenuOpen = false
                 return true
             } else {
-                val testBtnW = getBtnWidth("▶ Test ▾")
-                val testBtnH = 16
-                if (!(mouseX >= testBtnX && mouseX <= testBtnX + testBtnW && mouseY >= testBtnY && mouseY <= testBtnY + testBtnH)) {
+                if (!(mouseX >= testBtnX && mouseX <= testBtnX + testBtnW && mouseY >= testBtnY && mouseY <= testBtnY + 16)) {
                     isTestMenuOpen = false
                 }
             }
@@ -2607,6 +2783,8 @@ class StoryEditorScreen(
                     y = node.y + 20.0,
                     width = node.width,
                     height = node.height,
+                    preDelayTicks = node.preDelayTicks,
+                    postDelayTicks = node.postDelayTicks,
                     inputs = inputs,
                     outputs = outputs,
                     params = HashMap(node.params)
@@ -2708,6 +2886,8 @@ class StoryEditorScreen(
                             y = n.y + 50.0,
                             width = n.width,
                             height = n.height,
+                            preDelayTicks = n.preDelayTicks,
+                            postDelayTicks = n.postDelayTicks,
                             inputs = inputs,
                             outputs = outputs,
                             params = HashMap(n.params)

@@ -72,11 +72,27 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
             CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
         }
 
+        DialogueSystem.sendToPlayerBackground = { player, prompt ->
+            CobblebrainNetworkingNeoForge.sendBackgroundToPlayer(player, prompt)
+        }
+
         DialogueSystem.sendToPlayerSummary = { player, contextData ->
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
                 player,
                 vito.cobblebrain.network.CobblebrainPayloads.SummaryPromptPayload(contextData)
             )
+        }
+
+        DialogueSystem.sendAIDialogueBoxToPlayer = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        DialogueSystem.sendSetEntityTexture = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        DialogueSystem.sendClearEntityTexture = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
         }
 
         vito.cobblebrain.engine.StoryDebugger.sendDebugSync = { player, payload ->

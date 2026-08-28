@@ -121,9 +121,14 @@ object CobblebrainServerHandler {
         }
     }
 
-    // Função que processa a resposta da IA
+    // Função que processa a resposta da IA (Stage 1 Foreground)
     fun processIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
         checkIaResponse(server, player, content)
+    }
+
+    // Função que processa a resposta de background (Stage 2 Background State Resolution)
+    fun processBackgroundResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
+        DialogueSystem.checkBackgroundResponse(server, player, content)
     }
 
     fun handleRequestPersonalityList(player: ServerPlayer) {

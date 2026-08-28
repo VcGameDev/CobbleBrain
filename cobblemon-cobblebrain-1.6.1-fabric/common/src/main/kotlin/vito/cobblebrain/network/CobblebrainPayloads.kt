@@ -51,6 +51,36 @@ object CobblebrainPayloads {
         override fun type() = TYPE
     }
 
+    data class BackgroundPromptPayload(val prompt: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "background_prompt")
+            val TYPE = CustomPacketPayload.Type<BackgroundPromptPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, BackgroundPromptPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.prompt) },
+                    { buf -> BackgroundPromptPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    data class BackgroundResponsePayload(val content: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "background_response")
+            val TYPE = CustomPacketPayload.Type<BackgroundResponsePayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, BackgroundResponsePayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.content) },
+                    { buf -> BackgroundResponsePayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
     data class SyncConfigPayload(
         val useDefaultOutput: Boolean,
         val outputDialogue: Boolean,
@@ -70,6 +100,7 @@ object CobblebrainPayloads {
         val allowClientPersonalityEditing: Boolean,
         val forceOfflineMode: Boolean,
         val enableAiMemoryRetrieval: Boolean,
+        val optimizedMode: Boolean = true,
         val actionSettingsJson: String = ""
     ) : CustomPacketPayload {
 
@@ -98,6 +129,7 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.allowClientPersonalityEditing)
                         buf.writeBoolean(payload.forceOfflineMode)
                         buf.writeBoolean(payload.enableAiMemoryRetrieval)
+                        buf.writeBoolean(payload.optimizedMode)
                         buf.writeUtf(payload.actionSettingsJson)
                     },
                     { buf ->
@@ -117,6 +149,7 @@ object CobblebrainPayloads {
                             buf.readInt(),
                             buf.readInt(),
                             buf.readInt(),
+                            buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
@@ -558,7 +591,8 @@ object CobblebrainPayloads {
         val targetEntityId: String,
         val variablesJson: String,
         val lastUpdatedVarKey: String,
-        val isActive: Boolean
+        val isActive: Boolean,
+        val isPaused: Boolean = false
     ) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "story_session_state_sync")
@@ -579,6 +613,7 @@ object CobblebrainPayloads {
                         buf.writeUtf(payload.variablesJson)
                         buf.writeUtf(payload.lastUpdatedVarKey)
                         buf.writeBoolean(payload.isActive)
+                        buf.writeBoolean(payload.isPaused)
                     },
                     { buf ->
                         StorySessionStateSyncPayload(
@@ -593,7 +628,35 @@ object CobblebrainPayloads {
                             buf.readUtf(),
                             buf.readUtf(),
                             buf.readUtf(),
+                            buf.readBoolean(),
                             buf.readBoolean()
+                        )
+                    }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    /** Client → Server: Request story pause, resume or termination */
+    data class StoryControlRequestPayload(
+        val storyId: String,
+        val action: String // "PAUSE", "RESUME", "STOP"
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "story_control_request")
+            val TYPE = CustomPacketPayload.Type<StoryControlRequestPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, StoryControlRequestPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeUtf(payload.storyId)
+                        buf.writeUtf(payload.action)
+                    },
+                    { buf ->
+                        StoryControlRequestPayload(
+                            buf.readUtf(),
+                            buf.readUtf()
                         )
                     }
                 )

@@ -82,6 +82,11 @@ object CobblebrainMod : ModInitializer {
         )
 
         PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.BackgroundPromptPayload.TYPE,
+            CobblebrainPayloads.BackgroundPromptPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.SyncCooldownsPayload.TYPE,
             CobblebrainPayloads.SyncCooldownsPayload.CODEC
         )
@@ -94,6 +99,11 @@ object CobblebrainMod : ModInitializer {
         PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.AIResponsePayload.TYPE,
             CobblebrainPayloads.AIResponsePayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.BackgroundResponsePayload.TYPE,
+            CobblebrainPayloads.BackgroundResponsePayload.CODEC
         )
 
         PayloadTypeRegistry.playC2S().register(
@@ -178,6 +188,11 @@ object CobblebrainMod : ModInitializer {
         PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.StorySessionStateSyncPayload.TYPE,
             CobblebrainPayloads.StorySessionStateSyncPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.StoryControlRequestPayload.TYPE,
+            CobblebrainPayloads.StoryControlRequestPayload.CODEC
         )
 
         // registra handlers de networking

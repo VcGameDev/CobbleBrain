@@ -83,6 +83,10 @@ class StoryDocumentationModalWidget(
                 currentY += 45
                 drawDocItem(guiGraphics, contentX, currentY, "🛑 END_SCENE (Finish Scene)", "Inputs: IN | Outputs: None", "Terminates current scene and fires scene OUT signal.")
                 currentY += 45
+                drawDocItem(guiGraphics, contentX, currentY, "🏗️ BEGIN_CONSTRUCTION (Build Start)", "Inputs: None | Outputs: OUT", "Entry point inside construction sub-graph. Fires OUT to start internal building flow.")
+                currentY += 45
+                drawDocItem(guiGraphics, contentX, currentY, "🏁 END_CONSTRUCTION (Build Finish)", "Inputs: IN | Outputs: None", "Exit point inside construction sub-graph. Completes build and fires outer OUT signal.")
+                currentY += 45
                 drawDocItem(guiGraphics, contentX, currentY, "⚡ GATE (Synchronizer Gate)", "Inputs: 2 to 5 IN | Outputs: OUT", "Fires OUT output only when ALL IN ports receive signal.")
                 currentY += 45
                 drawDocItem(guiGraphics, contentX, currentY, "🏗️ CONSTRUCTION (Sub-Graph)", "Inputs: IN | Outputs: OUT", "Encapsulates reusable internal sub-canvas for complex logic.")
