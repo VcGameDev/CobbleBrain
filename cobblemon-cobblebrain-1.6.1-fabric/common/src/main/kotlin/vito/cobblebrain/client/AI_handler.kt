@@ -68,9 +68,14 @@ object ConversationMemory {
 class AIHandler {
     companion object {
         private val sessionLogFile: Path by lazy {
-            val dir = Minecraft.getInstance().gameDirectory.toPath()
+            val legacyDir = Minecraft.getInstance().gameDirectory.toPath()
                 .resolve("cobblebrain-ai/logs")
+            val dir = Minecraft.getInstance().gameDirectory.toPath()
+                .resolve("cobblebrain/logs")
 
+            if (!Files.exists(dir) && Files.exists(legacyDir)) {
+                try { Files.move(legacyDir, dir) } catch (_: Throwable) {}
+            }
             Files.createDirectories(dir)
 
             val fileName = "session_${
@@ -176,7 +181,6 @@ class AIHandler {
             if (SyncedConfig.isActionActive("scout") && ("flying" in presentTypes || presentTypes.isEmpty())) typeActions += "flying type: SC (scout)"
             if (SyncedConfig.isActionActive("light") && ("electric" in presentTypes || presentTypes.isEmpty())) typeActions += "electric type: L (light)"
             if (SyncedConfig.isActionActive("fish") && ("water" in presentTypes || presentTypes.isEmpty())) typeActions += "water type: F (fish)"
-            if (SyncedConfig.isActionActive("prospect") && ("rock" in presentTypes || presentTypes.isEmpty())) typeActions += "rock type: PR (prospect mineral)"
             if (SyncedConfig.isActionActive("teleport") && ("psychic" in presentTypes || presentTypes.isEmpty())) typeActions += "psychic type: T (teleport)"
 
             if (available.isEmpty() && typeActions.isEmpty()) return ""

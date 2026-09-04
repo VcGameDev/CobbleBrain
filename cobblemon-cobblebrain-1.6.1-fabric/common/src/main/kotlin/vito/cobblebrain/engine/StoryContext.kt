@@ -33,5 +33,9 @@ data class StoryContext(
     var currentNodeId: String? = null,
     var isCancelled: Boolean = false,
     var isPaused: Boolean = false,
-    val pendingResumes: MutableList<() -> Unit> = mutableListOf()
+    val pendingResumes: MutableList<() -> Unit> = mutableListOf(),
+    var waitingKeyInputNodeId: String? = null,
+    var waitingKeyInputStepCount: Int = 0,
+    val waitingCondOutNodes: MutableMap<String, Int> = mutableMapOf()
 )
+

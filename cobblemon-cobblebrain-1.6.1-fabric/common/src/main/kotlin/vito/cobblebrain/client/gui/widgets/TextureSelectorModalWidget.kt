@@ -29,6 +29,9 @@ class TextureSelectorModalWidget(
     private val viewportH = contentBottom - contentTop
 
     private var vScrollOffset: Float = 0f
+    private var isDraggingScrollbar: Boolean = false
+    private var dragStartMouseY: Double = 0.0
+    private var dragStartScrollOffset: Float = 0f
     private val searchBox: EditBox
     private var hoveredIndex: Int = -1
 
@@ -42,6 +45,7 @@ class TextureSelectorModalWidget(
         searchBox.setHint(Component.literal("§8🔍 Search texture filenames..."))
         searchBox.setEditable(true)
         searchBox.active = true
+        searchBox.isFocused = true
         searchBox.setResponder { vScrollOffset = 0f }
     }
 
@@ -172,14 +176,43 @@ class TextureSelectorModalWidget(
         val totalH = getTotalContentHeight()
         val maxScroll = (totalH - viewportH).coerceAtLeast(0)
         if (maxScroll > 0) {
-            val sbX = contentRight - 5
-            val scrollRatio = viewportH.toFloat() / totalH
-            val thumbH = (viewportH * scrollRatio).toInt().coerceAtLeast(15)
+            val sbW = 5
+            val sbX = contentRight - sbW - 1
+            val thumbH = ((viewportH.toFloat() / totalH) * viewportH).toInt().coerceIn(16, viewportH)
             val thumbY = contentTop + ((vScrollOffset / maxScroll) * (viewportH - thumbH)).toInt()
 
-            guiGraphics.fill(sbX, contentTop, sbX + 3, contentBottom, 0xFF0F172A.toInt())
-            guiGraphics.fill(sbX, thumbY, sbX + 3, thumbY + thumbH, 0xFF38BDF8.toInt())
+            val isHover = mouseX >= sbX - 2 && mouseX <= sbX + sbW + 2 && mouseY >= contentTop && mouseY <= contentBottom
+            val thumbCol = if (isDraggingScrollbar) 0xFF38BDF8.toInt() else if (isHover) 0xFF00E5FF.toInt() else 0xFF0284C7.toInt()
+
+            guiGraphics.fill(sbX, contentTop, sbX + sbW, contentBottom, 0x550F172A)
+            guiGraphics.fill(sbX, thumbY, sbX + sbW, thumbY + thumbH, thumbCol)
         }
+    }
+
+    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        if (isDraggingScrollbar) {
+            val totalH = getTotalContentHeight()
+            val maxScroll = (totalH - viewportH).coerceAtLeast(0)
+            if (maxScroll > 0) {
+                val thumbH = ((viewportH.toFloat() / totalH) * viewportH).toInt().coerceIn(16, viewportH)
+                val trackRange = viewportH - thumbH
+                if (trackRange > 0) {
+                    val deltaY = mouseY - dragStartMouseY
+                    val scrollDelta = (deltaY / trackRange).toFloat() * maxScroll
+                    vScrollOffset = (dragStartScrollOffset + scrollDelta).coerceIn(0f, maxScroll.toFloat())
+                    return true
+                }
+            }
+        }
+        return mouseX >= modalX && mouseX <= modalX + modalWidth && mouseY >= modalY && mouseY <= modalY + modalHeight
+    }
+
+    fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (isDraggingScrollbar) {
+            isDraggingScrollbar = false
+            return true
+        }
+        return false
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -205,7 +238,35 @@ class TextureSelectorModalWidget(
             return true
         }
 
-        if (searchBox.mouseClicked(mouseX, mouseY, button)) return true
+        // Check Scrollbar Click
+        val totalH = getTotalContentHeight()
+        val maxScroll = (totalH - viewportH).coerceAtLeast(0)
+        if (maxScroll > 0) {
+            val sbW = 5
+            val sbX = contentRight - sbW - 1
+            if (mouseX >= sbX - 4 && mouseX <= contentRight + 4 && mouseY >= contentTop && mouseY <= contentBottom) {
+                val thumbH = ((viewportH.toFloat() / totalH) * viewportH).toInt().coerceIn(16, viewportH)
+                val thumbY = contentTop + ((vScrollOffset / maxScroll) * (viewportH - thumbH)).toInt()
+
+                isDraggingScrollbar = true
+                dragStartMouseY = mouseY
+                if (mouseY >= thumbY && mouseY <= thumbY + thumbH) {
+                    dragStartScrollOffset = vScrollOffset
+                } else {
+                    val trackRange = viewportH - thumbH
+                    if (trackRange > 0) {
+                        val clickOffset = ((mouseY - contentTop - thumbH / 2.0) / trackRange).coerceIn(0.0, 1.0).toFloat()
+                        vScrollOffset = clickOffset * maxScroll
+                        dragStartScrollOffset = vScrollOffset
+                    }
+                }
+                return true
+            }
+        }
+
+        val clickedSearch = searchBox.mouseClicked(mouseX, mouseY, button)
+        searchBox.isFocused = clickedSearch
+        if (clickedSearch) return true
 
         // Item row clicks
         if (mouseX >= contentLeft && mouseX <= contentRight && mouseY >= contentTop && mouseY <= contentBottom) {
@@ -235,7 +296,11 @@ class TextureSelectorModalWidget(
             onClose()
             return true
         }
-        return searchBox.keyPressed(keyCode, scanCode, modifiers)
+        if (searchBox.keyPressed(keyCode, scanCode, modifiers)) return true
+        if (searchBox.isFocused && (keyCode == 259 || keyCode == 261)) {
+            return true
+        }
+        return searchBox.isFocused
     }
 
     fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
@@ -247,10 +312,6 @@ class TextureSelectorModalWidget(
                 return true
             }
         }
-        return mouseX >= modalX && mouseX <= modalX + modalWidth && mouseY >= modalY && mouseY <= modalY + modalHeight
-    }
-
-    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
         return mouseX >= modalX && mouseX <= modalX + modalWidth && mouseY >= modalY && mouseY <= modalY + modalHeight
     }
 }

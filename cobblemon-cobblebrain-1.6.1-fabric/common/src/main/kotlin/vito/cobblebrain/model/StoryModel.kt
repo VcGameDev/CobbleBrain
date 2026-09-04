@@ -60,7 +60,9 @@ enum class NodeType {
     @SerializedName(value = "LOAD_STATE_NODE", alternate = ["LOAD_STATE", "CHECKPOINT_LOAD"])
     LOAD_STATE_NODE,
     @SerializedName(value = "TEXTURE", alternate = ["TEXTURE_BLOCK", "SET_TEXTURE", "ENTITY_TEXTURE"])
-    TEXTURE
+    TEXTURE,
+    @SerializedName(value = "KEY_INPUT", alternate = ["KEY_INPUT_NODE", "QTE_NODE", "KEY_LISTENER", "QTE"])
+    KEY_INPUT
 }
 
 data class NodeData(
@@ -88,7 +90,7 @@ data class NodeData(
 
 data class SceneData(
     val id: String = UUID.randomUUID().toString(),
-    var title: String = "Initial Scene",
+    var title: String = "Scene",
     var description: String = "",
     var isStartScene: Boolean = false,
     var isEndScene: Boolean = false,
@@ -98,13 +100,34 @@ data class SceneData(
     var height: Double = 350.0,
     val inPort: PortData = PortData(name = "In", type = PortType.INPUT),
     val outPort: PortData = PortData(name = "Out", type = PortType.OUTPUT),
+    var isLoaded: Boolean = true,
+    var sourceFileName: String? = null,
     val nodes: MutableList<NodeData> = mutableListOf(),
     val connections: MutableList<ConnectionData> = mutableListOf()
 ) {
-    init {
-        if (nodes.isEmpty()) {
+    companion object {
+        fun createWithStartNode(
+            title: String = "Scene",
+            description: String = "",
+            isStartScene: Boolean = false,
+            isEndScene: Boolean = false,
+            x: Double = 0.0,
+            y: Double = 0.0,
+            width: Double = 500.0,
+            height: Double = 350.0
+        ): SceneData {
+            val scene = SceneData(
+                title = title,
+                description = description,
+                isStartScene = isStartScene,
+                isEndScene = isEndScene,
+                x = x,
+                y = y,
+                width = width,
+                height = height
+            )
             val beginNode = NodeData(
-                parentSceneId = id,
+                parentSceneId = scene.id,
                 title = "Scene Start",
                 nodeType = NodeType.BEGIN_SCENE,
                 x = x + 30.0,
@@ -113,7 +136,8 @@ data class SceneData(
                 height = 90.0,
                 outputs = mutableListOf(PortData(name = "Out", type = PortType.OUTPUT))
             )
-            nodes.add(beginNode)
+            scene.nodes.add(beginNode)
+            return scene
         }
     }
 }
@@ -194,25 +218,39 @@ data class StoryProject(
     var prerequisites: StoryPrerequisites = StoryPrerequisites(),
     val scenes: MutableList<SceneData> = mutableListOf(),
     val sceneConnections: MutableList<ConnectionData> = mutableListOf(),
-    val variables: MutableList<StoryVariable> = mutableListOf()
+    val globalNodes: MutableList<NodeData> = mutableListOf(),
+    val variables: MutableList<StoryVariable> = mutableListOf(),
+    var isFolderPack: Boolean = false,
+    var packDirectory: File? = null,
+    var isReadOnly: Boolean = false,
+    var sourceZipFile: File? = null
 ) {
-    init {
-        if (scenes.isEmpty()) {
-            val defaultScene = SceneData(title = "Initial Scene")
-            scenes.add(defaultScene)
-            activeSceneId = defaultScene.id
-        } else if (activeSceneId.isEmpty()) {
-            activeSceneId = scenes.firstOrNull()?.id ?: ""
-        }
-    }
-
     fun getActiveScene(): SceneData? {
         return scenes.find { it.id == activeSceneId } ?: scenes.firstOrNull()
     }
 
+    fun getAllNodes(): List<NodeData> {
+        return scenes.flatMap { it.nodes } + globalNodes
+    }
+
     companion object {
+        fun createNew(): StoryProject {
+            val proj = StoryProject()
+            val initialScene = SceneData.createWithStartNode(
+                title = "Initial Scene",
+                isStartScene = true,
+                x = 0.0,
+                y = 0.0,
+                width = 500.0,
+                height = 350.0
+            )
+            proj.scenes.add(initialScene)
+            proj.activeSceneId = initialScene.id
+            return proj
+        }
+
         fun generateUniqueNewStoryId(): String {
-            val dir = File("cobblebrain-ai/storypacks")
+            val dir = File("cobblebrain/storypacks")
             if (!dir.exists()) dir.mkdirs()
 
             val baseName = "new_story"

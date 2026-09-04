@@ -10,7 +10,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.MinecraftServer
-import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.network.CobblebrainPayloads
 
 object DialogueSystemFabric {
@@ -102,7 +102,7 @@ object DialogueSystemFabric {
             val target = event.pokemonEntity
             val playerUuid = player.uuid.toString()
             
-            if (!SyncedConfig.outputGuaranteedCatch) return@subscribe
+            if (!config.outputGuaranteedCatch) return@subscribe
 
             if (target.tags.contains("cobblebrain:guaranteed_$playerUuid")) {
                 event.catchRate = 9999.0f

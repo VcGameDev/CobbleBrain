@@ -106,7 +106,6 @@ fun parseCommand(line: String): PokemonCommand? {
         "sc" -> "scout"
         "t" -> "teleport"
         "ex" -> "excavate"
-        "pr" -> "prospect"
         "bu" -> "build"
         "dm" -> "excavate"
         else -> action
@@ -591,12 +590,6 @@ object CommandTickHandler {
                 "excavate" -> {
                     if (!GatheringActions.isGathering(pokemon.uuid)) {
                         GatheringActions.startGatheringAction(pokemon, GatheringType.EXCAVATE, owner)
-                    }
-                }
-
-                "prospect" -> {
-                    if (!GatheringActions.isGathering(pokemon.uuid)) {
-                        GatheringActions.startGatheringAction(pokemon, GatheringType.PROSPECT, owner)
                     }
                 }
 

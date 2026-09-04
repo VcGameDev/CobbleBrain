@@ -25,10 +25,8 @@
   "cobblebrain.action.scout": "SCOUT",
   "cobblebrain.action.teleport": "TELEPORT",
   "cobblebrain.action.excavate": "EXCAVATE",
-  "cobblebrain.action.prospect": "PROSPECT",
   "cobblebrain.action.demolish": "EXCAVATE",
   "cobblebrain.action.desc.excavate": "Excavate a tunnel forward through blocks.",
-  "cobblebrain.action.desc.prospect": "Prospect specific targeted mineral materials.",
   "cobblebrain.action.sit": "REST",
   "cobblebrain.action.rest": "REST",
   "cobblebrain.action.debuff enemy": "DEBUFF ENEMY",
@@ -36,7 +34,7 @@
   "cobblebrain.hud.select_down": "Select Down",
   "cobblebrain.hud.confirm_order": "Confirm Order",
   "cobblebrain.hud.toggle_hud": "Toggle HUD",
-  "cobblebrain.hud.mark_location": "Mark location",
+  "cobblebrain.hud.mark_location": "Ping",
   "cobblebrain.config.api_key.tooltip": "The API key used for authentication with the AI system. \nIt can be a Bearer token or a Google API key depending on the provider.",
   "cobblebrain.config.key_rotation.tooltip": "Enables API key rotation when errors occur. \nUseful for handling invalid or expired keys.",
   "cobblebrain.config.key_rotation_trigger.tooltip": "List of HTTP status codes that trigger key rotation. \nDefines error conditions for switching keys.",
@@ -49,7 +47,7 @@
   "cobblebrain.config.ai_provider.tooltip": "A provider hint used for routing in OpenRouter. \nThis is ignored when using other provider.",
   "cobblebrain.config.reasoning_effort.tooltip": "Defines the reasoning effort level for supported models.\nOptions include high, medium, low, auto, or none.",
   "cobblebrain.config.request_timeout.tooltip": "Defines the request timeout in seconds.\nLocal models may require longer values.",
-  "cobblebrain.config.debug_logging.tooltip": "Enables debug logging for troubleshooting.\nLogs are stored in the cobblebrain-ai/logs directory.",
+  "cobblebrain.config.debug_logging.tooltip": "Enables debug logging for troubleshooting.\nLogs are stored in the cobblebrain/logs directory.",
   "cobblebrain.config.show_hunger.tooltip": "When enabled, Pokémon hunger/fullness information is shown to the AI.\nWhen disabled, hunger info is hidden and a rule is added so Pokémon only discuss hunger if the player explicitly asks.",
   "cobblebrain.config.use_default_output.tooltip": "Uses the recommended and updated OUTPUT FORMAT of the mod version.\nOnly disable it if you want to apply your own CUSTOM OUTPUT, \nWhich is not recommended.",
   "cobblebrain.config.selected_language.tooltip": "The language the AI uses for responses.\nDetermines dialogue output language.",
@@ -327,5 +325,7 @@
   "cobblebrain.config.action.damage_multiplier": "Damage Multiplier",
   "cobblebrain.config.action.damage_multiplier.tooltip": "Multiplier applied to Pokémon attack damage.",
   "cobblebrain.config.action_manager.no_world_line1": "⚠ Actions can only be modified inside a world.",
-  "cobblebrain.config.action_manager.no_world_line2": "Please join a world to manage action settings."
+  "cobblebrain.config.action_manager.no_world_line2": "Please join a world to manage action settings.",
+  "cobblebrain.personality_list.limit_warning": "§e[CobbleBrain] Warning: %d PC Pokémon were omitted from the editor to stay within the 1.8 MB network limit. Consider deleting old memories to free up space.",
+  "cobblebrain.personality_list.limit_near": "§6[CobbleBrain] Notice: Your Pokémon personalities and memories are reaching 95% of the 1.8 MB network limit. Consider cleaning up old memories in the editor."
 }

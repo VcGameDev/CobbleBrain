@@ -126,6 +126,7 @@ object CobbleBrainModClient : ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick { client ->
             MigrationNoticeChecker.checkAndShow(client)
+            vito.cobblebrain.client.KeyInputClientManager.clientTick()
             while (openConfig.consumeClick()) {
                 CobblebrainClientCommon.openConfig()
             }

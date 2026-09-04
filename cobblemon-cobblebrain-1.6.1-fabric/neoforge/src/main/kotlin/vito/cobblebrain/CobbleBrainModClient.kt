@@ -124,6 +124,7 @@ object CobbleBrainModClientNeoForge {
     // tick
     fun onClientTick(event: ClientTickEvent.Post) {
         MigrationNoticeChecker.checkAndShow(Minecraft.getInstance())
+        vito.cobblebrain.client.KeyInputClientManager.clientTick()
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
         }

@@ -95,7 +95,19 @@ object CobblebrainWorldSave {
         saveFile = File(dataDir, "cobblebrainWorldSave.json")
 
         if (saveFile.exists()) {
-            data = JsonParser.parseReader(FileReader(saveFile)).asJsonObject
+            try {
+                FileReader(saveFile).use { reader ->
+                    val element = JsonParser.parseReader(reader)
+                    data = if (element.isJsonObject) element.asJsonObject else JsonObject()
+                }
+            } catch (e: Exception) {
+                println("[CobbleBrain] Warning: Could not parse cobblebrainWorldSave.json (corrupted or empty): ${e.message}")
+                try {
+                    val backup = File(dataDir, "cobblebrainWorldSave.json.corrupted")
+                    saveFile.copyTo(backup, overwrite = true)
+                } catch (_: Exception) {}
+                data = JsonObject()
+            }
         } else {
             data = JsonObject()
         }

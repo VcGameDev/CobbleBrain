@@ -176,12 +176,29 @@ object StoryDebugger {
         nodeErrorMessages.remove(key)
     }
 
+    fun clearNodeStatuses(storyId: String? = null) {
+        if (storyId.isNullOrBlank()) {
+            nodeStatuses.clear()
+            nodeStatusTimestamps.clear()
+            activeSessionState = StoryActiveSessionState()
+        } else {
+            val safeId = storyId.trim().lowercase()
+            val prefix = "$safeId/"
+            nodeStatuses.keys.removeIf { it.startsWith(prefix) }
+            nodeStatusTimestamps.keys.removeIf { it.startsWith(prefix) }
+            if (activeSessionState.storyId.equals(safeId, ignoreCase = true)) {
+                activeSessionState = StoryActiveSessionState()
+            }
+        }
+    }
+
     fun clearLogs(storyId: String? = null) {
         if (storyId.isNullOrBlank()) {
             logs.clear()
             nodeStatuses.clear()
             nodeErrorMessages.clear()
             nodeStatusTimestamps.clear()
+            activeSessionState = StoryActiveSessionState()
         } else {
             val safeId = storyId.trim().lowercase()
             logs.removeIf { it.storyId.equals(safeId, ignoreCase = true) }
@@ -189,6 +206,9 @@ object StoryDebugger {
             nodeStatuses.keys.removeIf { it.startsWith(prefix) }
             nodeErrorMessages.keys.removeIf { it.startsWith(prefix) }
             nodeStatusTimestamps.keys.removeIf { it.startsWith(prefix) }
+            if (activeSessionState.storyId.equals(safeId, ignoreCase = true)) {
+                activeSessionState = StoryActiveSessionState()
+            }
         }
     }
 
@@ -221,11 +241,15 @@ object StoryDebugger {
             emptyMap()
         }
 
+        if (!payload.isActive) {
+            clearNodeStatuses(payload.storyId)
+        }
+
         activeSessionState = StoryActiveSessionState(
             storyId = payload.storyId,
             packName = payload.packName,
             sceneName = payload.sceneName,
-            activeNodeId = payload.activeNodeId,
+            activeNodeId = if (payload.isActive) payload.activeNodeId else "",
             activeNodeType = payload.activeNodeType,
             targetEntityName = payload.targetEntityName,
             targetEntityTag = payload.targetEntityTag,
@@ -259,11 +283,15 @@ object StoryDebugger {
         val varsMap = variables.mapValues { it.value?.toString() ?: "null" }
         val varsJson = com.google.gson.Gson().toJson(variables)
 
+        if (!isActive) {
+            clearNodeStatuses(safeStoryId)
+        }
+
         activeSessionState = StoryActiveSessionState(
             storyId = safeStoryId,
             packName = packName,
             sceneName = sceneName,
-            activeNodeId = activeNodeId,
+            activeNodeId = if (isActive) activeNodeId else "",
             activeNodeType = activeNodeType,
             targetEntityName = targetEntityName,
             targetEntityTag = targetEntityTag,

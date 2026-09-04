@@ -27,6 +27,9 @@ class StoryVariableSelectorModalWidget(
     private val selectedKeys = initialSelectedKeys.toMutableSet()
     private val searchBox: EditBox
     private var scrollOffset = 0
+    private var isDraggingScrollbar: Boolean = false
+    private var dragStartMouseY: Double = 0.0
+    private var dragStartScrollOffset: Int = 0
     private val closeButton: Button
     private var saveButton: Button? = null
 
@@ -110,15 +113,49 @@ class StoryVariableSelectorModalWidget(
 
         // Scrollbar
         if (filtered.size > maxVisible) {
-            val sbX = listX + listW - 5
+            val sbW = 5
+            val sbX = listX + listW - sbW - 1
             val scrollRatio = maxVisible.toFloat() / filtered.size
-            val thumbH = (listH * scrollRatio).toInt().coerceAtLeast(10)
+            val thumbH = (listH * scrollRatio).toInt().coerceAtLeast(14)
             val maxScrollable = filtered.size - maxVisible
             val thumbY = listY + (scrollOffset.toFloat() / maxScrollable * (listH - thumbH)).toInt()
 
-            guiGraphics.fill(sbX, listY, sbX + 3, listY + listH, 0xFF2A2A36.toInt())
-            guiGraphics.fill(sbX, thumbY, sbX + 3, thumbY + thumbH, 0xFF00FFCC.toInt())
+            val isHover = mouseX >= sbX - 2 && mouseX <= sbX + sbW + 2 && mouseY >= listY && mouseY <= listY + listH
+            val thumbCol = if (isDraggingScrollbar) 0xFF38BDF8.toInt() else if (isHover) 0xFF00E5FF.toInt() else 0xFF00FFCC.toInt()
+
+            guiGraphics.fill(sbX, listY, sbX + sbW, listY + listH, 0x552A2A36)
+            guiGraphics.fill(sbX, thumbY, sbX + sbW, thumbY + thumbH, thumbCol)
         }
+    }
+
+    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        if (isDraggingScrollbar) {
+            val filtered = getFilteredVariables()
+            val maxVisible = if (isMultiSelect) 9 else 7
+            if (filtered.size > maxVisible) {
+                val itemH = 22
+                val listH = itemH * maxVisible
+                val scrollRatio = maxVisible.toFloat() / filtered.size
+                val thumbH = (listH * scrollRatio).toInt().coerceAtLeast(14)
+                val maxScrollable = filtered.size - maxVisible
+                val trackRange = listH - thumbH
+                if (trackRange > 0) {
+                    val deltaY = mouseY - dragStartMouseY
+                    val deltaOffset = (deltaY / trackRange * maxScrollable).toInt()
+                    scrollOffset = (dragStartScrollOffset + deltaOffset).coerceIn(0, maxScrollable)
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (isDraggingScrollbar) {
+            isDraggingScrollbar = false
+            return true
+        }
+        return false
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -133,9 +170,31 @@ class StoryVariableSelectorModalWidget(
         val listW = modalWidth - 30
         val itemH = 22
         val maxVisible = if (isMultiSelect) 9 else 7
+        val listH = itemH * maxVisible
 
         val filtered = getFilteredVariables()
-        if (mouseX >= listX && mouseX <= listX + listW && mouseY >= listY && mouseY < listY + itemH * maxVisible) {
+
+        // Check Scrollbar Click
+        if (filtered.size > maxVisible) {
+            val sbW = 5
+            val sbX = listX + listW - sbW - 1
+            if (mouseX >= sbX - 4 && mouseX <= listX + listW && mouseY >= listY && mouseY <= listY + listH) {
+                val scrollRatio = maxVisible.toFloat() / filtered.size
+                val thumbH = (listH * scrollRatio).toInt().coerceAtLeast(14)
+                val maxScrollable = filtered.size - maxVisible
+                val trackRange = listH - thumbH
+                isDraggingScrollbar = true
+                dragStartMouseY = mouseY
+                dragStartScrollOffset = scrollOffset
+                if (trackRange > 0) {
+                    val clickOffset = ((mouseY - listY - thumbH / 2.0) / trackRange).coerceIn(0.0, 1.0)
+                    scrollOffset = (clickOffset * maxScrollable).toInt().coerceIn(0, maxScrollable)
+                }
+                return true
+            }
+        }
+
+        if (mouseX >= listX && mouseX <= listX + listW && mouseY >= listY && mouseY < listY + listH) {
             val idx = ((mouseY - listY) / itemH).toInt() + scrollOffset
             if (idx in filtered.indices) {
                 val v = filtered[idx]

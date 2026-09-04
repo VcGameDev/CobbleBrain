@@ -243,6 +243,26 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.StartKeyInputPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                vito.cobblebrain.client.KeyInputClientManager.startInput(payload)
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.CancelKeyInputPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                vito.cobblebrain.client.KeyInputClientManager.cancelInput(payload.nodeId)
+            }
+        }
+
+        vito.cobblebrain.client.KeyInputClientManager.sendResultPayload = { payload ->
+            ClientPlayNetworking.send(payload)
+        }
+
         StoryControlClient.sendControlRequest = { payload ->
             ClientPlayNetworking.send(payload)
         }

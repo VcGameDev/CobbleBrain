@@ -46,9 +46,11 @@ object CobblebrainMod : ModInitializer {
         DialogueSystemFabric.register()
         WorldEventsSystemFabric.register()
         ConfigHandler.load()
-        val pasta = File("cobblebrain-ai")
-
-        // cria a pasta se não existir
+        val legacyPasta = File("cobblebrain-ai")
+        val pasta = File("cobblebrain")
+        if (!pasta.exists() && legacyPasta.exists() && legacyPasta.isDirectory) {
+            legacyPasta.renameTo(pasta)
+        }
         if (!pasta.exists()) {
             pasta.mkdirs()
         }
@@ -195,6 +197,22 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.StoryControlRequestPayload.CODEC
         )
 
+        // KEY INPUT & QTE PAYLOADS
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.StartKeyInputPayload.TYPE,
+            CobblebrainPayloads.StartKeyInputPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.CancelKeyInputPayload.TYPE,
+            CobblebrainPayloads.CancelKeyInputPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.KeyInputResultPayload.TYPE,
+            CobblebrainPayloads.KeyInputResultPayload.CODEC
+        )
+
         // registra handlers de networking
         vito.cobblebrain.server.CobblebrainServerHandlerFabric.register()
 
@@ -215,6 +233,14 @@ object CobblebrainMod : ModInitializer {
         }
 
         vito.cobblebrain.engine.StoryDebugger.sendSessionStateSync = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryExecutor.sendStartKeyInput = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryExecutor.sendCancelKeyInput = { player, payload ->
             ServerPlayNetworking.send(player, payload)
         }
 

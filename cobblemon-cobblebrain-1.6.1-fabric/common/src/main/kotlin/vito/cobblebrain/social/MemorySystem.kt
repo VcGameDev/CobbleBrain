@@ -52,6 +52,14 @@ object MemorySystem {
         return resolveExistingFile(pokemonUuid, displayName, FileType.TRAITS)?.exists() == true
     }
 
+    fun getLastModifiedTime(pokemonUuid: String, displayName: String? = null): Long {
+        val traits = resolveExistingFile(pokemonUuid, displayName, FileType.TRAITS)
+        val memories = resolveExistingFile(pokemonUuid, displayName, FileType.MEMORIES)
+        val tTime = traits?.takeIf { it.exists() }?.lastModified() ?: 0L
+        val mTime = memories?.takeIf { it.exists() }?.lastModified() ?: 0L
+        return maxOf(tTime, mTime)
+    }
+
     fun warnAboutFilenameConflict(player: ServerPlayer, pokemonUuid: String) {
         val conflicts = findFilenameConflicts(player)
         val match = conflicts.firstOrNull { group -> group.any { it.uuid == pokemonUuid } } ?: return
@@ -148,15 +156,15 @@ object MemorySystem {
     }
 
     fun saveMemory(pokemonUuid: String, memory: Memory, displayName: String?) {
-        val file = resolveMemoryFile(pokemonUuid, displayName)
-        val memories = loadMemories(pokemonUuid, displayName).toMutableList()
-        memories.add(memory)
-
-        val limit = config.maxStoredMemories
-        val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
-
         DiskWriteExecutor.submit {
             try {
+                val file = resolveMemoryFile(pokemonUuid, displayName)
+                val memories = loadMemories(pokemonUuid, displayName).toMutableList()
+                memories.add(memory)
+
+                val limit = config.maxStoredMemories
+                val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+
                 file.parentFile?.mkdirs()
                 PrintWriter(FileWriter(file, false)).use { writer ->
                     toSave.forEach { m ->
@@ -186,12 +194,12 @@ object MemorySystem {
     }
 
     fun saveMemories(pokemonUuid: String, memories: List<Memory>, displayName: String?) {
-        val file = resolveMemoryFile(pokemonUuid, displayName)
-        val limit = config.maxStoredMemories
-        val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
-
         DiskWriteExecutor.submit {
             try {
+                val file = resolveMemoryFile(pokemonUuid, displayName)
+                val limit = config.maxStoredMemories
+                val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+
                 file.parentFile?.mkdirs()
                 PrintWriter(FileWriter(file, false)).use { writer ->
                     toSave.forEach { m ->
@@ -216,15 +224,21 @@ object MemorySystem {
         }
     }
 
-    private fun resolveTraitsFile(pokemonUuid: String, displayName: String?): File {
+    fun resolveTraitsFile(pokemonUuid: String, displayName: String?): File {
         val preferred = buildPreferredFile(pokemonUuid, displayName, FileType.TRAITS)
         val existing = resolveExistingFile(pokemonUuid, displayName, FileType.TRAITS)
+        if (displayName.isNullOrBlank() && existing != null) {
+            return existing
+        }
         return moveIfNeeded(existing, preferred)
     }
 
-    private fun resolveMemoryFile(pokemonUuid: String, displayName: String?): File {
+    fun resolveMemoryFile(pokemonUuid: String, displayName: String?): File {
         val preferred = buildPreferredFile(pokemonUuid, displayName, FileType.MEMORIES)
         val existing = resolveExistingFile(pokemonUuid, displayName, FileType.MEMORIES)
+        if (displayName.isNullOrBlank() && existing != null) {
+            return existing
+        }
         return moveIfNeeded(existing, preferred)
     }
 
@@ -232,6 +246,11 @@ object MemorySystem {
         if (existing == null || existing.absolutePath == preferred.absolutePath) {
             preferred.parentFile?.mkdirs()
             return existing ?: preferred
+        }
+
+        // Never downgrade an existing named file to generic "Pokemon-xxxxxxx"
+        if (preferred.name.startsWith("Pokemon-") && !existing.name.startsWith("Pokemon-")) {
+            return existing
         }
 
         return try {
@@ -345,7 +364,11 @@ object MemorySystem {
     }
 
     private fun getModernBaseDirectory(): File {
-        val dir = File("cobblebrain-ai/stored_memories")
+        val legacyAiDir = File("cobblebrain-ai/stored_memories")
+        val dir = File("cobblebrain/stored_memories")
+        if (!dir.exists() && legacyAiDir.exists() && legacyAiDir.isDirectory) {
+            legacyAiDir.renameTo(dir)
+        }
         if (!dir.exists()) dir.mkdirs()
         return dir
     }

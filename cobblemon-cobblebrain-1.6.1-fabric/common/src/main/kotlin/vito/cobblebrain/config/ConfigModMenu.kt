@@ -171,7 +171,7 @@ object CobblebrainConfigScreen {
         val category = builder.getOrCreateCategory(Component.literal("Actions"))
         val actionKeys = listOf(
             "cook", "grow", "repair", "shift", "fish", "nightmare", "light", "scout",
-            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "prospect", "rest", "idle"
+            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "rest", "idle"
         )
 
         category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFFFF00))
@@ -222,7 +222,6 @@ object CobblebrainConfigScreen {
             "buff" -> actionSettings.buff.active
             "debuff_enemy" -> actionSettings.debuffEnemy.active
             "excavate", "demolish" -> actionSettings.excavate.active
-            "prospect" -> actionSettings.prospect.active
             "rest", "sit" -> actionSettings.rest.active
             "idle" -> actionSettings.idle.active
             else -> true
@@ -532,7 +531,6 @@ object CobblebrainConfigScreen {
                     cfg.actionSettings.debuffEnemy.effectLevel = debuffEffectLevelVal
                 }
                 "excavate", "demolish" -> cfg.actionSettings.excavate.active = activeVal
-                "prospect" -> cfg.actionSettings.prospect.active = activeVal
                 "rest", "sit" -> cfg.actionSettings.rest.active = activeVal
                 "idle" -> cfg.actionSettings.idle.active = activeVal
             }
@@ -782,13 +780,26 @@ object CobblebrainConfigScreen {
             override fun getItemHeight(): Int = 24
         }
 
-        val storyEditorButton = object : AbstractConfigListEntry<Unit>(
-            Component.literal("Open Story Editor"),
+        val storyActionsButton = object : AbstractConfigListEntry<Unit>(
+            Component.literal("Story Actions"),
             false
         ) {
-            private var button: net.minecraft.client.gui.components.Button =
+            private var playButton: net.minecraft.client.gui.components.Button =
                 net.minecraft.client.gui.components.Button.builder(
-                    Component.literal("Open Story Editor")
+                    Component.literal("▶ Play Story")
+                ) {
+                    Minecraft.getInstance().player?.playSound(
+                        SoundEvents.UI_BUTTON_CLICK.value(),
+                        1.0f,
+                        1.0f
+                    )
+                    val parentScreen = Minecraft.getInstance().screen
+                    Minecraft.getInstance().setScreen(vito.cobblebrain.client.gui.PlayStoryScreen(parentScreen))
+                }.bounds(0, 0, 128, 20).build()
+
+            private var editorButton: net.minecraft.client.gui.components.Button =
+                net.minecraft.client.gui.components.Button.builder(
+                    Component.literal("Story Editor (ALPHA)")
                 ) {
                     Minecraft.getInstance().player?.playSound(
                         SoundEvents.UI_BUTTON_CLICK.value(),
@@ -797,12 +808,12 @@ object CobblebrainConfigScreen {
                     )
                     val parentScreen = Minecraft.getInstance().screen
                     Minecraft.getInstance().setScreen(vito.cobblebrain.client.gui.StoryEditorScreen(parentScreen))
-                }.bounds(0, 0, 260, 20).build()
+                }.bounds(0, 0, 128, 20).build()
 
             override fun getValue(): Unit? = null
             override fun getDefaultValue(): Optional<Unit> = Optional.empty()
-            override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
-            override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+            override fun children(): MutableList<GuiEventListener> = mutableListOf(playButton, editorButton)
+            override fun narratables(): MutableList<NarratableEntry> = mutableListOf(playButton, editorButton)
 
             override fun render(
                 guiGraphics: GuiGraphics,
@@ -816,9 +827,20 @@ object CobblebrainConfigScreen {
                 isSelected: Boolean,
                 delta: Float
             ) {
-                button.x = x + (listWidth / 2) - 130
-                button.y = y
-                button.render(guiGraphics, mouseX, mouseY, delta)
+                val hasActiveWorld = Minecraft.getInstance().level != null
+                playButton.active = hasActiveWorld
+                playButton.tooltip = if (!hasActiveWorld) {
+                    net.minecraft.client.gui.components.Tooltip.create(Component.literal("You must be in an active world to play stories."))
+                } else null
+
+                val startX = x + (listWidth / 2) - 130
+                playButton.x = startX
+                playButton.y = y
+                playButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                editorButton.x = startX + 132
+                editorButton.y = y
+                editorButton.render(guiGraphics, mouseX, mouseY, delta)
             }
 
             override fun getItemHeight(): Int = 24
@@ -886,7 +908,7 @@ object CobblebrainConfigScreen {
         "Tip: If you turn 'Listen To Chat' ON, the AI will respond to every message you send in chat.",
         "Tip: You can change how often Pokémon speak by themselves in 'Spontaneous Dialogue Chance'.",
         "Tip: Turn ON 'Need Pokémon Translator' to require an EXP SHARE equipped by the player for Pokémon to speak human language.",
-        "Tip: Turn ON 'Debug Logging' to get detailed logs of messages and prompts in the cobblebrain-ai folder.",
+        "Tip: Turn ON 'Debug Logging' to get detailed logs of messages and prompts in the cobblebrain folder.",
         "Tip: If the AI takes too long to respond, consider activating 'Low Token Mode'.",
         "Tip: Never share your API key with anyone!",
         "Tip: If your friends play this mod together, each player must run their own AI model on their own device.",
@@ -1316,7 +1338,7 @@ object CobblebrainConfigScreen {
 
         val enableTraitsEntry = entryBuilder.startBooleanToggle(
             Component.literal("Enable Trait Creation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.enableTraits)
+            config.enableTraits
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.enableTraits = value }
             .setTooltip(Component.literal("If enabled, the AI will automatically generate and evolve Traits and Quirks for your Pokémon."))
@@ -1326,7 +1348,7 @@ object CobblebrainConfigScreen {
             Component.literal("Allow Client Personality Editing").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.allowClientPersonalityEditing)
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> config.allowClientPersonalityEditing = value; config.allowClientPersonalityEditing = value }
+            .setSaveConsumer { value -> config.allowClientPersonalityEditing = value }
             .setTooltip(Component.literal("If enabled, players can use the Personality Editor to manually edit their Pokémon's personality. When disabled, the editor becomes read-only."))
             .build()
 
@@ -1701,7 +1723,7 @@ object CobblebrainConfigScreen {
 
         category.entries.add(recommendedPromptButton)
         category.entries.add(personalityEditorButton)
-        category.entries.add(storyEditorButton)
+        category.entries.add(storyActionsButton)
         category.entries.add(reportBugsButton)
         category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)

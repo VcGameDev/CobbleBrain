@@ -103,10 +103,22 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
         }
 
+        vito.cobblebrain.engine.StoryExecutor.sendStartKeyInput = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryExecutor.sendCancelKeyInput = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
         // ===== CONFIG =====
         ConfigHandler.load()
 
-        val pasta = File("cobblebrain-ai")
+        val legacyPasta = File("cobblebrain-ai")
+        val pasta = File("cobblebrain")
+        if (!pasta.exists() && legacyPasta.exists() && legacyPasta.isDirectory) {
+            legacyPasta.renameTo(pasta)
+        }
         if (!pasta.exists()) pasta.mkdirs()
 
         // ===== EVENT BUS =====

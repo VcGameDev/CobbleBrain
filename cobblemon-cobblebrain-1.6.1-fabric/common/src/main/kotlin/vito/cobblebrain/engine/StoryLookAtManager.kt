@@ -159,7 +159,7 @@ object StoryLookAtManager {
                 if (!tag.isNullOrBlank()) {
                     val box = subject.boundingBox.inflate(64.0)
                     val candidate = sLevel.getEntitiesOfClass(LivingEntity::class.java, box) {
-                        it != subject && it.isAlive && it.tags.contains(tag)
+                        it != subject && it.isAlive && (it.tags.contains(tag) || it.type.descriptionId.contains(tag, true))
                     }.minByOrNull { it.distanceToSqr(subject) }
 
                     if (candidate != null) {
@@ -247,8 +247,9 @@ object StoryLookAtManager {
         subjectType: LookSubjectType,
         subjectIdentifier: String
     ): LivingEntity? {
+        val trimmed = subjectIdentifier.trim()
         if (subjectType == LookSubjectType.PLAYER_POKEMON && player != null) {
-            val slotIdx = PokemonQuery.parsePartySlotIndex(subjectIdentifier)
+            val slotIdx = PokemonQuery.parsePartySlotIndex(trimmed)
             try {
                 val party = Cobblemon.storage.getParty(player)
                 val poke = party.get(slotIdx)
@@ -262,7 +263,7 @@ object StoryLookAtManager {
                 if (ent != null && ent.isAlive) return ent
             } catch (_: Exception) {}
         } else {
-            val tag = subjectIdentifier.trim()
+            val tag = trimmed
             val box = player?.boundingBox?.inflate(128.0) ?: AABB(-1000.0, -100.0, -1000.0, 1000.0, 300.0, 1000.0)
             val candidates = serverLevel.getEntitiesOfClass(LivingEntity::class.java, box) {
                 it.isAlive && (tag.isBlank() || it.tags.contains(tag) || it.type.descriptionId.contains(tag, true))

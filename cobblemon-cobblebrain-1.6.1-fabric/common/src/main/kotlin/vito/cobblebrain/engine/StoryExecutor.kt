@@ -3,10 +3,7 @@ package vito.cobblebrain.engine
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import vito.cobblebrain.blocks.impl.*
-import vito.cobblebrain.model.NodeData
-import vito.cobblebrain.model.NodeType
-import vito.cobblebrain.model.StoryProject
-import vito.cobblebrain.model.VariableType
+import vito.cobblebrain.model.*
 
 import vito.cobblebrain.engine.checkpoint.StoryCheckpointManager
 
@@ -25,6 +22,9 @@ object StoryExecutor {
     val activeStories = mutableMapOf<String, ActiveStoryInstance>()
     val completedStoriesByPlayer = mutableMapOf<java.util.UUID, MutableSet<String>>()
     private const val MAX_NODES_PER_TICK = 50
+
+    var sendStartKeyInput: ((ServerPlayer, vito.cobblebrain.network.CobblebrainPayloads.StartKeyInputPayload) -> Unit)? = null
+    var sendCancelKeyInput: ((ServerPlayer, vito.cobblebrain.network.CobblebrainPayloads.CancelKeyInputPayload) -> Unit)? = null
 
     fun markStoryCompleted(player: ServerPlayer?, storyId: String) {
         if (player != null && storyId.isNotBlank()) {
@@ -156,7 +156,10 @@ object StoryExecutor {
         // Explicitly search for scene marked with isStartScene == true or active/first scene
         val scene = project.scenes.find { it.isStartScene } ?: project.getActiveScene() ?: project.scenes.firstOrNull()
         if (scene != null) {
+            StorySerializer.ensureSceneLoaded(project, scene)
             project.activeSceneId = scene.id
+            armSceneStandaloneKeyInputs(instance, scene)
+            armGlobalStandaloneKeyInputs(instance)
 
             // Locate BeginSceneBlock or Trigger/Initial node as entry point of scene
             val initialNode = scene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
@@ -173,6 +176,12 @@ object StoryExecutor {
     fun stopStory(storyId: String) {
         val instance = activeStories.remove(storyId)
         instance?.context?.isCancelled = true
+        instance?.context?.waitingCondOutNodes?.clear()
+        if (instance?.context?.player != null) {
+            sendCancelKeyInput?.invoke(instance.context.player, vito.cobblebrain.network.CobblebrainPayloads.CancelKeyInputPayload(storyId, ""))
+            instance.context.waitingKeyInputNodeId = null
+        }
+        StoryDebugger.clearNodeStatuses(storyId)
         if (instance != null) {
             val server = instance.context.server ?: instance.context.player?.server
             StoryDebugger.broadcastSessionState(
@@ -180,7 +189,7 @@ object StoryExecutor {
                 storyId = storyId,
                 packName = instance.project.name.ifBlank { "Story Pack" },
                 sceneName = instance.project.getActiveScene()?.title ?: "Main Scene",
-                activeNodeId = instance.context.currentNodeId ?: "",
+                activeNodeId = "",
                 activeNodeType = "STOPPED",
                 targetEntityName = "",
                 targetEntityTag = "",
@@ -808,6 +817,11 @@ object StoryExecutor {
             return
         }
 
+        if (currentNode.nodeType == NodeType.KEY_INPUT) {
+            executeKeyInputNode(instance, currentNode, stepCount)
+            return
+        }
+
         executeNodeAction(instance.context, currentNode)
 
         StoryDebugger.recordLog(
@@ -870,43 +884,52 @@ object StoryExecutor {
 }
 
     fun evaluateVariableCondition(actualVal: Any?, op: String, targetValStr: String): Boolean {
-        if (actualVal is List<*> || op in listOf("CONTAINS", "SIZE", "IS_EMPTY", "GET_INDEX")) {
-            val list = when (actualVal) {
-                is List<*> -> actualVal.map { it?.toString() ?: "" }
+        val opUpper = op.trim().uppercase()
+        val targetTrimmed = targetValStr.trim()
+
+        // 1. List Operations (or actualVal is List / JsonArray)
+        if (actualVal is List<*> || actualVal is com.google.gson.JsonArray || opUpper in listOf("CONTAINS", "NOT_CONTAINS", "!CONTAINS", "SIZE", "COUNT", "IS_EMPTY", "NOT_EMPTY", "EMPTY", "!EMPTY", "GET_INDEX")) {
+            val list: List<String> = when (actualVal) {
+                is List<*> -> actualVal.map { it?.toString()?.trim() ?: "" }
+                is com.google.gson.JsonArray -> actualVal.map { if (it.isJsonPrimitive) it.asString.trim() else it.toString().trim() }
                 null -> emptyList()
                 else -> actualVal.toString().split(",").map { it.trim() }.filter { it.isNotBlank() }
             }
 
-            return when (op) {
-                "CONTAINS" -> list.any { it.equals(targetValStr, ignoreCase = true) }
-                "SIZE" -> {
-                    val expectedSize = targetValStr.toIntOrNull() ?: 0
+            return when (opUpper) {
+                "CONTAINS" -> list.any { it.equals(targetTrimmed, ignoreCase = true) }
+                "NOT_CONTAINS", "!CONTAINS" -> !list.any { it.equals(targetTrimmed, ignoreCase = true) }
+                "SIZE", "COUNT" -> {
+                    val expectedSize = targetTrimmed.toIntOrNull() ?: 0
                     list.size == expectedSize
                 }
-                "IS_EMPTY" -> list.isEmpty()
+                "IS_EMPTY", "EMPTY" -> list.isEmpty()
+                "NOT_EMPTY", "!EMPTY" -> list.isNotEmpty()
                 "GET_INDEX" -> {
-                    if (targetValStr.contains(":")) {
-                        val parts = targetValStr.split(":", limit = 2)
+                    if (targetTrimmed.contains(":")) {
+                        val parts = targetTrimmed.split(":", limit = 2)
                         val idx = parts[0].trim().toIntOrNull() ?: 0
                         val expectedVal = parts[1].trim()
                         if (idx in list.indices) list[idx].equals(expectedVal, ignoreCase = true) else false
                     } else {
-                        val idx = targetValStr.toIntOrNull() ?: 0
+                        val idx = targetTrimmed.toIntOrNull() ?: 0
                         idx in list.indices
                     }
                 }
-                "==" -> list.joinToString(",").equals(targetValStr, ignoreCase = true)
-                "!=" -> !list.joinToString(",").equals(targetValStr, ignoreCase = true)
-                else -> list.any { it.equals(targetValStr, ignoreCase = true) }
+                "==" -> list.joinToString(",").equals(targetTrimmed, ignoreCase = true)
+                "!=" -> !list.joinToString(",").equals(targetTrimmed, ignoreCase = true)
+                else -> list.any { it.equals(targetTrimmed, ignoreCase = true) }
             }
         }
 
-        val actualStr = actualVal?.toString() ?: ""
+        val actualStr = actualVal?.toString()?.trim() ?: ""
+
+        // 2. Safe Numeric Coercion (both sides toDoubleOrNull)
         val actualNum = (actualVal as? Number)?.toDouble() ?: actualStr.toDoubleOrNull()
-        val targetNum = targetValStr.toDoubleOrNull()
+        val targetNum = targetTrimmed.toDoubleOrNull()
 
         if (actualNum != null && targetNum != null) {
-            return when (op) {
+            return when (opUpper) {
                 "==" -> actualNum == targetNum
                 "!=" -> actualNum != targetNum
                 ">" -> actualNum > targetNum
@@ -917,20 +940,28 @@ object StoryExecutor {
             }
         }
 
-        val actualBool = actualVal as? Boolean ?: actualStr.toBooleanStrictOrNull()
-        val targetBool = targetValStr.toBooleanStrictOrNull()
+        // 3. Safe Boolean Coercion
+        val actualBool = (actualVal as? Boolean) ?: actualStr.toBooleanStrictOrNull()
+        val targetBool = targetTrimmed.toBooleanStrictOrNull()
         if (actualBool != null && targetBool != null) {
-            return when (op) {
+            return when (opUpper) {
                 "==" -> actualBool == targetBool
                 "!=" -> actualBool != targetBool
                 else -> actualBool == targetBool
             }
         }
 
-        return when (op) {
-            "==" -> actualStr.equals(targetValStr, ignoreCase = true)
-            "!=" -> !actualStr.equals(targetValStr, ignoreCase = true)
-            else -> actualStr.equals(targetValStr, ignoreCase = true)
+        // 4. String Comparisons
+        return when (opUpper) {
+            "==" -> actualStr.equals(targetTrimmed, ignoreCase = true)
+            "!=" -> !actualStr.equals(targetTrimmed, ignoreCase = true)
+            "CONTAINS" -> actualStr.contains(targetTrimmed, ignoreCase = true)
+            "NOT_CONTAINS", "!CONTAINS" -> !actualStr.contains(targetTrimmed, ignoreCase = true)
+            "STARTS_WITH" -> actualStr.startsWith(targetTrimmed, ignoreCase = true)
+            "ENDS_WITH" -> actualStr.endsWith(targetTrimmed, ignoreCase = true)
+            "IS_EMPTY", "EMPTY" -> actualStr.isEmpty()
+            "NOT_EMPTY", "!EMPTY" -> actualStr.isNotEmpty()
+            else -> actualStr.equals(targetTrimmed, ignoreCase = true)
         }
     }
 
@@ -948,7 +979,9 @@ object StoryExecutor {
         for (sceneConn in outgoingSceneConnections) {
             val targetScene = instance.project.scenes.find { it.id == sceneConn.toNodeId }
             if (targetScene != null) {
+                StorySerializer.ensureSceneLoaded(instance.project, targetScene)
                 instance.project.activeSceneId = targetScene.id
+                armSceneStandaloneKeyInputs(instance, targetScene)
 
                 // Start destination scene prioritizing BeginSceneBlock (Scene Entry Point)
                 val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
@@ -960,11 +993,14 @@ object StoryExecutor {
                 }
             } else {
                 // Target is a block/node connected to Scene OUT port
-                val allNodes = instance.project.scenes.flatMap { it.nodes }
+                StorySerializer.ensureAllScenesLoaded(instance.project)
+                val allNodes = instance.project.scenes.flatMap { it.nodes } + instance.project.globalNodes
                 val targetNode = allNodes.find { it.id == sceneConn.toNodeId }
                 if (targetNode != null) {
                     if (!targetNode.parentSceneId.isNullOrBlank()) {
                         instance.project.activeSceneId = targetNode.parentSceneId!!
+                        val nextScene = instance.project.scenes.find { it.id == targetNode.parentSceneId }
+                        if (nextScene != null) armSceneStandaloneKeyInputs(instance, nextScene)
                     }
                     executeNodeChain(instance, targetNode, targetPortId = sceneConn.toPortId, stepCount = stepCount + 1)
                 }
@@ -1088,12 +1124,22 @@ object StoryExecutor {
         dispatchPortConnections(instance, currentNode, portId, stepCount)
     }
 
+    fun isConditionalOutputPort(node: NodeData, portId: String): Boolean {
+        if (portId == "OUT_COND") return true
+        val condPort = node.outputs.find { it.id == "OUT_COND" || it.name.startsWith("Cond Out", ignoreCase = true) || it.name.contains("Cond", ignoreCase = true) }
+        return condPort != null && condPort.id == portId
+    }
+
     private fun dispatchPortConnections(instance: ActiveStoryInstance, currentNode: NodeData, portId: String, stepCount: Int) {
         if (instance.context.isCancelled) return
 
+        val isCond = portId == "OUT_COND"
+
         val parentConstr = findParentConstruction(instance, currentNode.id)
         if (parentConstr != null) {
-            val outgoingConnections = parentConstr.innerConnections.filter { it.fromNodeId == currentNode.id && it.fromPortId == portId }
+            val outgoingConnections = parentConstr.innerConnections.filter { 
+                it.fromNodeId == currentNode.id && (it.fromPortId == portId || (isCond && isConditionalOutputPort(currentNode, it.fromPortId)))
+            }
             for (conn in outgoingConnections) {
                 val targetNode = parentConstr.innerNodes.find { it.id == conn.toNodeId }
                 if (targetNode != null) {
@@ -1103,21 +1149,26 @@ object StoryExecutor {
             return
         }
 
-        val scene = instance.project.getActiveScene() ?: return
-        val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id && it.fromPortId == portId }
+        val scene = instance.project.scenes.find { it.id == currentNode.parentSceneId } ?: instance.project.getActiveScene()
+        val outgoingConnections = scene?.connections?.filter { 
+            it.fromNodeId == currentNode.id && (it.fromPortId == portId || (isCond && isConditionalOutputPort(currentNode, it.fromPortId)))
+        } ?: emptyList()
 
         for (conn in outgoingConnections) {
-            val targetNode = scene.nodes.find { it.id == conn.toNodeId }
+            val targetNode = scene?.nodes?.find { it.id == conn.toNodeId }
             if (targetNode != null) {
                 executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
             }
         }
 
-        // Also check inter-scene / block-to-scene connections
-        val interConnections = instance.project.sceneConnections.filter { it.fromNodeId == currentNode.id && it.fromPortId == portId }
+        // Also check inter-scene / block-to-scene / global connections
+        val interConnections = instance.project.sceneConnections.filter { 
+            it.fromNodeId == currentNode.id && (it.fromPortId == portId || (isCond && isConditionalOutputPort(currentNode, it.fromPortId)))
+        }
         for (conn in interConnections) {
             val targetScene = instance.project.scenes.find { it.id == conn.toNodeId }
             if (targetScene != null) {
+                StorySerializer.ensureSceneLoaded(instance.project, targetScene)
                 instance.project.activeSceneId = targetScene.id
                 val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
                     ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
@@ -1126,11 +1177,14 @@ object StoryExecutor {
                     executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
                 }
             } else {
-                val allNodes = instance.project.scenes.flatMap { it.nodes }
+                StorySerializer.ensureAllScenesLoaded(instance.project)
+                val allNodes = instance.project.scenes.flatMap { it.nodes } + instance.project.globalNodes
                 val targetNode = allNodes.find { it.id == conn.toNodeId }
                 if (targetNode != null) {
                     if (!targetNode.parentSceneId.isNullOrBlank()) {
                         instance.project.activeSceneId = targetNode.parentSceneId!!
+                        val nextScene = instance.project.scenes.find { it.id == targetNode.parentSceneId }
+                        if (nextScene != null) armSceneStandaloneKeyInputs(instance, nextScene)
                     }
                     executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
                 }
@@ -1174,9 +1228,74 @@ object StoryExecutor {
     private fun dispatchOutgoingConnections(instance: ActiveStoryInstance, currentNode: NodeData, stepCount: Int) {
         if (instance.context.isCancelled) return
 
+        val storyId = instance.storyId.ifBlank { instance.project.id }
+        val server = instance.context.server ?: instance.context.player?.server
+        StoryDebugger.recordLog(
+            storyId = storyId,
+            blockId = currentNode.id,
+            blockType = currentNode.nodeType,
+            status = NodeExecutionStatus.SUCCESS,
+            level = "INFO",
+            message = "Node completed: '${currentNode.title.ifBlank { currentNode.nodeType.name }}'",
+            server = server
+        )
+
+        // 1. Evaluate Universal Conditional Output Trigger (OUT_COND) if configured
+        val condEnabled = currentNode.params["condOutEnabled"] == "true"
+        val condMode = currentNode.params["condOutMode"] ?: "INSTANT"
+        val condVarKey = currentNode.params["condVarKey"]?.trim() ?: ""
+        val condOp = currentNode.params["condOp"] ?: "=="
+        val condVarValue = currentNode.params["condVarValue"] ?: ""
+
+        if (condEnabled && condVarKey.isNotBlank()) {
+            val registeredVar = instance.project.variables.find { it.id == condVarKey }
+            val actualVal = instance.context.variables[condVarKey] ?: registeredVar?.parseTypedDefaultValue()
+            val condMatches = evaluateVariableCondition(actualVal, condOp, condVarValue)
+
+            if (condMatches) {
+                instance.context.waitingCondOutNodes.remove(currentNode.id)
+                StoryDebugger.recordLog(
+                    storyId = storyId,
+                    blockId = currentNode.id,
+                    blockType = currentNode.nodeType,
+                    status = NodeExecutionStatus.SUCCESS,
+                    level = "INFO",
+                    message = "Conditional trigger MATCHED ($condVarKey $condOp $condVarValue) -> Firing 'OUT_COND' port.",
+                    server = server
+                )
+                // Dispatch connections from OUT_COND
+                dispatchPortConnections(instance, currentNode, "OUT_COND", stepCount)
+            } else {
+                if (condMode.equals("LISTENER", ignoreCase = true)) {
+                    instance.context.waitingCondOutNodes[currentNode.id] = stepCount
+                    StoryDebugger.recordLog(
+                        storyId = storyId,
+                        blockId = currentNode.id,
+                        blockType = currentNode.nodeType,
+                        status = NodeExecutionStatus.RUNNING,
+                        level = "INFO",
+                        message = "Conditional Out LISTENER armed: waiting for $condVarKey $condOp $condVarValue (current: $actualVal).",
+                        server = server
+                    )
+                } else {
+                    StoryDebugger.recordLog(
+                        storyId = storyId,
+                        blockId = currentNode.id,
+                        blockType = currentNode.nodeType,
+                        status = NodeExecutionStatus.IDLE,
+                        level = "INFO",
+                        message = "Conditional trigger skipped (INSTANT mode): ($condVarKey $condOp $condVarValue, current: $actualVal).",
+                        server = server
+                    )
+                }
+            }
+        }
+
+        // 2. Dispatch Standard (non-OUT_COND) Outgoing Connections
+
         val parentConstr = findParentConstruction(instance, currentNode.id)
         if (parentConstr != null) {
-            val outgoingConnections = parentConstr.innerConnections.filter { it.fromNodeId == currentNode.id }
+            val outgoingConnections = parentConstr.innerConnections.filter { it.fromNodeId == currentNode.id && !isConditionalOutputPort(currentNode, it.fromPortId) }
             for (conn in outgoingConnections) {
                 val targetNode = parentConstr.innerNodes.find { it.id == conn.toNodeId }
                 if (targetNode != null) {
@@ -1186,12 +1305,12 @@ object StoryExecutor {
             return
         }
 
-        val scene = instance.project.getActiveScene() ?: return
-        val outgoingConnections = scene.connections.filter { it.fromNodeId == currentNode.id }
-        val interConnections = instance.project.sceneConnections.filter { it.fromNodeId == currentNode.id }
+        val scene = instance.project.scenes.find { it.id == currentNode.parentSceneId } ?: instance.project.getActiveScene()
+        val outgoingConnections = scene?.connections?.filter { it.fromNodeId == currentNode.id && !isConditionalOutputPort(currentNode, it.fromPortId) } ?: emptyList()
+        val interConnections = instance.project.sceneConnections.filter { it.fromNodeId == currentNode.id && !isConditionalOutputPort(currentNode, it.fromPortId) }
 
         for (conn in outgoingConnections) {
-            val targetNode = scene.nodes.find { it.id == conn.toNodeId }
+            val targetNode = scene?.nodes?.find { it.id == conn.toNodeId }
             if (targetNode != null) {
                 executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
             }
@@ -1199,6 +1318,7 @@ object StoryExecutor {
         for (conn in interConnections) {
             val targetScene = instance.project.scenes.find { it.id == conn.toNodeId }
             if (targetScene != null) {
+                StorySerializer.ensureSceneLoaded(instance.project, targetScene)
                 instance.project.activeSceneId = targetScene.id
                 val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
                     ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
@@ -1207,11 +1327,14 @@ object StoryExecutor {
                     executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
                 }
             } else {
-                val allNodes = instance.project.scenes.flatMap { it.nodes }
+                StorySerializer.ensureAllScenesLoaded(instance.project)
+                val allNodes = instance.project.scenes.flatMap { it.nodes } + instance.project.globalNodes
                 val targetNode = allNodes.find { it.id == conn.toNodeId }
                 if (targetNode != null) {
                     if (!targetNode.parentSceneId.isNullOrBlank()) {
                         instance.project.activeSceneId = targetNode.parentSceneId!!
+                        val nextScene = instance.project.scenes.find { it.id == targetNode.parentSceneId }
+                        if (nextScene != null) armSceneStandaloneKeyInputs(instance, nextScene)
                     }
                     executeNodeChain(instance, targetNode, targetPortId = conn.toPortId, stepCount = stepCount + 1)
                 }
@@ -1358,18 +1481,28 @@ object StoryExecutor {
             val command = interpolated.trim().removePrefix("/")
             if (command.isBlank()) continue
 
+            // SECURITY LOCK: Prevent execution of admin, server control, and permission escalation commands
+            val blockedCmd = StoryCommandSecurity.findBlockedAdminCommand(command)
+            if (blockedCmd != null) {
+                println("[CobbleBrain Security] Blocked admin/server-control command '$blockedCmd' in story '${instance.project.name}' (Node: ${node.id}, Title: '${node.title}'): '$rawLine'")
+                if (player != null && !isSilent) {
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain Security] Command blocked: '/$blockedCmd' is restricted for server administration."))
+                }
+                continue
+            }
+
             try {
                 val source = if (isServerSource) {
-                    var s = server.createCommandSourceStack().withPermission(4)
+                    var s = server.createCommandSourceStack().withPermission(2)
                     if (isSilent) s = s.withSuppressedOutput()
                     s
                 } else {
                     if (player != null) {
-                        var s = player.createCommandSourceStack()
+                        var s = player.createCommandSourceStack().withPermission(2)
                         if (isSilent) s = s.withSuppressedOutput()
                         s
                     } else {
-                        var s = server.createCommandSourceStack().withPermission(4)
+                        var s = server.createCommandSourceStack().withPermission(2)
                         if (isSilent) s = s.withSuppressedOutput()
                         s
                     }
@@ -1446,6 +1579,7 @@ object StoryExecutor {
         )
 
         val allNodes = mutableListOf<NodeData>()
+        allNodes.addAll(instance.project.globalNodes)
         instance.project.scenes.forEach { scene -> allNodes.addAll(scene.nodes) }
 
         // 1. Reactive VARIABLE_GET nodes with ON_CHANGED output
@@ -1497,6 +1631,31 @@ object StoryExecutor {
             val shouldTrigger = if (isIfNot) !isMatch else isMatch
             if (shouldTrigger) {
                 executeNodeChain(instance, trigNode, targetPortId = null, stepCount = 0)
+            }
+        }
+
+        // 4. Waiting Conditional Out Listeners (condOutMode == "LISTENER")
+        val waitingCondSnapshot = instance.context.waitingCondOutNodes.toMap()
+        for ((nodeId, stepCount) in waitingCondSnapshot) {
+            val node = allNodes.find { it.id == nodeId } ?: continue
+            val condVarKey = node.params["condVarKey"]?.trim() ?: ""
+            if (condVarKey == varKey) {
+                val condOp = node.params["condOp"] ?: "=="
+                val condVarValue = node.params["condVarValue"] ?: ""
+                val condMatches = evaluateVariableCondition(newVal, condOp, condVarValue)
+                if (condMatches) {
+                    instance.context.waitingCondOutNodes.remove(nodeId)
+                    StoryDebugger.recordLog(
+                        storyId = storyId,
+                        blockId = node.id,
+                        blockType = node.nodeType,
+                        status = NodeExecutionStatus.SUCCESS,
+                        level = "INFO",
+                        message = "Conditional Out LISTENER triggered: ($condVarKey $condOp $condVarValue matched!) -> Firing 'OUT_COND' port.",
+                        server = server
+                    )
+                    dispatchPortConnections(instance, node, "OUT_COND", stepCount)
+                }
             }
         }
     }
@@ -1551,6 +1710,188 @@ object StoryExecutor {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun executeKeyInputNode(instance: ActiveStoryInstance, currentNode: NodeData, stepCount: Int) {
+        val player = instance.context.player
+        val server = instance.context.server ?: player?.server
+        val storyId = instance.storyId.ifBlank { instance.project.id }
+
+        if (player == null) {
+            // No player attached (e.g. headless test run) -> Auto-complete
+            StoryDebugger.recordLog(
+                storyId = storyId,
+                blockId = currentNode.id,
+                blockType = currentNode.nodeType,
+                status = NodeExecutionStatus.SUCCESS,
+                level = "WARN",
+                message = "KeyInput node auto-completed (No player attached to story instance).",
+                server = server
+            )
+            continueOutgoingConnections(instance, currentNode, stepCount + 1)
+            return
+        }
+
+        val isStandalone = isStandaloneKeyInput(currentNode)
+
+        if (!isStandalone) {
+            // Store waiting state ON instance.context to isolate per-player/storyInstance!
+            instance.context.waitingKeyInputNodeId = currentNode.id
+            instance.context.waitingKeyInputStepCount = stepCount
+        }
+
+        val inputMode = currentNode.params["inputMode"] ?: if (isStandalone) "PRESS" else "HOLD_ONE_SHOT"
+        val targetKey = currentNode.params["targetKey"] ?: "F"
+        val holdDurationSec = currentNode.params["holdDurationSec"]?.toDoubleOrNull() ?: 2.0
+        val pulseIntervalTicks = currentNode.params["pulseIntervalTicks"]?.toIntOrNull() ?: 10
+        val mashTargetCount = currentNode.params["mashTargetCount"]?.toIntOrNull() ?: 10
+        val mashDecayPerSec = currentNode.params["mashDecayPerSec"]?.toDoubleOrNull() ?: 2.0
+        val timeoutSec = if (isStandalone) 0.0 else (currentNode.params["timeoutSec"]?.toDoubleOrNull() ?: 5.0)
+        val promptText = currentNode.params["promptText"] ?: ""
+        val showHud = if (isStandalone) (currentNode.params["showHud"] == "true") else (currentNode.params["showHud"] != "false")
+        val cancelOnMenuOpen = currentNode.params["cancelOnMenuOpen"] != "false"
+
+        val payload = vito.cobblebrain.network.CobblebrainPayloads.StartKeyInputPayload(
+            storyId = storyId,
+            nodeId = currentNode.id,
+            inputMode = inputMode,
+            targetKey = targetKey,
+            holdDurationSec = holdDurationSec,
+            pulseIntervalTicks = pulseIntervalTicks,
+            mashTargetCount = mashTargetCount,
+            mashDecayPerSec = mashDecayPerSec,
+            timeoutSec = timeoutSec,
+            promptText = promptText,
+            showHud = showHud,
+            cancelOnMenuOpen = cancelOnMenuOpen,
+            isStandalone = isStandalone
+        )
+
+        sendStartKeyInput?.invoke(player, payload)
+
+        StoryDebugger.recordLog(
+            storyId = storyId,
+            blockId = currentNode.id,
+            blockType = currentNode.nodeType,
+            status = NodeExecutionStatus.RUNNING,
+            level = "INFO",
+            message = "Awaiting player key input: mode=$inputMode, key=$targetKey, standalone=$isStandalone",
+            server = server
+        )
+    }
+
+    private fun isStandaloneKeyInput(node: NodeData): Boolean {
+        val mode = node.params["triggerMode"]
+        if (mode != null) {
+            return mode.equals("STANDALONE", ignoreCase = true)
+        }
+        return node.params["requireInputSignal"] == "false" || node.inputs.none { it.type == PortType.INPUT }
+    }
+
+    fun armSceneStandaloneKeyInputs(instance: ActiveStoryInstance, scene: SceneData) {
+        val standaloneNodes = scene.nodes.filter {
+            it.nodeType == NodeType.KEY_INPUT && isStandaloneKeyInput(it)
+        }
+        for (node in standaloneNodes) {
+            executeKeyInputNode(instance, node, 0)
+        }
+    }
+
+    fun armGlobalStandaloneKeyInputs(instance: ActiveStoryInstance) {
+        val standaloneNodes = instance.project.globalNodes.filter {
+            it.nodeType == NodeType.KEY_INPUT && isStandaloneKeyInput(it)
+        }
+        for (node in standaloneNodes) {
+            executeKeyInputNode(instance, node, 0)
+        }
+    }
+
+    fun handleKeyInputResult(player: ServerPlayer, storyId: String, nodeId: String, resultEvent: String) {
+        // Find the specific story instance matching the player and storyId (player-isolated)
+        val instance = activeStories.values.find {
+            (it.storyId == storyId || it.project.id == storyId) && it.context.player?.uuid == player.uuid
+        } ?: activeStories[storyId]?.takeIf { it.context.player?.uuid == player.uuid }
+        ?: return
+
+        val allNodes = instance.project.scenes.flatMap { it.nodes } + instance.project.globalNodes +
+                instance.project.scenes.flatMap { it.nodes }.filter { it.nodeType == NodeType.CONSTRUCTION }.flatMap { it.innerNodes }
+        val currentNode = allNodes.find { it.id == nodeId } ?: return
+
+        val isStandalone = isStandaloneKeyInput(currentNode)
+
+        if (!isStandalone && instance.context.waitingKeyInputNodeId != nodeId) {
+            // Not waiting for this node
+            return
+        }
+
+        val server = instance.context.server ?: player.server
+        val stepCount = if (isStandalone) 0 else instance.context.waitingKeyInputStepCount
+
+        when (resultEvent.uppercase()) {
+            "SUCCESS" -> {
+                if (!isStandalone) {
+                    instance.context.waitingKeyInputNodeId = null
+                }
+                StoryDebugger.recordLog(
+                    storyId = storyId,
+                    blockId = currentNode.id,
+                    blockType = currentNode.nodeType,
+                    status = NodeExecutionStatus.SUCCESS,
+                    level = "INFO",
+                    message = "KeyInput ${if (isStandalone) "[Standalone]" else ""} completed successfully by player (${player.scoreboardName}).",
+                    server = server
+                )
+                val outPort = currentNode.outputs.find { it.name.equals("Out", true) || it.id == "OUT" } ?: currentNode.outputs.firstOrNull()
+                if (outPort != null) {
+                    continuePortConnections(instance, currentNode, outPort.id, stepCount + 1)
+                } else {
+                    continueOutgoingConnections(instance, currentNode, stepCount + 1)
+                }
+            }
+            "PULSE" -> {
+                // HOLD_STREAM continuous pulse
+                val pulsePort = currentNode.outputs.find { it.name.equals("Out Pulse", true) || it.id == "OUT_PULSE" }
+                if (pulsePort != null) {
+                    continuePortConnections(instance, currentNode, pulsePort.id, stepCount + 1)
+                }
+            }
+            "RELEASED" -> {
+                if (!isStandalone) {
+                    instance.context.waitingKeyInputNodeId = null
+                }
+                StoryDebugger.recordLog(
+                    storyId = storyId,
+                    blockId = currentNode.id,
+                    blockType = currentNode.nodeType,
+                    status = NodeExecutionStatus.SUCCESS,
+                    level = "INFO",
+                    message = "KeyInput key released by player (${player.scoreboardName}).",
+                    server = server
+                )
+                val releasePort = currentNode.outputs.find { it.name.equals("Out Release", true) || it.id == "OUT_RELEASE" }
+                if (releasePort != null) {
+                    continuePortConnections(instance, currentNode, releasePort.id, stepCount + 1)
+                }
+            }
+            "TIMEOUT", "CANCELLED" -> {
+                if (!isStandalone) {
+                    instance.context.waitingKeyInputNodeId = null
+                }
+                StoryDebugger.recordLog(
+                    storyId = storyId,
+                    blockId = currentNode.id,
+                    blockType = currentNode.nodeType,
+                    status = NodeExecutionStatus.FALLBACK_TRIGGERED,
+                    level = "WARN",
+                    message = "KeyInput timed out or was cancelled by player.",
+                    server = server
+                )
+                val timeoutPort = currentNode.outputs.find { it.name.equals("Out Timeout", true) || it.id == "OUT_TIMEOUT" }
+                if (timeoutPort != null) {
+                    continuePortConnections(instance, currentNode, timeoutPort.id, stepCount + 1)
+                }
+            }
         }
     }
 }

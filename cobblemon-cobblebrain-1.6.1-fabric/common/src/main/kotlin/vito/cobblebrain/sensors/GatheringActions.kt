@@ -43,7 +43,6 @@ import kotlin.math.min
 
 enum class GatheringType {
     EXCAVATE,  // Steel type - Tunnel excavation
-    PROSPECT,  // Rock type - Specific mineral focus
     BUILD      // Construction using blocks from chest in slot order
 }
 
@@ -79,7 +78,6 @@ data class GatheringSession(
     var navStuckTicks: Int = 0,
     var lastDistSqr: Double = Double.MAX_VALUE,
     var lastOreNoticeTime: Long = 0L,
-    var targetBlockFocus: Block? = null,
     var demolishForwardDir: Direction = Direction.NORTH,
     var demolishCurrentDepth: Int = 0,
     var isSuspendedBuild: Boolean = false,
@@ -105,12 +103,6 @@ object GatheringActions {
             return false
         }
 
-        if (type == GatheringType.PROSPECT && primaryType != "rock") {
-            sendMessage(owner, "${pokemon.displayName?.string} must be primary ROCK type to perform prospect!", ChatFormatting.RED)
-            CommandState.activeCommands[pokemon.uuid] = "idle"
-            return false
-        }
-
         // Fresh start ONLY after action is activated (clear old pre-existing pings)
         val session = GatheringSession(
             pokemonUuid = pokemon.uuid,
@@ -128,13 +120,6 @@ object GatheringActions {
                 sendMessage(
                     owner,
                     "Excavate activated! Look at Corner A of the tunnel face and press Ping. Move crosshair to preview size and press Ping at Corner B!",
-                    ChatFormatting.AQUA
-                )
-            }
-            GatheringType.PROSPECT -> {
-                sendMessage(
-                    owner,
-                    "Prospect activated! Look at the mineral/block vein you want ${pokemon.displayName?.string} to prospect and press Ping.",
                     ChatFormatting.AQUA
                 )
             }
@@ -201,149 +186,110 @@ object GatheringActions {
             when (session.state) {
                 GatheringState.WAITING_FOR_PING -> {
                     val currentPing = PingManager.getPing(session.ownerUuid)
+                    val maxDim = if (session.type == GatheringType.BUILD) 31 else 8
 
-                    if (session.type == GatheringType.EXCAVATE || session.type == GatheringType.BUILD) {
-                        val maxDim = if (session.type == GatheringType.BUILD) 31 else 8
-
-                        // Real-time live preview stretching particle box with air fallback
-                        if (session.pingA != null && session.pingB == null) {
-                            val targetHit = owner.pick(24.0, 0.0f, false)
-                            val livePos = if (targetHit.type == HitResult.Type.BLOCK) {
-                                (targetHit as BlockHitResult).blockPos
-                            } else {
-                                val eyeVec = owner.eyePosition
-                                val lookVec = owner.lookAngle
-                                val targetVec = eyeVec.add(lookVec.scale(12.0))
-                                BlockPos.containing(targetVec)
-                            }
-                            renderLivePreviewBox(level, session.pingA!!, livePos, pokemon, maxDim)
+                    // Real-time live preview stretching particle box with air fallback
+                    if (session.pingA != null && session.pingB == null) {
+                        val targetHit = owner.pick(24.0, 0.0f, false)
+                        val livePos = if (targetHit.type == HitResult.Type.BLOCK) {
+                            (targetHit as BlockHitResult).blockPos
+                        } else {
+                            val eyeVec = owner.eyePosition
+                            val lookVec = owner.lookAngle
+                            val targetVec = eyeVec.add(lookVec.scale(12.0))
+                            BlockPos.containing(targetVec)
                         }
+                        renderLivePreviewBox(level, session.pingA!!, livePos, pokemon, maxDim)
+                    }
 
-                        if (currentPing != null && currentPing.timestamp >= session.startTime) {
-                            if (session.pingA == null) {
-                                session.pingA = currentPing
-                                session.ping = currentPing
-                                session.pingWaitTicks = 300 // 15 seconds to set next pings
-                                val nextInstruction = if (session.type == GatheringType.BUILD) {
-                                    "Corner A marked! Press Ping at Corner B, then Ping the supply Chest."
-                                } else {
-                                    "Corner A marked! Move crosshair to preview face size and press Ping to confirm Corner B."
-                                }
+                    if (currentPing != null && currentPing.timestamp >= session.startTime) {
+                        if (session.pingA == null) {
+                            session.pingA = currentPing
+                            session.ping = currentPing
+                            session.pingWaitTicks = 300 // 15 seconds to set next pings
+                            val nextInstruction = if (session.type == GatheringType.BUILD) {
+                                "Corner A marked! Press Ping at Corner B, then Ping the supply Chest."
+                            } else {
+                                "Corner A marked! Move crosshair to preview face size and press Ping to confirm Corner B."
+                            }
+                            sendMessage(
+                                owner,
+                                "Corner A marked at (${currentPing.pos.x}, ${currentPing.pos.y}, ${currentPing.pos.z})! $nextInstruction",
+                                ChatFormatting.AQUA
+                            )
+                        } else if (session.pingB == null && currentPing.timestamp > (session.pingA?.timestamp ?: 0L)) {
+                            session.pingB = currentPing
+                            if (session.type == GatheringType.BUILD) {
                                 sendMessage(
                                     owner,
-                                    "Corner A marked at (${currentPing.pos.x}, ${currentPing.pos.y}, ${currentPing.pos.z})! $nextInstruction",
-                                    ChatFormatting.AQUA
+                                    "Corner B confirmed! Now press Ping on the Chest containing your building blocks.",
+                                    ChatFormatting.GREEN
                                 )
-                            } else if (session.pingB == null && currentPing.timestamp > (session.pingA?.timestamp ?: 0L)) {
-                                session.pingB = currentPing
-                                if (session.type == GatheringType.BUILD) {
+                            } else {
+                                if (calculateGeometry(session, pokemon, level, currentPing)) {
+                                    session.state = GatheringState.NAVIGATING
+                                    val w = abs(session.maxRightOffset - session.minRightOffset) + 1
+                                    val h = abs(session.maxUpOffset - session.minUpOffset) + 1
+                                    val fitsWidth = w >= pokemon.bbWidth.toDouble()
+                                    val fitsHeight = h >= pokemon.bbHeight.toDouble()
+
+                                    if (!fitsWidth || !fitsHeight) {
+                                        sendMessage(
+                                            owner,
+                                            "Warning: Tunnel ($w x $h) is small for ${pokemon.displayName?.string} (Hitbox: ${String.format("%.1f", pokemon.bbWidth)}x${String.format("%.1f", pokemon.bbHeight)})!",
+                                            ChatFormatting.GOLD
+                                        )
+                                    }
+
                                     sendMessage(
                                         owner,
-                                        "Corner B confirmed! Now press Ping on the Chest containing your building blocks.",
+                                        "${pokemon.displayName?.string} starting $w x $h excavation tunnel!",
+                                        ChatFormatting.YELLOW
+                                    )
+                                } else {
+                                    sendMessage(owner, "No valid blocks found to excavate.", ChatFormatting.RED)
+                                    restoreFollowGoal(pokemon)
+                                    iterator.remove()
+                                    CommandState.activeCommands[pokemonUuid] = "idle"
+                                }
+                            }
+                        } else if (session.type == GatheringType.BUILD && session.pingB != null && session.pingChest == null && currentPing.timestamp > (session.pingB?.timestamp ?: 0L)) {
+                            val blockEntity = level.getBlockEntity(currentPing.pos)
+                            if (blockEntity is Container) {
+                                session.pingChest = currentPing
+                                session.chestPos = currentPing.pos
+                                if (calculateBuildGeometry(session, level)) {
+                                    session.state = GatheringState.NAVIGATING
+                                    sendMessage(
+                                        owner,
+                                        "${pokemon.displayName?.string} starting construction! Supplying blocks from Chest at (${currentPing.pos.x}, ${currentPing.pos.y}, ${currentPing.pos.z}).",
                                         ChatFormatting.GREEN
                                     )
                                 } else {
-                                    if (calculateGeometry(session, pokemon, level, currentPing)) {
-                                        session.state = GatheringState.NAVIGATING
-                                        val w = abs(session.maxRightOffset - session.minRightOffset) + 1
-                                        val h = abs(session.maxUpOffset - session.minUpOffset) + 1
-                                        val fitsWidth = w >= pokemon.bbWidth.toDouble()
-                                        val fitsHeight = h >= pokemon.bbHeight.toDouble()
-
-                                        if (!fitsWidth || !fitsHeight) {
-                                            sendMessage(
-                                                owner,
-                                                "Warning: Tunnel ($w x $h) is small for ${pokemon.displayName?.string} (Hitbox: ${String.format("%.1f", pokemon.bbWidth)}x${String.format("%.1f", pokemon.bbHeight)})!",
-                                                ChatFormatting.GOLD
-                                            )
-                                        }
-
-                                        sendMessage(
-                                            owner,
-                                            "${pokemon.displayName?.string} starting $w x $h excavation tunnel!",
-                                            ChatFormatting.YELLOW
-                                        )
-                                    } else {
-                                        sendMessage(owner, "No valid blocks found to excavate.", ChatFormatting.RED)
-                                        restoreFollowGoal(pokemon)
-                                        iterator.remove()
-                                        CommandState.activeCommands[pokemonUuid] = "idle"
-                                    }
+                                    sendMessage(owner, "No valid build area positions calculated.", ChatFormatting.RED)
+                                    restoreFollowGoal(pokemon)
+                                    iterator.remove()
+                                    CommandState.activeCommands[pokemonUuid] = "idle"
                                 }
-                            } else if (session.type == GatheringType.BUILD && session.pingB != null && session.pingChest == null && currentPing.timestamp > (session.pingB?.timestamp ?: 0L)) {
-                                val blockEntity = level.getBlockEntity(currentPing.pos)
-                                if (blockEntity is Container) {
-                                    session.pingChest = currentPing
-                                    session.chestPos = currentPing.pos
-                                    if (calculateBuildGeometry(session, level)) {
-                                        session.state = GatheringState.NAVIGATING
-                                        sendMessage(
-                                            owner,
-                                            "${pokemon.displayName?.string} starting construction! Supplying blocks from Chest at (${currentPing.pos.x}, ${currentPing.pos.y}, ${currentPing.pos.z}).",
-                                            ChatFormatting.GREEN
-                                        )
-                                    } else {
-                                        sendMessage(owner, "No valid build area positions calculated.", ChatFormatting.RED)
-                                        restoreFollowGoal(pokemon)
-                                        iterator.remove()
-                                        CommandState.activeCommands[pokemonUuid] = "idle"
-                                    }
-                                } else {
-                                    sendMessage(
-                                        owner,
-                                        "Target block at (${currentPing.pos.x}, ${currentPing.pos.y}, ${currentPing.pos.z}) is not a Container/Chest! Please Ping a valid Chest.",
-                                        ChatFormatting.RED
-                                    )
-                                }
-                            }
-                        } else {
-                            session.pingWaitTicks--
-                            if (session.pingWaitTicks <= 0) {
-                                sendMessage(
-                                    owner,
-                                    "${pokemon.displayName?.string}'s action timed out waiting for Ping.",
-                                    ChatFormatting.GRAY
-                                )
-                                restoreFollowGoal(pokemon)
-                                iterator.remove()
-                                CommandState.activeCommands[pokemonUuid] = "idle"
-                            }
-                        }
-                    } else {
-                        // Prospecting
-                        if (currentPing != null && currentPing.timestamp >= session.startTime) {
-                            session.ping = currentPing
-                            if (calculateGeometry(session, pokemon, level, currentPing)) {
-                                session.state = GatheringState.NAVIGATING
-                                val focusName = session.targetBlockFocus?.name?.string
-                                val msg = if (focusName != null) {
-                                    "${pokemon.displayName?.string} is prospecting $focusName!"
-                                } else {
-                                    "${pokemon.displayName?.string} is starting prospecting!"
-                                }
-                                sendMessage(owner, msg, ChatFormatting.YELLOW)
                             } else {
                                 sendMessage(
                                     owner,
-                                    "No valid blocks found to prospect at ping location.",
+                                    "Target block at (${currentPing.pos.x}, ${currentPing.pos.y}, ${currentPing.pos.z}) is not a Container/Chest! Please Ping a valid Chest.",
                                     ChatFormatting.RED
                                 )
-                                restoreFollowGoal(pokemon)
-                                iterator.remove()
-                                CommandState.activeCommands[pokemonUuid] = "idle"
                             }
-                        } else {
-                            session.pingWaitTicks--
-                            if (session.pingWaitTicks <= 0) {
-                                sendMessage(
-                                    owner,
-                                    "${pokemon.displayName?.string}'s prospecting timed out waiting for Ping.",
-                                    ChatFormatting.GRAY
-                                )
-                                restoreFollowGoal(pokemon)
-                                iterator.remove()
-                                CommandState.activeCommands[pokemonUuid] = "idle"
-                            }
+                        }
+                    } else {
+                        session.pingWaitTicks--
+                        if (session.pingWaitTicks <= 0) {
+                            sendMessage(
+                                owner,
+                                "${pokemon.displayName?.string}'s action timed out waiting for Ping.",
+                                ChatFormatting.GRAY
+                            )
+                            restoreFollowGoal(pokemon)
+                            iterator.remove()
+                            CommandState.activeCommands[pokemonUuid] = "idle"
                         }
                     }
                 }
@@ -353,9 +299,6 @@ object GatheringActions {
                         GatheringType.EXCAVATE -> {
                             renderActiveParticleBoxOutline(level, session, pokemon)
                             tickSteelExcavateBatch(pokemon, session, level, owner, iterator)
-                        }
-                        GatheringType.PROSPECT -> {
-                            tickSingleBlockGathering(pokemon, session, level, owner, iterator)
                         }
                         GatheringType.BUILD -> {
                             renderActiveBuildBoxOutline(level, session, pokemon)
@@ -649,107 +592,6 @@ object GatheringActions {
         }
     }
 
-    private fun tickSingleBlockGathering(
-        pokemon: Mob,
-        session: GatheringSession,
-        level: ServerLevel,
-        owner: ServerPlayer,
-        iterator: MutableIterator<MutableMap.MutableEntry<UUID, GatheringSession>>
-    ) {
-        val ping = session.ping ?: run {
-            session.state = GatheringState.FINISHED
-            restoreFollowGoal(pokemon)
-            iterator.remove()
-            CommandState.activeCommands[pokemon.uuid] = "idle"
-            return
-        }
-
-        val startPos = ping.pos
-        val targetBlock = session.targetBlockFocus ?: level.getBlockState(startPos).block
-        val radius = 5
-
-        val exposedBlocks = mutableListOf<BlockPos>()
-        val allMatchingBlocks = mutableListOf<BlockPos>()
-
-        for (dx in -radius..radius) {
-            for (dy in -radius..radius) {
-                for (dz in -radius..radius) {
-                    val pos = startPos.offset(dx, dy, dz)
-                    val state = level.getBlockState(pos)
-                    if (!state.isAir && isMatchingTargetBlock(targetBlock, state) && isValidBlockForExcavation(targetBlock, state)) {
-                        allMatchingBlocks.add(pos)
-                        if (hasAdjacentAir(level, pos)) {
-                            exposedBlocks.add(pos)
-                        }
-                    }
-                }
-            }
-        }
-
-        if (allMatchingBlocks.isEmpty() || exposedBlocks.isEmpty()) {
-            session.state = GatheringState.FINISHED
-            sendMessage(
-                owner,
-                "${pokemon.displayName?.string} finished prospecting.",
-                ChatFormatting.GREEN
-            )
-            restoreFollowGoal(pokemon)
-            iterator.remove()
-            CommandState.activeCommands[pokemon.uuid] = "idle"
-            return
-        }
-
-        val pokemonY = pokemon.blockY
-        val sameOrHigherBlocks = exposedBlocks.filter { it.y >= pokemonY }
-        val candidateList = sameOrHigherBlocks.ifEmpty { exposedBlocks }
-
-        val closestPos = candidateList.minByOrNull { pos ->
-            pokemon.distanceToSqr(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
-        } ?: exposedBlocks.first()
-
-        val navPos = getStandableAirNeighbor(level, closestPos)
-        val distToBlockSqr = pokemon.distanceToSqr(closestPos.x + 0.5, closestPos.y + 0.5, closestPos.z + 0.5)
-        val distToNavSqr = pokemon.distanceToSqr(navPos.x + 0.5, navPos.y.toDouble(), navPos.z + 0.5)
-        val isWithinReach = distToBlockSqr <= PHYSICAL_REACH_DISTANCE_SQR || distToNavSqr <= PHYSICAL_REACH_DISTANCE_SQR
-
-        if (!isWithinReach) {
-            session.state = GatheringState.NAVIGATING
-            session.breakTimer = 0
-
-            if (abs(distToNavSqr - session.lastDistSqr) < 0.08) {
-                session.navStuckTicks++
-            } else {
-                session.navStuckTicks = 0
-            }
-            session.lastDistSqr = distToNavSqr
-
-            if (session.navStuckTicks >= STUCK_TICK_THRESHOLD) {
-                session.navStuckTicks = 0
-                session.lastDistSqr = Double.MAX_VALUE
-                exposedBlocks.remove(closestPos)
-                val fallbackPos = exposedBlocks.minByOrNull { pos ->
-                    pokemon.distanceToSqr(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
-                } ?: closestPos
-                val fallbackNav = getStandableAirNeighbor(level, fallbackPos)
-                pokemon.navigation.moveTo(fallbackNav.x + 0.5, fallbackNav.y.toDouble(), fallbackNav.z + 0.5, 1.25)
-                return
-            }
-
-            pokemon.navigation.moveTo(navPos.x + 0.5, navPos.y.toDouble(), navPos.z + 0.5, 1.25)
-        } else {
-            session.state = GatheringState.BREAKING
-            session.navStuckTicks = 0
-            session.lastDistSqr = Double.MAX_VALUE
-            session.breakTimer++
-
-            val breakDelay = getBreakDelay(session.type)
-            if (session.breakTimer >= breakDelay) {
-                session.breakTimer = 0
-                executeBlockBreak(pokemon, session, level, closestPos, owner)
-            }
-        }
-    }
-
     private fun getCalmBuildSpeed(pokemon: Mob): Double {
         val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon
         val spd = cobblemonPokemon?.speed ?: 50
@@ -987,7 +829,6 @@ object GatheringActions {
         session.layers.clear()
         when (session.type) {
             GatheringType.EXCAVATE -> calculateExcavateLayers(session, pokemon, level, ping)
-            GatheringType.PROSPECT -> calculateProspectBlockFocus(session, level, ping)
             GatheringType.BUILD -> calculateBuildGeometry(session, level)
         }
 
@@ -1174,42 +1015,6 @@ object GatheringActions {
         return false
     }
 
-    private fun calculateProspectBlockFocus(session: GatheringSession, level: Level, ping: PlayerPing) {
-        val startPos = ping.pos
-        val pingState = level.getBlockState(startPos)
-        val targetBlock = pingState.block
-        session.targetBlockFocus = targetBlock
-
-        val maxBlocks = ConfigHandler.config.actionSettings.prospect.maxBlocks.coerceIn(4, 100)
-        val radius = 5
-
-        val queue = ArrayDeque<BlockPos>()
-        val visited = mutableSetOf<BlockPos>()
-
-        if (isValidBlockForExcavation(targetBlock, pingState)) {
-            queue.add(startPos)
-            visited.add(startPos)
-        }
-
-        val directions = Direction.entries.toTypedArray()
-        while (queue.isNotEmpty() && session.targetBlocks.size < maxBlocks) {
-            val current = queue.removeFirst()
-            session.targetBlocks.add(current)
-
-            directions.shuffle()
-            for (dir in directions) {
-                val neighbor = current.relative(dir)
-                if (!visited.contains(neighbor) && neighbor.distManhattan(startPos) <= radius) {
-                    visited.add(neighbor)
-                    val neighborState = level.getBlockState(neighbor)
-                    if (isMatchingTargetBlock(targetBlock, neighborState)) {
-                        queue.add(neighbor)
-                    }
-                }
-            }
-        }
-    }
-
     private fun filterProtectedBlocks(blocks: MutableList<BlockPos>, level: Level) {
         blocks.removeIf { pos ->
             val state = level.getBlockState(pos)
@@ -1283,25 +1088,6 @@ object GatheringActions {
                 )
             }
 
-            GatheringType.PROSPECT -> {
-                val block = state.block
-                if (isNaturalRock(block)) {
-                    level.destroyBlock(pos, false)
-                    rollRockLoot(level, pos, state)
-                } else {
-                    level.destroyBlock(pos, true)
-                }
-
-                level.playSound(
-                    null,
-                    pos,
-                    SoundEvents.WITHER_BREAK_BLOCK,
-                    SoundSource.BLOCKS,
-                    1.0f,
-                    1.0f
-                )
-            }
-
             GatheringType.BUILD -> {}
         }
 
@@ -1316,77 +1102,10 @@ object GatheringActions {
         )
     }
 
-    private fun rollRockLoot(level: ServerLevel, pos: BlockPos, rockState: BlockState) {
-        val block = rockState.block
-        val rand = level.random.nextFloat()
-
-        val lootStack: ItemStack? = when (block) {
-            Blocks.NETHERRACK, Blocks.BLACKSTONE, Blocks.BASALT -> {
-                when {
-                    rand < 0.35f -> null
-                    rand < 0.65f -> ItemStack(Items.QUARTZ, level.random.nextInt(3) + 1)
-                    rand < 0.90f -> ItemStack(Items.GOLD_NUGGET, level.random.nextInt(4) + 2)
-                    else -> ItemStack(Items.GLOWSTONE_DUST, level.random.nextInt(2) + 1)
-                }
-            }
-            Blocks.DEEPSLATE, Blocks.TUFF, Blocks.CALCITE -> {
-                when {
-                    rand < 0.35f -> null
-                    rand < 0.60f -> ItemStack(Items.RAW_IRON, 1)
-                    rand < 0.75f -> ItemStack(Items.RAW_COPPER, level.random.nextInt(2) + 1)
-                    rand < 0.85f -> ItemStack(Items.RAW_GOLD, 1)
-                    rand < 0.93f -> ItemStack(Items.REDSTONE, level.random.nextInt(3) + 1)
-                    rand < 0.98f -> ItemStack(Items.LAPIS_LAZULI, level.random.nextInt(2) + 1)
-                    pos.y < 16 && rand >= 0.98f -> ItemStack(Items.DIAMOND, 1)
-                    else -> ItemStack(Items.COAL, 1)
-                }
-            }
-            Blocks.STONE, Blocks.GRANITE, Blocks.DIORITE, Blocks.ANDESITE -> {
-                when {
-                    rand < 0.40f -> null
-                    rand < 0.65f -> ItemStack(Items.COAL, 1)
-                    rand < 0.85f -> ItemStack(Items.IRON_NUGGET, level.random.nextInt(3) + 2)
-                    rand < 0.95f -> ItemStack(Items.RAW_IRON, 1)
-                    else -> ItemStack(Items.RAW_COPPER, 1)
-                }
-            }
-            else -> null
-        }
-
-        if (lootStack != null && !lootStack.isEmpty) {
-            val itemEntity = ItemEntity(
-                level,
-                pos.x + 0.5,
-                pos.y + 0.5,
-                pos.z + 0.5,
-                lootStack
-            )
-            level.addFreshEntity(itemEntity)
-        }
-    }
-
-    private fun isNaturalRock(block: Block): Boolean {
-        return block == Blocks.STONE || block == Blocks.DEEPSLATE ||
-                block == Blocks.GRANITE || block == Blocks.DIORITE ||
-                block == Blocks.ANDESITE || block == Blocks.TUFF ||
-                block == Blocks.CALCITE || block == Blocks.NETHERRACK ||
-                block == Blocks.BLACKSTONE || block == Blocks.BASALT ||
-                block == Blocks.SANDSTONE || block == Blocks.RED_SANDSTONE ||
-                block == Blocks.END_STONE
-    }
-
     private fun isValidBlockForExcavation(targetBlock: Block, state: BlockState): Boolean {
         if (state.isAir) return false
         if (state.getDestroySpeed(null, null) < 0f) return false
         return true
-    }
-
-    private fun isMatchingTargetBlock(targetBlock: Block, neighborState: BlockState): Boolean {
-        if (neighborState.isAir) return false
-        val neighborBlock = neighborState.block
-        if (neighborBlock == targetBlock) return true
-        if (isNaturalRock(targetBlock) && isNaturalRock(neighborBlock)) return true
-        return false
     }
 
     private fun isOreBlock(state: BlockState): Boolean {
@@ -1397,7 +1116,6 @@ object GatheringActions {
     private fun getBreakDelay(type: GatheringType): Int {
         return when (type) {
             GatheringType.EXCAVATE -> ConfigHandler.config.actionSettings.excavate.breakDelayTicks
-            GatheringType.PROSPECT -> ConfigHandler.config.actionSettings.prospect.breakDelayTicks
             GatheringType.BUILD -> 4
         }
     }

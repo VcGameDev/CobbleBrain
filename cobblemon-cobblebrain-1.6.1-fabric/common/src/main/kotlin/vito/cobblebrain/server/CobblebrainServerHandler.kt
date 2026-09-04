@@ -37,7 +37,6 @@ object CobblebrainServerHandler {
                 "buff" -> ConfigHandler.config.actionSettings.buff.active
                 "debuff", "debuff_enemy" -> ConfigHandler.config.actionSettings.debuffEnemy.active
                 "excavate", "demolish" -> ConfigHandler.config.actionSettings.excavate.active
-                "prospect" -> ConfigHandler.config.actionSettings.prospect.active
                 "rest", "sit" -> ConfigHandler.config.actionSettings.rest.active
                 "idle" -> ConfigHandler.config.actionSettings.idle.active
                 else -> true
@@ -132,42 +131,22 @@ object CobblebrainServerHandler {
     }
 
     fun handleRequestPersonalityList(player: ServerPlayer) {
-        MemorySystem.warnAboutAnyFilenameConflicts(player)
-        val gson = com.google.gson.Gson()
-        val array = com.google.gson.JsonArray()
-
-        // --- Party Pokémon (always shown) ---
-        val partyPokemon = PokemonQuery.getAllPokemon(player)
-        val partyUuids = partyPokemon.map { it.uuid.toString() }.toSet()
-
-        partyPokemon.forEach { p ->
-            val uuidStr = p.uuid.toString()
-            val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
-            val personality = MemorySystem.loadPersonality(uuidStr, displayName)
-            val personalityJson = gson.toJson(personality)
-            val memories = MemorySystem.loadMemories(uuidStr, displayName)
-            val memoriesJson = gson.toJson(memories)
-
-            val entry = com.google.gson.JsonObject()
-            entry.addProperty("uuid", uuidStr)
-            entry.addProperty("displayName", displayName)
-            entry.addProperty("species", p.species.name)
-            entry.addProperty("personalityJson", personalityJson)
-            entry.addProperty("memoriesJson", memoriesJson)
-            entry.addProperty("inParty", true)
-            array.add(entry)
-        }
-
-        // --- PC Pokémon that have a personality file (previously edited) ---
         try {
-            val pc = com.cobblemon.mod.common.Cobblemon.storage.getPC(player)
-            for (p in pc) {
+            MemorySystem.warnAboutAnyFilenameConflicts(player)
+            val gson = com.google.gson.Gson()
+            val array = com.google.gson.JsonArray()
+
+            val maxSafeChars = 1_790_000 // ~95% of 1.8 MB limit (1,887,436 chars)
+            val nearLimitThreshold = 1_650_000 // Threshold to warn player about high memory volume
+            var currentEstimatedChars = 2 // Represents JSON array brackets "[]"
+
+            // --- Party Pokémon (always prioritized and added first) ---
+            val partyPokemon = PokemonQuery.getAllPokemon(player)
+            val partyUuids = partyPokemon.map { it.uuid.toString() }.toSet()
+
+            partyPokemon.forEach { p ->
                 val uuidStr = p.uuid.toString()
-                // Skip if already in party
-                if (uuidStr in partyUuids) continue
-                // Only include if a personality file exists for this Pokémon
                 val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
-                if (!MemorySystem.hasStoredPersonality(uuidStr, displayName)) continue
                 val personality = MemorySystem.loadPersonality(uuidStr, displayName)
                 val personalityJson = gson.toJson(personality)
                 val memories = MemorySystem.loadMemories(uuidStr, displayName)
@@ -179,14 +158,86 @@ object CobblebrainServerHandler {
                 entry.addProperty("species", p.species.name)
                 entry.addProperty("personalityJson", personalityJson)
                 entry.addProperty("memoriesJson", memoriesJson)
-                entry.addProperty("inParty", false)
+                entry.addProperty("inParty", true)
                 array.add(entry)
+                currentEstimatedChars += entry.toString().length + 2
             }
-        } catch (e: Exception) {
-            println("[CobbleBrain] Could not read PC storage for personality list: ${e.message}")
-        }
 
-        DialogueSystem.sendPersonalityList?.invoke(player, array.toString())
+            // --- PC Pokémon that have a personality file (previously edited) ---
+            var omittedPcCount = 0
+            try {
+                val pc = com.cobblemon.mod.common.Cobblemon.storage.getPC(player)
+
+                data class PcCandidate(val pokemon: Pokemon, val displayName: String, val lastModified: Long)
+                val eligiblePc = mutableListOf<PcCandidate>()
+
+                for (p in pc) {
+                    val uuidStr = p.uuid.toString()
+                    // Skip if already in party
+                    if (uuidStr in partyUuids) continue
+                    // Only include if a personality file exists for this Pokémon
+                    val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                    if (!MemorySystem.hasStoredPersonality(uuidStr, displayName)) continue
+                    val lastModified = MemorySystem.getLastModifiedTime(uuidStr, displayName)
+                    eligiblePc.add(PcCandidate(p, displayName, lastModified))
+                }
+
+                // Sort descending: most recently modified first, oldest files last
+                // That way, if limit is reached, the oldest files are omitted first
+                eligiblePc.sortByDescending { it.lastModified }
+
+                for (candidate in eligiblePc) {
+                    val p = candidate.pokemon
+                    val uuidStr = p.uuid.toString()
+                    val displayName = candidate.displayName
+                    val personality = MemorySystem.loadPersonality(uuidStr, displayName)
+                    val personalityJson = gson.toJson(personality)
+                    val memories = MemorySystem.loadMemories(uuidStr, displayName)
+                    val memoriesJson = gson.toJson(memories)
+
+                    val entry = com.google.gson.JsonObject()
+                    entry.addProperty("uuid", uuidStr)
+                    entry.addProperty("displayName", displayName)
+                    entry.addProperty("species", p.species.name)
+                    entry.addProperty("personalityJson", personalityJson)
+                    entry.addProperty("memoriesJson", memoriesJson)
+                    entry.addProperty("inParty", false)
+
+                    val entryLength = entry.toString().length + 2
+                    if (currentEstimatedChars + entryLength > maxSafeChars) {
+                        omittedPcCount++
+                        continue
+                    }
+
+                    array.add(entry)
+                    currentEstimatedChars += entryLength
+                }
+            } catch (e: Exception) {
+                println("[CobbleBrain] Could not read PC storage for personality list: ${e.message}")
+            }
+
+            if (omittedPcCount > 0) {
+                player.sendSystemMessage(
+                    Component.translatableWithFallback(
+                        "cobblebrain.personality_list.limit_warning",
+                        "§e[CobbleBrain] Warning: $omittedPcCount PC Pokémon were omitted from the editor to stay within the 1.8 MB network limit. Consider deleting old memories to free up space.",
+                        omittedPcCount
+                    )
+                )
+            } else if (currentEstimatedChars >= nearLimitThreshold) {
+                player.sendSystemMessage(
+                    Component.translatableWithFallback(
+                        "cobblebrain.personality_list.limit_near",
+                        "§6[CobbleBrain] Notice: Your Pokémon personalities and memories are reaching 95% of the 1.8 MB network limit. Consider cleaning up old memories in the editor."
+                    )
+                )
+            }
+
+            DialogueSystem.sendPersonalityList?.invoke(player, array.toString())
+        } catch (e: Exception) {
+            println("[CobbleBrain] Error handling request personality list: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
     fun handleSavePersonality(player: ServerPlayer, pokemonUuid: String, personalityJson: String, memoriesJson: String = "") {
@@ -196,17 +247,40 @@ object CobblebrainServerHandler {
             return
         }
 
+        val uuid = try {
+            java.util.UUID.fromString(pokemonUuid)
+        } catch (_: Exception) {
+            player.sendSystemMessage(Component.literal("Invalid Pokémon UUID.").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+
+        // Ownership verification: player's party or PC (or OP level 2+)
+        val partyPoke = PokemonQuery.getAllPokemon(player).firstOrNull { it.uuid == uuid }
+        val pcPoke = if (partyPoke == null) {
+            try {
+                com.cobblemon.mod.common.Cobblemon.storage.getPC(player).firstOrNull { it.uuid == uuid }
+            } catch (_: Exception) { null }
+        } else null
+
+        val poke = partyPoke ?: pcPoke
+        if (poke == null && !player.hasPermissions(2)) {
+            player.sendSystemMessage(Component.literal("§c[CobbleBrain] You do not own this Pokémon."))
+            return
+        }
+
+        val displayName = poke?.let { it.nickname?.string?.takeIf { n -> n.isNotBlank() } ?: it.species.name }
+
         try {
             val gson = com.google.gson.Gson()
             val personality = gson.fromJson(personalityJson, PokemonPersonality::class.java)
             if (personality != null) {
                 MemorySystem.warnAboutFilenameConflict(player, pokemonUuid)
-                MemorySystem.savePersonality(pokemonUuid, personality)
+                MemorySystem.savePersonality(pokemonUuid, personality, displayName)
                 if (memoriesJson.isNotBlank()) {
                     try {
                         val memoryType = object : com.google.gson.reflect.TypeToken<List<vito.cobblebrain.social.Memory>>() {}.type
                         val memories: List<vito.cobblebrain.social.Memory> = gson.fromJson(memoriesJson, memoryType) ?: emptyList()
-                        MemorySystem.saveMemories(pokemonUuid, memories)
+                        MemorySystem.saveMemories(pokemonUuid, memories, displayName)
                     } catch (ex: Exception) {
                         println("Error parsing memoriesJson on save: ${ex.message}")
                     }
@@ -225,8 +299,31 @@ object CobblebrainServerHandler {
             return
         }
 
+        val uuid = try {
+            java.util.UUID.fromString(pokemonUuid)
+        } catch (_: Exception) {
+            player.sendSystemMessage(Component.literal("Invalid Pokémon UUID.").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+
+        // Ownership verification: player's party or PC (or OP level 2+)
+        val partyPoke = PokemonQuery.getAllPokemon(player).firstOrNull { it.uuid == uuid }
+        val pcPoke = if (partyPoke == null) {
+            try {
+                com.cobblemon.mod.common.Cobblemon.storage.getPC(player).firstOrNull { it.uuid == uuid }
+            } catch (_: Exception) { null }
+        } else null
+
+        val poke = partyPoke ?: pcPoke
+        if (poke == null && !player.hasPermissions(2)) {
+            player.sendSystemMessage(Component.literal("§c[CobbleBrain] You do not own this Pokémon."))
+            return
+        }
+
+        val displayName = poke?.let { it.nickname?.string?.takeIf { n -> n.isNotBlank() } ?: it.species.name }
+
         MemorySystem.warnAboutFilenameConflict(player, pokemonUuid)
-        val file = MemorySystem.getTraitsFile(pokemonUuid)
+        val file = MemorySystem.resolveTraitsFile(pokemonUuid, displayName)
         if (file.exists()) {
             file.delete()
             player.sendSystemMessage(Component.literal("Personality reset successfully.").withStyle(net.minecraft.ChatFormatting.GREEN))

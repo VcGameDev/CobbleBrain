@@ -12,7 +12,7 @@ import kotlin.math.sin
 object HudSystem {
 
     // Lista de comandos disponíveis
-    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "EXCAVATE", "PROSPECT", "BUILD", "REST")
+    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "EXCAVATE", "BUILD", "REST")
     private var selectedActionIndex = 0
     private var isVisible = true
     var isSoloMode: Boolean = false
@@ -52,7 +52,6 @@ object HudSystem {
         "scout" to "flying",
         "teleport" to "psychic",
         "excavate" to "steel",
-        "prospect" to "rock",
         "demolish" to "steel"
     )
 
@@ -120,6 +119,9 @@ object HudSystem {
 
         // 6. AI Dialogue HUD Overlay Box
         DialogueHudOverlay.render(guiGraphics, client)
+
+        // 7. KeyInput QTE HUD Overlay
+        KeyInputClientManager.renderHud(guiGraphics, client.font, client.window.guiScaledWidth, client.window.guiScaledHeight)
     }
 
     // ===================================================================================
@@ -450,9 +452,6 @@ object HudSystem {
             // Steel (Excavate)
             "EXCAVATE", "DEMOLISH" ->
                 0xFFB8B8D0.toInt()
-            // Rock (Prospect)
-            "PROSPECT" ->
-                0xFFB6A136.toInt()
             // Build
             "BUILD" ->
                 0xFFAAAAAA.toInt()

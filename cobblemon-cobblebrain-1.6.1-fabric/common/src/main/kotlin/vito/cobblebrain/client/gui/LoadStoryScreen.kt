@@ -18,6 +18,7 @@ class LoadStoryScreen(
     private var selectedFile: File? = null
     private var scrollOffset: Int = 0
     private val itemHeight = 22
+    private var loadBtn: Button? = null
 
     override fun init() {
         super.init()
@@ -27,18 +28,17 @@ class LoadStoryScreen(
         val bottomY = height - 32
 
         // Load Selected Button
-        addRenderableWidget(
-            Button.builder(Component.literal("Load Selected")) {
-                val selected = selectedFile
-                if (selected != null && selected.isFile && selected.name.endsWith(".json")) {
-                    val loaded = StorySerializer.load(selected)
-                    if (loaded != null) {
-                        onStoryLoaded(loaded)
-                        minecraft?.setScreen(parentEditor)
-                    }
+        loadBtn = Button.builder(Component.literal("Load Selected")) {
+            val selected = selectedFile
+            if (selected != null && !selected.name.endsWith(".zip", ignoreCase = true)) {
+                val loaded = StorySerializer.load(selected)
+                if (loaded != null) {
+                    onStoryLoaded(loaded)
+                    minecraft?.setScreen(parentEditor)
                 }
-            }.bounds(cx - 130, bottomY, 120, 20).build()
-        )
+            }
+        }.bounds(cx - 130, bottomY, 120, 20).build()
+        addRenderableWidget(loadBtn!!)
 
         // Back/Cancel Button
         addRenderableWidget(
@@ -59,13 +59,19 @@ class LoadStoryScreen(
 
         val children = currentDirectory.listFiles()?.toList() ?: emptyList()
         val dirs = children.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
-        val files = children.filter { it.isFile && it.name.endsWith(".json") }.sortedBy { it.name.lowercase() }
+        val files = children.filter {
+            it.isFile && (it.name.endsWith(".json", ignoreCase = true) || it.name.endsWith(".zip", ignoreCase = true))
+        }.sortedBy { it.name.lowercase() }
 
         fileList.addAll(dirs)
         fileList.addAll(files)
     }
 
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        // Update load button state (disabled for ZIP files)
+        val isSelectedZip = selectedFile?.let { it.isFile && it.name.endsWith(".zip", ignoreCase = true) } == true
+        loadBtn?.active = selectedFile != null && !isSelectedZip
+
         // Dark background overlay
         guiGraphics.fill(0, 0, width, height, 0xCC000000.toInt())
 
@@ -95,20 +101,34 @@ class LoadStoryScreen(
             val isSelected = file == selectedFile
 
             val isParentDir = file.canonicalPath == currentDirectory.parentFile?.canonicalPath
+            val isStoryPackDir = file.isDirectory && file.listFiles { _, n -> n.endsWith("_metadata.json", true) || n.equals("metadata.json", true) }?.isNotEmpty() == true
+            val isZip = file.isFile && file.name.endsWith(".zip", ignoreCase = true)
+
             val displayName = when {
                 isParentDir -> ".. [Parent Folder]"
+                isStoryPackDir -> "📦 ${file.name} [Storypack]"
+                isZip -> "🔒 ${file.name} [Playable - Read-Only]"
                 file.isDirectory -> "📁 ${file.name}/"
                 else -> "📄 ${file.name}"
             }
 
             val bgColor = when {
+                isSelected && isZip -> 0xFF4A4A54.toInt()
                 isSelected -> 0xFF3D5AFE.toInt()
+                isStoryPackDir -> 0xFF2E3A48.toInt()
+                isZip -> 0xFF24242A.toInt()
                 file.isDirectory -> 0xFF282830.toInt()
                 else -> 0xFF222228.toInt()
             }
 
+            val textColor = when {
+                isZip -> 0xFFA0A0A0.toInt()
+                isSelected -> 0xFFFFFFFF.toInt()
+                else -> 0xFFDDDDDD.toInt()
+            }
+
             guiGraphics.fill(boxX + 8, itemY, boxX + boxW - 8, itemY + itemHeight - 2, bgColor)
-            guiGraphics.drawString(font, displayName, boxX + 14, itemY + 6, if (isSelected) 0xFFFFFFFF.toInt() else 0xFFDDDDDD.toInt(), false)
+            guiGraphics.drawString(font, displayName, boxX + 14, itemY + 6, textColor, false)
         }
 
         guiGraphics.disableScissor()
@@ -132,9 +152,18 @@ class LoadStoryScreen(
                 if (file == selectedFile) {
                     // Double click / quick action
                     if (file.isDirectory) {
-                        currentDirectory = file
-                        refreshFileList()
-                    } else if (file.name.endsWith(".json")) {
+                        val isPack = file.listFiles { _, n -> n.endsWith("_metadata.json", true) || n.equals("metadata.json", true) }?.isNotEmpty() == true
+                        val loaded = if (isPack) StorySerializer.load(file) else null
+                        if (loaded != null) {
+                            onStoryLoaded(loaded)
+                            minecraft?.setScreen(parentEditor)
+                        } else {
+                            currentDirectory = file
+                            refreshFileList()
+                        }
+                    } else if (file.name.endsWith(".zip", ignoreCase = true)) {
+                        // Read-only ZIP files cannot be opened in the story editor
+                    } else if (file.name.endsWith(".json", ignoreCase = true)) {
                         val loaded = StorySerializer.load(file)
                         if (loaded != null) {
                             onStoryLoaded(loaded)

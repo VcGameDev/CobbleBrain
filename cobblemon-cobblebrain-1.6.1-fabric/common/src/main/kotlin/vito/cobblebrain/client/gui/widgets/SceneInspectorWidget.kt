@@ -28,6 +28,9 @@ class SceneInspectorWidget(
     private var focusedEditBox: EditBox? = null
     private var scrollOffset: Double = 0.0
     private var totalContentHeight: Double = 0.0
+    private var isDraggingScrollbar: Boolean = false
+    private var dragStartMouseY: Double = 0.0
+    private var dragStartScrollOffset: Double = 0.0
 
     private val closeBtn: Button
 
@@ -172,12 +175,16 @@ class SceneInspectorWidget(
 
         val maxScroll = maxOf(0.0, totalContentHeight - viewportHeight)
         if (maxScroll > 0) {
-            val sbX = panelX + panelWidth - 3
-            val thumbH = ((viewportHeight.toDouble() / totalContentHeight) * viewportHeight).toInt().coerceIn(12, viewportHeight)
+            val sbW = 5
+            val sbX = panelX + panelWidth - sbW - 1
+            val thumbH = ((viewportHeight.toDouble() / totalContentHeight) * viewportHeight).toInt().coerceIn(16, viewportHeight)
             val thumbY = viewportTop + ((scrollOffset / maxScroll) * (viewportHeight - thumbH)).toInt()
 
-            guiGraphics.fill(sbX, viewportTop, sbX + 2, viewportBottom, 0xFF1C1C24.toInt())
-            guiGraphics.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, 0xFF00FFCC.toInt())
+            val isHover = mouseX >= sbX - 2 && mouseX <= sbX + sbW + 2 && mouseY >= viewportTop && mouseY <= viewportBottom
+            val thumbCol = if (isDraggingScrollbar) 0xFF38BDF8.toInt() else if (isHover) 0xFF00E5FF.toInt() else 0xFF00FFCC.toInt()
+
+            guiGraphics.fill(sbX, viewportTop, sbX + sbW, viewportBottom, 0x551C1C24)
+            guiGraphics.fill(sbX, thumbY, sbX + sbW, thumbY + thumbH, thumbCol)
         }
 
         // Fixed Top Header
@@ -207,6 +214,34 @@ class SceneInspectorWidget(
         return false
     }
 
+    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        if (isDraggingScrollbar) {
+            val viewportTop = panelY + 20
+            val viewportHeight = panelHeight - 20
+            val maxScroll = maxOf(0.0, totalContentHeight - viewportHeight)
+            if (maxScroll > 0) {
+                val thumbH = ((viewportHeight.toDouble() / totalContentHeight) * viewportHeight).toInt().coerceIn(16, viewportHeight)
+                val trackRange = viewportHeight - thumbH
+                if (trackRange > 0) {
+                    val deltaY = mouseY - dragStartMouseY
+                    val scrollDelta = (deltaY / trackRange) * maxScroll
+                    scrollOffset = (dragStartScrollOffset + scrollDelta).coerceIn(0.0, maxScroll)
+                    updateWidgetPositions()
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (isDraggingScrollbar) {
+            isDraggingScrollbar = false
+            return true
+        }
+        return false
+    }
+
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (mouseX < panelX || mouseX > panelX + panelWidth || mouseY < panelY || mouseY > panelY + panelHeight) {
             focusedEditBox?.isFocused = false
@@ -218,6 +253,33 @@ class SceneInspectorWidget(
 
         val viewportTop = panelY + 20
         val viewportBottom = panelY + panelHeight
+        val viewportHeight = panelHeight - 20
+        val maxScroll = maxOf(0.0, totalContentHeight - viewportHeight)
+
+        // Check Scrollbar Track or Thumb Click
+        if (maxScroll > 0) {
+            val sbW = 5
+            val sbX = panelX + panelWidth - sbW - 1
+            if (mouseX >= sbX - 4 && mouseX <= panelX + panelWidth && mouseY >= viewportTop && mouseY <= viewportBottom) {
+                val thumbH = ((viewportHeight.toDouble() / totalContentHeight) * viewportHeight).toInt().coerceIn(16, viewportHeight)
+                val thumbY = viewportTop + ((scrollOffset / maxScroll) * (viewportHeight - thumbH)).toInt()
+
+                isDraggingScrollbar = true
+                dragStartMouseY = mouseY
+                if (mouseY >= thumbY && mouseY <= thumbY + thumbH) {
+                    dragStartScrollOffset = scrollOffset
+                } else {
+                    val trackRange = viewportHeight - thumbH
+                    if (trackRange > 0) {
+                        val clickOffset = ((mouseY - viewportTop - thumbH / 2.0) / trackRange).coerceIn(0.0, 1.0)
+                        scrollOffset = clickOffset * maxScroll
+                        dragStartScrollOffset = scrollOffset
+                        updateWidgetPositions()
+                    }
+                }
+                return true
+            }
+        }
 
         var handled = false
         val snapshot = childrenWidgets.toList()

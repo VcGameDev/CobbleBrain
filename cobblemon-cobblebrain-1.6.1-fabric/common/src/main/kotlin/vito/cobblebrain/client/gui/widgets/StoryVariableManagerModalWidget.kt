@@ -30,6 +30,9 @@ class StoryVariableManagerModalWidget(
     private val searchBox: EditBox
     private val expandedFolders = mutableSetOf<String>("GLOBAL_FOLDER")
     private var scrollOffset: Double = 0.0
+    private var isDraggingScrollbar: Boolean = false
+    private var dragStartMouseY: Double = 0.0
+    private var dragStartScrollOffset: Double = 0.0
     private var selectedVariable: StoryVariable? = project.variables.firstOrNull()
 
     // Right Panel (Detail Editor for Selected Variable)
@@ -332,6 +335,22 @@ class StoryVariableManagerModalWidget(
         }
         guiGraphics.disableScissor()
 
+        // List Scrollbar
+        val totalListH = rows.size * itemH + 8
+        val maxScroll = maxOf(0.0, totalListH.toDouble() - contentH)
+        if (maxScroll > 0) {
+            val sbW = 4
+            val sbX = listX + listW - sbW - 1
+            val thumbH = ((contentH.toDouble() / totalListH) * contentH).toInt().coerceIn(14, contentH)
+            val thumbY = contentY + ((scrollOffset / maxScroll) * (contentH - thumbH)).toInt()
+
+            val isHover = mouseX >= sbX - 2 && mouseX <= sbX + sbW + 2 && mouseY >= contentY && mouseY <= contentY + contentH
+            val thumbCol = if (isDraggingScrollbar) 0xFF38BDF8.toInt() else if (isHover) 0xFF00E5FF.toInt() else 0xFF00FFCC.toInt()
+
+            guiGraphics.fill(sbX, contentY, sbX + sbW, contentY + contentH, 0x550F172A)
+            guiGraphics.fill(sbX, thumbY, sbX + sbW, thumbY + thumbH, thumbCol)
+        }
+
         // --- RIGHT PANEL (Detail Editor for Selected Variable) ---
         val detailX = listX + listW + 8
         val detailY = listY
@@ -407,6 +426,34 @@ class StoryVariableManagerModalWidget(
             return true
         }
 
+        // Scrollbar Click
+        val rows = buildFlattenedRows()
+        val itemH = 20
+        val totalListH = rows.size * itemH + 8
+        val maxScroll = maxOf(0.0, totalListH.toDouble() - contentH)
+        if (maxScroll > 0) {
+            val sbW = 4
+            val sbX = listX + listW - sbW - 1
+            if (mouseX >= sbX - 4 && mouseX <= listX + listW && mouseY >= contentY && mouseY <= contentY + contentH) {
+                val thumbH = ((contentH.toDouble() / totalListH) * contentH).toInt().coerceIn(14, contentH)
+                val thumbY = contentY + ((scrollOffset / maxScroll) * (contentH - thumbH)).toInt()
+
+                isDraggingScrollbar = true
+                dragStartMouseY = mouseY
+                if (mouseY >= thumbY && mouseY <= thumbY + thumbH) {
+                    dragStartScrollOffset = scrollOffset
+                } else {
+                    val trackRange = contentH - thumbH
+                    if (trackRange > 0) {
+                        val clickOffset = ((mouseY - contentY - thumbH / 2.0) / trackRange).coerceIn(0.0, 1.0)
+                        scrollOffset = clickOffset * maxScroll
+                        dragStartScrollOffset = scrollOffset
+                    }
+                }
+                return true
+            }
+        }
+
         // Left List Click
         if (mouseX >= listX && mouseX <= listX + listW && mouseY >= contentY && mouseY <= contentY + contentH) {
             val rows = buildFlattenedRows()
@@ -457,6 +504,36 @@ class StoryVariableManagerModalWidget(
 
         setFocus(null)
         return true
+    }
+
+    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        if (isDraggingScrollbar) {
+            val listH = modalHeight - 34
+            val contentH = listH - 20
+            val rows = buildFlattenedRows()
+            val itemH = 20
+            val totalListH = rows.size * itemH + 8
+            val maxScroll = maxOf(0.0, totalListH.toDouble() - contentH)
+            if (maxScroll > 0) {
+                val thumbH = ((contentH.toDouble() / totalListH) * contentH).toInt().coerceIn(14, contentH)
+                val trackRange = contentH - thumbH
+                if (trackRange > 0) {
+                    val deltaY = mouseY - dragStartMouseY
+                    val scrollDelta = (deltaY / trackRange) * maxScroll
+                    scrollOffset = (dragStartScrollOffset + scrollDelta).coerceIn(0.0, maxScroll)
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (isDraggingScrollbar) {
+            isDraggingScrollbar = false
+            return true
+        }
+        return false
     }
 
     fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {

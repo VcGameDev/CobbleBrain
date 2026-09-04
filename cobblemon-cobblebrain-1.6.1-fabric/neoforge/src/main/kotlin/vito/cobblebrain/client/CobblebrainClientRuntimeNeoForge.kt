@@ -72,6 +72,12 @@ object CobblebrainClientRuntimeNeoForge {
             }
         }
 
+        KeyInputClientManager.sendResultPayload = { payload ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(payload)
+            }
+        }
+
         DialogueHudOverlay.onAdvanceCallback = { instId, nodeId ->
             if (net.minecraft.client.Minecraft.getInstance().player != null) {
                 net.neoforged.neoforge.network.PacketDistributor.sendToServer(

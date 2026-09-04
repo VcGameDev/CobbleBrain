@@ -155,11 +155,37 @@ object CobblebrainServerHandlerFabric {
 
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.StoryControlRequestPayload.TYPE) { payload, context ->
             context.server().execute {
+                val player = context.player()
+                val server = context.server()
+                val canControl = player.hasPermissions(3) ||
+                    (server.isSingleplayer && server.isSingleplayerOwner(player.gameProfile))
+
+                if (!canControl) {
+                    println("[CobbleBrain Security] Player ${player.scoreboardName} attempted to ${payload.action} story '${payload.storyId}' without Level 3 permissions.")
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Permissão insuficiente: Requer Nível 3 (Admin) para gerenciar histórias."))
+                    return@execute
+                }
+
                 when (payload.action) {
+                    "START" -> {
+                        val project = vito.cobblebrain.model.StorySerializer.loadByName(payload.storyId)
+                        if (project != null) {
+                            vito.cobblebrain.engine.StoryExecutor.startStory(project, player, server)
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a[CobbleBrain] História '${project.name}' iniciada com sucesso!"))
+                        } else {
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Pacote de história '${payload.storyId}' não encontrado em storypacks!"))
+                        }
+                    }
                     "PAUSE" -> vito.cobblebrain.engine.StoryExecutor.pauseStory(payload.storyId)
                     "RESUME" -> vito.cobblebrain.engine.StoryExecutor.resumeStory(payload.storyId)
                     "STOP" -> vito.cobblebrain.engine.StoryExecutor.stopStory(payload.storyId)
                 }
+            }
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.KeyInputResultPayload.TYPE) { payload, context ->
+            context.server().execute {
+                vito.cobblebrain.engine.StoryExecutor.handleKeyInputResult(context.player(), payload.storyId, payload.nodeId, payload.resultEvent)
             }
         }
     }

@@ -139,7 +139,11 @@ object BlockDataClipboard {
             }.toMutableList()
 
             val newOutputs = copied.outputs.map { oldPort ->
-                val newPortId = UUID.randomUUID().toString()
+                val newPortId = if (oldPort.id == "OUT_COND" || oldPort.name.startsWith("Cond Out", ignoreCase = true)) {
+                    "OUT_COND"
+                } else {
+                    UUID.randomUUID().toString()
+                }
                 portIdMap[oldPort.id] = newPortId
                 PortData(id = newPortId, name = oldPort.name, type = oldPort.type)
             }.toMutableList()

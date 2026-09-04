@@ -137,13 +137,6 @@ data class ExcavateActionConfig(
     var workingDistance: Double = 32.0
 )
 
-data class ProspectActionConfig(
-    var active: Boolean = true,
-    var maxBlocks: Int = 48,
-    var breakDelayTicks: Int = 5,
-    var workingDistance: Double = 24.0
-)
-
 data class ActionSettings(
     var cook: CookActionConfig = CookActionConfig(),
     var grow: GrowActionConfig = GrowActionConfig(),
@@ -160,7 +153,6 @@ data class ActionSettings(
     var buff: BuffActionConfig = BuffActionConfig(),
     var debuffEnemy: DebuffEnemyActionConfig = DebuffEnemyActionConfig(),
     var excavate: ExcavateActionConfig = ExcavateActionConfig(),
-    var prospect: ProspectActionConfig = ProspectActionConfig(),
     var demolish: ExcavateActionConfig = excavate,
     var rest: BaseActionConfig = BaseActionConfig(),
     var idle: BaseActionConfig = BaseActionConfig()

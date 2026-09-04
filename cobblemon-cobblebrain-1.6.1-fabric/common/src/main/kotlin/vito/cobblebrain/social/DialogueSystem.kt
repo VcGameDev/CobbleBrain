@@ -768,7 +768,7 @@ object DialogueSystem {
     // println("[CobbleBrain] No API key configured. Assuming local / unauthenticated LLM.")
     //}
 
-    //val chat = AIHandler("cobblebrain-ai")
+    //val chat = AIHandler("cobblebrain")
     //chat.start()
 
     //} catch (e: Exception) {
@@ -986,6 +986,20 @@ object DialogueSystem {
         charsPerTick: Int = 1
     ) {
         val level = entity.level()
+
+        // Safely discard any existing speech bubble on this entity to prevent overlaps
+        val oldStandUuid = bubbleStands.remove(entity.uuid)
+        if (oldStandUuid != null) {
+            val oldLevel = bubbleLevelMap.remove(oldStandUuid)
+            val oldStand = oldLevel?.getEntity(oldStandUuid)
+            if (oldStand is ArmorStand) {
+                oldStand.discard()
+            }
+            bubbleUntilTick.remove(oldStandUuid)
+            bubbleText.remove(oldStandUuid)
+            bubbleProgress.remove(oldStandUuid)
+            bubbleSpeed.remove(oldStandUuid)
+        }
 
         val stand = ArmorStand(EntityType.ARMOR_STAND, level)
         stand.isInvisible = true
@@ -1897,7 +1911,7 @@ object DialogueSystem {
         )
     }
 
-    fun expressPokemon(pokemon: Pokemon, basePitch: Float = 1.0f) {
+    fun expressPokemon(pokemon: Pokemon, basePitch: Float = 1.0f, shouldJump: Boolean = true) {
         val entity = pokemon.entity ?: return
         val level = entity.level() as? ServerLevel ?: return
 
@@ -1915,9 +1929,9 @@ object DialogueSystem {
         // toca o cry com pitch variado
         playPokemonCry(pokemon, variedPitch)
 
-        // só pula se estiver no chão
-        if (entity.onGround()) {
-            entity.jumpFromGround()
+        // Suporta pulo tanto para entidades com IA quanto NoAI
+        if (shouldJump) {
+            vito.cobblebrain.engine.StoryJumpManager.applyJump(entity)
         }
 
         // partículas apenas se houver mudança emocional (pitch != 1.0)
@@ -2205,7 +2219,6 @@ object DialogueSystem {
             if (config.actionSettings.scout.active && "flying" in presentTypes) typeActions += "Flying: SC (scout)"
             if (config.actionSettings.light.active && "electric" in presentTypes) typeActions += "Electric: L (light)"
             if (config.actionSettings.fish.active && "water" in presentTypes) typeActions += "Water: F (fish)"
-            if (config.actionSettings.prospect.active && "rock" in presentTypes) typeActions += "Rock: PR (prospect)"
             if (config.actionSettings.teleport.active && "psychic" in presentTypes) typeActions += "Psychic: T (teleport)"
 
             if (universalActions.isNotEmpty()) {

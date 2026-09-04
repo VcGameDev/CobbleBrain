@@ -30,6 +30,12 @@ class ActionTriggerPickerModalWidget(
     private var selectedCategoryIndex: Int = 0 // 0 = All
     private var scrollOffset: Double = 0.0
     private var categoryScrollOffset: Double = 0.0
+    private var isDraggingCardScroll: Boolean = false
+    private var dragStartCardMouseY: Double = 0.0
+    private var dragStartCardScroll: Double = 0.0
+    private var isDraggingCatScroll: Boolean = false
+    private var dragStartCatMouseY: Double = 0.0
+    private var dragStartCatScroll: Double = 0.0
 
     init {
         searchBox = EditBox(font, modalX + 15, modalY + 30, modalWidth - 30, 16, Component.literal("Search"))
@@ -143,12 +149,16 @@ class ActionTriggerPickerModalWidget(
         // Categories scroll bar
         val maxCatScroll = maxOf(0.0, totalCatH.toDouble() - contentH)
         if (maxCatScroll > 0) {
-            val sbX = catX + catW - 3
-            val thumbH = ((contentH.toDouble() / totalCatH) * contentH).toInt().coerceIn(12, contentH)
+            val sbW = 4
+            val sbX = catX + catW - sbW - 1
+            val thumbH = ((contentH.toDouble() / totalCatH) * contentH).toInt().coerceIn(14, contentH)
             val thumbY = contentY + ((categoryScrollOffset / maxCatScroll) * (contentH - thumbH)).toInt()
 
-            guiGraphics.fill(sbX, contentY, sbX + 2, contentY + contentH, 0xFF1C1C24.toInt())
-            guiGraphics.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, 0xFF3D5AFE.toInt())
+            val isHover = mouseX >= sbX - 2 && mouseX <= sbX + sbW + 2 && mouseY >= contentY && mouseY <= contentY + contentH
+            val thumbCol = if (isDraggingCatScroll) 0xFF38BDF8.toInt() else if (isHover) 0xFF00E5FF.toInt() else 0xFF3D5AFE.toInt()
+
+            guiGraphics.fill(sbX, contentY, sbX + sbW, contentY + contentH, 0x551C1C24)
+            guiGraphics.fill(sbX, thumbY, sbX + sbW, thumbY + thumbH, thumbCol)
         }
 
         // 2. RIGHT PANEL: Item Cards with Scissored Viewport and Vertical Scrolling
@@ -198,13 +208,68 @@ class ActionTriggerPickerModalWidget(
         // Cards scroll bar
         val maxScroll = maxOf(0.0, totalH.toDouble() - gridH)
         if (maxScroll > 0) {
-            val sbX = gridX + gridW - 4
-            val thumbH = ((gridH.toDouble() / totalH) * gridH).toInt().coerceIn(12, gridH)
+            val sbW = 5
+            val sbX = gridX + gridW - sbW - 1
+            val thumbH = ((gridH.toDouble() / totalH) * gridH).toInt().coerceIn(16, gridH)
             val thumbY = contentY + ((scrollOffset / maxScroll) * (gridH - thumbH)).toInt()
 
-            guiGraphics.fill(sbX, contentY, sbX + 2, contentY + gridH, 0xFF1C1C24.toInt())
-            guiGraphics.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, 0xFF00FFCC.toInt())
+            val isHover = mouseX >= sbX - 2 && mouseX <= sbX + sbW + 2 && mouseY >= contentY && mouseY <= contentY + gridH
+            val thumbCol = if (isDraggingCardScroll) 0xFF38BDF8.toInt() else if (isHover) 0xFF00E5FF.toInt() else 0xFF00FFCC.toInt()
+
+            guiGraphics.fill(sbX, contentY, sbX + sbW, contentY + gridH, 0x551C1C24)
+            guiGraphics.fill(sbX, thumbY, sbX + sbW, thumbY + thumbH, thumbCol)
         }
+    }
+
+    fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        val contentY = modalY + 52
+        val contentH = modalHeight - 60
+        val catW = 120
+        val gridW = modalWidth - (catW + 32)
+        val gridH = contentH
+
+        if (isDraggingCardScroll) {
+            val items = getFilteredItems()
+            val cardH = 40
+            val totalH = items.size * (cardH + 4) + 4
+            val maxScroll = maxOf(0.0, totalH.toDouble() - gridH)
+            if (maxScroll > 0) {
+                val thumbH = ((gridH.toDouble() / totalH) * gridH).toInt().coerceIn(16, gridH)
+                val trackRange = gridH - thumbH
+                if (trackRange > 0) {
+                    val deltaY = mouseY - dragStartCardMouseY
+                    val scrollDelta = (deltaY / trackRange) * maxScroll
+                    scrollOffset = (dragStartCardScroll + scrollDelta).coerceIn(0.0, maxScroll)
+                    return true
+                }
+            }
+        }
+
+        if (isDraggingCatScroll) {
+            val categories = getCategories()
+            val totalCatH = categories.size * 22 + 8
+            val maxCatScroll = maxOf(0.0, totalCatH.toDouble() - contentH)
+            if (maxCatScroll > 0) {
+                val thumbH = ((contentH.toDouble() / totalCatH) * contentH).toInt().coerceIn(14, contentH)
+                val trackRange = contentH - thumbH
+                if (trackRange > 0) {
+                    val deltaY = mouseY - dragStartCatMouseY
+                    val scrollDelta = (deltaY / trackRange) * maxCatScroll
+                    categoryScrollOffset = (dragStartCatScroll + scrollDelta).coerceIn(0.0, maxCatScroll)
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (isDraggingCardScroll || isDraggingCatScroll) {
+            isDraggingCardScroll = false
+            isDraggingCatScroll = false
+            return true
+        }
+        return false
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -218,8 +283,34 @@ class ActionTriggerPickerModalWidget(
         val catW = 120
         val catX = modalX + 12
 
-        // Category list click with scroll offset
+        // Category scrollbar click
         val categories = getCategories()
+        val totalCatH = categories.size * 22 + 8
+        val maxCatScroll = maxOf(0.0, totalCatH.toDouble() - contentH)
+        if (maxCatScroll > 0) {
+            val sbW = 4
+            val sbX = catX + catW - sbW - 1
+            if (mouseX >= sbX - 4 && mouseX <= catX + catW && mouseY >= contentY && mouseY <= contentY + contentH) {
+                val thumbH = ((contentH.toDouble() / totalCatH) * contentH).toInt().coerceIn(14, contentH)
+                val thumbY = contentY + ((categoryScrollOffset / maxCatScroll) * (contentH - thumbH)).toInt()
+
+                isDraggingCatScroll = true
+                dragStartCatMouseY = mouseY
+                if (mouseY >= thumbY && mouseY <= thumbY + thumbH) {
+                    dragStartCatScroll = categoryScrollOffset
+                } else {
+                    val trackRange = contentH - thumbH
+                    if (trackRange > 0) {
+                        val clickOffset = ((mouseY - contentY - thumbH / 2.0) / trackRange).coerceIn(0.0, 1.0)
+                        categoryScrollOffset = clickOffset * maxCatScroll
+                        dragStartCatScroll = categoryScrollOffset
+                    }
+                }
+                return true
+            }
+        }
+
+        // Category list click with scroll offset
         if (mouseX >= catX && mouseX <= catX + catW && mouseY >= contentY && mouseY <= contentY + contentH) {
             val relativeY = mouseY - contentY - 4 + categoryScrollOffset
             val idx = (relativeY / 22).toInt()
@@ -235,9 +326,35 @@ class ActionTriggerPickerModalWidget(
         val gridW = modalWidth - (catW + 32)
         val gridH = contentH
         val cardH = 40
+        val items = getFilteredItems()
+        val totalH = items.size * (cardH + 4) + 4
+        val maxScroll = maxOf(0.0, totalH.toDouble() - gridH)
+
+        // Cards scrollbar click
+        if (maxScroll > 0) {
+            val sbW = 5
+            val sbX = gridX + gridW - sbW - 1
+            if (mouseX >= sbX - 4 && mouseX <= gridX + gridW && mouseY >= contentY && mouseY <= contentY + gridH) {
+                val thumbH = ((gridH.toDouble() / totalH) * gridH).toInt().coerceIn(16, gridH)
+                val thumbY = contentY + ((scrollOffset / maxScroll) * (gridH - thumbH)).toInt()
+
+                isDraggingCardScroll = true
+                dragStartCardMouseY = mouseY
+                if (mouseY >= thumbY && mouseY <= thumbY + thumbH) {
+                    dragStartCardScroll = scrollOffset
+                } else {
+                    val trackRange = gridH - thumbH
+                    if (trackRange > 0) {
+                        val clickOffset = ((mouseY - contentY - thumbH / 2.0) / trackRange).coerceIn(0.0, 1.0)
+                        scrollOffset = clickOffset * maxScroll
+                        dragStartCardScroll = scrollOffset
+                    }
+                }
+                return true
+            }
+        }
 
         if (mouseX >= gridX && mouseX <= gridX + gridW && mouseY >= contentY && mouseY <= contentY + gridH) {
-            val items = getFilteredItems()
             val relativeY = mouseY - contentY - 4 + scrollOffset
             val idx = (relativeY / (cardH + 4)).toInt()
             if (idx in items.indices) {

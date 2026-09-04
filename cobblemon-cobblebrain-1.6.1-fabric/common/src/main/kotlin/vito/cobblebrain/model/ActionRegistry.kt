@@ -149,7 +149,9 @@ object ActionRegistry {
             defaultParams = mapOf(
                 "operationMode" to "APPLY_LOOK",
                 "subjectType" to "PLAYER_POKEMON",
+                "targetType" to "PLAYER_POKEMON",
                 "subjectIdentifier" to "1",
+                "targetIdentifier" to "1",
                 "referenceType" to "PLAYER",
                 "referenceIdentifier" to "",
                 "lookMode" to "TOWARDS_REFERENCE",
@@ -217,6 +219,7 @@ object ActionRegistry {
                 "targetCategory" to "ENTITY",
                 "targetSelector" to "PLAYER_POKEMON_SLOT",
                 "selectorIdentifier" to "1",
+                "targetIdentifier" to "1",
                 "operation" to "ADD_TAG",
                 "tagName" to "story_tag_1"
             )

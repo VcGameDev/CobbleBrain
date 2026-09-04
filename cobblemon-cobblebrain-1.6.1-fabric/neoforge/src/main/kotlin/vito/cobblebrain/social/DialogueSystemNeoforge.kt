@@ -11,7 +11,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.ServerChatEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
-import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.config.ConfigHandler.config
 import com.cobblemon.mod.common.api.events.pokeball.PokemonCatchRateEvent
 
 class DialogueSystemNeoForge {
@@ -65,7 +65,7 @@ class DialogueSystemNeoForge {
                 val target = event.pokemonEntity
                 val playerUuid = player.uuid.toString()
                 
-                if (!SyncedConfig.outputGuaranteedCatch) return@subscribe
+                if (!config.outputGuaranteedCatch) return@subscribe
 
                 if (target.tags.contains("cobblebrain:guaranteed_$playerUuid")) {
                     event.catchRate = 9999.0f

@@ -38,7 +38,7 @@ class NodeWidget(val node: NodeData) {
 
             NodeType.CONSTRUCTION, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.TRIGGER,
             NodeType.DIALOGUE, NodeType.ACTION, NodeType.TIMER, NodeType.SAVE_STATE_NODE,
-            NodeType.LOAD_STATE_NODE,
+            NodeType.LOAD_STATE_NODE, NodeType.KEY_INPUT,
             NodeType.QUEST, NodeType.AUDIO, NodeType.TEXTURE -> NodeRectShape.VERTICAL_RECTANGLE
         }
     }
@@ -70,6 +70,7 @@ class NodeWidget(val node: NodeData) {
             NodeType.COMMAND_NODE -> 0xFFD84315.toInt()  // Rust Orange Command
             NodeType.SAVE_STATE_NODE -> 0xFF4A148C.toInt() // Deep Purple Save Checkpoint
             NodeType.LOAD_STATE_NODE -> 0xFF311B92.toInt() // Deep Indigo Load Checkpoint
+            NodeType.KEY_INPUT -> 0xFF0284C7.toInt()       // Electric Cyan Key Input / QTE
             NodeType.TIMER -> 0xFF8E24AA.toInt()        // Vibrant Purple Timer
             NodeType.COMMENT -> 0xFFFBC02D.toInt()     // Note Yellow
             NodeType.AUDIO -> 0xFF6A1B9A.toInt()       // Dark Purple Audio
@@ -145,10 +146,16 @@ class NodeWidget(val node: NodeData) {
         return worldX >= rx && worldX <= node.x + node.width + 4.0 &&
                worldY >= ry && worldY <= node.y + node.height + 4.0
     }
-    fun getErrorTooltipAt(worldX: Double, worldY: Double, storyId: String): String? {
+    fun getErrorTooltipAt(worldX: Double, worldY: Double, storyId: String = ""): String? = getTooltipAtWorldPos(worldX, worldY, storyId)
+
+    fun getTooltipAtWorldPos(worldX: Double, worldY: Double, storyId: String = ""): String? {
         val inBounds = worldX >= node.x - 4.0 && worldX <= node.x + node.width + 4.0 &&
                        worldY >= node.y - 4.0 && worldY <= node.y + node.height + 4.0
         if (!inBounds) return null
+
+        val sessionState = vito.cobblebrain.engine.StoryDebugger.activeSessionState
+        val isStoryActive = sessionState.isActive || vito.cobblebrain.engine.StoryExecutor.activeStories.containsKey(storyId)
+        if (!isStoryActive) return null
 
         val status = vito.cobblebrain.engine.StoryDebugger.getNodeStatus(storyId, node.id)
         val errMsg = vito.cobblebrain.engine.StoryDebugger.getNodeErrorMessage(storyId, node.id)
@@ -209,13 +216,16 @@ class NodeWidget(val node: NodeData) {
         }
 
         // Diagnostic Debug Status & Active Execution Detection
-        val debugStatus = vito.cobblebrain.engine.StoryDebugger.getNodeStatus(storyId, node.id)
-        val debugErrMsg = vito.cobblebrain.engine.StoryDebugger.getNodeErrorMessage(storyId, node.id)
         val sessionState = vito.cobblebrain.engine.StoryDebugger.activeSessionState
-        val isExecutingLive = debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING ||
-            (sessionState.isActive && sessionState.activeNodeId == node.id)
+        val isStoryActive = sessionState.isActive || vito.cobblebrain.engine.StoryExecutor.activeStories.containsKey(storyId)
+        val rawDebugStatus = vito.cobblebrain.engine.StoryDebugger.getNodeStatus(storyId, node.id)
+        val debugStatus = if (isStoryActive) rawDebugStatus else vito.cobblebrain.engine.NodeExecutionStatus.IDLE
+        val debugErrMsg = vito.cobblebrain.engine.StoryDebugger.getNodeErrorMessage(storyId, node.id)
 
-        // Pulsing Execution Outer Glow
+        // Only highlight live execution when story test is actively running and this node is current
+        val isExecutingLive = isStoryActive && (sessionState.activeNodeId == node.id || debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.RUNNING)
+
+        // Pulsing Execution Outer Glow (Only while actively executing)
         if (isExecutingLive) {
             val pulse = ((kotlin.math.sin(System.currentTimeMillis() / 150.0) + 1.0) * 0.5 * 180 + 75).toInt().coerceIn(60, 255)
             val glowColor = (pulse shl 24) or 0x0038BDF8
@@ -227,16 +237,16 @@ class NodeWidget(val node: NodeData) {
             isExecutingLive -> 0xFF38BDF8.toInt()
             debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED -> 0xFFFF3333.toInt()
             debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED -> 0xFFF59E0B.toInt()
-            debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS -> 0xFF22C55E.toInt()
+            isSelected -> 0xFFFFD700.toInt()
             isStartTestNode -> 0xFF00FFCC.toInt()
             isEndTestNode -> 0xFFFF5555.toInt()
-            isSelected -> 0xFFFFD700.toInt()
+            isStoryActive && debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS -> 0xFF225533.toInt() // Dim muted green indicating past execution during active test
             else -> 0xFF333338.toInt()
         }
 
         val headerColor = getHeaderColor()
 
-        // Extra thick outline for debug error/running states
+        // Extra thick outline for active running/error states
         val borderThickness = if (isExecutingLive || debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED) 3 else 2
         guiGraphics.fill(x - borderThickness, y - borderThickness, x + w + borderThickness, y + h + borderThickness, borderColor)
         guiGraphics.fill(x, y, x + w, y + h, 0xFF1E1E24.toInt())
@@ -372,6 +382,11 @@ class NodeWidget(val node: NodeData) {
                 NodeType.AUDIO -> "🎵 Audio: ${node.params["audioId"] ?: "sound"}"
                 NodeType.SAVE_STATE_NODE -> "💾 Save: [${node.params["profileId"] ?: "checkpoint_1"}]"
                 NodeType.LOAD_STATE_NODE -> "🔄 Load: [${node.params["profileId"] ?: "checkpoint_1"}]"
+                NodeType.KEY_INPUT -> {
+                    val isStandalone = node.params["triggerMode"]?.equals("STANDALONE", true) ?: (node.params["requireInputSignal"] == "false" || node.inputs.none { it.type == PortType.INPUT })
+                    val modePrefix = if (isStandalone) "⚡ [${node.params["targetKey"] ?: "F"}] Standalone" else "🔗 [${node.params["targetKey"] ?: "F"}] Flow"
+                    "⌨️ $modePrefix (${node.params["inputMode"] ?: "PRESS"})"
+                }
                 NodeType.TEXTURE -> {
                     val target = if (node.params["targetType"] == "PLAYER_POKEMON") "Slot ${node.params["pokemonSlot"] ?: node.params["targetIdentifier"] ?: "1"}" else (node.params["targetIdentifier"] ?: "NPC")
                     val tex = node.params["textureName"]?.ifBlank { "None" } ?: "None"
@@ -423,11 +438,15 @@ class NodeWidget(val node: NodeData) {
             val color = if (hoveredPort?.id == port.id) {
                 0xFFFFB74D.toInt()
             } else when {
+                port.id == "OUT_COND" || port.name.contains("Cond", true) -> if (node.params["condOutMode"]?.equals("LISTENER", true) == true) 0xFF00E5FF.toInt() else 0xFF38BDF8.toInt()
                 port.id == "BUILD_OUT" || port.name.contains("Build", true) -> 0xFFF59E0B.toInt()
                 port.id == "ON_CHANGED_OUT" || port.name.contains("Changed", true) -> 0xFF00E5FF.toInt()
                 port.id == "OUT_IF" || port.name.equals("SE", true) || port.name.equals("IF", true) -> 0xFF4CAF50.toInt()
                 port.name.contains("SENÃO SE", true) || port.name.contains("SENAO SE", true) || port.name.contains("ELSE IF", true) -> 0xFFFFB74D.toInt()
                 port.id == "OUT_ELSE" || port.name.equals("SENÃO", true) || port.name.equals("SENAO", true) || port.name.equals("ELSE", true) -> 0xFFF44336.toInt()
+                port.id == "OUT_PULSE" || port.name.contains("Pulse", true) -> 0xFFF59E0B.toInt()
+                port.id == "OUT_RELEASE" || port.name.contains("Release", true) -> 0xFF10B981.toInt()
+                port.id == "OUT_TIMEOUT" || port.name.contains("Timeout", true) -> 0xFFEF4444.toInt()
                 port.name.contains("Success", true) || port.id.contains("SUCCESS", true) -> 0xFF4CAF50.toInt()
                 port.name.contains("Fail", true) || port.id.contains("FAIL", true) -> 0xFFF44336.toInt()
                 port.name.contains("Progress", true) || port.id.contains("PROGRESS", true) -> 0xFFFFEB3B.toInt()

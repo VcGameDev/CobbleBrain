@@ -135,6 +135,9 @@ class SendMessageAction : IAction {
                     } catch (e: Exception) {
                         partyList.getOrNull(slot)
                     }
+                    if (resolvedPokemon?.entity == null) {
+                        resolvedPokemon = activeList.getOrNull(slot) ?: resolvedPokemon
+                    }
                 }
                 "PARTY_RANDOM" -> {
                     resolvedPokemon = activeList.randomOrNull() ?: partyList.randomOrNull()
@@ -248,6 +251,10 @@ class SendMessageAction : IAction {
                 } catch (_: Exception) {}
             }
 
+            if (jumpEffect) {
+                StoryJumpManager.applyJump(entity)
+            }
+
             if (enableChatBubble && server != null) {
                 try {
                     DialogueSystem.spawnEntitySpeechBubble(server, entity, interpolatedText, bubbleDuration)
@@ -260,24 +267,24 @@ class SendMessageAction : IAction {
             val entity = poke.entity
             if (playCry) {
                 try {
-                    DialogueSystem.expressPokemon(poke, basePitch)
-                } catch (e: Exception) {
+                    DialogueSystem.expressPokemon(poke, basePitch, shouldJump = jumpEffect)
+                } catch (_: Exception) {
                 }
-            } else if (jumpEffect && entity != null && entity.onGround()) {
-                entity.jumpFromGround()
+            } else if (jumpEffect && entity != null) {
+                StoryJumpManager.applyJump(entity)
             }
 
             if (socialLook && entity != null && player != null) {
                 try {
                     entity.lookControl.setLookAt(player.x, player.eyeY, player.z, 30f, 30f)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
             }
 
             if (enableChatBubble && server != null && entity != null) {
                 try {
                     DialogueSystem.spawnSpeechBubble(server, poke, interpolatedText, bubbleDuration)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
             }
         }
@@ -359,22 +366,44 @@ class TeleportAction : IAction {
             searchPriority = searchPriority
         )
         val targetMode = node.params["targetMode"] ?: "PLAYER"
-        val targetStoryTag = node.params["targetStoryTag"]?.trim() ?: ""
+        val targetStoryTag = (node.params["targetStoryTag"]?.ifBlank { node.params["storyTag"] ?: "" } ?: "").trim()
 
-        if (targetMode == "STORY_TAG" && targetStoryTag.isNotBlank()) {
-            try {
-                val cmd = "tp @e[tag=$targetStoryTag,limit=1,sort=nearest] ${destVec.x} ${destVec.y} ${destVec.z}"
-                server.commands.performPrefixedCommand(
-                    player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
-                        ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
-                    cmd
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
+        when (targetMode.uppercase()) {
+            "STORY_TAG", "TAG", "TAGGED_ENTITY" -> {
+                if (targetStoryTag.isNotBlank()) {
+                    val entity = StoryTagManager.resolveTargetEntity(player, server, "BY_EXISTING_TAG", targetStoryTag)
+                    if (entity != null) {
+                        entity.teleportTo(destVec.x, destVec.y, destVec.z)
+                        if (entity is net.minecraft.world.entity.Mob) {
+                            entity.navigation.stop()
+                        }
+                    }
+                    try {
+                        val cmd = "tp @e[tag=$targetStoryTag,limit=1,sort=nearest] ${destVec.x} ${destVec.y} ${destVec.z}"
+                        server.commands.performPrefixedCommand(
+                            player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
+                                ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
+                            cmd
+                        )
+                    } catch (_: Exception) {}
+                }
             }
-        } else if (player != null) {
-            player.teleportTo(destVec.x, destVec.y, destVec.z)
-            player.sendSystemMessage(Component.literal("Teleported to: ${destVec.x.toInt()}, ${destVec.y.toInt()}, ${destVec.z.toInt()}"))
+            "PLAYER_POKEMON", "PLAYER_POKEMON_SLOT", "POKEMON", "PARTY_SLOT" -> {
+                val slotStr = node.params["pokemonSlot"] ?: node.params["selectorIdentifier"] ?: node.params["targetIdentifier"] ?: "1"
+                val entity = StoryTagManager.resolveTargetEntity(player, server, "PLAYER_POKEMON_SLOT", slotStr)
+                if (entity != null) {
+                    entity.teleportTo(destVec.x, destVec.y, destVec.z)
+                    if (entity is net.minecraft.world.entity.Mob) {
+                        entity.navigation.stop()
+                    }
+                }
+            }
+            else -> {
+                if (player != null) {
+                    player.teleportTo(destVec.x, destVec.y, destVec.z)
+                    player.sendSystemMessage(Component.literal("Teleported to: ${destVec.x.toInt()}, ${destVec.y.toInt()}, ${destVec.z.toInt()}"))
+                }
+            }
         }
     }
 }
@@ -651,9 +680,6 @@ class ModifyEntityPropertiesAction : IAction {
                 nbtParts.add("CustomName:'{\"text\":\"$customName\"}'")
                 nbtParts.add("CustomNameVisible:${if (nameVisible) "1b" else "0b"}")
             }
-            if (storyTag.isNotBlank()) {
-                nbtParts.add("Tags:[\"$storyTag\"]")
-            }
             if (node.params.containsKey("entity_noGravity")) nbtParts.add("NoGravity:${if (noGravity) "1b" else "0b"}")
             if (node.params.containsKey("entity_invulnerable")) nbtParts.add("Invulnerable:${if (invulnerable) "1b" else "0b"}")
             if (node.params.containsKey("entity_noAi") || node.params.containsKey("noAi")) nbtParts.add("NoAI:${if (noAi) "1b" else "0b"}")
@@ -696,14 +722,18 @@ class ModifyEntityPropertiesAction : IAction {
                 nbtParts.add("HandItems:[$mStr,$oStr]")
             }
 
+            val source = player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
+                ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput()
+
             if (nbtParts.isNotEmpty()) {
                 val nbt = "{${nbtParts.joinToString(",")}}"
                 val cmd = "data merge entity $selector $nbt"
-                server.commands.performPrefixedCommand(
-                    player?.createCommandSourceStack()?.withPermission(4)?.withSuppressedOutput()
-                        ?: server.createCommandSourceStack().withPermission(4).withSuppressedOutput(),
-                    cmd
-                )
+                server.commands.performPrefixedCommand(source, cmd)
+            }
+
+            if (storyTag.isNotBlank()) {
+                val tagCmd = "tag $selector add $storyTag"
+                server.commands.performPrefixedCommand(source, tagCmd)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1207,14 +1237,14 @@ class AnimationAction : IAction {
             "VILLAGER_HAPPY", "HAPPY" -> {
                 sLevel?.sendParticles(ParticleTypes.HAPPY_VILLAGER, entity.x, entity.eyeY + 0.5, entity.z, 10, 0.4, 0.4, 0.4, 0.1)
                 sLevel?.broadcastEntityEvent(entity, 14)
-                if (entity.onGround()) entity.jumpFromGround()
+                StoryJumpManager.applyJump(entity)
             }
             "VILLAGER_ANGRY" -> {
                 sLevel?.sendParticles(ParticleTypes.ANGRY_VILLAGER, entity.x, entity.eyeY + 0.5, entity.z, 8, 0.3, 0.3, 0.3, 0.0)
                 sLevel?.broadcastEntityEvent(entity, 13)
             }
             "CELEBRATE", "JUMP" -> {
-                if (entity.onGround()) entity.jumpFromGround()
+                StoryJumpManager.applyJump(entity)
             }
             "CRY" -> {
                 if (pokemon != null) {
@@ -1394,7 +1424,11 @@ class TagAction : IAction {
             "PLAYER" -> "INTERACTING_PLAYER"
             else -> "CLOSEST_MOB"
         }
-        val identifier = node.params["selectorIdentifier"]?.ifBlank { node.params["targetIdentifier"] ?: "" } ?: ""
+        val identifier = node.params["selectorIdentifier"]?.ifBlank {
+            node.params["targetIdentifier"]?.ifBlank {
+                node.params["pokemonSlot"] ?: "1"
+            } ?: "1"
+        } ?: "1"
         val operation = node.params["operation"] ?: "ADD_TAG"
         val tagName = (node.params["tagName"]?.ifBlank { node.params["storyTag"] ?: "" } ?: "").trim()
 

@@ -334,10 +334,60 @@ object CobblebrainPayloadRegistrarNeoForge {
             CobblebrainPayloads.StoryControlRequestPayload.CODEC
         ) { payload, context ->
             context.enqueueWork {
+                val player = context.player() as? ServerPlayer ?: return@enqueueWork
+                val server = player.server ?: return@enqueueWork
+                val canControl = player.hasPermissions(3) ||
+                    (server.isSingleplayer && server.isSingleplayerOwner(player.gameProfile))
+
+                if (!canControl) {
+                    println("[CobbleBrain Security] Player ${player.scoreboardName} attempted to ${payload.action} story '${payload.storyId}' without Level 3 permissions.")
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Permissão insuficiente: Requer Nível 3 (Admin) para gerenciar histórias."))
+                    return@enqueueWork
+                }
+
                 when (payload.action) {
+                    "START" -> {
+                        val project = vito.cobblebrain.model.StorySerializer.loadByName(payload.storyId)
+                        if (project != null) {
+                            vito.cobblebrain.engine.StoryExecutor.startStory(project, player, server)
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a[CobbleBrain] História '${project.name}' iniciada com sucesso!"))
+                        } else {
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Pacote de história '${payload.storyId}' não encontrado em storypacks!"))
+                        }
+                    }
                     "PAUSE" -> vito.cobblebrain.engine.StoryExecutor.pauseStory(payload.storyId)
                     "RESUME" -> vito.cobblebrain.engine.StoryExecutor.resumeStory(payload.storyId)
                     "STOP" -> vito.cobblebrain.engine.StoryExecutor.stopStory(payload.storyId)
+                }
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.StartKeyInputPayload.TYPE,
+            CobblebrainPayloads.StartKeyInputPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                vito.cobblebrain.client.KeyInputClientManager.startInput(payload)
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.CancelKeyInputPayload.TYPE,
+            CobblebrainPayloads.CancelKeyInputPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                vito.cobblebrain.client.KeyInputClientManager.cancelInput(payload.nodeId)
+            }
+        }
+
+        registrar.playToServer(
+            CobblebrainPayloads.KeyInputResultPayload.TYPE,
+            CobblebrainPayloads.KeyInputResultPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                val player = context.player() as? ServerPlayer
+                if (player != null) {
+                    vito.cobblebrain.engine.StoryExecutor.handleKeyInputResult(player, payload.storyId, payload.nodeId, payload.resultEvent)
                 }
             }
         }

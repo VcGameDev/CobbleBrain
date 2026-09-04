@@ -74,7 +74,6 @@ object SyncedConfig {
             "buff" -> settings.buff.active
             "debuff", "debuff_enemy" -> settings.debuffEnemy.active
             "excavate", "demolish" -> settings.excavate.active
-            "prospect" -> settings.prospect.active
             "rest", "sit" -> settings.rest.active
             "idle" -> settings.idle.active
             else -> true

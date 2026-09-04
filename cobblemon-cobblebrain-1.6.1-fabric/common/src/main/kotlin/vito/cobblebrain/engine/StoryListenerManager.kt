@@ -17,6 +17,7 @@ object StoryListenerManager {
     fun onServerTick() {
         StoryLookAtManager.onServerTick()
         StoryPathfindingManager.onServerTick()
+        StoryJumpManager.onServerTick()
 
         val activeList = StoryExecutor.activeStories.values.toList()
         for (instance in activeList) {
@@ -24,7 +25,7 @@ object StoryListenerManager {
             val scene = instance.project.getActiveScene() ?: continue
 
             // Check passive/reactive triggers that do not depend on input signal
-            val reactiveTriggers = scene.nodes.filter { node ->
+            val reactiveTriggers = (scene.nodes + instance.project.globalNodes).filter { node ->
                 node.nodeType == NodeType.TRIGGER && node.params["requireInputSignal"] == "false"
             }
 
@@ -270,6 +271,7 @@ object StoryListenerManager {
             val allNodes = mutableListOf<NodeData>()
             val activeScene = instance.project.getActiveScene()
             if (activeScene != null) allNodes.addAll(activeScene.nodes)
+            allNodes.addAll(instance.project.globalNodes)
             instance.project.scenes.forEach { s ->
                 if (s.id != activeScene?.id) {
                     allNodes.addAll(s.nodes.filter { instance.context.waitingTriggers.contains(it.id) })
@@ -321,7 +323,7 @@ object StoryListenerManager {
                 continue
             }
             val scene = instance.project.getActiveScene() ?: continue
-            val matchingNodes = scene.nodes.filter { node ->
+            val matchingNodes = (scene.nodes + instance.project.globalNodes).filter { node ->
                 node.nodeType == NodeType.TRIGGER &&
                 (node.params["triggerType"] == triggerType ||
                  (triggerType == "POKEMON_CATCH" && node.params["triggerType"] == "CATCH_POKEMON") ||
