@@ -156,12 +156,12 @@ object CobbleBrainModClientNeoForge {
                 )
             } else if (!ClientConfigHandler.clientConfig.enableStt) {
                 Minecraft.getInstance().player?.sendSystemMessage(
-                    net.minecraft.network.chat.Component.literal("[CobbleBrain] Speech-to-Text (STT) está desativado nas configurações.")
+                    net.minecraft.network.chat.Component.literal("[CobbleBrain] Speech-to-Text (STT) is disabled in the settings.")
                 )
             } else {
                 vito.cobblebrain.client.mcmti.McmtiNeoForgeHandler.awaitingPokemonVoice = true
                 Minecraft.getInstance().player?.sendSystemMessage(
-                    net.minecraft.network.chat.Component.literal("[CobbleBrain STT] Fale no microfone para conversar com seu Pokémon...")
+                    net.minecraft.network.chat.Component.literal("[CobbleBrain STT] Speak into your microphone to talk to your Pokémon...")
                 )
             }
         }

@@ -158,12 +158,12 @@ object CobbleBrainModClient : ClientModInitializer {
                     )
                 } else if (!ClientConfigHandler.clientConfig.enableStt) {
                     client.player?.sendSystemMessage(
-                        net.minecraft.network.chat.Component.literal("[CobbleBrain] Speech-to-Text (STT) está desativado nas configurações.")
+                        net.minecraft.network.chat.Component.literal("[CobbleBrain] Speech-to-Text (STT) is disabled in the settings.")
                     )
                 } else {
                     vito.cobblebrain.client.mcmti.McmtiFabricHandler.awaitingPokemonVoice = true
                     client.player?.sendSystemMessage(
-                        net.minecraft.network.chat.Component.literal("[CobbleBrain STT] Fale no microfone para conversar com seu Pokémon...")
+                        net.minecraft.network.chat.Component.literal("[CobbleBrain STT] Speak into your microphone to talk to your Pokémon...")
                     )
                 }
             }

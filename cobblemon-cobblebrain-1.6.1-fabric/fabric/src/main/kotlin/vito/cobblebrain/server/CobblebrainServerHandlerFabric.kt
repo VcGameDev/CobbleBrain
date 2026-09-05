@@ -13,7 +13,7 @@ object CobblebrainServerHandlerFabric {
         ServerPlayNetworking.registerGlobalReceiver(ActionPayload.TYPE) { payload: ActionPayload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
-                //player.sendSystemMessage(Component.literal("Executando ação: ${payload.action}"))
+                //player.sendSystemMessage(Component.literal("Executing action: ${payload.action}"))
 
                 // chama o Common
                 CobblebrainServerHandler.processAction(player, payload.action)
@@ -162,7 +162,7 @@ object CobblebrainServerHandlerFabric {
 
                 if (!canControl) {
                     println("[CobbleBrain Security] Player ${player.scoreboardName} attempted to ${payload.action} story '${payload.storyId}' without Level 3 permissions.")
-                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Permissão insuficiente: Requer Nível 3 (Admin) para gerenciar histórias."))
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Insufficient permissions: Requires Level 3 (Admin) to manage stories."))
                     return@execute
                 }
 
@@ -171,9 +171,9 @@ object CobblebrainServerHandlerFabric {
                         val project = vito.cobblebrain.model.StorySerializer.loadByName(payload.storyId)
                         if (project != null) {
                             vito.cobblebrain.engine.StoryExecutor.startStory(project, player, server)
-                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a[CobbleBrain] História '${project.name}' iniciada com sucesso!"))
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a[CobbleBrain] Story '${project.name}' started successfully!"))
                         } else {
-                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Pacote de história '${payload.storyId}' não encontrado em storypacks!"))
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Story pack '${payload.storyId}' not found in storypacks!"))
                         }
                     }
                     "PAUSE" -> vito.cobblebrain.engine.StoryExecutor.pauseStory(payload.storyId)

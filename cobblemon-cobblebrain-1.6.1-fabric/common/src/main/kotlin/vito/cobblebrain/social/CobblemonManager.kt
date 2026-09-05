@@ -254,9 +254,9 @@ object ConfigCommands {
 
                                             if (project != null) {
                                                 vito.cobblebrain.engine.StoryExecutor.startStory(project, player)
-                                                player.sendSystemMessage(Component.literal("História '$storyId' iniciada com sucesso!"))
+                                                player.sendSystemMessage(Component.literal("Story '$storyId' started successfully!"))
                                             } else {
-                                                player.sendSystemMessage(Component.literal("Pacote de história '$storyId' não encontrado em storypacks!"))
+                                                player.sendSystemMessage(Component.literal("Story pack '$storyId' not found in storypacks!"))
                                             }
                                             1
                                         }
@@ -267,7 +267,7 @@ object ConfigCommands {
                                 .executes { ctx ->
                                     val player = ctx.source.playerOrException
                                     vito.cobblebrain.engine.StoryExecutor.stopAllStories(player)
-                                    player.sendSystemMessage(Component.literal("Todas as histórias ativas foram paradas."))
+                                    player.sendSystemMessage(Component.literal("All active stories have been stopped."))
                                     1
                                 }
                         )

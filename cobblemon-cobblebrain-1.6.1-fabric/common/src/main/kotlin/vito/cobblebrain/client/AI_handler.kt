@@ -617,8 +617,8 @@ class AIHandler {
             val error = json["error"] as? Map<*, *>
             if (error != null) {
                 val code = (error["code"] as? Number)?.toInt() ?: status
-                val msg = error["message"] as? String ?: "Erro desconhecido"
-                return if (code != null) "Erro $code: $msg" else "Erro: $msg"
+                val msg = error["message"] as? String ?: "Unknown error"
+                return if (code != null) "Error $code: $msg" else "Error: $msg"
             }
         } catch (_: Exception) {
             // tenta regex
@@ -626,7 +626,7 @@ class AIHandler {
             val match = regex.find(body)
             if (match != null) {
                 val code = match.groupValues[1].toInt()
-                return errorMessages[code] ?: "Erro HTTP $code: não mapeado"
+                return errorMessages[code] ?: "HTTP Error $code: unmapped"
             }
         }
 
