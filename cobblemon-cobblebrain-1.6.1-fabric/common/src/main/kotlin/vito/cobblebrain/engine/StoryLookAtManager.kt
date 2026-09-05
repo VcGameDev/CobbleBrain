@@ -17,6 +17,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+@Suppress("unused")
 enum class LookOperationMode {
     APPLY_LOOK,
     RESET_LOOK
@@ -41,6 +42,7 @@ enum class LookTargetMode {
     OPPOSITE_SELF
 }
 
+@Suppress("unused")
 enum class LookDurationMode {
     TEMPORARY,
     INDEFINITE
@@ -109,6 +111,7 @@ object StoryLookAtManager {
         activeOverrides.clear()
     }
 
+    @Suppress("unused")
     fun isUnderOverride(subjectUuid: UUID): Boolean {
         return activeOverrides.containsKey(subjectUuid)
     }
@@ -275,9 +278,5 @@ object StoryLookAtManager {
             }
         }
         return null
-    }
-
-    fun parseCoordinates(str: String?, base: Vec3): Vec3 {
-        return CoordinateResolver.resolveVec3(str, null, null, base)
     }
 }

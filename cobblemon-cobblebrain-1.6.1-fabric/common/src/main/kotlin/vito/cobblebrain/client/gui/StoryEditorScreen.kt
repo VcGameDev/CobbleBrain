@@ -741,7 +741,7 @@ class StoryEditorScreen(
             ghostNode.params["completionSoundId"] = "minecraft:block.anvil.use"
         }
 
-        if (presetSubtype == "TAG_BLOCK" || (type == NodeType.ACTION && presetSubtype == "TAG_BLOCK")) {
+        if (presetSubtype == "TAG_BLOCK") {
             ghostNode.title = "Manage Story Tag"
             ghostNode.params["actionSubtype"] = "TAG_BLOCK"
             ghostNode.params["actionId"] = "TAG_BLOCK"
@@ -750,7 +750,7 @@ class StoryEditorScreen(
             }
         }
 
-        if (presetSubtype == "MOVE_TO_BLOCK" || (type == NodeType.ACTION && presetSubtype == "MOVE_TO_BLOCK")) {
+        if (presetSubtype == "MOVE_TO_BLOCK") {
             ghostNode.title = "Move / Pathfind Entity"
             ghostNode.params["actionSubtype"] = "MOVE_TO_BLOCK"
             ghostNode.params["actionId"] = "MOVE_TO_BLOCK"
@@ -1712,7 +1712,7 @@ class StoryEditorScreen(
 
     private fun renderTestMenu(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         val session = vito.cobblebrain.engine.StoryDebugger.activeSessionState
-        val isStoryActive = session.isActive || vito.cobblebrain.engine.StoryExecutor.activeStories.containsKey(project.id)
+        val isStoryActive = session.isActive || StoryExecutor.activeStories.containsKey(project.id)
         val isStoryPaused = session.isPaused
 
         val menuItems = mutableListOf<Pair<String, Int>>()
@@ -2364,7 +2364,7 @@ class StoryEditorScreen(
 
         if (isTestMenuOpen) {
             val session = vito.cobblebrain.engine.StoryDebugger.activeSessionState
-            val isStoryActive = session.isActive || vito.cobblebrain.engine.StoryExecutor.activeStories.containsKey(project.id)
+            val isStoryActive = session.isActive || StoryExecutor.activeStories.containsKey(project.id)
             val isStoryPaused = session.isPaused
 
             val menuActions = mutableListOf<String>()

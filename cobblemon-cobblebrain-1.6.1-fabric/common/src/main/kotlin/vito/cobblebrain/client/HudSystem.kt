@@ -87,12 +87,6 @@ object HudSystem {
         )
     }
 
-    private fun getAvailableCommands(): List<String> {
-        return getSortedCommands()
-            .filter {
-                isCommandAvailable(it)
-            }
-    }
 
     fun toggleVisibility() {
         isVisible = !isVisible
@@ -101,7 +95,7 @@ object HudSystem {
     /**
      * Ponto de entrada principal para toda a renderização de HUD do CobbleBrain.
      */
-    fun render(guiGraphics: GuiGraphics, tickDelta: Float) {
+    fun render(guiGraphics: GuiGraphics, @Suppress("UNUSED_PARAMETER") tickDelta: Float) {
         val client = Minecraft.getInstance()
         if (client.player == null || client.options.hideGui) return
 
@@ -157,7 +151,7 @@ object HudSystem {
                 y += currentHeight + 4
             }
 
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     private fun renderSingleQuest(guiGraphics: GuiGraphics, client: Minecraft, quest: com.google.gson.JsonObject, x: Int, y: Int, boxHeight: Int) {
@@ -481,6 +475,7 @@ object HudSystem {
     // 3. ACTION INDICATOR (Placeholder)
     // ===================================================================================
 
+    @Suppress("UNUSED_PARAMETER")
     private fun renderActionIndicator(guiGraphics: GuiGraphics, client: Minecraft) {
         // Reservado para mostrar a ação atual do Pokémon (ex: "Buscando...", "Lutando...") próximo ao ícone do Cobblemon
     }

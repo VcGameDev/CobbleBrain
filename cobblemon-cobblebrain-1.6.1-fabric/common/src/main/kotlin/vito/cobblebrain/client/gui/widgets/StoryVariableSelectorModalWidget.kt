@@ -128,6 +128,7 @@ class StoryVariableSelectorModalWidget(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
         if (isDraggingScrollbar) {
             val filtered = getFilteredVariables()
@@ -150,6 +151,7 @@ class StoryVariableSelectorModalWidget(
         return false
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (isDraggingScrollbar) {
             isDraggingScrollbar = false
@@ -206,10 +208,11 @@ class StoryVariableSelectorModalWidget(
                 return true
             }
         }
-        return true
+        return mouseX >= modalX && mouseX <= modalX + modalWidth && mouseY >= modalY && mouseY <= modalY + modalHeight
     }
 
     fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {
+        if (mouseX < modalX || mouseX > modalX + modalWidth || mouseY < modalY || mouseY > modalY + modalHeight) return false
         val filtered = getFilteredVariables()
         val maxVisible = if (isMultiSelect) 9 else 7
         if (filtered.size > maxVisible) {

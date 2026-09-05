@@ -50,6 +50,7 @@ object ClientStoryAssetManager {
         }
     }
 
+    @Suppress("unused")
     fun clearCache() {
         dynamicTextureCache.clear()
     }

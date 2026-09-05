@@ -229,6 +229,7 @@ data class StoryProject(
         return scenes.find { it.id == activeSceneId } ?: scenes.firstOrNull()
     }
 
+    @Suppress("unused")
     fun getAllNodes(): List<NodeData> {
         return scenes.flatMap { it.nodes } + globalNodes
     }

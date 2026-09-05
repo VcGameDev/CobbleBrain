@@ -95,6 +95,7 @@ object StoryListenerManager {
         }
     }
 
+    @Suppress("unused")
     fun onPokemonCatch(player: ServerPlayer, species: String) {
         StoryMissionManager.onTriggerFired(player, "POKEMON_CATCH")
         dispatchReactiveTrigger(player, "POKEMON_CATCH", mapOf("targetSpecies" to species))
@@ -105,11 +106,13 @@ object StoryListenerManager {
         dispatchReactiveTrigger(player, "BATTLE_VICTORY", mapOf("targetSpecies" to targetSpecies))
     }
 
+    @Suppress("unused")
     fun onBattleDefeat(player: ServerPlayer) {
         StoryMissionManager.onPlayerDeath(player)
         dispatchReactiveTrigger(player, "BATTLE_DEFEAT", emptyMap())
     }
 
+    @Suppress("unused")
     fun onPokemonInteract(player: ServerPlayer, species: String) {
         StoryMissionManager.onTriggerFired(player, "INTERACT_POKEMON")
         dispatchReactiveTrigger(player, "INTERACT_POKEMON", mapOf("targetSpecies" to species))
@@ -119,11 +122,13 @@ object StoryListenerManager {
         dispatchReactiveEntityTrigger(player, "INTERACT_ENTITY", entity)
     }
 
+    @Suppress("unused")
     fun onBlockInteract(player: ServerPlayer, blockId: String) {
         StoryMissionManager.onTriggerFired(player, "BLOCK_INTERACTED")
         dispatchReactiveTrigger(player, "BLOCK_INTERACTED", mapOf("blockId" to blockId))
     }
 
+    @Suppress("unused")
     fun onBlockPlaced(player: ServerPlayer, blockId: String) {
         StoryMissionManager.onTriggerFired(player, "BLOCK_PLACED")
         dispatchReactiveTrigger(player, "BLOCK_PLACED", mapOf("blockId" to blockId))
@@ -170,6 +175,7 @@ object StoryListenerManager {
         }
     }
 
+    @Suppress("unused")
     fun onEntitySpawned(entity: Entity) {
         val players = entity.level().players().filterIsInstance<ServerPlayer>()
         for (player in players) {
@@ -357,12 +363,10 @@ object StoryListenerManager {
                     }
                 }
 
-                if (matches) {
-                    val isIfNot = node.params["triggerCondition"] == "IF_NOT"
-                    val finalResult = if (isIfNot) !matches else matches
-                    if (finalResult) {
-                        StoryExecutor.executeNodeChain(instance, node, targetPortId = null)
-                    }
+                val isIfNot = node.params["triggerCondition"] == "IF_NOT"
+                val finalResult = if (isIfNot) !matches else matches
+                if (finalResult) {
+                    StoryExecutor.executeNodeChain(instance, node, targetPortId = null)
                 }
             }
         }

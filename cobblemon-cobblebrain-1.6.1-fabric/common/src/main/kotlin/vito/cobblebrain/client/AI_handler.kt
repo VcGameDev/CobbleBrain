@@ -88,7 +88,6 @@ class AIHandler {
 
         private val gson = Gson()
         private val INSTRUCTS get() = clientConfig.instruct
-            .filterNotNull()
             .joinToString("\n")
         private val TEMPERATURE get() = clientConfig.temperature
         private val SHOW_HUNGER get() = clientConfig.showHunger
@@ -415,7 +414,7 @@ class AIHandler {
             address.isAnyLocalAddress ||
                     address.isLoopbackAddress ||
                     address.isSiteLocalAddress
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
@@ -672,7 +671,7 @@ class AIHandler {
                 isLocalApi(apiBase) -> callOpenAISchema(memorySearchPrompt, systemOverride)
                 else -> callOpenAISchema(memorySearchPrompt, systemOverride)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "NO_MEMORY"
         }
         println("[MemoryRetrievalAI] Decision/Selection response:\n$response")

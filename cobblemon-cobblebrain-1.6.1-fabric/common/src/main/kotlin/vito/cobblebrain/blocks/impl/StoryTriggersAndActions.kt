@@ -115,12 +115,12 @@ class SendMessageAction : IAction {
             val partyList = try {
                 val party = Cobblemon.storage.getParty(player)
                 (0..5).mapNotNull { party.get(it) }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 emptyList()
             }
             val activeList = try {
                 PokemonQuery.findActivePokemon(player)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 emptyList()
             }
 
@@ -132,7 +132,7 @@ class SendMessageAction : IAction {
                     val slot = (node.params["partySlot"]?.toIntOrNull() ?: 1).coerceIn(1, 6) - 1
                     resolvedPokemon = try {
                         Cobblemon.storage.getParty(player).get(slot)
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         partyList.getOrNull(slot)
                     }
                     if (resolvedPokemon?.entity == null) {
@@ -149,7 +149,7 @@ class SendMessageAction : IAction {
                         val aabb = player.boundingBox.inflate(radius)
                         val nearbyEntities = pLevel.getEntitiesOfClass(PokemonEntity::class.java, aabb)
                         resolvedPokemon = nearbyEntities.minByOrNull { it.distanceToSqr(player) }?.pokemon
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                     }
                 }
                 "BY_SPECIES" -> {
@@ -175,7 +175,7 @@ class SendMessageAction : IAction {
                                     p.species.resourceIdentifier.path.lowercase() == query ||
                                     p.nickname?.string?.lowercase() == query
                                 }?.pokemon
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                             }
                         }
                     }
@@ -374,7 +374,7 @@ class TeleportAction : IAction {
                     val entity = StoryTagManager.resolveTargetEntity(player, server, "BY_EXISTING_TAG", targetStoryTag)
                     if (entity != null) {
                         entity.teleportTo(destVec.x, destVec.y, destVec.z)
-                        if (entity is net.minecraft.world.entity.Mob) {
+                        if (entity is Mob) {
                             entity.navigation.stop()
                         }
                     }
@@ -393,7 +393,7 @@ class TeleportAction : IAction {
                 val entity = StoryTagManager.resolveTargetEntity(player, server, "PLAYER_POKEMON_SLOT", slotStr)
                 if (entity != null) {
                     entity.teleportTo(destVec.x, destVec.y, destVec.z)
-                    if (entity is net.minecraft.world.entity.Mob) {
+                    if (entity is Mob) {
                         entity.navigation.stop()
                     }
                 }
@@ -443,6 +443,7 @@ class SetTimeOfDayAction : IAction {
         }
     }
 }
+@Suppress("unused")
 typealias SetTimeAction = SetTimeOfDayAction
 
 class SpawnBlockAction : IAction {
@@ -1324,12 +1325,14 @@ class BeginSceneBlock : ITrigger {
     }
 }
 
+@Suppress("unused")
 class EndSceneBlock : IAction {
     override fun execute(context: StoryContext, node: NodeData) {
         // Scene completion hook
     }
 }
 
+@Suppress("unused")
 class StoryStartedTrigger : ITrigger {
     override fun evaluate(context: StoryContext, node: NodeData): Boolean {
         if (node.nodeType != NodeType.TRIGGER) return false
@@ -1338,6 +1341,7 @@ class StoryStartedTrigger : ITrigger {
     }
 }
 
+@Suppress("unused")
 class PlayerLocationTrigger : ITrigger {
     override fun evaluate(context: StoryContext, node: NodeData): Boolean {
         val player = context.player ?: return false
@@ -1361,6 +1365,7 @@ class PlayerLocationTrigger : ITrigger {
     }
 }
 
+@Suppress("unused")
 class PlayerLevelTrigger : ITrigger {
     override fun evaluate(context: StoryContext, node: NodeData): Boolean {
         val player = context.player ?: return false
@@ -1380,6 +1385,7 @@ class PlayerLevelTrigger : ITrigger {
     }
 }
 
+@Suppress("unused")
 class WeatherCheckTrigger : ITrigger {
     override fun evaluate(context: StoryContext, node: NodeData): Boolean {
         val player = context.player ?: return false
@@ -1399,6 +1405,7 @@ class WeatherCheckTrigger : ITrigger {
     }
 }
 
+@Suppress("unused")
 class DayNightCheckTrigger : ITrigger {
     override fun evaluate(context: StoryContext, node: NodeData): Boolean {
         val player = context.player ?: return false

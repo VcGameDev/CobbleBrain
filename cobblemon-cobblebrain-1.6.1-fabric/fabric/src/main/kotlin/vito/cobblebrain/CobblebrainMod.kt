@@ -24,7 +24,7 @@ import vito.cobblebrain.social.WorldEventsSystemFabric
 
 
 object CobblebrainMod : ModInitializer {
-    @Suppress("MemberVisibilityCanBePrivate")
+    @Suppress("MemberVisibilityCanBePrivate", "unused")
     const val MOD_ID = "cobblebrain"
 
     // Quando o jogo inicializa

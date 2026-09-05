@@ -46,6 +46,7 @@ object MemorySystem {
 
     private val gson: Gson = GsonBuilder().create()
 
+    @Suppress("unused")
     fun getTraitsFile(pokemonUuid: String): File = resolveTraitsFile(pokemonUuid, null)
 
     fun hasStoredPersonality(pokemonUuid: String, displayName: String? = null): Boolean {
@@ -109,6 +110,7 @@ object MemorySystem {
         return personality
     }
 
+    @Suppress("unused")
     fun savePersonality(pokemonUuid: String, personality: PokemonPersonality) {
         savePersonality(pokemonUuid, personality, null)
     }
@@ -124,6 +126,7 @@ object MemorySystem {
         }
     }
 
+    @Suppress("unused")
     fun loadMemories(pokemonUuid: String): List<Memory> {
         return loadMemories(pokemonUuid, null)
     }
@@ -151,6 +154,7 @@ object MemorySystem {
         return memories
     }
 
+    @Suppress("unused")
     fun saveMemory(pokemonUuid: String, memory: Memory) {
         saveMemory(pokemonUuid, memory, null)
     }
@@ -189,6 +193,7 @@ object MemorySystem {
         }
     }
 
+    @Suppress("unused")
     fun saveMemories(pokemonUuid: String, memories: List<Memory>) {
         saveMemories(pokemonUuid, memories, null)
     }
@@ -322,7 +327,7 @@ object MemorySystem {
     private fun findPokemonByUuid(pokemonUuid: String): PokemonFileInfo? {
         val uuid = try {
             UUID.fromString(pokemonUuid)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             return null
         }
 

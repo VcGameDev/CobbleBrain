@@ -120,6 +120,7 @@ object StoryCommandSecurity {
     /**
      * Returns true if the command line is permitted, false if blocked.
      */
+    @Suppress("unused")
     fun isCommandAllowed(rawCommandLine: String): Boolean {
         return findBlockedAdminCommand(rawCommandLine) == null
     }

@@ -221,11 +221,9 @@ class ActionTriggerPickerModalWidget(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
-        val contentY = modalY + 52
         val contentH = modalHeight - 60
-        val catW = 120
-        val gridW = modalWidth - (catW + 32)
         val gridH = contentH
 
         if (isDraggingCardScroll) {
@@ -263,6 +261,7 @@ class ActionTriggerPickerModalWidget(
         return false
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (isDraggingCardScroll || isDraggingCatScroll) {
             isDraggingCardScroll = false
@@ -365,7 +364,7 @@ class ActionTriggerPickerModalWidget(
             }
         }
 
-        return true
+        return mouseX >= modalX && mouseX <= modalX + modalWidth && mouseY >= modalY && mouseY <= modalY + modalHeight
     }
 
     fun mouseScrolled(mouseX: Double, mouseY: Double, scrollY: Double): Boolean {

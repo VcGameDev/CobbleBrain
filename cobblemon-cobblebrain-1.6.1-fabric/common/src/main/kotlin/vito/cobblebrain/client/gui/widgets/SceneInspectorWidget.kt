@@ -214,9 +214,9 @@ class SceneInspectorWidget(
         return false
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
         if (isDraggingScrollbar) {
-            val viewportTop = panelY + 20
             val viewportHeight = panelHeight - 20
             val maxScroll = maxOf(0.0, totalContentHeight - viewportHeight)
             if (maxScroll > 0) {
@@ -234,6 +234,7 @@ class SceneInspectorWidget(
         return false
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (isDraggingScrollbar) {
             isDraggingScrollbar = false

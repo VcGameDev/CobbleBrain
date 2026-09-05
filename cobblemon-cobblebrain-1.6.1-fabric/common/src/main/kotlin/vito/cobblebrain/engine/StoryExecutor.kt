@@ -43,7 +43,8 @@ object StoryExecutor {
         if (player != null) {
             // 1. World & Game Conditions
             if (prereqs.freshWorldOnly) {
-                val worldTimeTicks = player.server.overworld().gameTime
+                val srv = player?.server ?: server
+                val worldTimeTicks = srv?.overworld()?.gameTime ?: 0L
                 val maxTicks = prereqs.freshWorldMaxMinutes * 1200L
                 if (worldTimeTicks > maxTicks) {
                     return PrerequisiteValidationResult(false, "World is older than ${prereqs.freshWorldMaxMinutes} minutes (fresh world required).")
@@ -182,6 +183,8 @@ object StoryExecutor {
             instance.context.waitingKeyInputNodeId = null
         }
         StoryDebugger.clearNodeStatuses(storyId)
+        StoryLookAtManager.clearAll()
+        StoryJumpManager.clearAll()
         if (instance != null) {
             val server = instance.context.server ?: instance.context.player?.server
             StoryDebugger.broadcastSessionState(
@@ -516,13 +519,9 @@ object StoryExecutor {
                 }
                 VariableType.LIST -> {
                     val list = when (currentVal) {
-                        is MutableList<*> -> (currentVal as MutableList<Any?>).map { it.toString() }.toMutableList()
                         is List<*> -> currentVal.map { it.toString() }.toMutableList()
-                        null -> {
-                            val registeredVar = instance.project.variables.find { it.id == varKey }
-                            (registeredVar?.parseTypedDefaultValue() as? MutableList<String>) ?: mutableListOf()
-                        }
-                        else -> currentVal.toString().split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                        is String -> currentVal.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                        else -> mutableListOf()
                     }
 
                     when (op) {
@@ -970,12 +969,18 @@ object StoryExecutor {
 
         // If current scene is marked with isEndScene == true, declare story finished
         if (scene.isEndScene) {
+            markStoryCompleted(instance.context.player, instance.storyId)
             stopStory(instance.storyId)
             return
         }
 
         // Emit signal on Scene OUT port in global graph (to scenes or blocks)
         val outgoingSceneConnections = instance.project.sceneConnections.filter { it.fromNodeId == scene.id || it.fromPortId == scene.outPort.id }
+        if (outgoingSceneConnections.isEmpty()) {
+            markStoryCompleted(instance.context.player, instance.storyId)
+            stopStory(instance.storyId)
+            return
+        }
         for (sceneConn in outgoingSceneConnections) {
             val targetScene = instance.project.scenes.find { it.id == sceneConn.toNodeId }
             if (targetScene != null) {
@@ -1533,7 +1538,7 @@ object StoryExecutor {
         result = result.replace("{player_z}", playerZ, ignoreCase = true)
 
         context.variables.forEach { (key, value) ->
-            val strVal = if (value is List<*>) value.joinToString(",") else value?.toString() ?: ""
+            val strVal = if (value is List<*>) value.joinToString(",") else value.toString()
             result = result.replace("{$key}", strVal, ignoreCase = true)
         }
 

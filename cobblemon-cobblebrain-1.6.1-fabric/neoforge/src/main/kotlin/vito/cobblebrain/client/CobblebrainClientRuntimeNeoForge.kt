@@ -90,6 +90,7 @@ object CobblebrainClientRuntimeNeoForge {
         NeoForge.EVENT_BUS.register(this)
     }
 
+    @Suppress("unused")
     fun markWaiting() {
         waitingResponse = true
         waitTicks = 0
@@ -99,6 +100,7 @@ object CobblebrainClientRuntimeNeoForge {
         waitingResponse = false
     }
 
+    @Suppress("unused", "UNUSED_PARAMETER")
     @SubscribeEvent
     fun onClientTick(event: ClientTickEvent.Post) {
         if (!waitingResponse) return

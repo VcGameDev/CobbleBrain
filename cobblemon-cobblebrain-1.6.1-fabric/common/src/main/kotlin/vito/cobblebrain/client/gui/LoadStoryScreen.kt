@@ -143,7 +143,6 @@ class LoadStoryScreen(
         val boxY = 40
         val listTop = boxY + 28
         val listBottom = boxY + boxH - 36
-        val visibleItems = maxOf(1, (listBottom - listTop) / itemHeight)
 
         if (mouseX >= boxX + 8 && mouseX <= boxX + boxW - 8 && mouseY >= listTop && mouseY < listBottom) {
             val clickIdx = scrollOffset + ((mouseY - listTop) / itemHeight).toInt()
@@ -181,7 +180,6 @@ class LoadStoryScreen(
     }
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
-        val boxW = 320
         val boxH = height - 80
         val visibleItems = maxOf(1, (boxH - 64) / itemHeight)
         val maxScroll = maxOf(0, fileList.size - visibleItems)

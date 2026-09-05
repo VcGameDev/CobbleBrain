@@ -128,7 +128,7 @@ object StorySerializer {
             if (!scenesDir.exists()) {
                 scenesDir.mkdirs()
             }
-            val assetsDir = File(packDir, "assets").apply { if (!exists()) mkdirs() }
+            File(packDir, "assets").let { if (!it.exists()) it.mkdirs() }
 
             // 1. Deduplicate nodes across scenes and globalNodes, sanitize parentSceneId
             val registeredNodeIds = mutableSetOf<String>()

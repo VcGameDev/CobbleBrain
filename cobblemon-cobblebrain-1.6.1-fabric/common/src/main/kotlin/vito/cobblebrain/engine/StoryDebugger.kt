@@ -27,11 +27,11 @@ data class StoryDebugLogEntry(
     fun getLogBadge(): String {
         return when {
             level.equals("ERROR", true) || status == NodeExecutionStatus.FAILED -> "ERROR"
-            level.equals("WARN", true) || status == NodeExecutionStatus.FALLBACK_TRIGGERED -> "WARN"
+            status == NodeExecutionStatus.FALLBACK_TRIGGERED -> "FALLBACK"
+            level.equals("WARN", true) -> "WARN"
             blockType == NodeType.VARIABLE_SET || message.contains("Variable", ignoreCase = true) || message.contains("SetVar", ignoreCase = true) -> "SET_VAR"
             blockType == NodeType.DIALOGUE && message.contains("AI", ignoreCase = true) -> "AI_CALL"
             blockType == NodeType.ACTION || blockType == NodeType.TEXTURE || blockType == NodeType.AUDIO -> "ACTION"
-            status == NodeExecutionStatus.FALLBACK_TRIGGERED -> "FALLBACK"
             else -> "INFO"
         }
     }
@@ -221,6 +221,7 @@ object StoryDebugger {
         }
     }
 
+    @Suppress("unused")
     fun getWarningCount(storyId: String? = null): Int {
         return if (storyId.isNullOrBlank()) {
             logs.count { it.level.equals("WARN", ignoreCase = true) || it.status == NodeExecutionStatus.FALLBACK_TRIGGERED }
@@ -237,7 +238,7 @@ object StoryDebugger {
                 val parsed: Map<String, Any?> = com.google.gson.Gson().fromJson(payload.variablesJson, type) ?: emptyMap()
                 parsed.mapValues { it.value?.toString() ?: "null" }
             } else emptyMap()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyMap()
         }
 

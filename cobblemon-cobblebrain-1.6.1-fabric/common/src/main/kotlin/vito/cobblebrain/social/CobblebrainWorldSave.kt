@@ -23,9 +23,6 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.WrittenBookContent
 import net.minecraft.world.level.levelgen.Heightmap
-import net.minecraft.core.BlockPos
-import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.level.block.entity.BarrelBlockEntity
 import net.minecraft.world.effect.MobEffectInstance
 import net.minecraft.world.effect.MobEffects
 import vito.cobblebrain.config.ConfigHandler
@@ -455,6 +452,7 @@ object CobblebrainWorldSave {
         startFollowingPlayer(giver, player)
     }
 
+    @Suppress("unused")
     fun createLocationQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
         ensureQuestsInitialized()
         val level = player.level()
@@ -537,6 +535,7 @@ object CobblebrainWorldSave {
         return quest
     }
 
+    @Suppress("unused")
     fun findQuest(giverUuid: String, type: String, status: String? = null): JsonObject? {
         val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active_secondary")
         val storyObj = data.getAsJsonObject("quests").getAsJsonObject("active_story")
@@ -553,6 +552,7 @@ object CobblebrainWorldSave {
         }
     }
 
+    @Suppress("unused")
     fun getActiveItemQuest(player: ServerPlayer): JsonObject? {
         return getActiveQuests(player).firstOrNull { it.get("type").asString == "ITEM" }
     }

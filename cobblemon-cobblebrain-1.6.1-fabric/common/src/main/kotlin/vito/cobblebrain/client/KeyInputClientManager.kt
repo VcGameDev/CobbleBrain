@@ -63,6 +63,7 @@ object KeyInputClientManager {
         }
     }
 
+    @Suppress("unused")
     fun isInputActive(): Boolean = activeRequest != null
 
     private fun sendResult(req: CobblebrainPayloads.StartKeyInputPayload, event: String) {

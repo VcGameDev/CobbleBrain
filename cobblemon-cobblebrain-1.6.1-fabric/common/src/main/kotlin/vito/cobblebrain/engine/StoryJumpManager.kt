@@ -27,12 +27,13 @@ object StoryJumpManager {
      */
     fun applyJump(entity: LivingEntity, maxHeight: Double = 0.42, durationTicks: Int = 12) {
         val sLevel = entity.level() as? ServerLevel ?: return
-        val isNoAiMob = entity is Mob && entity.isNoAi
+        val mob = entity as? Mob
+        val isNoAiMob = mob?.isNoAi == true
 
-        if (isNoAiMob && entity is Mob) {
+        if (isNoAiMob && mob != null) {
             // Lift NoAI temporarily so client physics and jump animations execute
-            entity.isNoAi = false
-            entity.navigation.stop()
+            mob.isNoAi = false
+            mob.navigation.stop()
         }
 
         try {
@@ -78,6 +79,7 @@ object StoryJumpManager {
         }
     }
 
+    @Suppress("unused")
     fun clearAll() {
         activeJumps.forEach { (_, jump) ->
             if (jump.wasNoAi) {

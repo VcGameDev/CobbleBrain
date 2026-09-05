@@ -22,6 +22,7 @@ object StoryAssetManager {
         entityTextureOverrides.remove(entityId)
     }
 
+    @Suppress("unused")
     fun clearAllOverrides() {
         entityTextureOverrides.clear()
     }

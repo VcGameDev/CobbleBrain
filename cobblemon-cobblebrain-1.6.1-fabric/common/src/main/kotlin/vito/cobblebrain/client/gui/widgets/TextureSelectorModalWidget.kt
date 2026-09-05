@@ -189,6 +189,7 @@ class TextureSelectorModalWidget(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
         if (isDraggingScrollbar) {
             val totalH = getTotalContentHeight()
@@ -207,6 +208,7 @@ class TextureSelectorModalWidget(
         return mouseX >= modalX && mouseX <= modalX + modalWidth && mouseY >= modalY && mouseY <= modalY + modalHeight
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (isDraggingScrollbar) {
             isDraggingScrollbar = false

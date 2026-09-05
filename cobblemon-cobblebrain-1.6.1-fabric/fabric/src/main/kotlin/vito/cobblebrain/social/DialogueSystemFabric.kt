@@ -28,7 +28,7 @@ object DialogueSystemFabric {
         }
 
         // DAMAGE (player + pokemon)
-        ServerLivingEntityEvents.AFTER_DAMAGE.register { entity, source, amount, newHealth, absorbed ->
+        ServerLivingEntityEvents.AFTER_DAMAGE.register { entity, source, amount, newHealth, _ ->
             vito.cobblebrain.engine.StoryListenerManager.onEntityDamaged(entity, source.entity, amount)
             DialogueSystem.onDamage(
                 entity,
@@ -39,7 +39,7 @@ object DialogueSystemFabric {
         }
 
         // INTERACT ENTITY
-        net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register { player, world, hand, entity, hitResult ->
+        net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register { player, world, hand, entity, _ ->
             if (!world.isClientSide && hand == net.minecraft.world.InteractionHand.MAIN_HAND && player is ServerPlayer) {
                 vito.cobblebrain.engine.StoryListenerManager.onEntityInteract(player, entity)
             }
@@ -172,7 +172,7 @@ object DialogueSystemFabric {
 
             // 3. Pokémon Kills: a player's Pokémon killed some entity
             if (killer is PokemonEntity) {
-                val ownerUuid = killer.pokemon.getOwnerUUID() ?: return@register
+                if (killer.pokemon.getOwnerUUID() == null) return@register
                 val pokemonName = killer.pokemon.nickname?.string ?: killer.pokemon.species.name
                 val entityTypeName = entity.type.descriptionId.substringAfterLast(".")
                 val trigger = RecentEventsSystem.commandSources[killer.uuid] ?: RecentEventsSystem.CommandSource.HUD
@@ -189,7 +189,7 @@ object DialogueSystemFabric {
         }
 
         // Block break (for treasure quests)
-        net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register { level, player, pos, state, blockEntity ->
+        net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register { _, player, pos, state, _ ->
             if (player is ServerPlayer) {
                 DialogueSystem.onBlockBreak(player, pos, state)
             }

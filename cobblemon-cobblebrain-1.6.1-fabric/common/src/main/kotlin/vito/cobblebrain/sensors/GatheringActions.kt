@@ -17,12 +17,9 @@ import net.minecraft.sounds.SoundSource
 import net.minecraft.world.Container
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Mob
-import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
-import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
@@ -32,14 +29,9 @@ import org.joml.Vector3f
 import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.social.PingManager
 import vito.cobblebrain.social.PlayerPing
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.atan2
-import kotlin.math.sqrt
-import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.*
 
 enum class GatheringType {
     EXCAVATE,  // Steel type - Tunnel excavation
@@ -139,6 +131,7 @@ object GatheringActions {
         return true
     }
 
+    @Suppress("unused")
     fun stopGathering(pokemonUuid: UUID, server: MinecraftServer? = null) {
         val session = activeSessions.remove(pokemonUuid)
         if (session != null) {
@@ -301,7 +294,7 @@ object GatheringActions {
                             tickSteelExcavateBatch(pokemon, session, level, owner, iterator)
                         }
                         GatheringType.BUILD -> {
-                            renderActiveBuildBoxOutline(level, session, pokemon)
+                            renderActiveBuildBoxOutline(level, session)
                             tickBuildBatch(pokemon, session, level, owner, iterator)
                         }
                     }
@@ -317,6 +310,7 @@ object GatheringActions {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun cleanupBuildScaffoldings(session: GatheringSession, level: ServerLevel) {
         // Safe teleportation system handles positioning without placing temporary blocks
     }
@@ -369,7 +363,7 @@ object GatheringActions {
         )
     }
 
-    private fun renderActiveBuildBoxOutline(level: ServerLevel, session: GatheringSession, pokemon: Mob) {
+    private fun renderActiveBuildBoxOutline(level: ServerLevel, session: GatheringSession) {
         val pingA = session.pingA ?: return
         val pingB = session.pingB ?: return
         val posA = pingA.pos
@@ -480,7 +474,7 @@ object GatheringActions {
     ) {
         if (session.layers.isEmpty() || session.currentLayerIndex >= session.layers.size) {
             val ping = session.ping
-            if (ping != null && generateNextExcavateLayer(session, pokemon, level, session.demolishForwardDir)) {
+            if (ping != null && generateNextExcavateLayer(session, level, session.demolishForwardDir)) {
                 // Continuous expansion successful
             } else {
                 session.state = GatheringState.FINISHED
@@ -592,17 +586,10 @@ object GatheringActions {
         }
     }
 
-    private fun getCalmBuildSpeed(pokemon: Mob): Double {
-        val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon
-        val spd = cobblemonPokemon?.speed ?: 50
-        return 0.60 + (spd / 2.0) * 0.01
-    }
-
     private fun findSafeBuildStandingPos(
         level: ServerLevel,
         targetBuildPos: BlockPos,
-        session: GatheringSession,
-        pokemon: Mob
+        session: GatheringSession
     ): BlockPos {
         if (session.isSuspendedBuild && session.currentTargetIndex > 0) {
             val placedSet = session.targetBlocks.take(session.currentTargetIndex).toSet()
@@ -724,7 +711,7 @@ object GatheringActions {
         }
 
         // Sequential adjacent block placement via instant positioning
-        val safeNavPos = findSafeBuildStandingPos(level, targetBuildPos, session, pokemon)
+        val safeNavPos = findSafeBuildStandingPos(level, targetBuildPos, session)
 
         // Teleport Pokémon adjacent to target block and face it directly
         pokemon.teleportTo(safeNavPos.x + 0.5, safeNavPos.y.toDouble(), safeNavPos.z + 0.5)
@@ -788,27 +775,6 @@ object GatheringActions {
     }
     }
 
-    private fun hasAdjacentAir(level: Level, pos: BlockPos): Boolean {
-        for (dir in Direction.entries) {
-            if (level.getBlockState(pos.relative(dir)).isAir) return true
-        }
-        return false
-    }
-
-    private fun getStandableAirNeighbor(level: Level, pos: BlockPos): BlockPos {
-        for (dir in Direction.Plane.HORIZONTAL) {
-            val neighbor = pos.relative(dir)
-            if (level.getBlockState(neighbor).isAir) {
-                return neighbor
-            }
-        }
-        val top = pos.above()
-        if (level.getBlockState(top).isAir) {
-            return top
-        }
-        return pos
-    }
-
     private fun getStandableTargetPos(level: Level, targetPos: BlockPos, floorY: Int): BlockPos {
         val exactFloorPos = BlockPos(targetPos.x, floorY, targetPos.z)
         if (level.getBlockState(exactFloorPos).isAir) return exactFloorPos
@@ -828,7 +794,7 @@ object GatheringActions {
         session.targetBlocks.clear()
         session.layers.clear()
         when (session.type) {
-            GatheringType.EXCAVATE -> calculateExcavateLayers(session, pokemon, level, ping)
+            GatheringType.EXCAVATE -> calculateExcavateLayers(session, pokemon, ping)
             GatheringType.BUILD -> calculateBuildGeometry(session, level)
         }
 
@@ -913,7 +879,7 @@ object GatheringActions {
         return true
     }
 
-    private fun calculateExcavateLayers(session: GatheringSession, pokemon: Mob, level: Level, ping: PlayerPing) {
+    private fun calculateExcavateLayers(session: GatheringSession, pokemon: Mob, ping: PlayerPing) {
         val pingA = session.pingA ?: ping
         val pingB = session.pingB
         val startPos = pingA.pos
@@ -978,7 +944,7 @@ object GatheringActions {
         }
     }
 
-    private fun generateNextExcavateLayer(session: GatheringSession, pokemon: Mob, level: Level, forwardDir: Direction): Boolean {
+    private fun generateNextExcavateLayer(session: GatheringSession, level: Level, forwardDir: Direction): Boolean {
         val pingA = session.pingA ?: session.ping ?: return false
         val startPos = pingA.pos
         val rightDir = forwardDir.clockWise
@@ -1064,48 +1030,6 @@ object GatheringActions {
                 }
             }
         }
-    }
-
-    private fun executeBlockBreak(pokemon: Mob, session: GatheringSession, level: ServerLevel, pos: BlockPos, owner: ServerPlayer) {
-        val state = level.getBlockState(pos)
-        if (state.isAir) return
-
-        pokemon.swing(InteractionHand.MAIN_HAND)
-
-        when (session.type) {
-            GatheringType.EXCAVATE -> {
-                val dropChance = ConfigHandler.config.actionSettings.excavate.dropChancePercent / 100.0f
-                val produceDrops = level.random.nextFloat() < dropChance
-                level.destroyBlock(pos, produceDrops)
-
-                level.playSound(
-                    null,
-                    pos,
-                    SoundEvents.WITHER_BREAK_BLOCK,
-                    SoundSource.BLOCKS,
-                    1.0f,
-                    0.9f + level.random.nextFloat() * 0.2f
-                )
-            }
-
-            GatheringType.BUILD -> {}
-        }
-
-        level.sendParticles(
-            BlockParticleOption(ParticleTypes.BLOCK, state),
-            pos.x + 0.5,
-            pos.y + 0.5,
-            pos.z + 0.5,
-            15,
-            0.2, 0.2, 0.2,
-            0.05
-        )
-    }
-
-    private fun isValidBlockForExcavation(targetBlock: Block, state: BlockState): Boolean {
-        if (state.isAir) return false
-        if (state.getDestroySpeed(null, null) < 0f) return false
-        return true
     }
 
     private fun isOreBlock(state: BlockState): Boolean {
