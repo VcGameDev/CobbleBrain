@@ -37,7 +37,7 @@ object PingManager {
         activePingTargets.remove(pokemonUuid)
     }
 
-    // Máximo de distância permitida para o ping (servidor e cliente usam o mesmo limite)
+    // Maximum allowed ping distance (server and client use the same limit)
     const val MAX_PING_DISTANCE = 64.0
 
     fun init(server: MinecraftServer) {

@@ -8,7 +8,7 @@ object CobblebrainClientCommon {
         openConfigScreen?.invoke()
     }
 
-    // Fabric/NeoForge vão injetar isso
+    // Injected by loader runtime (Fabric / NeoForge)
     var sendToServer: ((String) -> Unit)? = null
     var sendBackgroundToServer: ((String) -> Unit)? = null
     var callTeamAction: ((String) -> Unit)? = null
@@ -24,13 +24,11 @@ object CobblebrainClientCommon {
     var isVoiceRecording: Boolean = false
     var isMcmtiInstalled: (() -> Boolean) = { false }
 
-    // Callback ao receber do servidor
     var onPersonalityListReceived: ((String) -> Unit)? = null
     
     // HUD Quests
     var currentQuestsJson: String = "[]"
     
-    // KeyMappings para a HUD dinâmica
     var keyUp: KeyMapping? = null
     var keyDown: KeyMapping? = null
     var keyExecute: KeyMapping? = null
@@ -82,7 +80,7 @@ object CobblebrainClientCommon {
             return
         }
 
-        // fluxo normal da IA (quando já reconstruído com RELEVANT MEMORIES ou quando AI memory retrieval está desligado)
+        // Standard AI pipeline (when prompt is rebuilt with RELEVANT MEMORIES or retrieval is disabled)
         AIClientHandler.sendPrompt(prompt).thenAccept { response ->
             sendToServer?.invoke(response)
         }.exceptionally { e ->

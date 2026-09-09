@@ -813,7 +813,7 @@ class StoryDocumentationModalWidget(
             curY += 16
         }
 
-        // 3. Purpose / Função
+        // 3. Purpose
         guiGraphics.drawString(font, "🎯 Purpose / Função:", contentX + 4, curY, 0xFFFCD34D.toInt(), true)
         curY += 12
         val purposeLines = font.split(Component.literal(item.purpose), textW)
@@ -823,7 +823,7 @@ class StoryDocumentationModalWidget(
         }
         curY += 6
 
-        // 4. Description / Como Funciona
+        // 4. Description / Details
         guiGraphics.drawString(font, "📖 How it Works / Detalhes:", contentX + 4, curY, 0xFFFCD34D.toInt(), true)
         curY += 12
         val descLines = font.split(Component.literal(item.description), textW)

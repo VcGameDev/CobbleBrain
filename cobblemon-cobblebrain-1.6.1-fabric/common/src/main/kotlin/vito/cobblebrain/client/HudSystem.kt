@@ -15,7 +15,6 @@ import vito.cobblebrain.engine.StoryExecutor
 
 object HudSystem {
 
-    // Lista de comandos disponíveis
     private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "EXCAVATE", "BUILD", "REST")
     private var selectedActionIndex = 0
     private var isVisible = true
@@ -98,19 +97,19 @@ object HudSystem {
     }
 
     /**
-     * Ponto de entrada principal para toda a renderização de HUD do CobbleBrain.
+     * Main entry point for all CobbleBrain HUD rendering.
      */
     fun render(guiGraphics: GuiGraphics, @Suppress("UNUSED_PARAMETER") tickDelta: Float) {
         val client = Minecraft.getInstance()
         if (client.player == null || client.options.hideGui) return
 
-        // 1. HUD de Missões (Já funcional)
+        // 1. Quest HUD
         renderQuestHud(guiGraphics, client)
 
-        // 2. HUD de Comandos do Pokémon (Placeholder)
+        // 2. Pokemon Commands HUD
         renderCommandsHud(guiGraphics, client)
 
-        // 4. Indicador de Ação (Próximo ao ícone do Cobblemon - Placeholder)
+        // 3. Action Indicator (Placeholder)
         renderActionIndicator(guiGraphics, client)
 
         // 5. Checkpoint Loading Transition Overlay
@@ -270,13 +269,13 @@ object HudSystem {
         val screenWidth = client.window.guiScaledWidth
         val screenHeight = client.window.guiScaledHeight
 
-        // Centro-Direito (Compacto: Largura dinâmica, Item 10)
+        // Center-right positioning (compact dynamic width)
         val itemHeight = 10
         val sortedCommands = getSortedCommands()
         val totalCount = sortedCommands.size
         if (totalCount == 0) return
 
-        // Calcula a largura do menu com base no nome mais longo (escala 0.7)
+        // Calculate menu width based on longest label (scale 0.7)
         val textScale = 0.7f
         val minMenuWidth = 42
         val longestNameWidth = sortedCommands.maxOfOrNull { cmd ->
@@ -301,7 +300,7 @@ object HudSystem {
         val x = screenWidth - menuWidth - 8
         val y = (screenHeight - totalHeight) / 2
 
-        // Fundo
+        // Background
         guiGraphics.fill(x - 2, y - 2, x + menuWidth + 2, y + totalHeight + 2, 0x99000000.toInt())
         guiGraphics.fill(x - 2, y - 2, x - 1, y + totalHeight + 2, 0xFF5555FF.toInt())
 
@@ -355,7 +354,7 @@ object HudSystem {
                 val pulse = (sin(time.toDouble() / 4.0) * 20 + 50).toInt()
                 guiGraphics.pose().popPose()
 
-                // Se estiver em cooldown, pulsa em Vermelho, senão em Azul
+                // Pulsing indicator: red on cooldown, blue when ready
                 val pulseColor = if (remaining > 0) 0xFF5555 else 0x5555FF
                 guiGraphics.fill(x, itemY, x + menuWidth, itemY + itemHeight - 1, (pulse shl 24) or pulseColor)
 
@@ -367,7 +366,7 @@ object HudSystem {
                     val timerText = formatTime(remaining)
                     val timerWidth = client.font.width(timerText)
                     guiGraphics.drawString(client.font, timerText, -timerWidth - 4, 0, 0xFFFF5555.toInt())
-                    guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFAAAAAA.toInt()) // Cinza em cooldown
+                    guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFAAAAAA.toInt()) // Gray when on cooldown
                 } else {
                     guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFFFFFFF.toInt())
                 }
@@ -390,7 +389,7 @@ object HudSystem {
             guiGraphics.pose().popPose()
         }
 
-        // Dicas separadas por "parágrafo" (linhas)
+        // Keybind hints
         val upKey = CobblebrainClientCommon.keyUp?.translatedKeyMessage?.string ?: "B"
         val downKey = CobblebrainClientCommon.keyDown?.translatedKeyMessage?.string ?: "V"
         val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
@@ -511,7 +510,7 @@ object HudSystem {
 
     @Suppress("UNUSED_PARAMETER")
     private fun renderActionIndicator(guiGraphics: GuiGraphics, client: Minecraft) {
-        // Reservado para mostrar a ação atual do Pokémon (ex: "Buscando...", "Lutando...") próximo ao ícone do Cobblemon
+        // Reserved to display current Pokémon action (e.g., "Searching...", "Fighting...") near Cobblemon icon
     }
 
     // ===================================================================================
@@ -597,7 +596,6 @@ object HudSystem {
         val safeIndex = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
         val cmd = sortedCommands[safeIndex].uppercase()
 
-        // Bloqueia se estiver em cooldown
         if (getCooldownRemaining(cmd) > 0) {
             return
         }
@@ -615,7 +613,6 @@ object HudSystem {
         }
         playConfirmSound(Minecraft.getInstance())
 
-        // Inicia cooldown
         val duration = when(cmd) {
             "BUFF" -> 150000L // 2:30 (150s)
             "REPAIR" -> 300000L // 5:00 (300s)

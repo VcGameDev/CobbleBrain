@@ -21,7 +21,6 @@ import kotlin.math.sin
 object CobbleBrainModClientNeoForge {
     private var wasVoiceKeyDown = false
 
-    // continua aqui, mas só carrega no CLIENT agora
     private val OPEN_CONFIG = KeyMapping(
         "key.cobblebrain.open_config",
         GLFW.GLFW_KEY_Y,
@@ -99,7 +98,6 @@ object CobbleBrainModClientNeoForge {
         NeoForge.EVENT_BUS.addListener(::onClientTick)
         NeoForge.EVENT_BUS.register(this)
 
-        // Referências para a HUD dinâmica
         CobblebrainClientCommon.keyUp = CMD_UP
         CobblebrainClientCommon.keyDown = CMD_DOWN
         CobblebrainClientCommon.keyExecute = CMD_EXECUTE
@@ -110,7 +108,6 @@ object CobbleBrainModClientNeoForge {
         CobblebrainClientCommon.keyDebug = KEY_DEBUG
     }
 
-    // registra keybind
     fun onRegisterKeybinds(event: RegisterKeyMappingsEvent) {
         event.register(OPEN_CONFIG)
         event.register(CMD_UP)
@@ -123,7 +120,6 @@ object CobbleBrainModClientNeoForge {
         event.register(KEY_DEBUG)
     }
 
-    // tick
     fun onClientTick(event: ClientTickEvent.Post) {
         MigrationNoticeChecker.checkAndShow(Minecraft.getInstance())
         vito.cobblebrain.client.KeyInputClientManager.clientTick()
@@ -201,14 +197,12 @@ object CobbleBrainModClientNeoForge {
         )
     }
 
-    // HUD
     @SubscribeEvent
     fun onHudRender(event: RenderGuiEvent.Post) {
         val guiGraphics = event.guiGraphics
         val client = Minecraft.getInstance()
         val player = client.player ?: return
 
-        // Converte DeltaTracker para Float se necessário
         val delta = event.partialTick.gameTimeDeltaTicks
 
         val invis = player.hasEffect(MobEffects.INVISIBILITY)

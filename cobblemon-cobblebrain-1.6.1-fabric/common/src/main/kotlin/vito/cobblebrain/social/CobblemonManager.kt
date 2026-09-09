@@ -44,7 +44,7 @@ object PokemonQuery {
                 matches(player.shoulderEntityRight)
     }
 
-    // Retorna apenas os Pokémon vivos e invocados no mundo (fora da Pokébola) ou no ombro
+    // Returns only living Pokémon summoned into the world (outside Pokéball) or shoulder-mounted
     fun findActivePokemon(player: ServerPlayer): List<Pokemon> {
         val party: PartyStore = Cobblemon.storage.getParty(player)
 
@@ -106,7 +106,6 @@ object ConfigCommands {
     private val configFile = File("config/cobblebrain.json5")
     private val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
-    // Agora você já tem o objeto carregado
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
             Commands.literal("cobblebrain")
@@ -499,7 +498,7 @@ object ConfigCommands {
                                             "message"
                                         )
 
-                                    // Feedback temporário
+                                    // Temporary feedback
                                     DialogueSystem.addFeedback(
                                         player,
                                         feedback

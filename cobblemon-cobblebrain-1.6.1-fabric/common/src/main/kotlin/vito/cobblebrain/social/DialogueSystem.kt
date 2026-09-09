@@ -74,11 +74,11 @@ object DialogueSystem {
     val justSentMessage: MutableMap<UUID, Boolean> = ConcurrentHashMap()
     val lastPlayerMessage: MutableMap<UUID, String> = ConcurrentHashMap()
     private val lastResponseContent = mutableMapOf<UUID, String>()
-    private val pendingBarrelRemovals = mutableMapOf<net.minecraft.core.GlobalPos, Long>() // Pos -> Tick que foi marcado
+    private val pendingBarrelRemovals = mutableMapOf<net.minecraft.core.GlobalPos, Long>() // Pos -> Tick when marked
     private val pendingQuestNote = mutableMapOf<UUID, String>()
     private val isWaitingForQuestResponse = mutableMapOf<UUID, Boolean>()
     private val pendingInterruption = mutableMapOf<UUID, Boolean>()
-    private val questResponseTimeout = mutableMapOf<UUID, Long>() // Player -> Tick limite
+    private val questResponseTimeout = mutableMapOf<UUID, Long>() // Player -> Timeout tick
     private val serverLastInteractions = ConcurrentHashMap<UUID, MutableList<String>>()
     // Stores (Pokémon, moreText) so we can rebuild a prompt for a player after memory search
     private val lastPromptContext = ConcurrentHashMap<UUID, Pair<List<Pokemon>, String>>()
@@ -120,13 +120,13 @@ object DialogueSystem {
             )
     }
 
-    // Estado social para manter o olhar
+    // Social gaze tracking state
     private var currentSpeaker: Pokemon? = null
     private var speakerUntilTick: Long = 0L
     private val currentViewers = mutableListOf<Pokemon>()
     private val playerSleepingState = mutableMapOf<UUID, Boolean>()
  
-    // guarda o último momento em que cada jogador disparou a lógica
+    // Tracks the last moment each player triggered the logic
     private val lastPrompt: MutableMap<UUID, Long> = ConcurrentHashMap()
 
     private fun giveQuestXp(player: ServerPlayer, quest: JsonObject, battleTargetLevel: Int = 0) {
@@ -155,13 +155,13 @@ object DialogueSystem {
         )
     }
 
-    // guarda o pitch atual de cada Pokémon ativo
+    // Tracks current voice pitch of each active Pokémon
     private val pokemonPitchMap = mutableMapOf<UUID, Float>()
 
-    private val bubbleProgress = mutableMapOf<UUID, Int>()          // standUuid -> chars revelados
-    private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> texto completo
-    private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars por tick
-    private val bubbleLevelMap = mutableMapOf<UUID, ServerLevel>()   // standUuid -> dimensão ServerLevel
+    private val bubbleProgress = mutableMapOf<UUID, Int>()          // standUuid -> revealed chars
+    private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> full text
+    private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars per tick
+    private val bubbleLevelMap = mutableMapOf<UUID, ServerLevel>()   // standUuid -> ServerLevel dimension
 
     fun onPlayerJoin(player: ServerPlayer) {
         isWaitingForQuestResponse[player.uuid] = false
@@ -310,7 +310,7 @@ object DialogueSystem {
                 val now = System.currentTimeMillis()
                 val last = lastPrompt[entity.uuid] ?: 0L
                 if (now - last >= 22000 && config.dialogueOnDamage) {
-                    // limpa apenas a fila desse jogador
+                    // Clears only this player's queue
                     scheduledMessages[entity.uuid]?.clear()
 
                     lastPrompt[entity.uuid] = now
@@ -349,7 +349,7 @@ object DialogueSystem {
                         val now = System.currentTimeMillis()
                         val last = lastPrompt[owner.uuid] ?: 0L
                         if (now - last >= 22000) {
-                            // limpa apenas a fila desse jogador
+                            // Clears only this player's queue
                             scheduledMessages[owner.uuid]?.clear()
 
                             lastPrompt[owner.uuid] = now
@@ -405,7 +405,7 @@ object DialogueSystem {
                 val level = server.getLevel(pos.dimension()) ?: server.overworld()
                 val blockPos = pos.pos()
                 level.setBlock(blockPos, Blocks.AIR.defaultBlockState(), 3)
-                // Partículas de fumaça para o sumiço
+                // Smoke particles on despawn
                 level.sendParticles(
                     ParticleTypes.LARGE_SMOKE,
                     blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5,
@@ -463,7 +463,7 @@ object DialogueSystem {
         }
     }
 
-    // bridge de networking (Fabric / NeoForge vai implementar)
+    // Networking bridge (implemented by Fabric / NeoForge)
     var sendToPlayer: ((ServerPlayer, String) -> Unit)? = null
     var sendToPlayerBackground: ((ServerPlayer, String) -> Unit)? = null
     var sendPersonalityList: ((ServerPlayer, String) -> Unit)? = null
@@ -706,7 +706,7 @@ object DialogueSystem {
                     }
                 }
 
-                // Vitória sem quest
+                // Victory without quest
                 if (!sent) {
                     if (!OfflinePlayers.isOffline(player.uuid)) {
                         val ativos = PokemonQuery.findActivePokemon(player)
@@ -725,7 +725,7 @@ object DialogueSystem {
                 }
 
             } else {
-                // Derrota
+                // Defeat
                 // Sync cooldowns for player
                 vito.cobblebrain.sensors.PokemonCommands.syncCooldowns(player)
                 if (!OfflinePlayers.isOffline(player.uuid)) {
@@ -819,7 +819,7 @@ object DialogueSystem {
         lastPromptContext[player.uuid] = Pair(ativos, "\n\n$formattedText")
         val prompt = buildPrompt(player, ativos, "\n\n$formattedText")
 
-        // envia prompt para o cliente processar
+        // Send prompt to client for processing
         sendToPlayer?.invoke(player, prompt)
         return true
     }
@@ -835,11 +835,11 @@ object DialogueSystem {
     }
 
 
-    // NÃO alterar o comportamento de tick/loop do flush
+    // DO NOT alter tick/loop behavior of flush
     private fun flushScheduledMessages(server: MinecraftServer) {
         val currentTick = server.tickCount.toLong()
 
-        // percorre todos os jogadores online
+        // Iterate through all online players
         for (player in server.playerList.players) {
             val playerMessages = scheduledMessages[player.uuid] ?: continue
             val ready = playerMessages.filter { it.sendAtTick <= currentTick }
@@ -855,7 +855,7 @@ object DialogueSystem {
                     println("msg.text='${msg.text}'")
                     println("msg.speaker='${msg.speaker}'")
 
-                    // Regex de limpeza de tags de ação (#) e score, consumindo espaços em branco antes da tag
+                    // Cleanup regex for action (#) and score tags, consuming leading whitespace
                     val actionTagRegex = Regex("""\s*#([A-Za-z0-9_.'♀♂# -]+?):([A-Za-z0-9+-]+)""")
                     val scoreTagRegex = Regex("""\s*#SCORE:\s*[+-]?\d+""", RegexOption.IGNORE_CASE)
                     val text = msg.text
@@ -867,7 +867,7 @@ object DialogueSystem {
 
                     if (text.isBlank()) return@forEach
 
-                    // tenta resolver o falante pelo apelido OU pela espécie
+                    // Try to resolve speaker by nickname OR species
                     val ativos = PokemonQuery.findActivePokemon(msg.player)
                     val wildEntities = collectWorldContext(msg.player).nearbyPokemonEntities
                     val wilds = wildEntities.map { it.pokemon }
@@ -883,17 +883,17 @@ object DialogueSystem {
                     val speaker = msg.speaker ?: run {
                         val aliases = pokemonAliasMap[msg.player.uuid] ?: emptyMap()
 
-                        // MATCH EXATO
+                        // EXACT MATCH
                         var uuid = aliases[rawName]
 
-                        // MATCH IGNORANDO CASE
+                        // CASE-INSENSITIVE MATCH
                         if (uuid == null) {
                             uuid = aliases.entries.firstOrNull {
                                 it.key.equals(rawName, ignoreCase = true)
                             }?.value
                         }
 
-                        // FALLBACK: tenta remover #1/#2
+                        // FALLBACK: try stripping #1/#2
                         if (uuid == null) {
                             val cleaned = rawName.substringBefore("#").trim()
                             uuid = aliases.entries.firstOrNull {
@@ -917,7 +917,7 @@ object DialogueSystem {
                     println("SPEAKER = ${speaker?.species?.name}")
                     println("speaker resolvido = ${speaker?.nickname ?: speaker?.species?.resourceIdentifier?.path ?: "null"}")
 
-                    // Se não é jogador, não é mensagem de amizade/sistema e nenhum falante válido (ativo ou selvagem próximo) foi encontrado, trata como Pokémon fantasma
+                    // If not player, not friendship/system message, and no valid speaker (active or nearby wild) found, treat as ghost Pokémon
                     val isSystemMsg = text.startsWith("%") || text.startsWith("!") || !text.contains(":")
                     if (speaker == null && !isPlayer && !isSystemMsg) {
                         println("[CobbleBrain] Ignored ghost/unavailable speaker dialogue: '$rawName' (not active or nearby)")
@@ -925,7 +925,7 @@ object DialogueSystem {
                     }
 
                     if (config.dialogueInChat) {
-                        // Regex para detectar "!Error 123!"
+                        // Regex to detect "!Error 123!"
                         val regex = Regex("!Error \\d{3}!")
 
                         val component = if (
@@ -941,7 +941,7 @@ object DialogueSystem {
                                 style.withColor(ChatFormatting.RED)
                             }
                         } else {
-                            // Mensagem normal
+                            // Normal message
                             Component.literal(text)
                         }
 
@@ -959,12 +959,12 @@ object DialogueSystem {
                             spawnSpeechBubble(server, pokemon, bubbleText, 100)
                         }
 
-                        // define foco social e espectadores
+                        // Set social focus and spectators
                         currentSpeaker = pokemon
                         speakerUntilTick = server.tickCount.toLong() + 100 // ~5s
                         currentViewers.clear()
 
-                        // espectadores: pokémon ativos do mesmo player, exceto o falante
+                        // Spectators: active Pokémon of the same player, excluding speaker
                         ativos.filter { other -> other != pokemon }.forEach { other ->
                             currentViewers.add(other)
                             val otherEntity = other.entity
@@ -987,7 +987,7 @@ object DialogueSystem {
     }
 
 
-    // mapa para controlar quando limpar cada bolha
+    // Map to control when to clear each bubble
     private val bubbleUntilTick = mutableMapOf<UUID, Long>()
     private val bubbleStands = mutableMapOf<UUID, UUID>()
 
@@ -1071,7 +1071,7 @@ object DialogueSystem {
             bubbleStands.entries.removeIf { it.value == standUuid }
         }
 
-        // 2. Atualizar posição e typewriter dos stands ativos
+        // 2. Update position and typewriter of active stands
         val toRemove = mutableListOf<UUID>()
         bubbleStands.forEach { (pokemonUuid, standUuid) ->
             val level = bubbleLevelMap[standUuid]
@@ -1091,7 +1091,7 @@ object DialogueSystem {
                     stand.customName = Component.literal(text.take(newProgress))
                 }
             } else {
-                // se o pokémon não existe mais na dimensão, remove o stand
+                // If Pokémon no longer exists in dimension, remove stand
                 if (stand is ArmorStand) {
                     stand.discard()
                 }
@@ -1134,14 +1134,14 @@ object DialogueSystem {
     // ---------------         QUEST SECTION            -----------------------
     fun canBetray(player: ServerPlayer, giver: PokemonEntity): Boolean {
         val playerHealth = player.health
-        val playerArmor = player.armorValue // total de pontos de armadura
+        val playerArmor = player.armorValue // total armor points
 
         val giverHealth = giver.health
         val physicalAttack = giver.pokemon.attack
         val specialAttack = giver.pokemon.specialAttack
         val giverDamage = maxOf(physicalAttack, specialAttack) / 10
 
-        // compara vida+armadura do player com vida+dano do Pokémon
+        // Compare player health+armor with Pokémon health+damage
         return (playerHealth + playerArmor) <= (giverHealth + giverDamage * 1.2)
     }
 
@@ -1188,7 +1188,7 @@ object DialogueSystem {
         val rewardItem = when (selectedTier) {
             3 -> { // EPIC
                 val subRoll = random.nextFloat() * 100f
-                if (subRoll < 30) { // 30% de 5% = 1.5% de chance total
+                if (subRoll < 30) { // 30% of 5% = 1.5% total chance
                     ItemStack(CobblemonItems.MASTER_BALL, 1)
                 } else {
                     listOf(
@@ -1222,7 +1222,7 @@ object DialogueSystem {
         val itemNameComponent = rewardItem.hoverName.copy()
         val isMasterBall = rewardItem.item == CobblemonItems.MASTER_BALL
 
-        // Som épico se for Master Ball
+        // Epic sound for Master Ball
         if (isMasterBall) {
             player.playNotifySound(
                 SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,
@@ -1315,7 +1315,7 @@ object DialogueSystem {
         val storyObj = questsObj.getAsJsonObject("active_story") ?: JsonObject()
         val secondaryArray = questsObj.getAsJsonArray("active_secondary") ?: JsonArray()
 
-        // Coleta quests de ambos os slots
+        // Collect quests from both slots
         val allActive = mutableListOf<JsonObject>()
         if (storyObj.has("type") && storyObj.get("type").asString == "ITEM") allActive.add(storyObj)
         secondaryArray.map { it.asJsonObject }.filterTo(allActive) { it.get("type").asString == "ITEM" }
@@ -1366,7 +1366,7 @@ object DialogueSystem {
 
                 println("[DEBUG] Removed $amount $target from ground")
 
-                // Sons de armazenamento
+                // Storage sounds
                 player.level().playSound(
                     null,
                     giverEntity.blockPosition(),
@@ -1433,7 +1433,7 @@ object DialogueSystem {
         val spawned = quest.get("spawned")?.asBoolean ?: true
         val level = player.serverLevel()
 
-        // Lazy Spawning: quando o jogador chega a menos de 60 blocos, calcula o Y seguro no chão e gera o barril
+        // Lazy Spawning: when player is within 60 blocks, calculate safe ground Y and spawn barrel
         if (!spawned) {
             val approxDistance = kotlin.math.abs(player.blockX - tx) + kotlin.math.abs(player.blockZ - tz)
             if (approxDistance <= 60) {
@@ -1461,23 +1461,23 @@ object DialogueSystem {
                 quest.addProperty("spawned", true)
                 CobblebrainWorldSave.save()
             } else {
-                return // ainda está muito longe e não gerou o barril
+                return // Still too far, barrel not spawned yet
             }
         }
 
         val pos = BlockPos(tx, ty, tz)
         val distance = player.blockPosition().distManhattan(pos)
 
-        // 1. Efeito visual: Círculo de partículas na superfície quando perto
+        // 1. Visual effect: Particle circle on surface when nearby
         if (distance < 30) {
-            // Desenha um círculo de partículas a cada 2 ticks para poupar performance
+            // Draw particle circle every 2 ticks to save performance
             if (player.tickCount % 2 == 0) {
                 val radius = 4.0
                 for (i in 0 until 8) {
                     val angle = i * Math.PI * 2 / 8
                     val px = tx + 0.5 + kotlin.math.cos(angle) * radius
                     val pz = tz + 0.5 + kotlin.math.sin(angle) * radius
-                    // Pega a altura do chão naquele ponto das partículas
+                    // Get ground height at particle position
                     val py = level.getHeight(Heightmap.Types.WORLD_SURFACE, px.toInt(), pz.toInt()).toDouble()
                     
                     level.sendParticles(
@@ -1496,12 +1496,12 @@ object DialogueSystem {
             }
         }
 
-        // 2. Verifica conclusão (se o jogador ABRIR o barril)
+        // 2. Check completion (if player OPENS barrel)
         if (distance <= 4.5) {
             val level = player.serverLevel()
             val state = level.getBlockState(pos)
             
-            // Verifica se o bloco é um barril e se está no estado OPEN
+            // Check if block is a barrel and in OPEN state
             val isOpen = state.block == Blocks.BARREL && state.getValue(net.minecraft.world.level.block.BarrelBlock.OPEN)
 
             if (isOpen) {
@@ -1536,21 +1536,21 @@ object DialogueSystem {
                 )
 
                 CobblebrainWorldSave.moveQuest(player.uuid.toString(), giverUuid, "TREASURE", "COMPLETED")
-                adjustKarma(player, giverName, 3) // Ganha 3 de karma por achar tesouro
+                adjustKarma(player, giverName, 3) // Gain 3 karma for finding treasure
                 giveQuestXp(player, quest)
                 
-                // Marca para sumir daqui a 1 tick (praticamente instantâneo)
+                // Mark to despawn after 1 tick
                 pendingBarrelRemovals[net.minecraft.core.GlobalPos.of(level.dimension(), pos)] = level.server.tickCount.toLong() + 1
             }
         }
     }
 
     fun onBlockBreak(player: ServerPlayer, pos: BlockPos, state: net.minecraft.world.level.block.state.BlockState) {
-        // Se for um barril sendo destruído
+        // If barrel is being broken
         if (state.block == Blocks.BARREL) {
             val allSecondary = CobblebrainWorldSave.getSecondaryQuestsForAll()
 
-            // Filtra as missões que estavam naquele bloco
+            // Filter quests at this block
             val affectedQuests = mutableListOf<JsonObject>()
             for (i in 0 until allSecondary.size()) {
                 val q = allSecondary.get(i).asJsonObject
@@ -1570,7 +1570,7 @@ object DialogueSystem {
                 val giverName = CobblebrainWorldSave.getGiverNameFromQuest(q)
 
                 if (player.uuid.toString() == ownerUuid) {
-                    // O dono quebrou o próprio tesouro!
+                    // Owner broke their own treasure!
                     adjustKarma(player, giverName, -3)
                     
                     if (!OfflinePlayers.isOffline(player.uuid)) {
@@ -1588,7 +1588,7 @@ object DialogueSystem {
                             .withStyle(ChatFormatting.RED)
                     )
                 } else {
-                    // Outro player quebrou
+                    // Another player broke it
                     val owner = player.server.playerList.getPlayer(UUID.fromString(ownerUuid))
                     if (owner != null) {
                         if (!OfflinePlayers.isOffline(owner.uuid)) {
@@ -1606,7 +1606,7 @@ object DialogueSystem {
                                 .withStyle(ChatFormatting.RED)
                         )
                     } else {
-                        // Se o dono estiver offline, apenas falha a missão no arquivo
+                        // If owner is offline, fail quest in save data
                         CobblebrainWorldSave.failQuest(ownerUuid, giverUuid, "TREASURE")
                     }
                 }
@@ -1758,12 +1758,12 @@ object DialogueSystem {
         syncQuests?.invoke(player)
     }
 
-    // reaplica o olhar todos os ticks enquanto durar o foco
+    // Reapplies gaze every tick while focus lasts
     private fun maintainLookAt(server: MinecraftServer) {
         val now = server.tickCount.toLong()
         val speakerEntity = currentSpeaker?.entity
         if (speakerEntity == null || now > speakerUntilTick) {
-            // encerra foco
+            // End focus
             currentSpeaker = null
             currentViewers.clear()
             return
@@ -1772,12 +1772,12 @@ object DialogueSystem {
         currentViewers.forEach { viewer ->
             val viewerEntity = viewer.entity ?: return@forEach
 
-            // calcula ângulo entre viewer e speaker
+            // Calculate angle between viewer and speaker
             val dx = speakerEntity.x - viewerEntity.x
             val dz = speakerEntity.z - viewerEntity.z
             val angle = (toDegrees(atan2(dz, dx)) - 90).toFloat()
 
-            // só gira a cabeça, corpo continua livre
+            // Rotate head only, body remains free
             viewerEntity.yHeadRot = angle
             viewerEntity.yHeadRotO = angle
         }
@@ -1834,62 +1834,56 @@ object DialogueSystem {
         // 3. Environment & Physical Needs (Grouped)
         val envItems = mutableListOf<String>()
         when (context.weather) {
-            "rain" -> envItems += "heavy rain soaking their fur or wings"
-            "thunderstorm" -> envItems += "crashing thunder and bright lightning strikes"
+            "rain" -> envItems += "the heavy rain falling and wet atmosphere"
+            "thunderstorm" -> envItems += "the intense thunderstorm, loud thunder, and lightning flashes"
         }
         when (context.timeLabel) {
-            "night", "before dawn" -> envItems += "late hour, feeling sleepy and wanting to camp or sleep"
-            "sunrise", "morning" -> envItems += "fresh morning breeze, stretching and feeling energized"
-            "near noon", "afternoon" -> envItems += "midday heat, pausing to catch their breath"
-            "sunset" -> envItems += "the sun setting and darkness approaching"
+            "night", "before dawn" -> envItems += "the late night hours and darkness settling in"
+            "sunrise", "morning" -> envItems += "the morning sunrise and the start of a new day"
+            "near noon", "afternoon" -> envItems += "the bright midday sun and daytime atmosphere"
+            "sunset" -> envItems += "the sun setting and twilight approaching"
         }
         when (context.dimension) {
-            "Nether" -> envItems += "oppressive heat, lava oceans, and Nether gloom"
-            "The End" -> envItems += "floating islands and eerie void of The End"
+            "Nether" -> envItems += "the intense heat, vast lava oceans, and Nether atmosphere"
+            "The End" -> envItems += "the floating endstone islands, the void, and strange atmosphere of The End"
             else -> {
                 when (context.terrainHint) {
-                    "inside a cave" -> envItems += "dark cave echoes, damp stones, and mining around"
-                    "on a mountain" -> envItems += "high mountain winds and panoramic views"
+                    "inside a cave" -> envItems += "the dark cavern, damp stone echoes, and underground surroundings"
+                    "on a mountain" -> envItems += "the high mountain altitude, winds, and panoramic views"
                 }
                 val b = context.biome.lowercase()
                 when {
-                    b.contains("desert") -> envItems += "dry heat, blowing sand, and thirst"
-                    b.contains("snow") || b.contains("ice") || b.contains("frozen") -> envItems += "freezing snow, icy ground, and shivering"
-                    b.contains("swamp") -> envItems += "murky swamp water and thick mud"
-                    b.contains("jungle") -> envItems += "dense jungle foliage, humidity, and strange animal calls"
-                    b.contains("ocean") || b.contains("beach") -> envItems += "ocean breeze, salty air, and splashing near water"
+                    b.contains("desert") -> envItems += "the vast desert dunes, intense heat, and dry blowing sand"
+                    b.contains("snow") || b.contains("ice") || b.contains("frozen") -> envItems += "the freezing cold temperatures, snowfall, and icy ground"
+                    b.contains("swamp") -> envItems += "the murky swamp waters, humid air, and thick mud"
+                    b.contains("jungle") -> envItems += "the dense jungle canopy, high humidity, and exotic surroundings"
+                    b.contains("ocean") || b.contains("beach") -> envItems += "the open ocean waters, coastal shoreline, and salty sea breeze"
                 }
             }
         }
         if (context.hostileMobs || context.nearbyMobs.isNotBlank()) {
-            envItems += "nearby hostile monsters roaming around and being on guard"
+            envItems += "noticing wild hostile monsters and danger lurking nearby"
         }
         val anyLowHealth = activePokemon.any { it.currentHealth.toFloat() / it.maxHealth.toFloat() < 0.5f }
         if (anyLowHealth) {
-            envItems += "bruises and fatigue from recent combat"
+            envItems += "feeling physical fatigue and weariness"
         }
-        val anyHungry = activePokemon.any {
-            val maxF = it.getMaxFullness().toFloat()
-            if (maxF > 0f) (it.currentFullness.toFloat() / maxF) < 0.35f else false
-        }
-        if (anyHungry) {
-            envItems += "rumbling stomach, asking the trainer for food, berries, or treats"
-        }
+
         val activeStatuses = activePokemon.mapNotNull { it.status?.status?.name?.path?.lowercase() }.toSet()
         if (activeStatuses.any { it in listOf("poison", "badly_poison", "badly_poisoned", "toxic") }) {
-            envItems += "feeling sick, feverish, and coughing from poison"
+            envItems += "noticing the lingering sickness and discomfort of poison"
         }
         if ("burn" in activeStatuses) {
-            envItems += "wincing from painful burn singes and heat stinging their skin"
+            envItems += "noticing the heat and stinging pain from a burn"
         }
         if ("paralysis" in activeStatuses) {
-            envItems += "sparks and muscle numbness from paralysis, struggling to move comfortably"
+            envItems += "noticing the crackling sparks and stiff movement from paralysis"
         }
         if (activeStatuses.any { it in listOf("freeze", "frozen") }) {
-            envItems += "shivering uncontrollably and frosted over with ice"
+            envItems += "noticing the thick frost and frozen ice on their body"
         }
         if ("sleep" in activeStatuses && !activePokemon.all { CommandState.activeCommands[it.uuid] in listOf("rest", "sit") }) {
-            envItems += "drowsiness and grogginess trying to shake off deep sleep"
+            envItems += "noticing drowsiness or groggily waking up from sleep"
         }
 
         if (envItems.isNotEmpty()) {
@@ -1903,8 +1897,8 @@ object DialogueSystem {
             "wanting to stretch their legs and run around to burn off energy",
             "playful teasing, joking, or nudging a teammate",
             "boasting playfully about their battle strength or a favorite move",
-            "curiously watching whatever the trainer is holding or building right now",
-            "expressing affectionate loyalty and companionship toward their trainer"
+            "wondering what the trainer is doing",
+            "showing loyalty and companionship, or a lack of it, towards the trainer"
         )
         val pickedTeam = teamBanterPool.shuffled().take(2)
         categoryLines += "Team Dynamics: ${pickedTeam.joinToString("; ")}"
@@ -1917,28 +1911,30 @@ object DialogueSystem {
         val philosophicalChance = if (isFavorableCondition) 0.10 else 0.05
         if (Random.nextDouble() <= philosophicalChance) {
             val philosophicalTopics = listOf(
-                "a quiet reflection about the stars and their shared journey together",
-                "an innocent, creature-like question about why humans and Pokémon form deep bonds",
-                "a fleeting, nostalgic thought about wild freedom before meeting their trainer",
-                "wondering quietly what mysterious places exist beyond the horizon"
+                "a quiet reflection about the environment/ambience",
+                "an innocent, creature-like question about humans",
+                "an innocent, creature-like question about other pokémon or mobs",
+                "a fleeting, nostalgic thought about freedom",
+                "wondering quietly what mysterious places exist",
+                "expressing a deep fear/motivation"
             )
             categoryLines += "Quiet Thoughts: ${philosophicalTopics.random()}"
         }
 
-        // Embaralha a ordem de todas as categorias para ser sempre imprevisível!
+        // Shuffle categories order to remain unpredictable
         return categoryLines.shuffled()
     }
 
     private fun runSocialTick(player: ServerPlayer) {
         if (OfflinePlayers.isOffline(player.uuid)) return
-        // Se esse jogador acabou de mandar mensagem, não dispara espontâneo neste tick
+        // If player just sent a message, don't trigger spontaneous dialogue this tick
         if (justSentMessage[player.uuid] == true) {
             justSentMessage[player.uuid] = false
             println("[DEBUG] Bloqueando diálogo espontâneo para ${player.name.string} porque ele acabou de falar")
             return
         }
 
-        // Se esse jogador tem mensagens pendentes, não dispara espontâneo para ele
+        // If player has pending messages, don't trigger spontaneous dialogue
         val playerMessages = scheduledMessages[player.uuid] ?: emptyList()
         if (playerMessages.isNotEmpty()) {
             println("[DEBUG] Jogador ${player.name.string} tem mensagens pendentes, não disparar espontâneo")
@@ -1952,7 +1948,6 @@ object DialogueSystem {
 
         val chance = config.spontaneousDialogueChance
 
-        // DELETAR DPS DE TESTE
         println("Chance: $chance | Roll: ${Random.nextDouble()}")
 
         if (Random.nextDouble() <= chance) {
@@ -1962,12 +1957,12 @@ object DialogueSystem {
                     .withStyle(ChatFormatting.YELLOW)
             )
 
-            // Atualiza tempo da última conversa
+            // Update last conversation timestamp
             PlayerConversationState.update(player.uuid, now)
 
             val context = collectWorldContext(player)
 
-            // Carrega eventos recentes e memórias reais dos Pokémon participantes
+            // Load recent events and real memories for participating Pokémon
             val activeUuids = ativos.map { it.uuid }.toSet()
             val recentEvents = RecentEventsSystem.getAndClearEvents(activeUuids.toList())
 
@@ -2022,24 +2017,24 @@ object DialogueSystem {
 
         println(pokemon)
 
-        // a variação aleatória agora segue a direção do sentimento
+        // Random variation follows sentiment direction
         val randomOffset = when {
-            basePitch > 1.0f -> Random.nextFloat() * 0.15f        // sempre mais agudo se feliz
-            basePitch < 1.0f -> -(Random.nextFloat() * 0.15f)     // sempre mais grave se triste
-            else -> Random.nextFloat() * 0.10f - 0.05f            // centralizado se neutro
+            basePitch > 1.0f -> Random.nextFloat() * 0.15f        // Always higher pitch if happy
+            basePitch < 1.0f -> -(Random.nextFloat() * 0.15f)     // Always lower pitch if sad
+            else -> Random.nextFloat() * 0.10f - 0.05f            // Centered if neutral
         }
 
         val variedPitch = (basePitch + randomOffset).coerceIn(0.6f, 1.4f)
 
-        // toca o cry com pitch variado
+        // Play cry with varied pitch
         playPokemonCry(pokemon, variedPitch)
 
-        // Suporta pulo tanto para entidades com IA quanto NoAI
+        // Supports jumping for both AI and NoAI entities
         if (shouldJump) {
             vito.cobblebrain.engine.StoryJumpManager.applyJump(entity)
         }
 
-        // partículas apenas se houver mudança emocional (pitch != 1.0)
+        // Particles only on emotional change (pitch != 1.0)
         val particleType = when {
             basePitch > 1.0f -> ParticleTypes.HEART
             basePitch < 1.0f -> ParticleTypes.ANGRY_VILLAGER
@@ -2542,10 +2537,10 @@ object DialogueSystem {
         pokemonAliasMap[player.uuid] = mutableMapOf()
         reversePokemonAliasMap[player.uuid] = mutableMapOf()
 
-        // TODOS OS POKÉMONS PARTICIPANTES
+        // ALL PARTICIPATING POKÉMON
         val allPokemon = activePokemon + context.nearbyPokemonEntities.map { it.pokemon }
 
-        // CONTADORES GLOBAIS
+        // GLOBAL COUNTERS
         val nameCounters = mutableMapOf<String, Int>()
 
         allPokemon.forEach { pokemon ->
@@ -2676,7 +2671,7 @@ object DialogueSystem {
             entry.value.filter { !it.isFavorite }.toMutableList()
         }
 
-        // Ranqueia memórias individualmente por Pokémon e aplica a cota igualitária
+        // Rank memories individually per Pokémon and apply equal quota
         val equalizedCandidates = mutableListOf<Pair<Memory, Int>>()
         val leftoverMemories = mutableListOf<Pair<Memory, Int>>()
 
@@ -2691,7 +2686,7 @@ object DialogueSystem {
             leftoverMemories.addAll(left)
         }
 
-        // Se sobrou espaço no total (ex: algum Pokémon tinha menos memórias que sua cota), preenche com as melhores sobras
+        // If total space remains (e.g. a Pokémon had fewer memories than its quota), fill with top leftovers
         if (equalizedCandidates.size < maxTotalCandidates && leftoverMemories.isNotEmpty()) {
             val remainingSlots = maxTotalCandidates - equalizedCandidates.size
             val sortedLeftovers = leftoverMemories.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
@@ -2700,14 +2695,14 @@ object DialogueSystem {
 
         val scoredMemories = equalizedCandidates.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
 
-        // Stopwords comuns em PT/EN para evitar falsa similaridade
+        // Common stopwords in PT/EN to prevent false similarity
         val stopWords = setOf(
             "para", "com", "que", "como", "mais", "sobre", "quando", "depois", "eles", "elas", "essa", "esse",
             "esta", "este", "muito", "mesmo", "ainda", "assim", "agora", "aqui", "onde", "quem", "qual",
             "with", "from", "that", "this", "they", "them", "then", "there", "where", "when", "about", "more"
         )
 
-        // Nomes de participantes ativos a serem filtrados das comparações de texto
+        // Active participant names to filter from text comparisons
         val participantNames = participatingPokemon.map { (it.nickname?.string?.takeIf { s -> s.isNotBlank() } ?: it.species.name).lowercase() }.toSet() +
                 setOf(player.name.string.lowercase())
 
@@ -2854,7 +2849,7 @@ object DialogueSystem {
             }
             appendLine()
 
-            // Injeta resumo da última sessão se existir
+            // Inject last session summary if present
             val sessionSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
             if (sessionSummary != null) {
                 appendLine("[LAST SESSION RECAP]")
@@ -3250,7 +3245,7 @@ object DialogueSystem {
 
         val normalized = line.trim().lowercase()
 
-        // Se parece um diálogo ("Nome: fala"), nunca filtra.
+        // If it looks like dialogue ("Name: speech"), never filter.
         if (":" in normalized && !normalized.startsWith("flag:") && !normalized.startsWith("[flag:"))
             return false
 
@@ -3282,11 +3277,11 @@ object DialogueSystem {
         isWaitingForQuestResponse[player.uuid] = false
         pendingInterruption[player.uuid] = false
 
-        // Intercepta se for a resposta do resumo
+        // Intercept if response is session summary
         if (content.startsWith("[SUMMARY_RESPONSE]")) {
             val summary = content.replace("[SUMMARY_RESPONSE]", "").trim()
             
-            // Se houver erro na geração, apenas avisa o jogador e não salva
+            // If generation error occurs, notify player and do not save
             if (summary.startsWith("Failed", ignoreCase = true) || summary.startsWith("Error", ignoreCase = true)) {
                 player.sendSystemMessage(Component.translatable("cobblebrain.summary.error").withStyle(ChatFormatting.RED)
                     .append(Component.literal(summary).withStyle(ChatFormatting.GRAY)))
@@ -3298,8 +3293,8 @@ object DialogueSystem {
             return
         }
 
-        // Se chegamos aqui, é uma resposta normal (diálogo).
-        // Se houver um resumo, mostramos o aviso antes de apagar
+        // Standard dialogue response reached
+        // If summary exists, show notice before clearing
         val currentSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
         if (currentSummary != null) {
             player.sendSystemMessage(Component.literal("\n"))
@@ -3310,7 +3305,7 @@ object DialogueSystem {
             )
             player.sendSystemMessage(Component.literal("\n"))
             
-            // Apagamos o resumo da última sessão pois a IA já o "consumiu" no prompt.
+            // Clear last session summary as AI already consumed it in prompt
             CobblebrainWorldSave.clearSessionSummary(player.uuid.toString())
         }
 
@@ -3347,11 +3342,11 @@ object DialogueSystem {
             .map { line -> line.replace(headerCleanupRegex, "").trim() }
             .filter { it.isNotEmpty() }
 
-        // Action and score tag regexes (consome espaços em branco antes da tag)
+        // Action and score tag regexes (consumes leading whitespace)
         val actionTagRegex = Regex("""\s*#([A-Za-z0-9_.'♀♂# -]+?):([A-Za-z0-9+-]+)""")
         val scoreTagRegex = Regex("""\s*#SCORE:\s*[+-]?\d+""", RegexOption.IGNORE_CASE)
 
-        // Extrai comandos embutidos (# dentro de falas) para execução caso a IA tenha gerado sem pipe '|'
+        // Extract embedded commands (# within speech) if generated without pipe '|'
         val embeddedCommands = mutableListOf<String>()
         allLines.forEach { line ->
             actionTagRegex.findAll(line).forEach { match ->
@@ -3363,7 +3358,7 @@ object DialogueSystem {
             }
         }
 
-        // Limpa as falas de tags de ação e score, removendo espaços em branco anteriores e normalizando pontuação
+        // Clean speech of action and score tags, removing leading whitespace and normalizing punctuation
         val falas = allLines.map { line ->
             line.replace(actionTagRegex, "")
                 .replace(scoreTagRegex, "")
@@ -3407,7 +3402,7 @@ object DialogueSystem {
             }
         }
 
-        // Consome feedback temporario apos resposta valida
+        // Consume temporary feedback after valid response
         temporaryFeedback[player.uuid]?.let { feedbacks ->
             feedbacks.forEach { it.remainingUses-- }
             feedbacks.removeIf { it.remainingUses <= 0 }
@@ -3459,7 +3454,7 @@ object DialogueSystem {
             ))
         }
 
-        // Substitui qualquer diálogo anterior por este novo conjunto
+        // Replace any previous dialogue with this new set
         scheduledMessages[player.uuid] = novasMensagens.toMutableList()
 
         // 3. Pipeline Branching: Optimized Mode vs Legacy Flow

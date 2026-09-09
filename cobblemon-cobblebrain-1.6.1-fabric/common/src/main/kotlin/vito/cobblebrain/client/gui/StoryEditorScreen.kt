@@ -386,7 +386,7 @@ class StoryEditorScreen(
             )
         }
 
-        // Botão [▶ Test ▾] e Controles de Teste (Canto Inferior Direito - Sempre Visíveis)
+        // [▶ Test ▾] Button and Test Controls (Bottom Right Corner - Always Visible)
         val session = vito.cobblebrain.engine.StoryDebugger.activeSessionState
         val isStoryActive = session.isActive || StoryExecutor.activeStories.containsKey(project.id)
         val isStoryPaused = session.isPaused
@@ -412,7 +412,7 @@ class StoryEditorScreen(
             }.bounds(testX, testY, testW, testH).build()
         )
 
-        // 2. [⏸ Pause / ▶ Resume] Button (Sempre adicionado)
+        // 2. [⏸ Pause / ▶ Resume] Button (Always added)
         val pauseLabel = if (isStoryPaused) "▶ Resume" else "⏸ Pause"
         val pauseW = getBtnWidth(pauseLabel).coerceAtLeast(54)
         val pauseX = testX - pauseW - 4
@@ -434,7 +434,7 @@ class StoryEditorScreen(
             }.bounds(pauseX, testY, pauseW, testH).build()
         )
 
-        // 3. [⏹ Stop] Button (Sempre adicionado)
+        // 3. [⏹ Stop] Button (Always added)
         val stopLabel = "⏹ Stop"
         val stopW = getBtnWidth(stopLabel).coerceAtLeast(46)
         val stopX = pauseX - stopW - 4
@@ -450,7 +450,7 @@ class StoryEditorScreen(
             }.bounds(stopX, testY, stopW, testH).build()
         )
 
-        // 4. [🎯 Focus #] Button (quando houver bloco ativo)
+        // 4. [🎯 Focus #] Button (when an active block exists)
         if (session.activeNodeId.isNotBlank()) {
             val focusLabel = "🎯 Focus #"
             val focusW = getBtnWidth(focusLabel).coerceAtLeast(56)

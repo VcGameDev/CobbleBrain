@@ -28,7 +28,6 @@ object CobbleBrainModClient : ClientModInitializer {
         registerReceivers()
         println("Cobblebrain loaded on the client (Fabric)")
 
-        // conecta com o common
         CobblebrainClientCommon.openConfigScreen = {
             Minecraft.getInstance().setScreen(
                 CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
@@ -116,7 +115,6 @@ object CobbleBrainModClient : ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(keyVoice)
         KeyBindingHelper.registerKeyBinding(keyDebug)
 
-        // Passa as referências para a HUD dinâmica
         CobblebrainClientCommon.keyUp = commandKeyQ
         CobblebrainClientCommon.keyDown = commandKeyE
         CobblebrainClientCommon.keyExecute = commandKeyR
@@ -195,7 +193,6 @@ object CobbleBrainModClient : ClientModInitializer {
             val client = Minecraft.getInstance()
             val player = client.player ?: return@register
 
-            // Converte DeltaTracker para Float se necessário
             val delta = tickDelta.gameTimeDeltaTicks
 
             val invis = player.hasEffect(MobEffects.INVISIBILITY)
@@ -211,9 +208,9 @@ object CobbleBrainModClient : ClientModInitializer {
                 val minAlpha = 50
                 val maxAlpha = 180
 
-                // pulsar mais lento (20.0 em vez de 10.0)
+                // Slower pulsing rate
                 val pulse = ((sin(time / 20.0) + 1) / 2.0 * (maxAlpha - minAlpha) + minAlpha).toInt()
-                // roxo escuro discreto
+                // Subtle dark purple overlay
                 val color = (pulse shl 24) or 0x3A0066
                 guiGraphics.fill(0, 0, width, height, color)
             }

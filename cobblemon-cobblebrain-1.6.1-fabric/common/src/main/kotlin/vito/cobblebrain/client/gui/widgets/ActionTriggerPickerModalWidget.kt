@@ -391,7 +391,7 @@ class ActionTriggerPickerModalWidget(
             }
         }
 
-        // Rolagem no Painel de Cards de Ações/Gatilhos
+        // Scroll within Action/Trigger cards panel
         if (mouseX >= gridX && mouseX <= gridX + gridW && mouseY >= contentY && mouseY <= contentY + gridH) {
             val items = getFilteredItems()
             val cardH = 40

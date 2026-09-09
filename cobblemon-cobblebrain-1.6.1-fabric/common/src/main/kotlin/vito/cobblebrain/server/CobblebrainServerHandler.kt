@@ -16,7 +16,6 @@ import vito.cobblebrain.social.PokemonQuery
 import vito.cobblebrain.social.RecentEventsSystem
 
 object CobblebrainServerHandler {
-    // Função que processa o comando recebido de um player
     fun processAction(player: ServerPlayer, action: String) {
         val command: PokemonCommand? = parseCommand(action)
         if (command != null) {
@@ -31,7 +30,6 @@ object CobblebrainServerHandler {
             val ativos: List<Pokemon> = PokemonQuery.findActivePokemon(player)
             
             if (command.pokemonName.equals("ALL", ignoreCase = true)) {
-                // Aplica para TODOS os pokémons ativos
                 ativos.forEach { poke ->
                     poke.entity?.let { entity ->
                         RecentEventsSystem.commandSources[entity.uuid] = RecentEventsSystem.CommandSource.HUD
@@ -98,12 +96,12 @@ object CobblebrainServerHandler {
         }
     }
 
-    // Função que processa a resposta da IA (Stage 1 Foreground)
+    // Stage 1: Process foreground AI response
     fun processIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
         checkIaResponse(server, player, content)
     }
 
-    // Função que processa a resposta de background (Stage 2 Background State Resolution)
+    // Stage 2: Background State Resolution
     fun processBackgroundResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
         DialogueSystem.checkBackgroundResponse(server, player, content)
     }

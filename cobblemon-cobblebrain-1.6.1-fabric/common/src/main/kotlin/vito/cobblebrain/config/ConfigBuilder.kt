@@ -26,7 +26,6 @@ class ConfigBuilder<T> private constructor(
         val configFile = File("config/$path.json5")
         configFile.parentFile.mkdirs()
 
-        // objeto default
         val defaultConfig = clazz.getDeclaredConstructor().newInstance()
         val defaultJson = JsonParser.parseString(gson.toJson(defaultConfig)).asJsonObject
 
@@ -35,7 +34,7 @@ class ConfigBuilder<T> private constructor(
         if (configFile.exists()) {
             try {
                 val text = configFile.readText()
-                // cuidado: regex simples pode apagar valores dentro de strings
+                // Caution: simple regex may remove values inside strings
                 val cleanText = text.replace(Regex("""^\s*//.*$""", RegexOption.MULTILINE), "")
                 userJson = JsonParser.parseString(cleanText).asJsonObject
             } catch (e: Exception) {
@@ -44,16 +43,14 @@ class ConfigBuilder<T> private constructor(
         }
 
         if (userJson == null) {
-            // não existe → cria com defaults
             userJson = defaultJson.deepCopy()
             writeFile(configFile, gson, userJson)
         } else {
-            // Migração de chaves renomeadas (ex: localApiProvider -> customApiProvider)
+            // Migrate renamed keys (e.g. localApiProvider -> customApiProvider)
             if (userJson.has("localApiProvider") && !userJson.has("customApiProvider")) {
                 userJson.add("customApiProvider", userJson.get("localApiProvider"))
             }
 
-            // existe → mantém valores do jogador e adiciona apenas os novos
             var changed = false
             for ((key, value) in defaultJson.entrySet()) {
                 if (!userJson.has(key)) {
@@ -61,7 +58,6 @@ class ConfigBuilder<T> private constructor(
                     changed = true
                 }
             }
-            // só escreve se houve mudança
             if (changed) {
                 writeFile(configFile, gson, userJson)
             }
@@ -73,12 +69,11 @@ class ConfigBuilder<T> private constructor(
     private fun writeFile(file: File, gson: Gson, json: JsonObject) {
         var commentedJson = gson.toJson(json)
 
-        // depois de gerar o JSON com gson.toJson(...)
         commentedJson = commentedJson.replace(
             Regex("""\[\s*([\s\S]*?)\s*]""")
         ) { match ->
             val conteudo = match.groupValues[1]
-                .replace(Regex("""\s+"""), "") // tira espaços e quebras
+                .replace(Regex("""\s+"""), "")
             "[${conteudo}]"
         }
 
@@ -161,7 +156,6 @@ class ConfigBuilder<T> private constructor(
 }
 
 object ConfigHandler {
-    // instância atual da config
     lateinit var config: CobblebrainConfig
 
     fun load() {

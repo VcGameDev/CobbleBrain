@@ -9,40 +9,37 @@ import vito.cobblebrain.network.CobblebrainPayloads.AIResponsePayload
 
 object CobblebrainServerHandlerFabric {
     fun register() {
-        // ACTION do client
+        // Client action
         ServerPlayNetworking.registerGlobalReceiver(ActionPayload.TYPE) { payload: ActionPayload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
                 //player.sendSystemMessage(Component.literal("Executing action: ${payload.action}"))
 
-                // chama o Common
                 CobblebrainServerHandler.processAction(player, payload.action)
             }
         }
 
-        // Resposta da IA (Stage 1 Foreground)
+        // AI Response (Stage 1 Foreground)
         ServerPlayNetworking.registerGlobalReceiver(AIResponsePayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
                 println("[SERVER RECEIVED RESPONSE] from ${player.name.string}")
 
-                // chama o Common
                 CobblebrainServerHandler.processIaResponse(player.server, player, payload.content)
             }
         }
 
-        // Resposta de Background (Stage 2 Background State Resolution)
+        // Background Response (Stage 2 Background State Resolution)
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.BackgroundResponsePayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
                 println("[SERVER RECEIVED BACKGROUND RESPONSE] from ${player.name.string}")
 
-                // chama o Common
                 CobblebrainServerHandler.processBackgroundResponse(player.server, player, payload.content)
             }
         }
 
-        // Requisição de Resumo (Tecla L)
+        // Summary Request (L key)
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestSummaryPayload.TYPE) { _, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -50,7 +47,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Requisição de Rebuild de Prompt com Memória
+        // Prompt Rebuild Request with Memory
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestPromptWithMemoryPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -58,7 +55,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Recebimento de Nickname Preferido do jogador
+        // Player Preferred Nickname
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PlayerNicknamePayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -66,7 +63,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Recebimento de Offline Settings do jogador
+        // Player Offline Settings
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.OfflineSettingsPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -76,7 +73,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Recebimento de Entrada de Voz (STT)
+        // Voice Input (STT)
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.VoiceInputPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -84,7 +81,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Recebimento de Ping do jogador
+        // Player Ping
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PingPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -98,13 +95,13 @@ object CobblebrainServerHandlerFabric {
                 if (accepted) {
                     val level = player.serverLevel()
                     val pos = payload.pos
-                    // Partículas visíveis no local do Ping
+                    // Visible particles at Ping location
                     level.sendParticles(
                         net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
                         pos.x + 0.5, pos.y + 1.2, pos.z + 0.5,
                         15, 0.3, 0.3, 0.3, 0.05
                     )
-                    // Som de feedback
+                    // Feedback sound
                     player.playNotifySound(
                         SoundEvents.EXPERIENCE_ORB_PICKUP,
                         SoundSource.PLAYERS,

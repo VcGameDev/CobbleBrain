@@ -53,7 +53,6 @@ class FollowPlayerGoal(
     }
 
     override fun start() {
-        // nada aqui, só start do Goal
     }
 
     override fun tick() {
@@ -84,7 +83,6 @@ object CobblebrainWorldSave {
     private val quests: MutableList<Quest> = mutableListOf()
     var data: JsonObject = JsonObject()
 
-    // Agora precisa ser chamado quando o server iniciar
     fun init(server: MinecraftServer) {
         val dataDir = server.getWorldPath(LevelResource.ROOT).resolve("data").toFile()
         dataDir.mkdirs()
@@ -245,7 +243,7 @@ object CobblebrainWorldSave {
     }
 
     private fun startFollowingPlayer(giver: PokemonEntity, player: ServerPlayer) {
-        // Se já estiver seguindo, não adiciona outro
+        // If already following, don't add another goal
         if (followers.containsKey(giver.uuid.toString())) return
 
         giver.setPersistenceRequired()
@@ -286,7 +284,7 @@ object CobblebrainWorldSave {
 
         val level = player.serverLevel()
 
-        // Calcula o nível alvo baseado no Pokémon mais forte do jogador
+        // Calculate target level based on player's strongest Pokémon
         val strongestLevel = PokemonQuery.findActivePokemon(player).maxOfOrNull { it.level } ?: 20
         val minLevel = maxOf(5, strongestLevel - 2)
         val maxLevel = strongestLevel + 8
@@ -497,7 +495,7 @@ object CobblebrainWorldSave {
         ensureQuestsInitialized()
         val rand = java.util.Random()
 
-        // 1. Sorteia local X Z apenas (o barril só spawnará quando o player se aproximar do chunk carregado)
+        // 1. Pick X and Z coordinates only (barrel spawns when player approaches loaded chunk)
         val targetX = player.blockX + rand.nextInt(400) - 200
         val targetZ = player.blockZ + rand.nextInt(400) - 200
 
@@ -587,21 +585,21 @@ object CobblebrainWorldSave {
     }
 
     fun getGiverNameFromQuest(quest: JsonObject): String {
-        // Se tiver nickname, usa ele
+        // If nickname exists, use it
         if (quest.has("giverNickname")) {
             val nickname = quest.get("giverNickname").asString
             if (nickname.isNotBlank()) return nickname
         }
-        // Senão, usa a espécie
+        // Otherwise, use species
         if (quest.has("giverSpecies")) {
             val species = quest.get("giverSpecies").asString
             if (species.isNotBlank()) return species
         }
-        // Último recurso: UUID
+        // Last fallback: UUID
         return quest.get("giverUuid").asString
     }
 
-    // Move uma quest de active para completed ou abandoned
+    // Move a quest from active to completed or abandoned
     fun moveQuest(ownerUuid: String, giverUuid: String, type: String, newStatus: String) {
         println("[DEBUG] moveQuest called with giverUuid=$giverUuid, type=$type, newStatus=$newStatus")
 
@@ -642,7 +640,7 @@ object CobblebrainWorldSave {
 
         questObj.addProperty("status", newStatus)
 
-        // remove da lista de ativos
+        // Remove from active list
         if (foundInStory) {
             questsObj.add("active_story", JsonObject())
         } else {
@@ -650,7 +648,7 @@ object CobblebrainWorldSave {
         }
         println("[DEBUG] Quest removida de active")
 
-        // adiciona na lista correta
+        // Add to correct list
         when (newStatus) {
             "COMPLETED" -> {
                 completedArray.add(questObj)
@@ -669,7 +667,7 @@ object CobblebrainWorldSave {
         println("[DEBUG] JSON saved after moveQuest")
         debugQuests()
 
-        // Se o Pokémon estava seguindo, para de seguir
+        // If Pokémon was following, stop following
         followers[giverUuid]?.let { triple ->
             val pokemon = triple.first
             val goal = triple.third
@@ -701,7 +699,7 @@ object CobblebrainWorldSave {
         val newValue = current + delta
         playerObj.addProperty(species, newValue)
 
-        // Mensagens de desbloqueio de Tier
+        // Tier unlock messages
         val thresholds = mapOf(
             3 to "UNCOMMON",
             7 to "RARE",
@@ -724,7 +722,7 @@ object CobblebrainWorldSave {
         save()
     }
 
-    // Debug: imprime estado atual das quests
+    // Debug: print current quest state
     fun debugQuests() {
         val questsObj = data.getAsJsonObject("quests")
         println("Active story quest: ${questsObj.getAsJsonObject("active_story")}")

@@ -1620,7 +1620,6 @@ object CobblebrainConfigScreen {
                     isSelected: Boolean,
                     delta: Float
                 ) {
-                    // não desenha nada, apenas ocupa espaço
                 }
 
                 override fun getItemHeight(): Int = height

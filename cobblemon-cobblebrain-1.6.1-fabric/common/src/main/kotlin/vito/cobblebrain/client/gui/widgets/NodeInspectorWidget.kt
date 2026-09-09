@@ -4219,7 +4219,7 @@ class NodeInspectorWidget(
             guiGraphics.fill(sbX, thumbY, sbX + sbW, thumbY + thumbH, thumbCol)
         }
 
-        // Cabeçalho Fixo no Topo
+        // Fixed Header at Top
         guiGraphics.fill(panelX, panelY, panelX + panelWidth, panelY + 20, 0xFF22222A.toInt())
         guiGraphics.fill(panelX, panelY + 19, panelX + panelWidth, panelY + 20, 0xFF3D5AFE.toInt())
 

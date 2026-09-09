@@ -181,13 +181,13 @@ object CobblebrainPayloadRegistrarNeoForge {
                 if (accepted) {
                     val level = player.serverLevel()
                     val pos = payload.pos
-                    // Partículas visíveis no local do Ping
+                    // Visible particles at Ping location
                     level.sendParticles(
                         net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
                         pos.x + 0.5, pos.y + 1.2, pos.z + 0.5,
                         15, 0.3, 0.3, 0.3, 0.05
                     )
-                    // Som de feedback
+                    // Feedback sound
                     player.playNotifySound(
                         SoundEvents.EXPERIENCE_ORB_PICKUP,
                         SoundSource.PLAYERS,

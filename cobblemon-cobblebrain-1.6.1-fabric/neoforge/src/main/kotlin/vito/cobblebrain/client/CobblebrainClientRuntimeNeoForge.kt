@@ -12,7 +12,6 @@ object CobblebrainClientRuntimeNeoForge {
     private var waitTicks = 0
 
     fun init() {
-        // ligação client → server
         CobblebrainClientCommon.sendToServer = { response ->
             CobblebrainNetworkingNeoForge.sendToServer(response)
         }
@@ -86,7 +85,6 @@ object CobblebrainClientRuntimeNeoForge {
             }
         }
 
-        // registra tick
         NeoForge.EVENT_BUS.register(this)
     }
 

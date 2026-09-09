@@ -27,7 +27,6 @@ object CobblebrainMod : ModInitializer {
     @Suppress("MemberVisibilityCanBePrivate", "unused")
     const val MOD_ID = "cobblebrain"
 
-    // Quando o jogo inicializa
     override fun onInitialize() {
         MobBridge.addGoal = { mob, priority, goal ->
             val accessor = mob as MobAccessor
@@ -62,7 +61,6 @@ object CobblebrainMod : ModInitializer {
             CobblebrainNetworkingFabric.sendCooldowns(player, b, r, s, d)
         }
 
-        // registra o tipo de payload PROMPT (server → client)
         PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.PromptPayload.TYPE,
             CobblebrainPayloads.PromptPayload.CODEC
@@ -213,7 +211,6 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.KeyInputResultPayload.CODEC
         )
 
-        // registra handlers de networking
         vito.cobblebrain.server.CobblebrainServerHandlerFabric.register()
 
         DialogueSystem.sendAIDialogueBoxToPlayer = { player, payload ->
@@ -244,7 +241,6 @@ object CobblebrainMod : ModInitializer {
             ServerPlayNetworking.send(player, payload)
         }
 
-        // Aqui registramos o comando
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             PokemonTalkCommand.register(dispatcher)
             ConfigCommands.register(dispatcher)
@@ -257,7 +253,7 @@ object CobblebrainMod : ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register { server: MinecraftServer ->
             currentServer = server
-            // remover se der problemas
+            // Remove if issues arise
             CobblebrainWorldSave.init(server)
             vito.cobblebrain.social.PingManager.init(server)
         }
@@ -280,7 +276,6 @@ object CobblebrainMod : ModInitializer {
             vito.cobblebrain.social.OfflinePlayers.removePlayer(handler.player.uuid)
         }
 
-        // limpa quando o servidor para
         ServerLifecycleEvents.SERVER_STOPPED.register {
             currentServer = null
             vito.cobblebrain.social.DiskWriteExecutor.shutdown()

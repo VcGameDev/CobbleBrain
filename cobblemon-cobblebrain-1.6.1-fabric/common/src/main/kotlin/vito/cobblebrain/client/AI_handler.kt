@@ -284,14 +284,14 @@ class AIHandler {
         canonDialogue: Boolean
     ): String? {
 
-        // prioridade 1: item
+        // Priority 1: item
         if (needsTranslator) {
             val hasTranslator = shouldUseNormalDialogue()
 
             return if (hasTranslator) DIALOGUE else CANON_DIALOGUE
         }
 
-        // prioridade 2: config
+        // Priority 2: config
         if (canonDialogue) return CANON_DIALOGUE
         if (dialogue) return DIALOGUE
 
@@ -403,7 +403,7 @@ class AIHandler {
             psychicTranslation = clientConfig.psychicTranslation
         )
     }
-    // agora usando rotadores
+    // Using API key rotators
     private val apiKeyRotator = ApiKeyRotator(clientConfig.apiKey)
     private val modelRotator = ModelRotator(clientConfig.aiModel)
 
@@ -457,7 +457,7 @@ class AIHandler {
         //StandardWatchEventKinds.ENTRY_CREATE
         //)
 
-        // Executor para rodar o pingHealth a cada 60s
+        // Executor to run pingHealth every 60s
         if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true)
             && isLocalAddress(clientConfig.apiBaseUrl)
@@ -551,7 +551,7 @@ class AIHandler {
     //println(comandoPath.fileName.toString())
     //if (fullText.isEmpty()) return
 
-    // usa o prompt inteiro como base do hash
+    // Uses full prompt as hash base
     //val hash = sha256(fullText)
     //if (hash == lastPromptHash) {
     // println("duplicata detectada")
@@ -560,7 +560,7 @@ class AIHandler {
 
     //lastPromptHash = hash
 
-    // log detalhado mostrando início do prompt e hash
+    // Detailed log showing prompt start and hash
     //log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
     //log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
 
@@ -569,7 +569,7 @@ class AIHandler {
     //}
 
     // ------------------------------------------------------------
-    // Lista de erros HTTP mais comuns
+    // List of most common HTTP errors
     private val errorMessages = mapOf(
         400 to """
         !Error 400! Bad Request: Invalid request format.
@@ -612,12 +612,9 @@ class AIHandler {
     """.trimIndent()
     )
 
-    //Extrai uma mensagem de erro amigável a partir do status HTTP (opcional) e do corpo.
-    //* - Se status != 200, tenta detalhar via JSON ou regex.
-    //* - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
-
+    // Extracts a user-friendly error message from HTTP status and response body.
     fun extractErrorMessage(body: String, status: Int? = null): String {
-        // tenta JSON
+        // Try JSON
         try {
             val json = gson.fromJson(body, Map::class.java)
             val error = json["error"] as? Map<*, *>
@@ -627,7 +624,7 @@ class AIHandler {
                 return if (code != null) "Error $code: $msg" else "Error: $msg"
             }
         } catch (_: Exception) {
-            // tenta regex
+            // Try regex
             val regex = Regex("HTTP (\\d+)")
             val match = regex.find(body)
             if (match != null) {
@@ -636,7 +633,7 @@ class AIHandler {
             }
         }
 
-        // se status veio e não é 200, devolve junto
+        // Append HTTP status code if non-200
         if (status != null && status != 200) {
             return "HTTP $status: $body"
         }
@@ -689,7 +686,7 @@ class AIHandler {
 
         val cleanPrompt = prompt
 
-        // Injeta LAST INTERACTIONS no prompt vindo do servidor
+        // Inject LAST INTERACTIONS into server prompt
         val interactions = ConversationMemory.get()
         val finalPrompt = if (interactions.isNotEmpty()) {
             buildString {
@@ -744,11 +741,11 @@ class AIHandler {
 
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
 
-        // Processa LAST INTERACTIONS para a memória local (ConversationMemory)
+        // Process LAST INTERACTIONS for local ConversationMemory
         val parts = formatted.split("|").map { it.trim() }
         println("[DEBUG] Parsing AI response lines for conversation memory. Total parts: ${parts.size}")
         
-        // 1. Tenta extrair resumo explícito legado (!RESUME ou =)
+        // 1. Try legacy explicit summary (!RESUME or =)
         var savedExplicit = false
         parts.forEach { trimmed ->
             if (trimmed.startsWith("!RESUME", ignoreCase = true)) {
@@ -769,7 +766,7 @@ class AIHandler {
             }
         }
 
-        // 2. Se não houver resumo explícito (como no modo otimizado), sintetiza localmente: Player Input -> Pokémon Dialogue
+        // 2. If no explicit summary, synthesize locally: Player Input -> Pokémon Dialogue
         if (!savedExplicit) {
             val playerMsg = if (cleanPrompt.contains("[PLAYER_MESSAGE]")) {
                 cleanPrompt.substringAfter("[PLAYER_MESSAGE]").substringBefore("[").trim()
@@ -842,7 +839,6 @@ class AIHandler {
             responseText.replace("\\n", "\n").replace("\n", " ").replace("\\", "")
         }
 
-        // Envia de volta para o servidor processar
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
     }
 
@@ -890,7 +886,7 @@ class AIHandler {
         log("\n--- PROMPT ---")
         log(prompt)
 
-        // Nota: buildOpenAIJson já usa o prompt final com as interações injetadas
+        // Note: buildOpenAIJson uses the final prompt with injected interactions
         val jsonBody = buildOpenAIJson(prompt, systemOverride)
 
         log("\n--- REQUEST JSON ---")
@@ -907,7 +903,7 @@ class AIHandler {
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
-        // Autenticação
+        // Authentication
         if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true)
             && isLocalAddress(clientConfig.apiBaseUrl)
@@ -977,7 +973,6 @@ class AIHandler {
         apiBase.contains("openrouter.ai", ignoreCase = true)
 
     private fun isLMStudio() =
-        // ajuste conforme sua URL local do LM Studio
         clientConfig.customApiProvider.contains("lmstudio", ignoreCase = true)
 
     //private fun usesMaxTokens(apiBase: String) =
@@ -985,7 +980,7 @@ class AIHandler {
 
 
     private fun buildOpenAIJson(prompt: String, systemOverride: String? = null): String {
-        // Se tem override (é um resumo), não envia o histórico de conversas para economizar tokens e evitar confusão.
+        // If override is present (summary), skip conversation history to save tokens
         val tempHistory = if (systemOverride != null) {
             listOf(Mensagem("user", prompt))
         } else {
@@ -1000,7 +995,7 @@ class AIHandler {
         extras.add("\"temperature\": $TEMPERATURE")
         extras.add("\"stream\": false")
 
-        // extras específicos de OpenRouter/LM Studio
+        // Provider-specific options for OpenRouter/LM Studio
         if (isOpenRouter(apiBase) || isLMStudio()) {
             if (PROVIDER_HINT.isNotEmpty()) {
                 extras.add(
@@ -1025,7 +1020,7 @@ class AIHandler {
 
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
-        // Se for Player2, não inclui "model"
+        // Do not include "model" for Player2
         val outputFormatToUse = if (SyncedConfig.optimizedMode || SyncedConfig.useDefaultOutput) {
             getDefaultOutputFormat()
         } else {
@@ -1068,17 +1063,17 @@ class AIHandler {
             val choices = json["choices"] as? List<*> ?: return "Erro parsing resposta"
             val first = choices.firstOrNull() as? Map<*, *> ?: return "Erro parsing resposta"
 
-            // Formato OpenAI/OpenRouter
+            // OpenAI/OpenRouter format
             val message = first["message"] as? Map<*, *>
             val content = message?.get("content") as? String
             if (!content.isNullOrBlank()) {
-                return removeThinkBlocks(content) // <<< limpeza aplicada aqui
+                return removeThinkBlocks(content) // <<< cleanup applied here
             }
 
-            // Alguns provedores retornam "text"
+            // Some providers return "text"
             val text = first["text"] as? String
             if (!text.isNullOrBlank()) {
-                return removeThinkBlocks(text) // <<< limpeza aplicada aqui também
+                return removeThinkBlocks(text)
             }
 
             "Erro parsing resposta"
@@ -1087,7 +1082,6 @@ class AIHandler {
         }
     }
 
-    // Função auxiliar para remover blocos <think>...</think>
     private fun removeThinkBlocks(text: String): String {
         val regex = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
         return text.replace(regex, "")
