@@ -20,6 +20,8 @@ import vito.cobblebrain.config.SyncedConfig
 import kotlin.math.sin
 
 object CobbleBrainModClient : ClientModInitializer {
+    private var wasVoiceKeyDown = false
+
     override fun onInitializeClient() {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
@@ -81,7 +83,7 @@ object CobbleBrainModClient : ClientModInitializer {
 
         val commandKeyMode = KeyMapping(
             "key.cobblebrain.cmd_mode",
-            GLFW.GLFW_KEY_M,
+            GLFW.GLFW_KEY_I,
             "category.cobblebrain"
         )
 
@@ -151,19 +153,39 @@ object CobbleBrainModClient : ClientModInitializer {
             while (keyPing.consumeClick()) {
                 vito.cobblebrain.client.PingClient.triggerPingRaycast()
             }
-            while (keyVoice.consumeClick()) {
+            val isVoiceDown = keyVoice.isDown && client.screen == null
+            if (isVoiceDown && !wasVoiceKeyDown) {
+                wasVoiceKeyDown = true
                 if (!CobblebrainClientCommon.isMcmtiInstalled()) {
                     Minecraft.getInstance().setScreen(
                         vito.cobblebrain.client.McmtiNotInstalledNoticeScreen(Minecraft.getInstance().screen)
                     )
                 } else if (!ClientConfigHandler.clientConfig.enableStt) {
-                    client.player?.sendSystemMessage(
-                        net.minecraft.network.chat.Component.literal("[CobbleBrain] Speech-to-Text (STT) is disabled in the settings.")
+                    client.player?.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Speech-to-Text (STT) is disabled in the settings."),
+                        true
                     )
                 } else {
-                    vito.cobblebrain.client.mcmti.McmtiFabricHandler.awaitingPokemonVoice = true
-                    client.player?.sendSystemMessage(
-                        net.minecraft.network.chat.Component.literal("[CobbleBrain STT] Speak into your microphone to talk to your Pokémon...")
+                    val started = vito.cobblebrain.client.mcmti.McmtiFabricHandler.startRecording()
+                    if (started) {
+                        client.player?.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal("§a🎙 [CobbleBrain] Recording voice... (release [H] to send)"),
+                            true
+                        )
+                    } else {
+                        client.player?.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal("§c❌ [CobbleBrain] Could not start voice recording. Check MCMti keybinding."),
+                            true
+                        )
+                    }
+                }
+            } else if (!isVoiceDown && wasVoiceKeyDown) {
+                wasVoiceKeyDown = false
+                if (CobblebrainClientCommon.isVoiceRecording) {
+                    vito.cobblebrain.client.mcmti.McmtiFabricHandler.stopRecording()
+                    client.player?.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§e⏳ [CobbleBrain] Processing voice..."),
+                        true
                     )
                 }
             }

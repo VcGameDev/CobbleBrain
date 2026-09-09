@@ -111,6 +111,7 @@ class AIHandler {
         separator=|
         short dialogue only
         wild pokemon allowed
+        never embed action codes inside dialogue text
         response language=$USER_LANGUAGE
         """
 
@@ -161,26 +162,28 @@ class AIHandler {
             val presentTypes = party.flatMap { it.types }.map { it.name.lowercase() }.toSet()
 
             val available = mutableListOf<String>()
-
-            if (SyncedConfig.isActionActive("attack")) available += "A (attack)"
-            if (SyncedConfig.isActionActive("eat")) available += "E (eat)"
-            if (SyncedConfig.isActionActive("buff")) available += "B (buff owner)"
-            if (SyncedConfig.isActionActive("debuff_enemy")) available += "D (debuff enemy)"
-            if (SyncedConfig.isActionActive("sit")) available += "S (sit/rest)"
-            if (SyncedConfig.isActionActive("protect")) available += "P (protect owner)"
-            if (SyncedConfig.isActionActive("idle")) available += "I (idle)"
-
             val typeActions = mutableListOf<String>()
-            if (SyncedConfig.isActionActive("cook") && ("fire" in presentTypes || presentTypes.isEmpty())) typeActions += "fire type: C (cook/smelt ores)"
-            if (SyncedConfig.isActionActive("repair") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: R (repair tools)"
-            if (SyncedConfig.isActionActive("excavate") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: EX (excavate tunnel)"
-            if (SyncedConfig.isActionActive("grow") && ("grass" in presentTypes || presentTypes.isEmpty())) typeActions += "grass type: G (grow crops)"
-            if (SyncedConfig.isActionActive("shift") && ("ghost" in presentTypes || presentTypes.isEmpty())) typeActions += "ghost type: SH (shift)"
-            if (SyncedConfig.isActionActive("nightmare") && ("dark" in presentTypes || presentTypes.isEmpty())) typeActions += "dark type: N (nightmare aura)"
-            if (SyncedConfig.isActionActive("scout") && ("flying" in presentTypes || presentTypes.isEmpty())) typeActions += "flying type: SC (scout)"
-            if (SyncedConfig.isActionActive("light") && ("electric" in presentTypes || presentTypes.isEmpty())) typeActions += "electric type: L (light)"
-            if (SyncedConfig.isActionActive("fish") && ("water" in presentTypes || presentTypes.isEmpty())) typeActions += "water type: F (fish)"
-            if (SyncedConfig.isActionActive("teleport") && ("psychic" in presentTypes || presentTypes.isEmpty())) typeActions += "psychic type: T (teleport)"
+
+            if (SyncedConfig.outputActions) {
+                if (SyncedConfig.isActionActiveForAI("attack")) available += "A (attack)"
+                if (SyncedConfig.isActionActiveForAI("eat")) available += "E (eat)"
+                if (SyncedConfig.isActionActiveForAI("buff")) available += "B (buff owner)"
+                if (SyncedConfig.isActionActiveForAI("debuff_enemy")) available += "D (debuff enemy)"
+                if (SyncedConfig.isActionActiveForAI("sit")) available += "S (sit/rest)"
+                if (SyncedConfig.isActionActiveForAI("protect")) available += "P (protect owner)"
+                if (SyncedConfig.isActionActiveForAI("idle")) available += "I (idle)"
+
+                if (SyncedConfig.isActionActiveForAI("cook") && ("fire" in presentTypes || presentTypes.isEmpty())) typeActions += "fire type: C (cook/smelt ores)"
+                if (SyncedConfig.isActionActiveForAI("repair") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: R (repair tools)"
+                if (SyncedConfig.isActionActiveForAI("excavate") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: EX (excavate tunnel)"
+                if (SyncedConfig.isActionActiveForAI("grow") && ("grass" in presentTypes || presentTypes.isEmpty())) typeActions += "grass type: G (grow crops)"
+                if (SyncedConfig.isActionActiveForAI("shift") && ("ghost" in presentTypes || presentTypes.isEmpty())) typeActions += "ghost type: SH (shift)"
+                if (SyncedConfig.isActionActiveForAI("nightmare") && ("dark" in presentTypes || presentTypes.isEmpty())) typeActions += "dark type: N (nightmare aura)"
+                if (SyncedConfig.isActionActiveForAI("scout") && ("flying" in presentTypes || presentTypes.isEmpty())) typeActions += "flying type: SC (scout)"
+                if (SyncedConfig.isActionActiveForAI("light") && ("electric" in presentTypes || presentTypes.isEmpty())) typeActions += "electric type: L (light)"
+                if (SyncedConfig.isActionActiveForAI("fish") && ("water" in presentTypes || presentTypes.isEmpty())) typeActions += "water type: F (fish)"
+                if (SyncedConfig.isActionActiveForAI("teleport") && ("psychic" in presentTypes || presentTypes.isEmpty())) typeActions += "psychic type: T (teleport)"
+            }
 
             if (available.isEmpty() && typeActions.isEmpty()) return ""
 
@@ -188,6 +191,7 @@ class AIHandler {
                 appendLine("ACTION FORMAT")
                 appendLine("Use actions only when appropriate to the dialogue, environment, or situation.")
                 appendLine("Format: #<PokemonName>:<action_code>")
+                appendLine("Always separate actions from dialogue using '|' (e.g. Pikachu: Look! | #Pikachu:P). Never put action codes inside spoken dialogue.")
                 if (available.isNotEmpty()) {
                     appendLine("Universal actions (any Pokémon):")
                     appendLine("  ${available.joinToString(", ")}")
@@ -361,6 +365,8 @@ class AIHandler {
 
             if (clientConfig.psychicTranslation) sections += PSYCHIC_TRANSLATION
             sections += GENERAL
+            val actionsRestriction = if (SyncedConfig.outputActions) ", optional # actions (separated by |)" else ""
+            val noActionsNote = if (!SyncedConfig.outputActions) "\nDo NOT generate any # action tags." else ""
             sections += """
             ##ROUTING FLAGS##
             Append applicable tags at the very end of your response (omit entirely if mundane):
@@ -374,7 +380,7 @@ class AIHandler {
             - CATCH: Wild Pokémon persuaded and explicitly agrees to join team (wild only).
             
             ##STAGE 1 RESTRICTIONS##
-            Generate ONLY in-character spoken dialogue, optional # actions and flags.
+            Generate ONLY in-character spoken dialogue$actionsRestriction and flags.$noActionsNote
             """.trimIndent()
 
             return sections.joinToString("\n\n")
@@ -771,7 +777,16 @@ class AIHandler {
                 ""
             }
 
-            val dialogueLines = parts.filter { line ->
+            val actionTagRegex = Regex("""\s*#([A-Za-z0-9_.'♀♂# -]+?):([A-Za-z0-9+-]+)""")
+            val scoreTagRegex = Regex("""\s*#SCORE:\s*[+-]?\d+""", RegexOption.IGNORE_CASE)
+
+            val dialogueLines = parts.map { line ->
+                line.replace(actionTagRegex, "")
+                    .replace(scoreTagRegex, "")
+                    .replace(Regex("""[ \t]+"""), " ")
+                    .replace(Regex("""\s+([,.:!?])"""), "$1")
+                    .trim()
+            }.filter { line ->
                 line.isNotBlank() &&
                 !line.startsWith("#") &&
                 !line.startsWith("&") &&

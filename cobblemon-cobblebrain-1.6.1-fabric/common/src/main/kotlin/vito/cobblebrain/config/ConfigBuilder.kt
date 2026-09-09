@@ -166,6 +166,7 @@ object ConfigHandler {
 
     fun load() {
         config = ConfigBuilder.load(CobblebrainConfig::class.java, "cobblebrain")
+        config.actionSettings.migrateLegacy()
     }
 
     fun save() {

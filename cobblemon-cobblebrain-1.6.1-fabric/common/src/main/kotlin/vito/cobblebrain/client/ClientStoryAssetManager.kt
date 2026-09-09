@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.resources.ResourceLocation
 import vito.cobblebrain.social.StoryAssetManager
+import java.io.ByteArrayInputStream
 import java.io.FileInputStream
 import java.util.concurrent.ConcurrentHashMap
 
@@ -19,6 +20,7 @@ object ClientStoryAssetManager {
 
     /**
      * Loads a PNG image into Minecraft's TextureManager as a DynamicTexture and returns its ResourceLocation.
+     * Supports both unzipped folder assets and compressed storypack .zip archives in memory.
      * Must ONLY be called on the client side.
      */
     fun getOrCreateDynamicTexture(storyId: String, textureName: String): ResourceLocation? {
@@ -29,14 +31,28 @@ object ClientStoryAssetManager {
 
         dynamicTextureCache[cacheKey]?.let { return it }
 
-        val file = StoryAssetManager.findTextureFile(storyId, safeFileName) ?: return null
+        val file = StoryAssetManager.findTextureFile(storyId, safeFileName)
+        val nativeImage = if (file != null && file.exists()) {
+            try {
+                FileInputStream(file).use { NativeImage.read(it) }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+                null
+            }
+        } else {
+            // Read directly from ZIP archive in memory
+            StoryAssetManager.loadTextureBytesFromZip(storyId, safeFileName)?.let { bytes ->
+                try {
+                    ByteArrayInputStream(bytes).use { NativeImage.read(it) }
+                } catch (e: Throwable) {
+                    e.printStackTrace()
+                    null
+                }
+            }
+        } ?: return null
 
         return try {
             val mc = Minecraft.getInstance() ?: return null
-            val inputStream = FileInputStream(file)
-            val nativeImage = NativeImage.read(inputStream)
-            inputStream.close()
-
             val dynamicTexture = DynamicTexture(nativeImage)
             val resourcePath = "storypacks/${safeStoryId.filter { it.isLetterOrDigit() || it == '_' }}/${safeFileName.removeSuffix(".png").filter { it.isLetterOrDigit() || it == '_' }}"
             val textureLocation = ResourceLocation("cobblebrain", resourcePath)
@@ -53,5 +69,6 @@ object ClientStoryAssetManager {
     @Suppress("unused")
     fun clearCache() {
         dynamicTextureCache.clear()
+        StoryAssetManager.clearZipCache()
     }
 }

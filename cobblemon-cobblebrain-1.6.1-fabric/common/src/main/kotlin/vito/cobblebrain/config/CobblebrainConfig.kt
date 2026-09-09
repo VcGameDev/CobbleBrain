@@ -53,89 +53,379 @@ data class CobblebrainConfig(
 )
 
 data class BaseActionConfig(
-    var active: Boolean = true
-)
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
+
+data class RestActionConfig(
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
+    var spawnCarpet: Boolean = true,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class FishActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var maxFishRewardCount: Int = 5,
     var luckBonus: Int = 0,
-    var allowTreasureLoot: Boolean = true
-)
+    var allowTreasureLoot: Boolean = true,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class LightActionConfig(
-    var active: Boolean = true,
-    var lightIntensity: Int = 15
-)
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
+    var lightIntensity: Int = 15,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class CookActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var charcoalChancePercent: Int = 5,
-    var cooldownTicks: Int = 22
-)
+    var cooldownTicks: Int = 22,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class RepairActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var maxRepairPercent: Int = 100,
-    var cooldownTicks: Int = 40
-)
+    var cooldownTicks: Int = 40,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class ScoutActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var scoutRadius: Int = 50,
     var scoutFindStructures: Boolean = true,
-    var scoutHighlightMobs: Boolean = true
-)
+    var scoutHighlightMobs: Boolean = true,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class NightmareActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var nightmareRadius: Int = 10,
     var durationSeconds: Int = 8,
     var effectLevel: Int = 1,
-    var cooldownSeconds: Int = 120
-)
+    var cooldownSeconds: Int = 120,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class ShiftActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var shiftDurationSeconds: Int = 30,
     var effectLevel: Int = 1,
-    var cooldownSeconds: Int = 240
-)
+    var cooldownSeconds: Int = 240,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class GrowActionConfig(
-    var active: Boolean = true,
-    var growIntervalTicks: Int = 20
-)
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
+    var growIntervalTicks: Int = 20,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class AttackActionConfig(
-    var active: Boolean = true,
-    var damageMultiplier: Double = 1.0
-)
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
+    var damageMultiplier: Double = 1.0,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class ProtectActionConfig(
-    var active: Boolean = true,
-    var damageMultiplier: Double = 1.0
-)
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
+    var damageMultiplier: Double = 1.0,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class BuffActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var durationSeconds: Int = 30,
-    var effectLevel: Int = 1
-)
+    var effectLevel: Int = 1,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class DebuffEnemyActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var durationSeconds: Int = 15,
-    var effectLevel: Int = 1
-)
+    var effectLevel: Int = 1,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class ExcavateActionConfig(
-    var active: Boolean = true,
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = true,
     var maxBlocks: Int = 144,
     var breakDelayTicks: Int = 3,
     var dropChancePercent: Int = 30,
-    var workingDistance: Double = 32.0
-)
+    var workingDistance: Double = 32.0,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
 
 data class ActionSettings(
     var cook: CookActionConfig = CookActionConfig(),
@@ -154,10 +444,83 @@ data class ActionSettings(
     var debuffEnemy: DebuffEnemyActionConfig = DebuffEnemyActionConfig(),
     var excavate: ExcavateActionConfig = ExcavateActionConfig(),
     var demolish: ExcavateActionConfig = excavate,
-    var rest: BaseActionConfig = BaseActionConfig(),
+    var rest: RestActionConfig = RestActionConfig(),
     var idle: BaseActionConfig = BaseActionConfig()
 ) {
-    var sit: BaseActionConfig
+    var sit: RestActionConfig
         get() = rest
         set(value) { rest = value }
+
+    fun isActionActiveForPlayer(actionName: String): Boolean {
+        val key = actionName.lowercase().trim().replace(" ", "_")
+        return when (key) {
+            "cook" -> cook.enabledForPlayer
+            "grow" -> grow.enabledForPlayer
+            "repair" -> repair.enabledForPlayer
+            "shift" -> shift.enabledForPlayer
+            "fish" -> fish.enabledForPlayer
+            "nightmare" -> nightmare.enabledForPlayer
+            "light" -> light.enabledForPlayer
+            "scout" -> scout.enabledForPlayer
+            "teleport" -> teleport.enabledForPlayer
+            "attack" -> attack.enabledForPlayer
+            "protect" -> protect.enabledForPlayer
+            "eat" -> eat.enabledForPlayer
+            "buff" -> buff.enabledForPlayer
+            "debuff", "debuff_enemy" -> debuffEnemy.enabledForPlayer
+            "excavate", "demolish" -> excavate.enabledForPlayer
+            "rest", "sit" -> rest.enabledForPlayer
+            "idle" -> idle.enabledForPlayer
+            else -> true
+        }
+    }
+
+    fun isActionActiveForAI(actionName: String): Boolean {
+        val key = actionName.lowercase().trim().replace(" ", "_")
+        return when (key) {
+            "cook" -> cook.enabledForAI
+            "grow" -> grow.enabledForAI
+            "repair" -> repair.enabledForAI
+            "shift" -> shift.enabledForAI
+            "fish" -> fish.enabledForAI
+            "nightmare" -> nightmare.enabledForAI
+            "light" -> light.enabledForAI
+            "scout" -> scout.enabledForAI
+            "teleport" -> teleport.enabledForAI
+            "attack" -> attack.enabledForAI
+            "protect" -> protect.enabledForAI
+            "eat" -> eat.enabledForAI
+            "buff" -> buff.enabledForAI
+            "debuff", "debuff_enemy" -> debuffEnemy.enabledForAI
+            "excavate", "demolish" -> excavate.enabledForAI
+            "rest", "sit" -> rest.enabledForAI
+            "idle" -> idle.enabledForAI
+            else -> true
+        }
+    }
+
+    fun isActionActive(actionName: String): Boolean {
+        return isActionActiveForPlayer(actionName) || isActionActiveForAI(actionName)
+    }
+
+    fun migrateLegacy() {
+        cook.migrateLegacy()
+        grow.migrateLegacy()
+        repair.migrateLegacy()
+        shift.migrateLegacy()
+        fish.migrateLegacy()
+        nightmare.migrateLegacy()
+        light.migrateLegacy()
+        scout.migrateLegacy()
+        teleport.migrateLegacy()
+        attack.migrateLegacy()
+        protect.migrateLegacy()
+        eat.migrateLegacy()
+        buff.migrateLegacy()
+        debuffEnemy.migrateLegacy()
+        excavate.migrateLegacy()
+        demolish.migrateLegacy()
+        rest.migrateLegacy()
+        idle.migrateLegacy()
+    }
 }

@@ -1098,8 +1098,12 @@ object CommandTickHandler {
                         pokemon.pose = Pose.STANDING
                     }
 
-                    val primaryType = cobblemonPokemon.primaryType.name.lowercase()
-                    updateWoolCarpet(pokemon, primaryType)
+                    if (config.actionSettings.rest.spawnCarpet) {
+                        val primaryType = cobblemonPokemon.primaryType.name.lowercase()
+                        updateWoolCarpet(pokemon, primaryType)
+                    } else {
+                        removeWoolCarpet(pokemonId, level.server)
+                    }
 
                     if (announcedStates[pokemonId] != "rest") {
                         sendMessage(

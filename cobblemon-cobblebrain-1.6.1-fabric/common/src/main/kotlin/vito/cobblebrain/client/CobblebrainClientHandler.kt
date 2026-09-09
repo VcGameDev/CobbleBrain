@@ -19,6 +19,9 @@ object CobblebrainClientCommon {
     var deletePersonality: ((String) -> Unit)? = null
     var sendRequestPromptWithMemory: ((String) -> Unit)? = null
     var sendVoiceInputToServer: ((String) -> Unit)? = null
+    var startVoiceRecording: (() -> Boolean)? = null
+    var stopVoiceRecording: (() -> Unit)? = null
+    var isVoiceRecording: Boolean = false
     var isMcmtiInstalled: (() -> Boolean) = { false }
 
     // Callback ao receber do servidor

@@ -21,26 +21,7 @@ object CobblebrainServerHandler {
         val command: PokemonCommand? = parseCommand(action)
         if (command != null) {
             val actionKey = command.action.lowercase().replace(" ", "_")
-            val isActionActiveOnServer = when (actionKey) {
-                "cook" -> ConfigHandler.config.actionSettings.cook.active
-                "grow" -> ConfigHandler.config.actionSettings.grow.active
-                "repair" -> ConfigHandler.config.actionSettings.repair.active
-                "shift" -> ConfigHandler.config.actionSettings.shift.active
-                "fish" -> ConfigHandler.config.actionSettings.fish.active
-                "nightmare" -> ConfigHandler.config.actionSettings.nightmare.active
-                "light" -> ConfigHandler.config.actionSettings.light.active
-                "scout" -> ConfigHandler.config.actionSettings.scout.active
-                "teleport" -> ConfigHandler.config.actionSettings.teleport.active
-                "attack" -> ConfigHandler.config.actionSettings.attack.active
-                "protect" -> ConfigHandler.config.actionSettings.protect.active
-                "eat" -> ConfigHandler.config.actionSettings.eat.active
-                "buff" -> ConfigHandler.config.actionSettings.buff.active
-                "debuff", "debuff_enemy" -> ConfigHandler.config.actionSettings.debuffEnemy.active
-                "excavate", "demolish" -> ConfigHandler.config.actionSettings.excavate.active
-                "rest", "sit" -> ConfigHandler.config.actionSettings.rest.active
-                "idle" -> ConfigHandler.config.actionSettings.idle.active
-                else -> true
-            }
+            val isActionActiveOnServer = ConfigHandler.config.actionSettings.isActionActiveForPlayer(actionKey)
 
             if (!isActionActiveOnServer) {
                 player.sendSystemMessage(Component.translatable("cobblebrain.feedback.action_disabled", command.action))
@@ -110,9 +91,6 @@ object CobblebrainServerHandler {
                     RecentEventsSystem.commandSources[entity.uuid] = RecentEventsSystem.CommandSource.HUD
                     CommandState.activeCommands[entity.uuid] = command.action
                     player.sendSystemMessage(Component.translatable("cobblebrain.feedback.command_applied", command.action, command.pokemonName))
-
-                    // Send prompt back (make AI talk) only for individual commands
-                    DialogueSystem.sendToPlayer?.let { it(player, "${command.pokemonName}: executing ${command.action}") }
                 } ?: run {
                     player.sendSystemMessage(Component.translatable("cobblebrain.feedback.pokemon_not_found", command.pokemonName))
                 }

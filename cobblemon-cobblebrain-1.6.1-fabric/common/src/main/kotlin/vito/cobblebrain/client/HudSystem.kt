@@ -4,10 +4,14 @@ import com.cobblemon.mod.common.client.CobblemonClient
 import com.google.gson.JsonParser
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.resources.language.I18n
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import kotlin.math.atan2
 import kotlin.math.sin
+import vito.cobblebrain.config.ClientConfigHandler
+import vito.cobblebrain.engine.StoryDebugger
+import vito.cobblebrain.engine.StoryExecutor
 
 object HudSystem {
 
@@ -58,7 +62,7 @@ object HudSystem {
     private fun isCommandAvailable(
         command: String
     ): Boolean {
-        if (!vito.cobblebrain.config.SyncedConfig.isActionActive(command)) {
+        if (!vito.cobblebrain.config.SyncedConfig.isActionActiveForPlayer(command)) {
             return false
         }
 
@@ -81,7 +85,8 @@ object HudSystem {
     }
 
     private fun getSortedCommands(): List<String> {
-        return commands.sortedWith(
+        val filtered = commands.filter { vito.cobblebrain.config.SyncedConfig.isActionActiveForPlayer(it) }
+        return filtered.sortedWith(
             compareByDescending<String> { isCommandAvailable(it) }
                 .thenBy { commands.indexOf(it) }
         )
@@ -269,6 +274,7 @@ object HudSystem {
         val itemHeight = 10
         val sortedCommands = getSortedCommands()
         val totalCount = sortedCommands.size
+        if (totalCount == 0) return
 
         // Calcula a largura do menu com base no nome mais longo (escala 0.7)
         val textScale = 0.7f
@@ -304,7 +310,7 @@ object HudSystem {
         val centerX = x + (menuWidth / 2)
 
         // Mode Status Header (SOLO vs MULTI)
-        val modeText = if (isSoloMode) {
+        val modeHeaderText = if (isSoloMode) {
             val pokeName = getSelectedPokemonName()
             "MODE: SOLO [${pokeName ?: "Selected"}]"
         } else {
@@ -315,7 +321,7 @@ object HudSystem {
         guiGraphics.pose().pushPose()
         guiGraphics.pose().translate(x.toDouble(), (y - 20).toDouble(), 0.0)
         guiGraphics.pose().scale(0.6f, 0.6f, 1f)
-        guiGraphics.drawString(client.font, modeText, 0, 0, modeColor, true)
+        guiGraphics.drawString(client.font, modeHeaderText, 0, 0, modeColor, true)
         guiGraphics.pose().popPose()
 
         if (hasAbove) {
@@ -389,27 +395,55 @@ object HudSystem {
         val downKey = CobblebrainClientCommon.keyDown?.translatedKeyMessage?.string ?: "V"
         val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
         val toggleKey = CobblebrainClientCommon.keyToggle?.translatedKeyMessage?.string ?: "N"
+        val modeKey = CobblebrainClientCommon.keyMode?.translatedKeyMessage?.string ?: "I"
         val pingKey = CobblebrainClientCommon.keyPing?.translatedKeyMessage?.string ?: "G"
-
-        val selectUpMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_up")
-        val selectDownMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_down")
-        val confirmOrderMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.confirm_order")
-        val toggleHudMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.toggle_hud")
-        val markLocationMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.mark_location")
+        val voiceKey = CobblebrainClientCommon.keyVoice?.translatedKeyMessage?.string ?: "H"
+        val debugKey = CobblebrainClientCommon.keyDebug?.translatedKeyMessage?.string ?: "F8"
 
         guiGraphics.pose().pushPose()
         guiGraphics.pose().translate((x).toDouble(), (y + totalHeight + 6).toDouble(), 0.0)
-        guiGraphics.pose().scale(0.5f, 0.5f, 1f) // Voltando para o tamanho anterior
+        guiGraphics.pose().scale(0.5f, 0.5f, 1f)
 
-        val modeKey = CobblebrainClientCommon.keyMode?.translatedKeyMessage?.string ?: "M"
-        val toggleModeMsg = "$modeKey: Mode (${if (isSoloMode) "SOLO" else "MULTI"})"
+        val upDownText = I18n.get("cobblebrain.hud.up_down")
+        val confirmOrderText = I18n.get("cobblebrain.hud.confirm_order")
+        val toggleHudText = I18n.get("cobblebrain.hud.toggle_hud")
+        val modeText = I18n.get("cobblebrain.hud.mode")
+        val pingText = I18n.get("cobblebrain.hud.ping")
 
-        guiGraphics.drawString(client.font, "$upKey: $selectUpMsg", 0, 5, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$downKey: $selectDownMsg", 0, 15, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$execKey: $confirmOrderMsg", 0, 25, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$toggleKey: $toggleHudMsg", 0, 35, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$pingKey: $markLocationMsg", 0, 45, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, toggleModeMsg, 0, 55, 0x99FFFFFF.toInt(), false)
+        var tipY = 5
+        guiGraphics.drawString(client.font, "[$downKey/$upKey]: $upDownText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$execKey: $confirmOrderText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$toggleKey: $toggleHudText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$modeKey: $modeText (${if (isSoloMode) "SOLO" else "MULTI"})", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "--------", 0, tipY, 0x66FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$pingKey: $pingText", 0, tipY, 0x99FFFFFF.toInt(), false)
+
+        val isSttEnabled = try {
+            ClientConfigHandler.clientConfig.enableStt && CobblebrainClientCommon.isMcmtiInstalled()
+        } catch (_: Throwable) {
+            false
+        }
+        if (isSttEnabled) {
+            tipY += 10
+            val sttText = I18n.get("cobblebrain.hud.hold_record_stt", voiceKey)
+            guiGraphics.drawString(client.font, sttText, 0, tipY, 0x99FFFFFF.toInt(), false)
+        }
+
+        val isStoryRunning = try {
+            StoryDebugger.hasActiveSession() || StoryExecutor.activeStories.isNotEmpty()
+        } catch (_: Throwable) {
+            false
+        }
+        if (isStoryRunning) {
+            tipY += 10
+            val debuggerText = I18n.get("cobblebrain.hud.story_debugger")
+            guiGraphics.drawString(client.font, "$debugKey: $debuggerText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        }
 
         guiGraphics.pose().popPose()
     }
@@ -559,7 +593,9 @@ object HudSystem {
 
     fun executeAction() {
         val sortedCommands = getSortedCommands()
-        val cmd = sortedCommands[selectedActionIndex].uppercase()
+        if (sortedCommands.isEmpty()) return
+        val safeIndex = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
+        val cmd = sortedCommands[safeIndex].uppercase()
 
         // Bloqueia se estiver em cooldown
         if (getCooldownRemaining(cmd) > 0) {
@@ -624,13 +660,13 @@ object HudSystem {
 
     private fun getActionDisplayName(cmd: String): String {
         val key = "cobblebrain.action.${cmd.lowercase().replace(" ", "_")}"
-        if (net.minecraft.client.resources.language.I18n.exists(key)) {
-            val text = net.minecraft.client.resources.language.I18n.get(key)
+        if (I18n.exists(key)) {
+            val text = I18n.get(key)
             if (text.isNotBlank() && !text.startsWith("cobblebrain.action.")) return text
         }
         val altKey = "cobblebrain.action.${cmd.lowercase()}"
-        if (net.minecraft.client.resources.language.I18n.exists(altKey)) {
-            val text = net.minecraft.client.resources.language.I18n.get(altKey)
+        if (I18n.exists(altKey)) {
+            val text = I18n.get(altKey)
             if (text.isNotBlank() && !text.startsWith("cobblebrain.action.")) return text
         }
         return cmd.replace("_", " ").uppercase()

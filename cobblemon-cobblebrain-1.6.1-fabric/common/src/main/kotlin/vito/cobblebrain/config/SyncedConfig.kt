@@ -50,34 +50,29 @@ object SyncedConfig {
     var actionSettings: ActionSettings = ActionSettings()
         private set
 
-    fun isActionActive(actionName: String): Boolean {
+    fun isActionActiveForPlayer(actionName: String): Boolean {
         val client = Minecraft.getInstance()
         val settings = try {
             if (client.isLocalServer) ConfigHandler.config.actionSettings else actionSettings
         } catch (_: Throwable) {
             actionSettings
         }
-        val key = actionName.lowercase().trim().replace(" ", "_")
-        return when (key) {
-            "cook" -> settings.cook.active
-            "grow" -> settings.grow.active
-            "repair" -> settings.repair.active
-            "shift" -> settings.shift.active
-            "fish" -> settings.fish.active
-            "nightmare" -> settings.nightmare.active
-            "light" -> settings.light.active
-            "scout" -> settings.scout.active
-            "teleport" -> settings.teleport.active
-            "attack" -> settings.attack.active
-            "protect" -> settings.protect.active
-            "eat" -> settings.eat.active
-            "buff" -> settings.buff.active
-            "debuff", "debuff_enemy" -> settings.debuffEnemy.active
-            "excavate", "demolish" -> settings.excavate.active
-            "rest", "sit" -> settings.rest.active
-            "idle" -> settings.idle.active
-            else -> true
+        return settings.isActionActiveForPlayer(actionName)
+    }
+
+    fun isActionActiveForAI(actionName: String): Boolean {
+        if (!outputActions) return false
+        val client = Minecraft.getInstance()
+        val settings = try {
+            if (client.isLocalServer) ConfigHandler.config.actionSettings else actionSettings
+        } catch (_: Throwable) {
+            actionSettings
         }
+        return settings.isActionActiveForAI(actionName)
+    }
+
+    fun isActionActive(actionName: String): Boolean {
+        return isActionActiveForPlayer(actionName) || isActionActiveForAI(actionName)
     }
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
@@ -103,6 +98,7 @@ object SyncedConfig {
         if (payload.actionSettingsJson.isNotBlank()) {
             try {
                 actionSettings = com.google.gson.Gson().fromJson(payload.actionSettingsJson, ActionSettings::class.java) ?: ActionSettings()
+                actionSettings.migrateLegacy()
             } catch (_: Exception) {}
         }
         received = true

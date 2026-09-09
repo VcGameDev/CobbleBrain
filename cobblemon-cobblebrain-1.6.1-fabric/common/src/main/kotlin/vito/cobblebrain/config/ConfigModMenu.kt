@@ -180,8 +180,14 @@ object CobblebrainConfigScreen {
 
         for (key in actionKeys) {
             val actionTransName = Component.translatable("cobblebrain.action.$key").string
-            val isActive = SyncedConfig.isActionActive(key)
-            val statusText = if (isActive) "✔ [ACTIVE]" else "❌ [DISABLED]"
+            val isPlayerActive = SyncedConfig.isActionActiveForPlayer(key)
+            val isAiActive = SyncedConfig.isActionActiveForAI(key)
+            val statusText = when {
+                isPlayerActive && isAiActive -> "✔ [PLAYER & AI]"
+                isPlayerActive -> "👤 [PLAYER ONLY]"
+                isAiActive -> "🤖 [AI ONLY]"
+                else -> "❌ [DISABLED]"
+            }
             val buttonText = Component.literal("$statusText $actionTransName")
 
             val entry = makeButtonEntry(buttonText) {
@@ -206,26 +212,49 @@ object CobblebrainConfigScreen {
         val mc = Minecraft.getInstance()
         val actionSettings = if (mc.isLocalServer) config.actionSettings else SyncedConfig.actionSettings
 
-        var activeVal = when (actionKey) {
-            "cook" -> actionSettings.cook.active
-            "grow" -> actionSettings.grow.active
-            "repair" -> actionSettings.repair.active
-            "shift" -> actionSettings.shift.active
-            "fish" -> actionSettings.fish.active
-            "nightmare" -> actionSettings.nightmare.active
-            "light" -> actionSettings.light.active
-            "scout" -> actionSettings.scout.active
-            "teleport" -> actionSettings.teleport.active
-            "attack" -> actionSettings.attack.active
-            "protect" -> actionSettings.protect.active
-            "eat" -> actionSettings.eat.active
-            "buff" -> actionSettings.buff.active
-            "debuff_enemy" -> actionSettings.debuffEnemy.active
-            "excavate", "demolish" -> actionSettings.excavate.active
-            "rest", "sit" -> actionSettings.rest.active
-            "idle" -> actionSettings.idle.active
+        var enabledForPlayerVal = when (actionKey) {
+            "cook" -> actionSettings.cook.enabledForPlayer
+            "grow" -> actionSettings.grow.enabledForPlayer
+            "repair" -> actionSettings.repair.enabledForPlayer
+            "shift" -> actionSettings.shift.enabledForPlayer
+            "fish" -> actionSettings.fish.enabledForPlayer
+            "nightmare" -> actionSettings.nightmare.enabledForPlayer
+            "light" -> actionSettings.light.enabledForPlayer
+            "scout" -> actionSettings.scout.enabledForPlayer
+            "teleport" -> actionSettings.teleport.enabledForPlayer
+            "attack" -> actionSettings.attack.enabledForPlayer
+            "protect" -> actionSettings.protect.enabledForPlayer
+            "eat" -> actionSettings.eat.enabledForPlayer
+            "buff" -> actionSettings.buff.enabledForPlayer
+            "debuff_enemy" -> actionSettings.debuffEnemy.enabledForPlayer
+            "excavate", "demolish" -> actionSettings.excavate.enabledForPlayer
+            "rest", "sit" -> actionSettings.rest.enabledForPlayer
+            "idle" -> actionSettings.idle.enabledForPlayer
             else -> true
         }
+
+        var enabledForAiVal = when (actionKey) {
+            "cook" -> actionSettings.cook.enabledForAI
+            "grow" -> actionSettings.grow.enabledForAI
+            "repair" -> actionSettings.repair.enabledForAI
+            "shift" -> actionSettings.shift.enabledForAI
+            "fish" -> actionSettings.fish.enabledForAI
+            "nightmare" -> actionSettings.nightmare.enabledForAI
+            "light" -> actionSettings.light.enabledForAI
+            "scout" -> actionSettings.scout.enabledForAI
+            "teleport" -> actionSettings.teleport.enabledForAI
+            "attack" -> actionSettings.attack.enabledForAI
+            "protect" -> actionSettings.protect.enabledForAI
+            "eat" -> actionSettings.eat.enabledForAI
+            "buff" -> actionSettings.buff.enabledForAI
+            "debuff_enemy" -> actionSettings.debuffEnemy.enabledForAI
+            "excavate", "demolish" -> actionSettings.excavate.enabledForAI
+            "rest", "sit" -> actionSettings.rest.enabledForAI
+            "idle" -> actionSettings.idle.enabledForAI
+            else -> true
+        }
+
+        var spawnCarpetVal = actionSettings.rest.spawnCarpet
 
         var maxFishRewardsVal = actionSettings.fish.maxFishRewardCount
         var fishLuckBonusVal = actionSettings.fish.luckBonus
@@ -263,16 +292,25 @@ object CobblebrainConfigScreen {
         var debuffDurationVal = actionSettings.debuffEnemy.durationSeconds
         var debuffEffectLevelVal = actionSettings.debuffEnemy.effectLevel
 
-        val activeEntry = entryBuilder.startBooleanToggle(
-            Component.translatable("cobblebrain.config.action.active"),
-            activeVal
+        val enabledForPlayerEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.action.enabled_for_player"),
+            enabledForPlayerVal
         ).setDefaultValue(true)
-            .setSaveConsumer { value -> activeVal = value }
-            .setTooltip(Component.translatable("cobblebrain.config.action.active.tooltip"))
+            .setSaveConsumer { value -> enabledForPlayerVal = value }
+            .setTooltip(Component.translatable("cobblebrain.config.action.enabled_for_player.tooltip"))
+            .build()
+
+        val enabledForAiEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.action.enabled_for_ai"),
+            enabledForAiVal
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> enabledForAiVal = value }
+            .setTooltip(Component.translatable("cobblebrain.config.action.enabled_for_ai.tooltip"))
             .build()
 
         category.entries.add(makeSubtitleEntry("ACTION: $actionTransName (SERVER)", 0xFFFF00))
-        category.entries.add(activeEntry)
+        category.entries.add(enabledForPlayerEntry)
+        category.entries.add(enabledForAiEntry)
 
         when (actionKey) {
             "fish" -> {
@@ -462,77 +500,113 @@ object CobblebrainConfigScreen {
                     .setSaveConsumer { value -> debuffEffectLevelVal = value }
                     .setTooltip(Component.translatable("cobblebrain.config.action.effect_level.tooltip")).build())
             }
+            "rest", "sit" -> {
+                category.entries.add(entryBuilder.startBooleanToggle(
+                    Component.translatable("cobblebrain.config.action.rest.spawn_carpet"),
+                    spawnCarpetVal
+                ).setDefaultValue(true)
+                    .setSaveConsumer { value -> spawnCarpetVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.rest.spawn_carpet.tooltip")).build())
+            }
         }
 
         builder.setSavingRunnable {
             val cfg = config
             when (actionKey) {
                 "cook" -> {
-                    cfg.actionSettings.cook.active = activeVal
+                    cfg.actionSettings.cook.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.cook.enabledForAI = enabledForAiVal
                     cfg.actionSettings.cook.charcoalChancePercent = charcoalChanceVal
                     cfg.actionSettings.cook.cooldownTicks = cookCooldownTicksVal
                 }
                 "grow" -> {
-                    cfg.actionSettings.grow.active = activeVal
+                    cfg.actionSettings.grow.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.grow.enabledForAI = enabledForAiVal
                     cfg.actionSettings.grow.growIntervalTicks = growIntervalTicksVal
                 }
                 "repair" -> {
-                    cfg.actionSettings.repair.active = activeVal
+                    cfg.actionSettings.repair.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.repair.enabledForAI = enabledForAiVal
                     cfg.actionSettings.repair.maxRepairPercent = maxRepairVal
                     cfg.actionSettings.repair.cooldownTicks = repairCooldownTicksVal
                 }
                 "shift" -> {
-                    cfg.actionSettings.shift.active = activeVal
+                    cfg.actionSettings.shift.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.shift.enabledForAI = enabledForAiVal
                     cfg.actionSettings.shift.shiftDurationSeconds = shiftDurationVal
                     cfg.actionSettings.shift.effectLevel = shiftEffectLevelVal
                     cfg.actionSettings.shift.cooldownSeconds = shiftCooldownVal
                 }
                 "fish" -> {
-                    cfg.actionSettings.fish.active = activeVal
+                    cfg.actionSettings.fish.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.fish.enabledForAI = enabledForAiVal
                     cfg.actionSettings.fish.maxFishRewardCount = maxFishRewardsVal
                     cfg.actionSettings.fish.luckBonus = fishLuckBonusVal
                     cfg.actionSettings.fish.allowTreasureLoot = fishAllowTreasureVal
                 }
                 "nightmare" -> {
-                    cfg.actionSettings.nightmare.active = activeVal
+                    cfg.actionSettings.nightmare.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.nightmare.enabledForAI = enabledForAiVal
                     cfg.actionSettings.nightmare.nightmareRadius = nightmareRadiusVal
                     cfg.actionSettings.nightmare.durationSeconds = nightmareDurationVal
                     cfg.actionSettings.nightmare.effectLevel = nightmareEffectLevelVal
                     cfg.actionSettings.nightmare.cooldownSeconds = nightmareCooldownVal
                 }
                 "light" -> {
-                    cfg.actionSettings.light.active = activeVal
+                    cfg.actionSettings.light.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.light.enabledForAI = enabledForAiVal
                     cfg.actionSettings.light.lightIntensity = lightIntensityVal
                 }
                 "scout" -> {
-                    cfg.actionSettings.scout.active = activeVal
+                    cfg.actionSettings.scout.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.scout.enabledForAI = enabledForAiVal
                     cfg.actionSettings.scout.scoutRadius = scoutRadiusVal
                     cfg.actionSettings.scout.scoutFindStructures = scoutFindStructuresVal
                     cfg.actionSettings.scout.scoutHighlightMobs = scoutHighlightMobsVal
                 }
-                "teleport" -> cfg.actionSettings.teleport.active = activeVal
+                "teleport" -> {
+                    cfg.actionSettings.teleport.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.teleport.enabledForAI = enabledForAiVal
+                }
                 "attack" -> {
-                    cfg.actionSettings.attack.active = activeVal
+                    cfg.actionSettings.attack.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.attack.enabledForAI = enabledForAiVal
                     cfg.actionSettings.attack.damageMultiplier = attackDamageMultVal
                 }
                 "protect" -> {
-                    cfg.actionSettings.protect.active = activeVal
+                    cfg.actionSettings.protect.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.protect.enabledForAI = enabledForAiVal
                     cfg.actionSettings.protect.damageMultiplier = protectDamageMultVal
                 }
-                "eat" -> cfg.actionSettings.eat.active = activeVal
+                "eat" -> {
+                    cfg.actionSettings.eat.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.eat.enabledForAI = enabledForAiVal
+                }
                 "buff" -> {
-                    cfg.actionSettings.buff.active = activeVal
+                    cfg.actionSettings.buff.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.buff.enabledForAI = enabledForAiVal
                     cfg.actionSettings.buff.durationSeconds = buffDurationVal
                     cfg.actionSettings.buff.effectLevel = buffEffectLevelVal
                 }
                 "debuff_enemy" -> {
-                    cfg.actionSettings.debuffEnemy.active = activeVal
+                    cfg.actionSettings.debuffEnemy.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.debuffEnemy.enabledForAI = enabledForAiVal
                     cfg.actionSettings.debuffEnemy.durationSeconds = debuffDurationVal
                     cfg.actionSettings.debuffEnemy.effectLevel = debuffEffectLevelVal
                 }
-                "excavate", "demolish" -> cfg.actionSettings.excavate.active = activeVal
-                "rest", "sit" -> cfg.actionSettings.rest.active = activeVal
-                "idle" -> cfg.actionSettings.idle.active = activeVal
+                "excavate", "demolish" -> {
+                    cfg.actionSettings.excavate.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.excavate.enabledForAI = enabledForAiVal
+                }
+                "rest", "sit" -> {
+                    cfg.actionSettings.rest.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.rest.enabledForAI = enabledForAiVal
+                    cfg.actionSettings.rest.spawnCarpet = spawnCarpetVal
+                }
+                "idle" -> {
+                    cfg.actionSettings.idle.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.idle.enabledForAI = enabledForAiVal
+                }
             }
             ConfigHandler.save()
         }
