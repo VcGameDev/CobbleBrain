@@ -89,10 +89,19 @@ object GatheringActions {
         }
         val primaryType = cobblemonPokemon.primaryType.name.lowercase()
 
-        if (type == GatheringType.EXCAVATE && primaryType != "steel") {
-            sendMessage(owner, "${pokemon.displayName?.string} must be primary STEEL type to perform excavate!", ChatFormatting.RED)
-            CommandState.activeCommands[pokemon.uuid] = "idle"
-            return false
+        if (type == GatheringType.EXCAVATE) {
+            if (primaryType != "steel") {
+                sendMessage(owner, "${pokemon.displayName?.string} must be primary STEEL type to perform excavate!", ChatFormatting.RED)
+                CommandState.activeCommands[pokemon.uuid] = "idle"
+                return false
+            }
+            val minPercent = ConfigHandler.config.actionSettings.excavate.minHealthPercent
+            val minHp = ceil(cobblemonPokemon.maxHealth * (minPercent / 100.0f)).toInt().coerceAtLeast(1)
+            if (cobblemonPokemon.currentHealth <= minHp) {
+                sendMessage(owner, "${pokemon.displayName?.string} is too exhausted to excavate! Let them rest or heal first.", ChatFormatting.RED)
+                CommandState.activeCommands[pokemon.uuid] = "idle"
+                return false
+            }
         }
 
         // Fresh start ONLY after action is activated (clear old pre-existing pings)
@@ -579,6 +588,35 @@ object GatheringActions {
                         1.2f,
                         0.9f + level.random.nextFloat() * 0.2f
                     )
+
+                    val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon
+                    if (cobblemonPokemon != null) {
+                        val damage = ConfigHandler.config.actionSettings.excavate.exhaustionDamagePerLayer
+                        val minPercent = ConfigHandler.config.actionSettings.excavate.minHealthPercent
+                        val minHp = ceil(cobblemonPokemon.maxHealth * (minPercent / 100.0f)).toInt().coerceAtLeast(1)
+
+                        if (damage > 0) {
+                            val newHealth = (cobblemonPokemon.currentHealth - damage).coerceAtLeast(minHp)
+                            cobblemonPokemon.currentHealth = newHealth
+                            pokemon.health = newHealth.toFloat()
+                        }
+
+                        if (cobblemonPokemon.currentHealth <= minHp) {
+                            session.targetBlocks.clear()
+                            session.layers.clear()
+                            session.state = GatheringState.FINISHED
+                            pokemon.navigation.stop()
+                            restoreFollowGoal(pokemon)
+                            iterator.remove()
+                            CommandState.activeCommands[pokemon.uuid] = "rest"
+                            sendMessage(
+                                owner,
+                                "${pokemon.displayName?.string} is too exhausted to continue excavating and started resting.",
+                                ChatFormatting.GOLD
+                            )
+                            return
+                        }
+                    }
                 }
 
                 session.currentLayerIndex++

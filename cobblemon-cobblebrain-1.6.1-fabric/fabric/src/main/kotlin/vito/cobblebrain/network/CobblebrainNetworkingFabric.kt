@@ -81,10 +81,10 @@ object CobblebrainNetworkingFabric {
         )
     }
 
-    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long) {
+    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
         ServerPlayNetworking.send(
             player,
-            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff, teleport)
         )
     }
 

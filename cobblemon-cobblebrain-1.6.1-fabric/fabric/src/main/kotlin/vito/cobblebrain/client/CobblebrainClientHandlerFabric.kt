@@ -163,7 +163,8 @@ object CobblebrainClientHandlerFabric {
                     payload.buffRemaining,
                     payload.repairRemaining,
                     payload.shiftRemaining,
-                    payload.debuffRemaining
+                    payload.debuffRemaining,
+                    payload.teleportRemaining
                 )
             }
         }

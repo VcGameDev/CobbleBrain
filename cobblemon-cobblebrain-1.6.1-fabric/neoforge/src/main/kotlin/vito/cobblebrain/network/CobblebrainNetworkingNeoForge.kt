@@ -119,10 +119,10 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
-    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long) {
+    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
         PacketDistributor.sendToPlayer(
             player,
-            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff, teleport)
         )
     }
 

@@ -10,6 +10,8 @@ import net.minecraft.sounds.SoundSource
 import kotlin.math.atan2
 import kotlin.math.sin
 import vito.cobblebrain.config.ClientConfigHandler
+import vito.cobblebrain.config.ConfigHandler
+import vito.cobblebrain.config.SyncedConfig
 import vito.cobblebrain.engine.StoryDebugger
 import vito.cobblebrain.engine.StoryExecutor
 
@@ -617,6 +619,14 @@ object HudSystem {
             "BUFF" -> 150000L // 2:30 (150s)
             "REPAIR" -> 300000L // 5:00 (300s)
             "SHIFT" -> 240000L // 4:00 (240s)
+            "TELEPORT" -> {
+                val cdSec = try {
+                    val mc = Minecraft.getInstance()
+                    if (mc.isLocalServer) ConfigHandler.config.actionSettings.teleport.cooldownSeconds
+                    else SyncedConfig.actionSettings.teleport.cooldownSeconds
+                } catch (_: Throwable) { 30 }
+                cdSec * 1000L
+            }
             else -> 0L
         }
         if (duration > 0) {
@@ -647,12 +657,13 @@ object HudSystem {
             SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.MASTER, 0.5f, 1.0f)
     }
 
-    fun updateCooldowns(buff: Long, repair: Long, shift: Long, debuff: Long) {
+    fun updateCooldowns(buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
         val now = System.currentTimeMillis()
         if (buff > 0) cooldowns["BUFF"] = now + buff
         if (repair > 0) cooldowns["REPAIR"] = now + repair
         if (shift > 0) cooldowns["SHIFT"] = now + shift
         if (debuff > 0) cooldowns["DEBUFF ENEMY"] = now + debuff
+        if (teleport > 0) cooldowns["TELEPORT"] = now + teleport
     }
 
     private fun getActionDisplayName(cmd: String): String {

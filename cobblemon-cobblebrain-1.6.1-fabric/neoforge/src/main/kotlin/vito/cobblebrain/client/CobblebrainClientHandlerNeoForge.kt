@@ -34,7 +34,8 @@ object CobblebrainClientHandlers {
             payload.buffRemaining,
             payload.repairRemaining,
             payload.shiftRemaining,
-            payload.debuffRemaining
+            payload.debuffRemaining,
+            payload.teleportRemaining
         )
     }
 

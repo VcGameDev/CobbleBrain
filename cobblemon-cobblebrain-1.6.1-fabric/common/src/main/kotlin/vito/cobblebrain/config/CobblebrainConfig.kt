@@ -79,6 +79,7 @@ data class RestActionConfig(
     var enabledForPlayer: Boolean = true,
     var enabledForAI: Boolean = true,
     var spawnCarpet: Boolean = true,
+    var healAmount: Int = 1,
     @com.google.gson.annotations.SerializedName("active")
     var legacyActive: Boolean? = null
 ) {
@@ -402,11 +403,60 @@ data class DebuffEnemyActionConfig(
 
 data class ExcavateActionConfig(
     var enabledForPlayer: Boolean = true,
-    var enabledForAI: Boolean = true,
+    var enabledForAI: Boolean = false,
     var maxBlocks: Int = 144,
     var breakDelayTicks: Int = 3,
     var dropChancePercent: Int = 30,
     var workingDistance: Double = 32.0,
+    var exhaustionDamagePerLayer: Int = 2,
+    var minHealthPercent: Int = 10,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
+
+data class TeleportActionConfig(
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = false,
+    var cooldownSeconds: Int = 30,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
+
+data class BuildActionConfig(
+    var enabledForPlayer: Boolean = true,
+    var enabledForAI: Boolean = false,
     @com.google.gson.annotations.SerializedName("active")
     var legacyActive: Boolean? = null
 ) {
@@ -436,7 +486,7 @@ data class ActionSettings(
     var nightmare: NightmareActionConfig = NightmareActionConfig(),
     var light: LightActionConfig = LightActionConfig(),
     var scout: ScoutActionConfig = ScoutActionConfig(),
-    var teleport: BaseActionConfig = BaseActionConfig(),
+    var teleport: TeleportActionConfig = TeleportActionConfig(),
     var attack: AttackActionConfig = AttackActionConfig(),
     var protect: ProtectActionConfig = ProtectActionConfig(),
     var eat: BaseActionConfig = BaseActionConfig(),
@@ -444,6 +494,7 @@ data class ActionSettings(
     var debuffEnemy: DebuffEnemyActionConfig = DebuffEnemyActionConfig(),
     var excavate: ExcavateActionConfig = ExcavateActionConfig(),
     var demolish: ExcavateActionConfig = excavate,
+    var build: BuildActionConfig = BuildActionConfig(),
     var rest: RestActionConfig = RestActionConfig(),
     var idle: BaseActionConfig = BaseActionConfig()
 ) {
@@ -469,6 +520,7 @@ data class ActionSettings(
             "buff" -> buff.enabledForPlayer
             "debuff", "debuff_enemy" -> debuffEnemy.enabledForPlayer
             "excavate", "demolish" -> excavate.enabledForPlayer
+            "build" -> build.enabledForPlayer
             "rest", "sit" -> rest.enabledForPlayer
             "idle" -> idle.enabledForPlayer
             else -> true
@@ -493,6 +545,7 @@ data class ActionSettings(
             "buff" -> buff.enabledForAI
             "debuff", "debuff_enemy" -> debuffEnemy.enabledForAI
             "excavate", "demolish" -> excavate.enabledForAI
+            "build" -> build.enabledForAI
             "rest", "sit" -> rest.enabledForAI
             "idle" -> idle.enabledForAI
             else -> true
@@ -520,6 +573,7 @@ data class ActionSettings(
         debuffEnemy.migrateLegacy()
         excavate.migrateLegacy()
         demolish.migrateLegacy()
+        build.migrateLegacy()
         rest.migrateLegacy()
         idle.migrateLegacy()
     }

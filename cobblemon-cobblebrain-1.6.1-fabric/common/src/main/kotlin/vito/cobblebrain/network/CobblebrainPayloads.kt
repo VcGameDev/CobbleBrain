@@ -221,7 +221,8 @@ object CobblebrainPayloads {
         val buffRemaining: Long,
         val repairRemaining: Long,
         val shiftRemaining: Long,
-        val debuffRemaining: Long
+        val debuffRemaining: Long,
+        val teleportRemaining: Long = 0L
     ) : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "sync_cooldowns")
@@ -234,13 +235,15 @@ object CobblebrainPayloads {
                         buf.writeLong(payload.repairRemaining)
                         buf.writeLong(payload.shiftRemaining)
                         buf.writeLong(payload.debuffRemaining)
+                        buf.writeLong(payload.teleportRemaining)
                     },
                     { buf ->
                         SyncCooldownsPayload(
                             buf.readLong(),
                             buf.readLong(),
                             buf.readLong(),
-                            buf.readLong()
+                            buf.readLong(),
+                            if (buf.isReadable) buf.readLong() else 0L
                         )
                     }
                 )

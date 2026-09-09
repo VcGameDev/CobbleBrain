@@ -57,8 +57,8 @@ object CobblebrainMod : ModInitializer {
         println("o mod cobblebrain carregou")
         CommandTickHandlerFabric.registerTickHandler()
 
-        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d ->
-            CobblebrainNetworkingFabric.sendCooldowns(player, b, r, s, d)
+        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d, t ->
+            CobblebrainNetworkingFabric.sendCooldowns(player, b, r, s, d, t)
         }
 
         PayloadTypeRegistry.playS2C().register(

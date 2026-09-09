@@ -102,7 +102,7 @@ object CobblebrainClientCommon {
         }
     }
 
-    fun onCooldownsSynced(buff: Long, repair: Long, shift: Long, debuff: Long) {
-        HudSystem.updateCooldowns(buff, repair, shift, debuff)
+    fun onCooldownsSynced(buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
+        HudSystem.updateCooldowns(buff, repair, shift, debuff, teleport)
     }
 }

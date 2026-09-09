@@ -313,10 +313,10 @@ val teleportTargetPos =
     mutableMapOf<UUID, BlockPos>()
 
 val teleportCooldown =
-    mutableMapOf<UUID, Int>()
+    mutableMapOf<UUID, Long>()
 
 object PokemonCommands {
-    var sendCooldowns: ((ServerPlayer, Long, Long, Long, Long) -> Unit)? = null
+    var sendCooldowns: ((ServerPlayer, Long, Long, Long, Long, Long) -> Unit)? = null
 
     fun syncCooldowns(player: ServerPlayer) {
         val now = System.currentTimeMillis()
@@ -326,13 +326,15 @@ object PokemonCommands {
         val repairCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "RepairCD")
         val shiftCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "ShiftCD")
         val debuffCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "DebuffCD")
+        val teleportCD = CobblebrainWorldSave.getPlayerCooldown(pUuid, "TeleportCD")
 
         val bRem = if (buffCD > now) buffCD - now else 0L
         val rRem = if (repairCD > now) repairCD - now else 0L
         val sRem = if (shiftCD > now) shiftCD - now else 0L
         val dRem = if (debuffCD > now) debuffCD - now else 0L
+        val tRem = if (teleportCD > now) teleportCD - now else 0L
 
-        sendCooldowns?.invoke(player, bRem, rRem, sRem, dRem)
+        sendCooldowns?.invoke(player, bRem, rRem, sRem, dRem, tRem)
     }
 }
 
@@ -1114,12 +1116,15 @@ object CommandTickHandler {
                     val healTick = (restHealTimer[pokemonId] ?: 0) + 1
                     if (healTick >= 20) {
                         restHealTimer[pokemonId] = 0
-                        if (cobblemonPokemon.currentHealth < cobblemonPokemon.maxHealth) {
-                            cobblemonPokemon.currentHealth =
-                                (cobblemonPokemon.currentHealth + 1).coerceAtMost(cobblemonPokemon.maxHealth)
-                        }
-                        if (pokemon.health < pokemon.maxHealth) {
-                            pokemon.heal(1.0f)
+                        val healAmount = config.actionSettings.rest.healAmount
+                        if (healAmount > 0) {
+                            if (cobblemonPokemon.currentHealth < cobblemonPokemon.maxHealth) {
+                                cobblemonPokemon.currentHealth =
+                                    (cobblemonPokemon.currentHealth + healAmount).coerceAtMost(cobblemonPokemon.maxHealth)
+                            }
+                            if (pokemon.health < pokemon.maxHealth) {
+                                pokemon.heal(healAmount.toFloat())
+                            }
                         }
                     } else {
                         restHealTimer[pokemonId] = healTick
@@ -2003,36 +2008,21 @@ object CommandTickHandler {
                     val targetPos =
                         ping.pos
 
-                    val cooldown =
-                        teleportCooldown.getOrDefault(
-                            pokemonId,
-                            0
-                        )
+                    val now = System.currentTimeMillis()
+                    val lastTeleportEnd = CobblebrainWorldSave.getPlayerCooldown(owner.uuid.toString(), "TeleportCD")
+                    val cdSeconds = config.actionSettings.teleport.cooldownSeconds
+                    val teleportDuration = cdSeconds * 1000L
 
-                    println("TELEPORT ACTION")
-                    println("TARGET: ${teleportTargetPos[pokemonId]}")
-
-                    if (cooldown > 0) {
-
-                        teleportCooldown[pokemonId] =
-                            cooldown - 1
-
-                        if (
-                            announcedStates[pokemonId] ==
-                            "teleport"
-                        ) {
-
+                    if (now < lastTeleportEnd) {
+                        val remainingSec = kotlin.math.ceil((lastTeleportEnd - now) / 1000.0).toInt().coerceAtLeast(1)
+                        if (announcedStates[pokemonId] == "teleport") {
                             sendMessage(
                                 owner,
-                                "${pokemon.displayName?.string} is recharging TELEPORT...",
+                                "${pokemon.displayName?.string} is recharging TELEPORT... (${remainingSec}s)",
                                 ChatFormatting.LIGHT_PURPLE
                             )
                         }
-
-                        CommandState.activeCommands[
-                            pokemonId
-                        ] = "idle"
-
+                        CommandState.activeCommands[pokemonId] = "idle"
                         return@forEach
                     }
 
@@ -2151,9 +2141,10 @@ object CommandTickHandler {
                         0.8f
                     )
 
-                    teleportCooldown[
-                        pokemonId
-                    ] = 0 // 2 minutes
+                    if (teleportDuration > 0) {
+                        CobblebrainWorldSave.setPlayerCooldown(owner.uuid.toString(), "TeleportCD", now + teleportDuration)
+                        PokemonCommands.syncCooldowns(owner)
+                    }
 
                     teleportTargetPos.remove(
                         pokemonId

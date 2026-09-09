@@ -35,8 +35,8 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
         println("o mod cobblebrain carregou (NeoForge)")
         modEventBus.addListener(CobblebrainPayloadRegistrarNeoForge::register)
 
-        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d ->
-            CobblebrainNetworkingNeoForge.sendCooldowns(player, b, r, s, d)
+        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d, t ->
+            CobblebrainNetworkingNeoForge.sendCooldowns(player, b, r, s, d, t)
         }
 
         if (FMLEnvironment.dist == Dist.CLIENT) {

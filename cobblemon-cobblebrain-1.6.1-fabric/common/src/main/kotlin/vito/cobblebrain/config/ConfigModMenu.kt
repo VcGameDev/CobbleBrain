@@ -171,7 +171,7 @@ object CobblebrainConfigScreen {
         val category = builder.getOrCreateCategory(Component.literal("Actions"))
         val actionKeys = listOf(
             "cook", "grow", "repair", "shift", "fish", "nightmare", "light", "scout",
-            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "rest", "idle"
+            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "build", "rest", "idle"
         )
 
         category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFFFF00))
@@ -228,6 +228,7 @@ object CobblebrainConfigScreen {
             "buff" -> actionSettings.buff.enabledForPlayer
             "debuff_enemy" -> actionSettings.debuffEnemy.enabledForPlayer
             "excavate", "demolish" -> actionSettings.excavate.enabledForPlayer
+            "build" -> actionSettings.build.enabledForPlayer
             "rest", "sit" -> actionSettings.rest.enabledForPlayer
             "idle" -> actionSettings.idle.enabledForPlayer
             else -> true
@@ -249,12 +250,17 @@ object CobblebrainConfigScreen {
             "buff" -> actionSettings.buff.enabledForAI
             "debuff_enemy" -> actionSettings.debuffEnemy.enabledForAI
             "excavate", "demolish" -> actionSettings.excavate.enabledForAI
+            "build" -> actionSettings.build.enabledForAI
             "rest", "sit" -> actionSettings.rest.enabledForAI
             "idle" -> actionSettings.idle.enabledForAI
             else -> true
         }
 
         var spawnCarpetVal = actionSettings.rest.spawnCarpet
+        var restHealAmountVal = actionSettings.rest.healAmount
+        var teleportCooldownVal = actionSettings.teleport.cooldownSeconds
+        var excavateDamageVal = actionSettings.excavate.exhaustionDamagePerLayer
+        var excavateMinHealthPercentVal = actionSettings.excavate.minHealthPercent
 
         var maxFishRewardsVal = actionSettings.fish.maxFishRewardCount
         var fishLuckBonusVal = actionSettings.fish.luckBonus
@@ -300,10 +306,15 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.action.enabled_for_player.tooltip"))
             .build()
 
+        val defaultAiEnabled = when (actionKey) {
+            "excavate", "demolish", "teleport", "build" -> false
+            else -> true
+        }
+
         val enabledForAiEntry = entryBuilder.startBooleanToggle(
             Component.translatable("cobblebrain.config.action.enabled_for_ai"),
             enabledForAiVal
-        ).setDefaultValue(true)
+        ).setDefaultValue(defaultAiEnabled)
             .setSaveConsumer { value -> enabledForAiVal = value }
             .setTooltip(Component.translatable("cobblebrain.config.action.enabled_for_ai.tooltip"))
             .build()
@@ -500,6 +511,29 @@ object CobblebrainConfigScreen {
                     .setSaveConsumer { value -> debuffEffectLevelVal = value }
                     .setTooltip(Component.translatable("cobblebrain.config.action.effect_level.tooltip")).build())
             }
+            "teleport" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.cooldown"),
+                    teleportCooldownVal
+                ).setDefaultValue(30).setMin(0).setMax(600)
+                    .setSaveConsumer { value -> teleportCooldownVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.cooldown.tooltip")).build())
+            }
+            "excavate", "demolish" -> {
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.excavate.damage_per_layer"),
+                    excavateDamageVal
+                ).setDefaultValue(2).setMin(0).setMax(50)
+                    .setSaveConsumer { value -> excavateDamageVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.excavate.damage_per_layer.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.excavate.min_health_percent"),
+                    excavateMinHealthPercentVal
+                ).setDefaultValue(10).setMin(5).setMax(90)
+                    .setSaveConsumer { value -> excavateMinHealthPercentVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.excavate.min_health_percent.tooltip")).build())
+            }
             "rest", "sit" -> {
                 category.entries.add(entryBuilder.startBooleanToggle(
                     Component.translatable("cobblebrain.config.action.rest.spawn_carpet"),
@@ -507,6 +541,13 @@ object CobblebrainConfigScreen {
                 ).setDefaultValue(true)
                     .setSaveConsumer { value -> spawnCarpetVal = value }
                     .setTooltip(Component.translatable("cobblebrain.config.action.rest.spawn_carpet.tooltip")).build())
+
+                category.entries.add(entryBuilder.startIntField(
+                    Component.translatable("cobblebrain.config.action.rest.heal_amount"),
+                    restHealAmountVal
+                ).setDefaultValue(1).setMin(0).setMax(100)
+                    .setSaveConsumer { value -> restHealAmountVal = value }
+                    .setTooltip(Component.translatable("cobblebrain.config.action.rest.heal_amount.tooltip")).build())
             }
         }
 
@@ -567,6 +608,7 @@ object CobblebrainConfigScreen {
                 "teleport" -> {
                     cfg.actionSettings.teleport.enabledForPlayer = enabledForPlayerVal
                     cfg.actionSettings.teleport.enabledForAI = enabledForAiVal
+                    cfg.actionSettings.teleport.cooldownSeconds = teleportCooldownVal
                 }
                 "attack" -> {
                     cfg.actionSettings.attack.enabledForPlayer = enabledForPlayerVal
@@ -597,11 +639,18 @@ object CobblebrainConfigScreen {
                 "excavate", "demolish" -> {
                     cfg.actionSettings.excavate.enabledForPlayer = enabledForPlayerVal
                     cfg.actionSettings.excavate.enabledForAI = enabledForAiVal
+                    cfg.actionSettings.excavate.exhaustionDamagePerLayer = excavateDamageVal
+                    cfg.actionSettings.excavate.minHealthPercent = excavateMinHealthPercentVal
+                }
+                "build" -> {
+                    cfg.actionSettings.build.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.build.enabledForAI = enabledForAiVal
                 }
                 "rest", "sit" -> {
                     cfg.actionSettings.rest.enabledForPlayer = enabledForPlayerVal
                     cfg.actionSettings.rest.enabledForAI = enabledForAiVal
                     cfg.actionSettings.rest.spawnCarpet = spawnCarpetVal
+                    cfg.actionSettings.rest.healAmount = restHealAmountVal
                 }
                 "idle" -> {
                     cfg.actionSettings.idle.enabledForPlayer = enabledForPlayerVal

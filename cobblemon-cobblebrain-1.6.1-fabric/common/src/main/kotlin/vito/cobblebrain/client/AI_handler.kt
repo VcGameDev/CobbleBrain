@@ -172,6 +172,7 @@ class AIHandler {
                 if (SyncedConfig.isActionActiveForAI("sit")) available += "S (sit/rest)"
                 if (SyncedConfig.isActionActiveForAI("protect")) available += "P (protect owner)"
                 if (SyncedConfig.isActionActiveForAI("idle")) available += "I (idle)"
+                if (SyncedConfig.isActionActiveForAI("build")) available += "BU (build)"
 
                 if (SyncedConfig.isActionActiveForAI("cook") && ("fire" in presentTypes || presentTypes.isEmpty())) typeActions += "fire type: C (cook/smelt ores)"
                 if (SyncedConfig.isActionActiveForAI("repair") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: R (repair tools)"
