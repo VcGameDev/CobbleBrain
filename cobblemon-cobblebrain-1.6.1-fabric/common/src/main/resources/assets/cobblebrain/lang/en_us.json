@@ -29,7 +29,7 @@
   "cobblebrain.action.demolish": "EXCAVATE",
   "cobblebrain.action.build": "BUILD",
   "cobblebrain.action.desc.excavate": "Excavate a tunnel forward through blocks.",
-  "cobblebrain.action.desc.build": "Builds a structure using provided materials from a chest or inventory.",
+  "cobblebrain.action.desc.build": "Builds a structure using provided materials from a chest.",
   "cobblebrain.action.sit": "REST",
   "cobblebrain.action.rest": "REST",
   "cobblebrain.action.debuff enemy": "DEBUFF ENEMY",
