@@ -8,6 +8,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.social.DialogueFilter
 import java.io.IOException
 import java.net.URI
 import java.net.http.HttpClient
@@ -87,8 +88,12 @@ class AIHandler {
         }
 
         private val gson = Gson()
-        private val INSTRUCTS get() = clientConfig.instruct
-            .joinToString("\n")
+        private val INSTRUCTS: String
+            get() {
+                val rawList = clientConfig.instruct.filter { it.isNotBlank() }
+                val filtered = rawList.filterNot { it.trim().equals("[CREATIVEPROMPT]", ignoreCase = true) }
+                return (listOf("[CREATIVEPROMPT]") + filtered).joinToString("\n")
+            }
         private val TEMPERATURE get() = clientConfig.temperature
         private val SHOW_HUNGER get() = clientConfig.showHunger
         private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
@@ -162,14 +167,16 @@ class AIHandler {
             val presentTypes = party.flatMap { it.types }.map { it.name.lowercase() }.toSet()
 
             val available = mutableListOf<String>()
+            val wildActions = mutableListOf<String>()
             val typeActions = mutableListOf<String>()
 
             if (SyncedConfig.outputActions) {
                 if (SyncedConfig.isActionActiveForAI("attack")) available += "A (attack)"
+                if (SyncedConfig.isActionActiveForAI("hostile")) wildActions += "H (hostile - #<WildPokemon>:H[:<Target>]). Hostility escalation rules: 1st H puts the wild Pokémon in an IRRITATED warning stage. 2nd H while listed as (IRRITATED) in [NEARBY POKEMON] makes it enter combat and actively attack the target. EXCEPTION: If physically attacked/damaged by player or target, H triggers immediate combat. NEVER speak or narrate system status in dialogue. Speak ONLY in natural character dialogue. In normal or annoyed dialogue, use #<WildPokemon>:I."
                 if (SyncedConfig.isActionActiveForAI("eat")) available += "E (eat)"
                 if (SyncedConfig.isActionActiveForAI("buff")) available += "B (buff owner)"
                 if (SyncedConfig.isActionActiveForAI("debuff_enemy")) available += "D (debuff enemy)"
-                if (SyncedConfig.isActionActiveForAI("sit")) available += "S (sit/rest)"
+                if (SyncedConfig.isActionActiveForAI("sit")) available += "S (sit/rest - if night time, pokémon sleeps)"
                 if (SyncedConfig.isActionActiveForAI("protect")) available += "P (protect owner)"
                 if (SyncedConfig.isActionActiveForAI("idle")) available += "I (idle)"
                 if (SyncedConfig.isActionActiveForAI("build")) available += "BU (build)"
@@ -186,16 +193,21 @@ class AIHandler {
                 if (SyncedConfig.isActionActiveForAI("teleport") && ("psychic" in presentTypes || presentTypes.isEmpty())) typeActions += "psychic type: T (teleport)"
             }
 
-            if (available.isEmpty() && typeActions.isEmpty()) return ""
+            if (available.isEmpty() && wildActions.isEmpty() && typeActions.isEmpty()) return ""
 
             return buildString {
                 appendLine("ACTION FORMAT")
                 appendLine("Use actions only when appropriate to the dialogue, environment, or situation.")
-                appendLine("Format: #<PokemonName>:<action_code>")
+                appendLine("Format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
                 appendLine("Always separate actions from dialogue using '|' (e.g. Pikachu: Look! | #Pikachu:P). Never put action codes inside spoken dialogue.")
+                appendLine("The mod automatically notifies players of irritation and hostility. Never narrate or speak system notifications in character dialogue.")
                 if (available.isNotEmpty()) {
                     appendLine("Universal actions (any Pokémon):")
                     appendLine("  ${available.joinToString(", ")}")
+                }
+                if (wildActions.isNotEmpty()) {
+                    appendLine("Wild Pokémon actions (nearby wild Pokémon only):")
+                    appendLine("  ${wildActions.joinToString(", ")}")
                 }
                 if (typeActions.isNotEmpty()) {
                     appendLine("Type-specific actions (available for current Pokémon types):")
@@ -248,15 +260,15 @@ class AIHandler {
             appendLine("GENERAL RULES")
             appendLine("- strict format only")
             appendLine("- keep section order")
-            appendLine("- pokemon + player only")
+            appendLine("- pokemon + player only unless the [CREATIVEPROMPT] tells the opposite")
             appendLine("- only ACTIVE or NEARBY Pokémon may speak")
             appendLine("- unavailable Pokémon never speak")
-            appendLine("- if no Pokémon can respond, output only: \"No Pokémon heard what you said\" in $USER_LANGUAGE")
+            appendLine("- if no Pokémon can respond, output only: \"NO POK HEARD\"")
             appendLine("- consistent names")
-            appendLine("- no self-talk unless specified")
+            appendLine("- no self-talk unless the [CREATIVEPROMPT] tells the opposite")
             appendLine("- never speak or act for the player")
-            appendLine("- nearby Pokémon do not know the player's name")
             appendLine("- player IDs belong to players, not Pokémon")
+            appendLine("- unless a specific wild Pokémon's name explicitly appeared in [LAST INTERACTIONS] or the [CREATIVEPROMPT] tells the opposite, that pokemon treats the player as a complete stranger with zero prior knowledge of their name, past actions or reputation.")
 
             if (!SHOW_HUNGER) {
                 appendLine("- never initiate conversations about hunger, food, eating, or fullness. Only discuss them if the player explicitly asks.")
@@ -500,12 +512,12 @@ class AIHandler {
                 log("Health OK → ${res.body()}")
                 println("Health OK → ${res.body()}")
             } else {
-                log("Health ping falhou: HTTP ${res.statusCode()} → ${res.body()}")
-                println("Health ping falhou: HTTP ${res.statusCode()} → ${res.body()}")
+                log("Health ping failed: HTTP ${res.statusCode()} → ${res.body()}")
+                println("Health ping failed: HTTP ${res.statusCode()} → ${res.body()}")
             }
         } catch (e: Exception) {
-            log("Erro no health ping: ${e.message}")
-            println("Erro no health ping: ${e.message}")
+            log("Health ping error: ${e.message}")
+            println("Health ping error: ${e.message}")
         }
     }
 
@@ -620,9 +632,11 @@ class AIHandler {
             val json = gson.fromJson(body, Map::class.java)
             val error = json["error"] as? Map<*, *>
             if (error != null) {
-                val code = (error["code"] as? Number)?.toInt() ?: status
+                val code = (error["code"] as? Number)?.toInt()
+                    ?: (error["code"] as? String)?.toIntOrNull()
+                    ?: status
                 val msg = error["message"] as? String ?: "Unknown error"
-                return if (code != null) "Error $code: $msg" else "Error: $msg"
+                return if (code != null) "!Error $code! $msg" else "!Error! $msg"
             }
         } catch (_: Exception) {
             // Try regex
@@ -630,17 +644,17 @@ class AIHandler {
             val match = regex.find(body)
             if (match != null) {
                 val code = match.groupValues[1].toInt()
-                return errorMessages[code] ?: "HTTP Error $code: unmapped"
+                return errorMessages[code] ?: "!Error $code! HTTP Error $code: unmapped"
             }
         }
 
         // Append HTTP status code if non-200
         if (status != null && status != 200) {
-            return "HTTP $status: $body"
+            return errorMessages[status] ?: "!Error $status! HTTP $status: $body"
         }
 
         // fallback final
-        return body
+        return if (body.startsWith("!Error")) body else "!Error! ${body.ifBlank { "Unknown Error" }}"
     }
 
     private fun isLocalApi(apiBase: String): Boolean {
@@ -718,26 +732,28 @@ class AIHandler {
         } catch (e: Exception) {
             println("Request error")
             when (e) {
-                is HttpTimeoutException -> "Error: Request timeout"
-                is IOException -> "Error: Network problem (${e.message})"
-                else -> "Error: ${e.message}"
+                is HttpTimeoutException -> "!Error 408! Request timeout"
+                is IOException -> "!Error! Network problem (${e.message})"
+                else -> "!Error! ${e.message}"
             }
         }
 
-        if (responseText.isBlank() || responseText.startsWith("Error")) {
+        if (responseText.isBlank() || DialogueFilter.isErrorResponse(responseText)) {
             val msg = extractErrorMessage(responseText)
             lastPromptHash = null
             log("Error handled for prompt ${sha256(prompt)}: $msg")
             return msg
         }
 
-        val formatted = responseText
+        val sanitizedRaw = DialogueFilter.sanitizeRawResponse(responseText)
+
+        val formatted = sanitizedRaw
             .replace("\\n", "\n")
             .replace("\n", "|")
             .replace("\\", "")
 
         historico.add(Mensagem("user", cleanPrompt))
-        historico.add(Mensagem("assistant", responseText))
+        historico.add(Mensagem("assistant", sanitizedRaw))
         limitarHistorico()
 
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
@@ -748,7 +764,8 @@ class AIHandler {
         
         // 1. Try legacy explicit summary (!RESUME or =)
         var savedExplicit = false
-        parts.forEach { trimmed ->
+        parts.forEach { rawPart ->
+            val trimmed = DialogueFilter.stripListPrefix(rawPart)
             if (trimmed.startsWith("!RESUME", ignoreCase = true)) {
                 val resumeText = trimmed.substringAfter("!RESUME")
                     .removePrefix(":")
@@ -775,15 +792,9 @@ class AIHandler {
                 ""
             }
 
-            val actionTagRegex = Regex("""\s*#([A-Za-z0-9_.'♀♂# -]+?):([A-Za-z0-9+-]+)""")
-            val scoreTagRegex = Regex("""\s*#SCORE:\s*[+-]?\d+""", RegexOption.IGNORE_CASE)
-
             val dialogueLines = parts.map { line ->
-                line.replace(actionTagRegex, "")
-                    .replace(scoreTagRegex, "")
-                    .replace(Regex("""[ \t]+"""), " ")
-                    .replace(Regex("""\s+([,.:!?])"""), "$1")
-                    .trim()
+                val stripped = DialogueFilter.stripListPrefix(line)
+                DialogueFilter.cleanSpeechText(stripped)
             }.filter { line ->
                 line.isNotBlank() &&
                 !line.startsWith("#") &&
@@ -792,6 +803,7 @@ class AIHandler {
                 !line.startsWith("!") &&
                 !line.startsWith("=") &&
                 !line.startsWith("[FLAG:", ignoreCase = true) &&
+                !DialogueFilter.isPromptArtifact(line) &&
                 line.contains(":")
             }
 
@@ -966,7 +978,7 @@ class AIHandler {
             log("Stacktrace:")
             e.printStackTrace()
 
-            "Erro API (${clientConfig.customApiProvider} | $getEnvironment): ${e.message}"
+            "!Error! Error API (${clientConfig.customApiProvider}): ${e.message}"
         }
     }
 
@@ -1061,8 +1073,8 @@ class AIHandler {
             println(body)
             val json = gson.fromJson(body, Map::class.java)
 
-            val choices = json["choices"] as? List<*> ?: return "Erro parsing resposta"
-            val first = choices.firstOrNull() as? Map<*, *> ?: return "Erro parsing resposta"
+            val choices = json["choices"] as? List<*> ?: return "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
+            val first = choices.firstOrNull() as? Map<*, *> ?: return "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
 
             // OpenAI/OpenRouter format
             val message = first["message"] as? Map<*, *>
@@ -1077,15 +1089,14 @@ class AIHandler {
                 return removeThinkBlocks(text)
             }
 
-            "Erro parsing resposta"
+            "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
         } catch (_: Exception) {
-            "Erro parsing resposta"
+            "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
         }
     }
 
     private fun removeThinkBlocks(text: String): String {
-        val regex = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
-        return text.replace(regex, "")
+        return DialogueFilter.sanitizeRawResponse(text)
     }
 
     // ================= GOOGLE GEMMA / GEMINI =================
@@ -1187,7 +1198,7 @@ class AIHandler {
             log("Message: ${e.message}")
             e.printStackTrace()
 
-            "Erro API Google: ${e.message}"
+            "!Error! Error API Google: ${e.message}"
         }
     }
 
@@ -1201,7 +1212,7 @@ class AIHandler {
             val textPart = parts[0] as Map<*, *>
             textPart["text"] as String
         } catch (_: Exception) {
-            "Erro parsing resposta Google"
+            "!Error! Erro parsing resposta Google: ${body.take(200)}"
         }
 
     // ------------------------------------------------------------

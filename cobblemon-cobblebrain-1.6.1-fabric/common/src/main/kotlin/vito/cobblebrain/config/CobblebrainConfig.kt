@@ -49,6 +49,8 @@ data class CobblebrainConfig(
     var outputGuaranteedCatch: Boolean = true,
     var allowClientPersonalityEditing: Boolean = true,
     var enableTraits: Boolean = true,
+    var wildPokemonCanBeHostile: Boolean = false,
+    var hostileDamageMultiplier: Float = 0.75f,
     var actionSettings: ActionSettings = ActionSettings()
 )
 
@@ -530,6 +532,7 @@ data class ActionSettings(
     fun isActionActiveForAI(actionName: String): Boolean {
         val key = actionName.lowercase().trim().replace(" ", "_")
         return when (key) {
+            "hostile" -> ConfigHandler.config.wildPokemonCanBeHostile
             "cook" -> cook.enabledForAI
             "grow" -> grow.enabledForAI
             "repair" -> repair.enabledForAI

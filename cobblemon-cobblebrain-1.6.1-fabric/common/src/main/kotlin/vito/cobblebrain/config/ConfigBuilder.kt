@@ -141,7 +141,9 @@ class ConfigBuilder<T> private constructor(
             "\"outputGuaranteedCatch\"" to "\n// Enables the Guaranteed Catch mechanic after exceptional interactions.",
             "\"outputApril1\"" to "\n// Activates special April Fools actions. Only enable this if you want chaos!",
             "\"allowClientPersonalityEditing\"" to "\n// Allows clients to edit Pokémon personality characteristics.",
-            "\"enableTraits\"" to "\n// Enables Pokémon personality traits and behavioral characteristics."
+            "\"enableTraits\"" to "\n// Enables Pokémon personality traits and behavioral characteristics.",
+            "\"wildPokemonCanBeHostile\"" to "\n// Allows wild Pokémon to use the hostile action (H) to target and attack players.",
+            "\"hostileDamageMultiplier\"" to "\n// Multiplies physical damage of wild Pokémon executing H and creatures generated in Raids."
         )
 
 
@@ -182,11 +184,18 @@ object ConfigHandler {
 object ClientConfigHandler {
     lateinit var clientConfig: CobblebrainClientConfig
 
+    fun ensureCreativePrompt(list: List<String>): List<String> {
+        val clean = list.filter { it.isNotBlank() && !it.trim().equals("[CREATIVEPROMPT]", ignoreCase = true) }
+        return listOf("[CREATIVEPROMPT]") + clean
+    }
+
     fun load() {
         clientConfig = ConfigBuilder.load(CobblebrainClientConfig::class.java, "cobblebrain_client")
+        clientConfig.instruct = ensureCreativePrompt(clientConfig.instruct)
     }
 
     fun save() {
+        clientConfig.instruct = ensureCreativePrompt(clientConfig.instruct)
         val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
         val json = JsonParser.parseString(gson.toJson(clientConfig)).asJsonObject
         val file = File("config/cobblebrain_client.json5")

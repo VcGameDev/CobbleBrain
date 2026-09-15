@@ -47,6 +47,10 @@ class DialogueSystemNeoForge {
                 DialogueSystem.onPokemonSent(it)
             }
 
+            CobblemonEvents.POKEMON_CAPTURED.subscribe {
+                CobblebrainWorldSave.migrateWildToPermanent(it.pokemon)
+            }
+
             CobblemonEvents.BATTLE_FLED.subscribe {
                 DialogueSystem.onBattleFled(it)
             }

@@ -196,7 +196,7 @@ class AIDialogueBlock {
         }
 
         AIClientHandler.sendPrompt(telemetryPrompt).thenAccept { responseStr ->
-            if (responseStr.isNullOrBlank() || responseStr.startsWith("Erro ao gerar")) {
+            if (responseStr.isNullOrBlank() || responseStr.startsWith("!Error") || responseStr.startsWith("Erro ao gerar")) {
                 val fallbackVerbal = if (fallbackText.isNotBlank() && fallbackText != "...") {
                     fallbackText
                 } else {

@@ -340,10 +340,11 @@ object WorldEventsSystem {
 
                     val pokeData = pokemon.pokemon
                     val scaledDamage = pokeData.level * 0.25f
+                    val mult = ConfigHandler.config.hostileDamageMultiplier
 
                     player.hurt(
                         pokemon.damageSources().mobAttack(pokemon),
-                        scaledDamage
+                        scaledDamage * mult
                     )
 
                     pokemon.swing(InteractionHand.MAIN_HAND)

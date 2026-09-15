@@ -94,6 +94,11 @@ object DialogueSystemFabric {
             DialogueSystem.onPokemonSent(event)
         }
 
+        // Pokemon captured
+        CobblemonEvents.POKEMON_CAPTURED.subscribe { event ->
+            CobblebrainWorldSave.migrateWildToPermanent(event.pokemon)
+        }
+
         // Capture
         CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
             val thrower = event.thrower

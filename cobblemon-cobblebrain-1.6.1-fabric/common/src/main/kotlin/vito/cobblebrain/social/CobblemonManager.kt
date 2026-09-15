@@ -12,6 +12,7 @@ import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.ChatFormatting
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
+import net.minecraft.world.entity.Pose
 import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfig
@@ -19,6 +20,15 @@ import vito.cobblebrain.config.ConfigHandler
 import java.io.File
 
 object PokemonQuery {
+
+    fun isPokemonSleeping(pokemon: Pokemon): Boolean {
+        val hasSleepStatus = pokemon.status?.status?.name?.path?.lowercase() == "sleep"
+        val entity = pokemon.entity
+        val entitySleeping = entity?.isSleeping == true ||
+                entity?.pose == Pose.SLEEPING ||
+                (entity != null && vito.cobblebrain.sensors.sleepingState[entity.uuid] == true)
+        return hasSleepStatus || entitySleeping
+    }
 
     fun getAllPokemon(player: ServerPlayer): List<Pokemon> {
         val storage = Cobblemon.storage
@@ -406,7 +416,7 @@ object ConfigCommands {
                             Commands.argument("value", StringArgumentType.string())
                                 .executes { ctx ->
                                     val value = StringArgumentType.getString(ctx, "value")
-                                    ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.clientConfig.instruct.plus(value)
+                                    ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(ClientConfigHandler.clientConfig.instruct.plus(value))
                                     ConfigHandler.save()
                                     ctx.source.sendSuccess(
                                         { Component.literal("instruct set to $value") },
@@ -505,7 +515,7 @@ object ConfigCommands {
                                     )
 
                                     // Feedback + addInstruct
-                                    ClientConfigHandler.clientConfig.instruct += feedback
+                                    ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(ClientConfigHandler.clientConfig.instruct + feedback)
 
                                     ConfigHandler.save()
 

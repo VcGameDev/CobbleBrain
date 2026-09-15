@@ -63,13 +63,15 @@ import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.social.PingManager
 import vito.cobblebrain.social.RecentEventsSystem
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 data class PokemonCommand(
     val pokemonName: String,
-    val action: String
+    val action: String,
+    val target: String? = null
 )
 
 data class FishingSpot(
@@ -83,11 +85,13 @@ fun parseCommand(line: String): PokemonCommand? {
     val parts = line.removePrefix("#").split(":")
     if (parts.size < 2) return null
 
-    val pokemonName = parts[0].trim()
-    var action = parts[1].trim().lowercase()
+    val pokemonName = parts[0].replace(Regex("\\s*\\(.*?\\)"), "").substringBefore(" ").substringBefore("#").trim()
+    var action = parts[1].trim().lowercase().substringBefore(" ").substringBefore("#").trim()
+    val target = if (parts.size >= 3) parts[2].replace(Regex("\\s*\\(.*?\\)"), "").substringBefore(" ").substringBefore("#").trim().takeIf { it.isNotEmpty() } else null
     
     action = when (action) {
         "a" -> "attack"
+        "h" -> "hostile"
         "e" -> "eat"
         "b" -> "buff"
         "d" -> "debuff enemy"
@@ -109,15 +113,68 @@ fun parseCommand(line: String): PokemonCommand? {
         else -> action
     }
     
-    println("$pokemonName action detected: $action")
+    println("$pokemonName action detected: $action" + (if (target != null) " target: $target" else ""))
 
-    return PokemonCommand(pokemonName, action)
+    return PokemonCommand(pokemonName, action, target)
 }
 
 // Global command state
 object CommandState {
-    val activeCommands: MutableMap<UUID, String> = mutableMapOf()
-    val activeTargets: MutableMap<UUID, UUID> = mutableMapOf()
+    val activeCommands: MutableMap<UUID, String> = ConcurrentHashMap()
+    val activeTargets: MutableMap<UUID, UUID> = ConcurrentHashMap()
+
+    // Irritation tracking: Minecraft Entity UUID -> Expiration Timestamp (epoch ms)
+    val irritatedEntities: MutableMap<UUID, Long> = ConcurrentHashMap()
+    val irritatedPokemon: MutableMap<UUID, Long> get() = irritatedEntities
+
+    // Physical attack tracking: Minecraft Entity UUID -> Map of (Attacker UUID -> Timestamp of attack)
+    val physicallyAttackedPokemon: MutableMap<UUID, ConcurrentHashMap<UUID, Long>> = ConcurrentHashMap()
+
+    fun isWildIrritated(entityUuid: UUID, now: Long = System.currentTimeMillis()): Boolean {
+        val expiry = irritatedEntities[entityUuid] ?: return false
+        if (now > expiry) {
+            irritatedEntities.remove(entityUuid)
+            return false
+        }
+        return true
+    }
+
+    fun isPokemonIrritated(pokemonId: UUID, now: Long = System.currentTimeMillis()): Boolean =
+        isWildIrritated(pokemonId, now)
+
+    fun setPokemonIrritated(pokemonId: UUID, durationMs: Long = 60_000L, now: Long = System.currentTimeMillis()) {
+        irritatedEntities[pokemonId] = now + durationMs
+    }
+
+    fun clearPokemonIrritation(pokemonId: UUID) {
+        irritatedEntities.remove(pokemonId)
+    }
+
+    fun recordPhysicalAttack(pokemonId: UUID, attackerId: UUID?, now: Long = System.currentTimeMillis()) {
+        if (attackerId == null) return
+        physicallyAttackedPokemon.computeIfAbsent(pokemonId) { ConcurrentHashMap() }[attackerId] = now
+    }
+
+    fun wasPhysicallyAttackedBy(pokemon: LivingEntity, attacker: LivingEntity?, now: Long = System.currentTimeMillis(), windowMs: Long = 60_000L): Boolean {
+        if (attacker == null) return false
+        val attackers = physicallyAttackedPokemon[pokemon.uuid]
+        if (attackers != null) {
+            val time = attackers[attacker.uuid]
+            if (time != null && (now - time) <= windowMs) return true
+        }
+        val lastHurt = pokemon.lastHurtByMob
+        if (lastHurt != null && lastHurt.uuid == attacker.uuid) {
+            val ticksSinceHurt = pokemon.tickCount - pokemon.lastHurtByMobTimestamp
+            if (ticksSinceHurt in 0..1200) {
+                return true
+            }
+        }
+        return false
+    }
+
+    fun clearPhysicalAttack(pokemonId: UUID) {
+        physicallyAttackedPokemon.remove(pokemonId)
+    }
 }
 
 // Stores removed goals to restore later
@@ -149,6 +206,8 @@ private fun exitAttackMode(pokemon: Mob) {
 
     pokemon.isAggressive = false
     pokemon.target = null
+    CommandState.clearPokemonIrritation(pokemon.uuid)
+    CommandState.clearPhysicalAttack(pokemon.uuid)
 }
 
 // Attack cooldown per Pokémon
@@ -181,10 +240,10 @@ data class CarpetInfo(
     val previousState: net.minecraft.world.level.block.state.BlockState
 )
 
-val activeCarpets = java.util.concurrent.ConcurrentHashMap<UUID, CarpetInfo>()
-val restTicks = java.util.concurrent.ConcurrentHashMap<UUID, Int>()
-val restHealTimer = java.util.concurrent.ConcurrentHashMap<UUID, Int>()
-val sleepingState = java.util.concurrent.ConcurrentHashMap<UUID, Boolean>()
+val activeCarpets = ConcurrentHashMap<UUID, CarpetInfo>()
+val restTicks = ConcurrentHashMap<UUID, Int>()
+val restHealTimer = ConcurrentHashMap<UUID, Int>()
+val sleepingState = ConcurrentHashMap<UUID, Boolean>()
 
 fun getWoolCarpetForType(type: String): net.minecraft.world.level.block.Block {
     return when (type.lowercase()) {
@@ -246,6 +305,69 @@ fun removeWoolCarpet(pokemonId: UUID, server: MinecraftServer) {
     }
 }
 
+fun stopRestAndSleep(
+    pokemon: com.cobblemon.mod.common.pokemon.Pokemon,
+    entity: Mob? = (pokemon.entity as? Mob) ?: vito.cobblebrain.currentServer?.allLevels?.firstNotNullOfOrNull { it.getEntity(pokemon.uuid) as? Mob },
+    server: MinecraftServer? = entity?.server ?: vito.cobblebrain.currentServer
+) {
+    val pokeUuid = pokemon.uuid
+    val entityUuid = entity?.uuid
+
+    // 1. Clear Cobblemon persistent sleep status condition
+    try {
+        if (pokemon.status?.status?.name?.path?.lowercase() == "sleep") {
+            pokemon.status = null
+        }
+    } catch (_: Throwable) {}
+
+    // 2. Clear resting / sitting actions from CommandState
+    if (CommandState.activeCommands[pokeUuid] in listOf("rest", "sit")) {
+        CommandState.activeCommands.remove(pokeUuid)
+    }
+    if (entityUuid != null && CommandState.activeCommands[entityUuid] in listOf("rest", "sit")) {
+        CommandState.activeCommands.remove(entityUuid)
+    }
+
+    // 3. Clear all tracking states for both UUIDs
+    sleepingState.remove(pokeUuid)
+    restTicks.remove(pokeUuid)
+    restHealTimer.remove(pokeUuid)
+    announcedStates.remove(pokeUuid)
+
+    if (entityUuid != null) {
+        sleepingState.remove(entityUuid)
+        restTicks.remove(entityUuid)
+        restHealTimer.remove(entityUuid)
+        announcedStates.remove(entityUuid)
+    }
+
+    // 4. Remove any wool carpets
+    val srv = server ?: (entity?.level() as? ServerLevel)?.server ?: vito.cobblebrain.currentServer
+    if (srv != null) {
+        removeWoolCarpet(pokeUuid, srv)
+        if (entityUuid != null) removeWoolCarpet(entityUuid, srv)
+    } else {
+        activeCarpets.remove(pokeUuid)
+        if (entityUuid != null) activeCarpets.remove(entityUuid)
+    }
+
+    // 5. Reset entity pose, sitting state, and sleeping animations/goals
+    if (entity != null) {
+        entity.pose = Pose.STANDING
+        (entity as? TamableAnimal)?.isOrderedToSit = false
+        (entity as? TamableAnimal)?.isInSittingPose = false
+        try {
+            entity.stopSleeping()
+        } catch (_: Throwable) {}
+        try {
+            val pokeEntity = entity as? PokemonEntity
+            val method = pokeEntity?.javaClass?.getMethod("setSleeping", Boolean::class.javaPrimitiveType)
+            method?.invoke(pokeEntity, false)
+        } catch (_: Throwable) {}
+        restoreFollowGoal(entity)
+    }
+}
+
 fun wakeUpPokemon(pokemon: Mob, owner: ServerPlayer?, reason: String) {
     val pokemonId = pokemon.uuid
     val pokeEntity = pokemon as? PokemonEntity
@@ -256,21 +378,25 @@ fun wakeUpPokemon(pokemon: Mob, owner: ServerPlayer?, reason: String) {
     (pokemon as? TamableAnimal)?.isOrderedToSit = false
     (pokemon as? TamableAnimal)?.isInSittingPose = false
     restTicks.remove(pokemonId)
+    restHealTimer.remove(pokemonId)
     restoreFollowGoal(pokemon)
+
+    try {
+        pokemon.stopSleeping()
+    } catch (_: Throwable) {}
 
     try {
         val method = pokeEntity?.javaClass?.getMethod("setSleeping", Boolean::class.javaPrimitiveType)
         method?.invoke(pokeEntity, false)
     } catch (_: Throwable) {}
 
-    // Explicitly clear sleep status condition when leaving REST
-    try {
-        pokeEntity?.pokemon?.let { p ->
-            if (p.status?.status?.name?.path?.lowercase() == "sleep") {
-                p.status = null
-            }
-        }
-    } catch (_: Throwable) {}
+    sleepingState.remove(pokemonId)
+    restTicks.remove(pokemonId)
+    restHealTimer.remove(pokemonId)
+    if (CommandState.activeCommands[pokemonId] in listOf("rest", "sit")) {
+        CommandState.activeCommands.remove(pokemonId)
+    }
+    announcedStates.remove(pokemonId)
 
     if (wasSleeping) {
         pokeEntity?.pokemon?.status = null
@@ -539,11 +665,63 @@ object CommandTickHandler {
 
         toRemove.forEach { activeFireballs.remove(it) }
 
-        CommandState.activeCommands.forEach { (pokemonId, action) ->
-            val pokemon = server.allLevels.firstNotNullOfOrNull { it.getEntity(pokemonId) as? Mob } ?: return@forEach
+        CommandState.activeCommands.toMap().forEach { (pokemonId, action) ->
+            val pokemon = server.allLevels.firstNotNullOfOrNull { it.getEntity(pokemonId) as? Mob }
+            if (pokemon == null || pokemon.isRemoved || !pokemon.isAlive) {
+                CommandState.activeCommands.remove(pokemonId)
+                CommandState.activeTargets.remove(pokemonId)
+                restTicks.remove(pokemonId)
+                restHealTimer.remove(pokemonId)
+                sleepingState.remove(pokemonId)
+                announcedStates.remove(pokemonId)
+                removeWoolCarpet(pokemonId, server)
+                return@forEach
+            }
             val level = pokemon.level() as ServerLevel
             val cobblemonPokemon = (pokemon as? PokemonEntity)?.pokemon ?: return@forEach
-            val ownerUUID = cobblemonPokemon.getOwnerUUID() ?: return@forEach
+            val ownerUUID = cobblemonPokemon.getOwnerUUID()
+
+            if (ownerUUID == null) {
+                if (action == "hostile" && config.wildPokemonCanBeHostile) {
+                    val targetId = CommandState.activeTargets[pokemonId]
+                    val target = if (targetId != null) {
+                        server.playerList.getPlayer(targetId) ?: server.allLevels.firstNotNullOfOrNull { it.getEntity(targetId) as? LivingEntity }
+                    } else null
+
+                    if (target == null || !target.isAlive || (target is ServerPlayer && (target.isCreative || target.isSpectator)) || pokemon.level() != target.level() || pokemon.distanceToSqr(target) > 32.0 * 32.0) {
+                        exitAttackMode(pokemon)
+                        CommandState.activeCommands.remove(pokemonId)
+                        CommandState.activeTargets.remove(pokemonId)
+                        return@forEach
+                    }
+
+                    enterAttackMode(pokemon)
+                    pokemon.target = target
+                    val atk = cobblemonPokemon.attack
+                    val spd = cobblemonPokemon.speed
+                    val scaledDamage = 2.0f + (atk * 0.03f)
+                    val speed = 0.60 + (spd / 2.0) * 0.01
+                    pokemon.navigation.moveTo(target, speed)
+
+                    val reach = (pokemon.bbWidth * 2.0f) + 1.5f
+                    val inRange = pokemon.distanceToSqr(target) <= (reach * reach) && pokemon.hasLineOfSight(target)
+                    val cd = attackCooldowns.getOrDefault(pokemonId, 0)
+                    if (inRange && cd <= 0) {
+                        val mult = config.hostileDamageMultiplier.coerceAtLeast(0.1f)
+                        target.hurt(pokemon.damageSources().mobAttack(pokemon), scaledDamage * mult)
+                        pokemon.swing(InteractionHand.MAIN_HAND)
+                        attackCooldowns[pokemonId] = 10
+                    } else {
+                        attackCooldowns[pokemonId] = maxOf(0, cd - 1)
+                    }
+                } else {
+                    exitAttackMode(pokemon)
+                    CommandState.activeCommands.remove(pokemonId)
+                    CommandState.activeTargets.remove(pokemonId)
+                }
+                return@forEach
+            }
+
             val owner = server.playerList.getPlayer(ownerUUID) ?: return@forEach
 
             val atk = cobblemonPokemon.attack
@@ -580,10 +758,8 @@ object CommandTickHandler {
             } else {
                 disableFollowGoal(pokemon)
                 pokemon.navigation.stop()
-                pokemon.pose = Pose.SLEEPING
-                pokemon.isOrderedToSit = true
+                (pokemon as? TamableAnimal)?.isOrderedToSit = true
                 (pokemon as? TamableAnimal)?.isInSittingPose = true
-                sleepingState[pokemonId] = true
             }
 
             when (action) {
@@ -1094,6 +1270,13 @@ object CommandTickHandler {
                         }
                     } else {
                         pokemon.pose = Pose.STANDING
+                        if (sleepingState.remove(pokemonId) == true) {
+                            try {
+                                if (cobblemonPokemon.status?.status?.name?.path?.lowercase() == "sleep") {
+                                    cobblemonPokemon.status = null
+                                }
+                            } catch (_: Throwable) {}
+                        }
                     }
 
                     if (config.actionSettings.rest.spawnCarpet) {
@@ -1852,6 +2035,14 @@ object CommandTickHandler {
                 }
 
                 "scout" -> {
+                    if (announcedStates[pokemonId] != "scout") {
+                        sendMessage(
+                            owner,
+                            "${pokemon.displayName?.string} is SCOUTING the area.",
+                            ChatFormatting.AQUA
+                        )
+                        announcedStates[pokemonId] = "scout"
+                    }
 
                     when (
                         scoutState.getOrDefault(
@@ -1986,6 +2177,7 @@ object CommandTickHandler {
 
                                 CommandState.activeCommands[pokemonId] =
                                     "idle"
+                                announcedStates[pokemonId] = "idle"
                             }
                         }
                     }

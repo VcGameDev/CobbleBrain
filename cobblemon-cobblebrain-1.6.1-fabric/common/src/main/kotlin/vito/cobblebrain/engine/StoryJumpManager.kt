@@ -28,6 +28,9 @@ object StoryJumpManager {
     fun applyJump(entity: LivingEntity, maxHeight: Double = 0.42, durationTicks: Int = 12) {
         val sLevel = entity.level() as? ServerLevel ?: return
         val mob = entity as? Mob
+        if (entity.isSleeping || vito.cobblebrain.sensors.CommandState.activeCommands[entity.uuid] in listOf("rest", "sit")) {
+            return
+        }
         val isNoAiMob = mob?.isNoAi == true
 
         if (isNoAiMob && mob != null) {

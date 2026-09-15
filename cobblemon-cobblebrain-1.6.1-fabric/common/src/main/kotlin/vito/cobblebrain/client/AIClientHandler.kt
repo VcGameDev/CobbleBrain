@@ -11,7 +11,7 @@ object AIClientHandler {
                 val handler = createHandler()
                 handler.respostaNormal(prompt)
             } catch (e: Exception) {
-                "Erro ao gerar resposta da IA: ${e.message}"
+                "!Error! Failed to generate AI response: ${e.message}"
             }
         }
     }
