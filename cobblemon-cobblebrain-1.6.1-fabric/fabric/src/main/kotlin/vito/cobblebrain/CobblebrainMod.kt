@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import java.io.File
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.social.CobblebrainWorldSave
@@ -23,10 +24,9 @@ import vito.cobblebrain.social.WorldEventsSystemFabric
 
 
 object CobblebrainMod : ModInitializer {
-    @Suppress("MemberVisibilityCanBePrivate")
+    @Suppress("MemberVisibilityCanBePrivate", "unused")
     const val MOD_ID = "cobblebrain"
 
-    // Quando o jogo inicializa
     override fun onInitialize() {
         MobBridge.addGoal = { mob, priority, goal ->
             val accessor = mob as MobAccessor
@@ -45,9 +45,11 @@ object CobblebrainMod : ModInitializer {
         DialogueSystemFabric.register()
         WorldEventsSystemFabric.register()
         ConfigHandler.load()
-        val pasta = File("cobblebrain-ai")
-
-        // cria a pasta se não existir
+        val legacyPasta = File("cobblebrain-ai")
+        val pasta = File("cobblebrain")
+        if (!pasta.exists() && legacyPasta.exists() && legacyPasta.isDirectory) {
+            legacyPasta.renameTo(pasta)
+        }
         if (!pasta.exists()) {
             pasta.mkdirs()
         }
@@ -55,11 +57,10 @@ object CobblebrainMod : ModInitializer {
         println("o mod cobblebrain carregou")
         CommandTickHandlerFabric.registerTickHandler()
 
-        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d ->
-            CobblebrainNetworkingFabric.sendCooldowns(player, b, r, s, d)
+        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d, t ->
+            CobblebrainNetworkingFabric.sendCooldowns(player, b, r, s, d, t)
         }
 
-        // registra o tipo de payload PROMPT (server → client)
         PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.PromptPayload.TYPE,
             CobblebrainPayloads.PromptPayload.CODEC
@@ -81,6 +82,11 @@ object CobblebrainMod : ModInitializer {
         )
 
         PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.BackgroundPromptPayload.TYPE,
+            CobblebrainPayloads.BackgroundPromptPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.SyncCooldownsPayload.TYPE,
             CobblebrainPayloads.SyncCooldownsPayload.CODEC
         )
@@ -96,6 +102,11 @@ object CobblebrainMod : ModInitializer {
         )
 
         PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.BackgroundResponsePayload.TYPE,
+            CobblebrainPayloads.BackgroundResponsePayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.RequestSummaryPayload.TYPE,
             CobblebrainPayloads.RequestSummaryPayload.CODEC
         )
@@ -108,6 +119,11 @@ object CobblebrainMod : ModInitializer {
         PayloadTypeRegistry.playC2S().register(
             CobblebrainPayloads.PlayerNicknamePayload.TYPE,
             CobblebrainPayloads.PlayerNicknamePayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.VoiceInputPayload.TYPE,
+            CobblebrainPayloads.VoiceInputPayload.CODEC
         )
 
         PayloadTypeRegistry.playC2S().register(
@@ -141,10 +157,90 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.DeletePersonalityPayload.CODEC
         )
 
-        // registra handlers de networking
+        // AI DIALOGUE PAYLOADS
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.AIDialogueBoxPayload.TYPE,
+            CobblebrainPayloads.AIDialogueBoxPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.AdvanceAIDialoguePayload.TYPE,
+            CobblebrainPayloads.AdvanceAIDialoguePayload.CODEC
+        )
+
+        // ENTITY TEXTURE PAYLOADS
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.SetEntityTexturePayload.TYPE,
+            CobblebrainPayloads.SetEntityTexturePayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.ClearEntityTexturePayload.TYPE,
+            CobblebrainPayloads.ClearEntityTexturePayload.CODEC
+        )
+
+        // STORY DEBUG PAYLOADS
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.StoryDebugSyncPayload.TYPE,
+            CobblebrainPayloads.StoryDebugSyncPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.StorySessionStateSyncPayload.TYPE,
+            CobblebrainPayloads.StorySessionStateSyncPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.StoryControlRequestPayload.TYPE,
+            CobblebrainPayloads.StoryControlRequestPayload.CODEC
+        )
+
+        // KEY INPUT & QTE PAYLOADS
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.StartKeyInputPayload.TYPE,
+            CobblebrainPayloads.StartKeyInputPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.CancelKeyInputPayload.TYPE,
+            CobblebrainPayloads.CancelKeyInputPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.KeyInputResultPayload.TYPE,
+            CobblebrainPayloads.KeyInputResultPayload.CODEC
+        )
+
         vito.cobblebrain.server.CobblebrainServerHandlerFabric.register()
 
-        // Aqui registramos o comando
+        DialogueSystem.sendAIDialogueBoxToPlayer = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        DialogueSystem.sendSetEntityTexture = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        DialogueSystem.sendClearEntityTexture = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryDebugger.sendDebugSync = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryDebugger.sendSessionStateSync = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryExecutor.sendStartKeyInput = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryExecutor.sendCancelKeyInput = { player, payload ->
+            ServerPlayNetworking.send(player, payload)
+        }
+
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             PokemonTalkCommand.register(dispatcher)
             ConfigCommands.register(dispatcher)
@@ -157,7 +253,7 @@ object CobblebrainMod : ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register { server: MinecraftServer ->
             currentServer = server
-            // remover se der problemas
+            // Remove if issues arise
             CobblebrainWorldSave.init(server)
             vito.cobblebrain.social.PingManager.init(server)
         }
@@ -180,7 +276,6 @@ object CobblebrainMod : ModInitializer {
             vito.cobblebrain.social.OfflinePlayers.removePlayer(handler.player.uuid)
         }
 
-        // limpa quando o servidor para
         ServerLifecycleEvents.SERVER_STOPPED.register {
             currentServer = null
             vito.cobblebrain.social.DiskWriteExecutor.shutdown()

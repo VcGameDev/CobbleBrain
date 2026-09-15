@@ -12,7 +12,6 @@ import kotlin.random.Random
 object TWlzc2luZ05v {
     var knowledge: KnowledgeLevel = KnowledgeLevel.VERY_LOW
 
-    // Atualiza conhecimento conforme os dias
     fun updateKnowledge(daysPassed: Int) {
         knowledge = when {
             daysPassed < 5 -> KnowledgeLevel.VERY_LOW
@@ -22,9 +21,8 @@ object TWlzc2luZ05v {
         }
     }
 
-    // Infecção de mobs próximos ao jogador
     fun infectNearbyMobs(player: ServerPlayer) {
-        val radius = 10.0 // raio de infecção
+        val radius = 10.0
         val mobs = player.serverLevel().getEntitiesOfClass(
             Mob::class.java,
             player.boundingBox.inflate(radius)
@@ -33,7 +31,7 @@ object TWlzc2luZ05v {
         for (mob in mobs) {
             when (knowledge) {
                 KnowledgeLevel.VERY_LOW -> {
-                    // Apenas gritos estranhos
+                    // Ambient eerie screams
                     player.serverLevel().playSound(
                         null,
                         mob.blockPosition(),
@@ -44,11 +42,11 @@ object TWlzc2luZ05v {
                     )
                 }
                 KnowledgeLevel.LOW -> {
-                    // Além dos gritos, pode causar dano leve
+                    // Deals light magic damage
                     mob.hurt(mob.damageSources().magic(), 2f)
                 }
                 KnowledgeLevel.MEDIUM -> {
-                    // Desbloqueia desaparecimento ocasional
+                    // Occasional entity disappearance
                     if (Random.nextDouble() < 0.2) {
                         mob.remove(Entity.RemovalReason.KILLED)
                     } else {
@@ -56,7 +54,7 @@ object TWlzc2luZ05v {
                     }
                 }
                 KnowledgeLevel.HIGH -> {
-                    // Desbloqueia ataques entre mobs
+                    // Causes infighting between nearby mobs
                     if (Random.nextDouble() < 0.3) {
                         val target = mobs.randomOrNull()
                         if (target != null && target != mob) {

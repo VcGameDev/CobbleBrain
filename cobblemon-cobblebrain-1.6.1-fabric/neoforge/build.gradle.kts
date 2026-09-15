@@ -37,6 +37,9 @@ dependencies {
     modImplementation("com.cobblemon:neoforge:${property("cobblemon_version")}")
     modImplementation("me.shedaniel.cloth:cloth-config-neoforge:15.0.140")
 
+    // MCMti (Speech-to-Text - Opcional)
+    compileOnly("maven.modrinth:mcmti:3.0.1+26.1.2-neoforge")
+
     implementation(project(":common", configuration = "namedElements"))
 
     "developmentNeoForge"(project(":common", configuration = "namedElements")) {

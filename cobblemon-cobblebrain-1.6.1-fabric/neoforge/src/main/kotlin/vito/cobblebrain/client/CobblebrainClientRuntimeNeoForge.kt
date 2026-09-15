@@ -5,7 +5,6 @@ import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.common.NeoForge
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
 import vito.cobblebrain.network.CobblebrainPayloads
-import vito.cobblebrain.social.DialogueSystem
 
 object CobblebrainClientRuntimeNeoForge {
     // STATE
@@ -13,12 +12,6 @@ object CobblebrainClientRuntimeNeoForge {
     private var waitTicks = 0
 
     fun init() {
-        // hook do dialogue system
-        DialogueSystem.onSendPromptClient = {
-            markWaiting()
-        }
-
-        // ligação client → server
         CobblebrainClientCommon.sendToServer = { response ->
             CobblebrainNetworkingNeoForge.sendToServer(response)
         }
@@ -48,6 +41,12 @@ object CobblebrainClientRuntimeNeoForge {
                 CobblebrainNetworkingNeoForge.sendRequestPromptWithMemory(memoryText)
             }
         }
+
+        CobblebrainClientCommon.sendVoiceInputToServer = { text ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                CobblebrainNetworkingNeoForge.sendVoiceInputToServer(text)
+            }
+        }
         PingClient.sendPingToServer = { pos, direction ->
 
             if (
@@ -58,7 +57,6 @@ object CobblebrainClientRuntimeNeoForge {
 
                 net.neoforged.neoforge.network.PacketDistributor
                     .sendToServer(
-
                         CobblebrainPayloads.PingPayload(
                             pos,
                             direction
@@ -67,10 +65,30 @@ object CobblebrainClientRuntimeNeoForge {
             }
         }
 
-        // registra tick
+        StoryControlClient.sendControlRequest = { payload ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(payload)
+            }
+        }
+
+        KeyInputClientManager.sendResultPayload = { payload ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(payload)
+            }
+        }
+
+        DialogueHudOverlay.onAdvanceCallback = { instId, nodeId ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                    CobblebrainPayloads.AdvanceAIDialoguePayload(instId, nodeId)
+                )
+            }
+        }
+
         NeoForge.EVENT_BUS.register(this)
     }
 
+    @Suppress("unused")
     fun markWaiting() {
         waitingResponse = true
         waitTicks = 0
@@ -80,6 +98,7 @@ object CobblebrainClientRuntimeNeoForge {
         waitingResponse = false
     }
 
+    @Suppress("unused", "UNUSED_PARAMETER")
     @SubscribeEvent
     fun onClientTick(event: ClientTickEvent.Post) {
         if (!waitingResponse) return

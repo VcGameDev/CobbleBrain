@@ -10,7 +10,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.MinecraftServer
-import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.config.ConfigHandler.config
 import vito.cobblebrain.network.CobblebrainPayloads
 
 object DialogueSystemFabric {
@@ -28,8 +28,8 @@ object DialogueSystemFabric {
         }
 
         // DAMAGE (player + pokemon)
-        ServerLivingEntityEvents.AFTER_DAMAGE.register { entity, source, amount, newHealth, absorbed ->
-
+        ServerLivingEntityEvents.AFTER_DAMAGE.register { entity, source, amount, newHealth, _ ->
+            vito.cobblebrain.engine.StoryListenerManager.onEntityDamaged(entity, source.entity, amount)
             DialogueSystem.onDamage(
                 entity,
                 source,
@@ -38,16 +38,31 @@ object DialogueSystemFabric {
             )
         }
 
+        // INTERACT ENTITY
+        net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register { player, world, hand, entity, _ ->
+            if (!world.isClientSide && hand == net.minecraft.world.InteractionHand.MAIN_HAND && player is ServerPlayer) {
+                vito.cobblebrain.engine.StoryListenerManager.onEntityInteract(player, entity)
+            }
+            net.minecraft.world.InteractionResult.PASS
+        }
+
         // SERVER TICK
         ServerTickEvents.END_SERVER_TICK.register { server: MinecraftServer ->
             DialogueSystem.onServerTick(server)
+            vito.cobblebrain.engine.StoryListenerManager.onServerTick()
         }
 
-        // connects to network
         DialogueSystem.sendToPlayer = { player, prompt ->
             ServerPlayNetworking.send(
                 player,
                 CobblebrainPayloads.PromptPayload(prompt)
+            )
+        }
+
+        DialogueSystem.sendToPlayerBackground = { player, prompt ->
+            ServerPlayNetworking.send(
+                player,
+                CobblebrainPayloads.BackgroundPromptPayload(prompt)
             )
         }
 
@@ -79,6 +94,11 @@ object DialogueSystemFabric {
             DialogueSystem.onPokemonSent(event)
         }
 
+        // Pokemon captured
+        CobblemonEvents.POKEMON_CAPTURED.subscribe { event ->
+            CobblebrainWorldSave.migrateWildToPermanent(event.pokemon)
+        }
+
         // Capture
         CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
             val thrower = event.thrower
@@ -87,7 +107,7 @@ object DialogueSystemFabric {
             val target = event.pokemonEntity
             val playerUuid = player.uuid.toString()
             
-            if (!SyncedConfig.outputGuaranteedCatch) return@subscribe
+            if (!config.outputGuaranteedCatch) return@subscribe
 
             if (target.tags.contains("cobblebrain:guaranteed_$playerUuid")) {
                 event.catchRate = 9999.0f
@@ -102,12 +122,23 @@ object DialogueSystemFabric {
         // Victory
         CobblemonEvents.BATTLE_VICTORY.subscribe { event ->
             DialogueSystem.onBattleVictory(event)
+            event.battle.players.forEach { p ->
+                vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p)
+            }
+        }
+
+        // Damage - handles damage triggers
+        ServerLivingEntityEvents.ALLOW_DAMAGE.register { entity, source, amount ->
+            val attacker = source.entity
+            vito.cobblebrain.engine.StoryListenerManager.onEntityDamaged(entity, attacker, amount)
+            true
         }
 
         // Death - handles Pokémon fainted, player kills and Pokémon kills
         ServerLivingEntityEvents.AFTER_DEATH.register { entity, source ->
             val killer = source.entity
             val now = System.currentTimeMillis()
+            vito.cobblebrain.engine.StoryListenerManager.onEntityDied(entity, killer)
 
             // 1. Pokémon Fainted: a player-owned Pokémon died
             if (entity is PokemonEntity) {
@@ -146,7 +177,7 @@ object DialogueSystemFabric {
 
             // 3. Pokémon Kills: a player's Pokémon killed some entity
             if (killer is PokemonEntity) {
-                val ownerUuid = killer.pokemon.getOwnerUUID() ?: return@register
+                if (killer.pokemon.getOwnerUUID() == null) return@register
                 val pokemonName = killer.pokemon.nickname?.string ?: killer.pokemon.species.name
                 val entityTypeName = entity.type.descriptionId.substringAfterLast(".")
                 val trigger = RecentEventsSystem.commandSources[killer.uuid] ?: RecentEventsSystem.CommandSource.HUD
@@ -163,7 +194,7 @@ object DialogueSystemFabric {
         }
 
         // Block break (for treasure quests)
-        net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register { level, player, pos, state, blockEntity ->
+        net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register { _, player, pos, state, _ ->
             if (player is ServerPlayer) {
                 DialogueSystem.onBlockBreak(player, pos, state)
             }

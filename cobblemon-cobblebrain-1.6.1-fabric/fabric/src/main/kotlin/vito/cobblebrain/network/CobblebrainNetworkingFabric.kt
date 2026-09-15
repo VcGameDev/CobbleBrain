@@ -28,8 +28,19 @@ object CobblebrainNetworkingFabric {
         )
     }
 
+    fun sendBackgroundToPlayer(player: ServerPlayer, prompt: String) {
+        ServerPlayNetworking.send(
+            player,
+            CobblebrainPayloads.BackgroundPromptPayload(prompt)
+        )
+    }
+
     fun sendActionToServer(action: String) {
         ClientPlayNetworking.send(CobblebrainPayloads.ActionPayload(action))
+    }
+
+    fun sendVoiceInputToServer(text: String) {
+        ClientPlayNetworking.send(CobblebrainPayloads.VoiceInputPayload(text))
     }
 
     fun sendConfig(player: ServerPlayer) {
@@ -47,10 +58,13 @@ object CobblebrainNetworkingFabric {
             config.enableKarma,
             config.maxStoredMemories,
             config.maxRelevantMemories,
+            config.favoriteMemorySlots,
             config.baseCandidateMemories,
             config.allowClientPersonalityEditing,
             config.forceOfflineMode,
-            config.enableAiMemoryRetrieval
+            config.enableAiMemoryRetrieval,
+            config.optimizedMode,
+            com.google.gson.Gson().toJson(config.actionSettings)
         )
 
         ServerPlayNetworking.send(player, payload)
@@ -67,10 +81,10 @@ object CobblebrainNetworkingFabric {
         )
     }
 
-    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long) {
+    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
         ServerPlayNetworking.send(
             player,
-            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff, teleport)
         )
     }
 

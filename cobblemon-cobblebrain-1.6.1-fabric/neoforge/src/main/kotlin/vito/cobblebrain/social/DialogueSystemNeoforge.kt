@@ -11,7 +11,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.ServerChatEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import vito.cobblebrain.network.CobblebrainNetworkingNeoForge
-import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.config.ConfigHandler.config
 import com.cobblemon.mod.common.api.events.pokeball.PokemonCatchRateEvent
 
 class DialogueSystemNeoForge {
@@ -21,6 +21,14 @@ class DialogueSystemNeoForge {
 
             DialogueSystem.sendToPlayer = { player, prompt ->
                 CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
+            }
+
+            DialogueSystem.sendToPlayerBackground = { player, prompt ->
+                CobblebrainNetworkingNeoForge.sendBackgroundToPlayer(player, prompt)
+            }
+
+            DialogueSystem.sendToPlayerSummary = { player, contextData ->
+                CobblebrainNetworkingNeoForge.sendSummaryToPlayer(player, contextData)
             }
 
             DialogueSystem.sendPersonalityList = { player, dataJson ->
@@ -39,12 +47,19 @@ class DialogueSystemNeoForge {
                 DialogueSystem.onPokemonSent(it)
             }
 
+            CobblemonEvents.POKEMON_CAPTURED.subscribe {
+                CobblebrainWorldSave.migrateWildToPermanent(it.pokemon)
+            }
+
             CobblemonEvents.BATTLE_FLED.subscribe {
                 DialogueSystem.onBattleFled(it)
             }
 
-            CobblemonEvents.BATTLE_VICTORY.subscribe {
-                DialogueSystem.onBattleVictory(it)
+            CobblemonEvents.BATTLE_VICTORY.subscribe { event ->
+                DialogueSystem.onBattleVictory(event)
+                event.battle.players.forEach { p ->
+                    vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p)
+                }
             }
 
             CobblemonEvents.POKEMON_CATCH_RATE.subscribe { event: PokemonCatchRateEvent ->
@@ -54,7 +69,7 @@ class DialogueSystemNeoForge {
                 val target = event.pokemonEntity
                 val playerUuid = player.uuid.toString()
                 
-                if (!SyncedConfig.outputGuaranteedCatch) return@subscribe
+                if (!config.outputGuaranteedCatch) return@subscribe
 
                 if (target.tags.contains("cobblebrain:guaranteed_$playerUuid")) {
                     event.catchRate = 9999.0f
@@ -85,6 +100,8 @@ class DialogueSystemNeoForge {
     @SubscribeEvent
     fun onDamage(event: LivingDamageEvent.Post) {
         val entity = event.entity
+        val killer = event.source.entity
+        vito.cobblebrain.engine.StoryListenerManager.onEntityDamaged(entity, killer, event.newDamage)
         DialogueSystem.onDamage(
             entity,
             event.source,
@@ -98,6 +115,7 @@ class DialogueSystemNeoForge {
         val entity = event.entity
         val killer = event.source.entity
         val now = System.currentTimeMillis()
+        vito.cobblebrain.engine.StoryListenerManager.onEntityDied(entity, killer)
 
         // 1. Pokémon Fainted: a player-owned Pokémon died
         if (entity is PokemonEntity) {
@@ -155,6 +173,7 @@ class DialogueSystemNeoForge {
     @SubscribeEvent
     fun onTick(event: ServerTickEvent.Post) {
         DialogueSystem.onServerTick(event.server)
+        vito.cobblebrain.engine.StoryListenerManager.onServerTick()
     }
 
     @SubscribeEvent

@@ -107,7 +107,7 @@ object WorldEventsSystem {
 
                 val karma = karmaJson.asInt
 
-                // Apenas raides para karma <= -9
+                // Only trigger raids for karma <= -9
                 if (karma > -9) return@forEach
 
                 val chance = (0.03 + (abs(karma) - 8) * (0.37 / 22.0))
@@ -116,7 +116,7 @@ object WorldEventsSystem {
                 if (Random.nextDouble() <= chance) {
                     scheduleRaid(world, player, speciesName, karma)
                     raidCooldown = RAID_COOLDOWN_TICKS
-                    return@forEach // sai do forEach após agendar
+                    return@forEach // Exit forEach after scheduling
                 }
             }
     }
@@ -293,7 +293,7 @@ object WorldEventsSystem {
                     }
                 }
 
-                // remove pokémons restantes
+                // Remove remaining Pokémon
                 raid.spawnedPokemon.forEach {
                     if (it.isAlive) {
                         it.discard()
@@ -321,15 +321,15 @@ object WorldEventsSystem {
                     continue
                 }
 
-                // Força target
+                // Force target
                 if (pokemon.target != player) {
                     pokemon.target = player
                 }
 
-                // Move até o player
+                // Move toward player
                 pokemon.navigation.moveTo(player, 0.6)
 
-                // ATAQUE MANUAL
+                // Manual attack
                 val distance = pokemon.distanceTo(player)
                 val inRange = distance <= 1.5
 
@@ -340,10 +340,11 @@ object WorldEventsSystem {
 
                     val pokeData = pokemon.pokemon
                     val scaledDamage = pokeData.level * 0.25f
+                    val mult = ConfigHandler.config.hostileDamageMultiplier
 
                     player.hurt(
                         pokemon.damageSources().mobAttack(pokemon),
-                        scaledDamage
+                        scaledDamage * mult
                     )
 
                     pokemon.swing(InteractionHand.MAIN_HAND)
@@ -355,7 +356,7 @@ object WorldEventsSystem {
                 }
             }
 
-            // VITÓRIA: todos pokémons morreram
+            // VICTORY: all raid Pokémon defeated
             if (raid.spawnedPokemon.isEmpty()) {
 
                 val saveData = CobblebrainWorldSave.data
@@ -420,7 +421,7 @@ object WorldEventsSystem {
         val species = PokemonSpecies.getByName(speciesName.lowercase()) ?: return null
         properties.species = species.resourceIdentifier.toString()
 
-        // nível definido externamente ou aleatório
+        // Level defined externally or random
         properties.level = level ?: Random.nextInt(10, 40)
 
         val pokemon = try {
@@ -446,7 +447,7 @@ object WorldEventsSystem {
             null
         )
 
-        // comportamento leve (não agressivo igual raid)
+        // Passive/ambient behavior (not aggressive like raid)
         pokemon.setPersistenceRequired()
 
         world.addFreshEntity(pokemon)

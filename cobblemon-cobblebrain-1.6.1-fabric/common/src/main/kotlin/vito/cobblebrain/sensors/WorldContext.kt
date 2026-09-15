@@ -109,33 +109,6 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
 
     val radius = 8.5
 
-    val nearbyPokemon = level.getEntitiesOfClass(
-        PokemonEntity::class.java,
-        player.boundingBox.inflate(radius)
-    )
-        .filter { entity ->
-            val ownerUuid = entity.pokemon.getOwnerUUID()
-            val isNotOwned = ownerUuid == null || ownerUuid != player.uuid
-
-            val distance = entity.distanceTo(player)
-
-            isNotOwned && distance <= radius
-        }
-        .map { entity ->
-            val poke = entity.pokemon
-            val nickname = poke.nickname?.string ?: poke.species.resourceIdentifier.path
-            val speciesName = poke.species.resourceIdentifier.path
-            "$nickname ($speciesName)"
-        }
-        .groupingBy { it }
-        .eachCount()
-        .entries
-        .joinToString { (poke, count) ->
-            if (count > 1) "$count x $poke" else poke
-        }
-        .ifEmpty { "none" }
-
-
     val nearbyPokemonEntities = level.getEntitiesOfClass(
         PokemonEntity::class.java,
         player.boundingBox.inflate(radius)
@@ -148,6 +121,23 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
 
             isNotOwned && distance <= radius
         }
+
+    val nearbyPokemon = nearbyPokemonEntities
+        .map { entity ->
+            val poke = entity.pokemon
+            val rawName = poke.nickname?.string?.takeIf { it.isNotBlank() } ?: poke.species.resourceIdentifier.path
+            val speciesName = rawName.replaceFirstChar { it.uppercase() }
+            val uuid4 = entity.uuid.toString().substring(0, 4)
+            val isHostile = CommandState.activeCommands[entity.uuid] == "hostile"
+            val isIrritated = CommandState.isWildIrritated(entity.uuid)
+            when {
+                isHostile -> "${speciesName}_$uuid4 (HOSTILE)"
+                isIrritated -> "${speciesName}_$uuid4 (IRRITATED)"
+                else -> "${speciesName}_$uuid4"
+            }
+        }
+        .joinToString(", ")
+        .ifEmpty { "none" }
 
     val nearbyItems = if (nearbyItemsList.isNotEmpty()) {
         nearbyItemsList

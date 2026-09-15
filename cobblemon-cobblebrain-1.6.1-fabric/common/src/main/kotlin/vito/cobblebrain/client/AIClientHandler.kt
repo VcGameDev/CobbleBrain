@@ -11,7 +11,7 @@ object AIClientHandler {
                 val handler = createHandler()
                 handler.respostaNormal(prompt)
             } catch (e: Exception) {
-                "Erro ao gerar resposta da IA: ${e.message}"
+                "!Error! Failed to generate AI response: ${e.message}"
             }
         }
     }
@@ -34,6 +34,17 @@ object AIClientHandler {
                 handler.generateSessionSummary(contextData)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun sendBackgroundPrompt(prompt: String): CompletableFuture<String> {
+        return CompletableFuture.supplyAsync {
+            try {
+                val handler = createHandler()
+                handler.generateBackgroundState(prompt)
+            } catch (e: Exception) {
+                "Background state evaluation error: ${e.message}"
             }
         }
     }

@@ -4,6 +4,7 @@ import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import java.io.File
 import java.io.FileReader
 import java.io.FileWriter
+import java.util.UUID
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -23,9 +24,6 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.WrittenBookContent
 import net.minecraft.world.level.levelgen.Heightmap
-import net.minecraft.core.BlockPos
-import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.level.block.entity.BarrelBlockEntity
 import net.minecraft.world.effect.MobEffectInstance
 import net.minecraft.world.effect.MobEffects
 import vito.cobblebrain.config.ConfigHandler
@@ -56,7 +54,6 @@ class FollowPlayerGoal(
     }
 
     override fun start() {
-        // nada aqui, só start do Goal
     }
 
     override fun tick() {
@@ -87,7 +84,6 @@ object CobblebrainWorldSave {
     private val quests: MutableList<Quest> = mutableListOf()
     var data: JsonObject = JsonObject()
 
-    // Agora precisa ser chamado quando o server iniciar
     fun init(server: MinecraftServer) {
         val dataDir = server.getWorldPath(LevelResource.ROOT).resolve("data").toFile()
         dataDir.mkdirs()
@@ -95,11 +91,24 @@ object CobblebrainWorldSave {
         saveFile = File(dataDir, "cobblebrainWorldSave.json")
 
         if (saveFile.exists()) {
-            data = JsonParser.parseReader(FileReader(saveFile)).asJsonObject
+            try {
+                FileReader(saveFile).use { reader ->
+                    val element = JsonParser.parseReader(reader)
+                    data = if (element.isJsonObject) element.asJsonObject else JsonObject()
+                }
+            } catch (e: Exception) {
+                println("[CobbleBrain] Warning: Could not parse cobblebrainWorldSave.json (corrupted or empty): ${e.message}")
+                try {
+                    val backup = File(dataDir, "cobblebrainWorldSave.json.corrupted")
+                    saveFile.copyTo(backup, overwrite = true)
+                } catch (_: Exception) {}
+                data = JsonObject()
+            }
         } else {
             data = JsonObject()
         }
         checkDataStructure()
+        cleanOrphanWildData(server)
         save()
     }
 
@@ -109,6 +118,7 @@ object CobblebrainWorldSave {
         if (!data.has("kill_count")) data.add("kill_count", JsonObject())
         if (!data.has("last_session_summary")) data.add("last_session_summary", JsonObject())
         if (!data.has("player_cooldowns")) data.add("player_cooldowns", JsonObject())
+        if (!data.has("wild_pokemon_personalities")) data.add("wild_pokemon_personalities", JsonObject())
         if (!data.has("quests")) {
             data.add("quests", JsonObject().apply {
                 add("active_story", JsonObject())
@@ -116,6 +126,87 @@ object CobblebrainWorldSave {
                 add("completed", JsonArray())
                 add("abandoned", JsonArray())
             })
+        }
+    }
+
+    fun cleanOrphanWildData(server: MinecraftServer) {
+        val wildObj = data.getAsJsonObject("wild_pokemon_personalities") ?: return
+        val protectedGivers = mutableSetOf<String>()
+        val questsObj = data.getAsJsonObject("quests")
+        if (questsObj != null) {
+            val story = questsObj.getAsJsonObject("active_story")
+            if (story != null && story.has("giverUuid")) {
+                story.get("giverUuid")?.asString?.let { protectedGivers.add(it) }
+            }
+            val secondary = questsObj.getAsJsonArray("active_secondary")
+            secondary?.forEach { el ->
+                if (el.isJsonObject) {
+                    el.asJsonObject.get("giverUuid")?.asString?.let { protectedGivers.add(it) }
+                }
+            }
+        }
+
+        val toRemove = mutableListOf<String>()
+        wildObj.keySet().forEach { uuidStr ->
+            if (uuidStr in protectedGivers) return@forEach
+            val uuid = try { UUID.fromString(uuidStr) } catch (_: Exception) { null }
+            if (uuid == null) {
+                toRemove.add(uuidStr)
+                return@forEach
+            }
+            val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(uuid) as? PokemonEntity }
+            if (entity == null || !entity.isAlive || entity.isRemoved) {
+                toRemove.add(uuidStr)
+            }
+        }
+        if (toRemove.isNotEmpty()) {
+            toRemove.forEach { wildObj.remove(it) }
+            println("[CobbleBrain] Cleaned up ${toRemove.size} orphaned wild pokemon personalities.")
+        }
+    }
+
+    fun migrateWildToPermanent(pokemon: com.cobblemon.mod.common.pokemon.Pokemon) {
+        val uuidStr = pokemon.uuid.toString()
+        val wildObj = data.getAsJsonObject("wild_pokemon_personalities") ?: return
+        val wildData = wildObj.getAsJsonObject(uuidStr) ?: return
+
+        try {
+            val personality = if (wildData.has("personality")) {
+                com.google.gson.Gson().fromJson(wildData.getAsJsonObject("personality"), PokemonPersonality::class.java)
+            } else null
+
+            val memories = if (wildData.has("memories")) {
+                val list = mutableListOf<Memory>()
+                wildData.getAsJsonArray("memories")?.forEach { el ->
+                    if (el.isJsonObject) {
+                        val obj = el.asJsonObject
+                        val participants = obj.getAsJsonArray("participants")?.map { it.asString } ?: emptyList()
+                        val memory = obj.get("memory")?.asString ?: ""
+                        val keywords = obj.getAsJsonArray("keywords")?.map { it.asString } ?: emptyList()
+                        val createdTick = obj.get("createdTick")?.asLong ?: 0L
+                        val playerMessage = obj.get("playerMessage")?.asString ?: ""
+                        val isFavorite = obj.get("isFavorite")?.asBoolean ?: false
+                        list.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
+                    }
+                }
+                list
+            } else emptyList()
+
+            val displayName = pokemon.nickname?.string?.takeIf { it.isNotBlank() } ?: pokemon.species.name
+
+            wildObj.remove(uuidStr)
+            save()
+
+            if (personality != null) {
+                MemorySystem.savePersonality(uuidStr, personality, displayName, forcePermanent = true)
+            }
+            if (memories.isNotEmpty()) {
+                MemorySystem.saveMemories(uuidStr, memories, displayName, forcePermanent = true)
+            }
+
+            println("[CobbleBrain] Migrated wild personality to permanent storage for ${pokemon.species.name} ($uuidStr)")
+        } catch (e: Exception) {
+            println("[CobbleBrain] Error migrating wild personality for $uuidStr: ${e.message}")
         }
     }
 
@@ -236,7 +327,7 @@ object CobblebrainWorldSave {
     }
 
     private fun startFollowingPlayer(giver: PokemonEntity, player: ServerPlayer) {
-        // Se já estiver seguindo, não adiciona outro
+        // If already following, don't add another goal
         if (followers.containsKey(giver.uuid.toString())) return
 
         giver.setPersistenceRequired()
@@ -277,7 +368,7 @@ object CobblebrainWorldSave {
 
         val level = player.serverLevel()
 
-        // Calcula o nível alvo baseado no Pokémon mais forte do jogador
+        // Calculate target level based on player's strongest Pokémon
         val strongestLevel = PokemonQuery.findActivePokemon(player).maxOfOrNull { it.level } ?: 20
         val minLevel = maxOf(5, strongestLevel - 2)
         val maxLevel = strongestLevel + 8
@@ -443,6 +534,7 @@ object CobblebrainWorldSave {
         startFollowingPlayer(giver, player)
     }
 
+    @Suppress("unused")
     fun createLocationQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
         ensureQuestsInitialized()
         val level = player.level()
@@ -487,7 +579,7 @@ object CobblebrainWorldSave {
         ensureQuestsInitialized()
         val rand = java.util.Random()
 
-        // 1. Sorteia local X Z apenas (o barril só spawnará quando o player se aproximar do chunk carregado)
+        // 1. Pick X and Z coordinates only (barrel spawns when player approaches loaded chunk)
         val targetX = player.blockX + rand.nextInt(400) - 200
         val targetZ = player.blockZ + rand.nextInt(400) - 200
 
@@ -525,6 +617,7 @@ object CobblebrainWorldSave {
         return quest
     }
 
+    @Suppress("unused")
     fun findQuest(giverUuid: String, type: String, status: String? = null): JsonObject? {
         val activeArray = data.getAsJsonObject("quests").getAsJsonArray("active_secondary")
         val storyObj = data.getAsJsonObject("quests").getAsJsonObject("active_story")
@@ -541,6 +634,7 @@ object CobblebrainWorldSave {
         }
     }
 
+    @Suppress("unused")
     fun getActiveItemQuest(player: ServerPlayer): JsonObject? {
         return getActiveQuests(player).firstOrNull { it.get("type").asString == "ITEM" }
     }
@@ -575,21 +669,21 @@ object CobblebrainWorldSave {
     }
 
     fun getGiverNameFromQuest(quest: JsonObject): String {
-        // Se tiver nickname, usa ele
+        // If nickname exists, use it
         if (quest.has("giverNickname")) {
             val nickname = quest.get("giverNickname").asString
             if (nickname.isNotBlank()) return nickname
         }
-        // Senão, usa a espécie
+        // Otherwise, use species
         if (quest.has("giverSpecies")) {
             val species = quest.get("giverSpecies").asString
             if (species.isNotBlank()) return species
         }
-        // Último recurso: UUID
+        // Last fallback: UUID
         return quest.get("giverUuid").asString
     }
 
-    // Move uma quest de active para completed ou abandoned
+    // Move a quest from active to completed or abandoned
     fun moveQuest(ownerUuid: String, giverUuid: String, type: String, newStatus: String) {
         println("[DEBUG] moveQuest called with giverUuid=$giverUuid, type=$type, newStatus=$newStatus")
 
@@ -630,7 +724,7 @@ object CobblebrainWorldSave {
 
         questObj.addProperty("status", newStatus)
 
-        // remove da lista de ativos
+        // Remove from active list
         if (foundInStory) {
             questsObj.add("active_story", JsonObject())
         } else {
@@ -638,7 +732,7 @@ object CobblebrainWorldSave {
         }
         println("[DEBUG] Quest removida de active")
 
-        // adiciona na lista correta
+        // Add to correct list
         when (newStatus) {
             "COMPLETED" -> {
                 completedArray.add(questObj)
@@ -657,7 +751,7 @@ object CobblebrainWorldSave {
         println("[DEBUG] JSON saved after moveQuest")
         debugQuests()
 
-        // Se o Pokémon estava seguindo, para de seguir
+        // If Pokémon was following, stop following
         followers[giverUuid]?.let { triple ->
             val pokemon = triple.first
             val goal = triple.third
@@ -689,7 +783,7 @@ object CobblebrainWorldSave {
         val newValue = current + delta
         playerObj.addProperty(species, newValue)
 
-        // Mensagens de desbloqueio de Tier
+        // Tier unlock messages
         val thresholds = mapOf(
             3 to "UNCOMMON",
             7 to "RARE",
@@ -712,7 +806,7 @@ object CobblebrainWorldSave {
         save()
     }
 
-    // Debug: imprime estado atual das quests
+    // Debug: print current quest state
     fun debugQuests() {
         val questsObj = data.getAsJsonObject("quests")
         println("Active story quest: ${questsObj.getAsJsonObject("active_story")}")

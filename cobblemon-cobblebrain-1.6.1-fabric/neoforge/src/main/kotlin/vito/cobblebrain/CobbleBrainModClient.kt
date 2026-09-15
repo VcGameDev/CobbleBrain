@@ -19,7 +19,8 @@ import vito.cobblebrain.config.SyncedConfig
 import kotlin.math.sin
 
 object CobbleBrainModClientNeoForge {
-    // continua aqui, mas só carrega no CLIENT agora
+    private var wasVoiceKeyDown = false
+
     private val OPEN_CONFIG = KeyMapping(
         "key.cobblebrain.open_config",
         GLFW.GLFW_KEY_Y,
@@ -51,9 +52,27 @@ object CobbleBrainModClientNeoForge {
         "category.cobblebrain"
     )
 
+    private val CMD_MODE = KeyMapping(
+        "key.cobblebrain.cmd_mode",
+        GLFW.GLFW_KEY_I,
+        "category.cobblebrain"
+    )
+
     private val KEY_PING = KeyMapping(
         "key.cobblebrain.ping",
         GLFW.GLFW_KEY_G,
+        "category.cobblebrain"
+    )
+
+    private val KEY_VOICE = KeyMapping(
+        "key.cobblebrain.voice_input",
+        GLFW.GLFW_KEY_H,
+        "category.cobblebrain"
+    )
+
+    private val KEY_DEBUG = KeyMapping(
+        "key.cobblebrain.story_debug",
+        GLFW.GLFW_KEY_F8,
         "category.cobblebrain"
     )
 
@@ -61,6 +80,14 @@ object CobbleBrainModClientNeoForge {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
         println("Cobblebrain loaded on the client (NeoForge)")
+
+        CobblebrainClientCommon.isMcmtiInstalled = {
+            net.neoforged.fml.ModList.get().isLoaded("mcmti")
+        }
+
+        if (CobblebrainClientCommon.isMcmtiInstalled()) {
+            vito.cobblebrain.client.mcmti.McmtiNeoForgeHandler.register()
+        }
 
         CobblebrainClientCommon.openConfigScreen = {
             Minecraft.getInstance().setScreen(
@@ -71,29 +98,36 @@ object CobbleBrainModClientNeoForge {
         NeoForge.EVENT_BUS.addListener(::onClientTick)
         NeoForge.EVENT_BUS.register(this)
 
-        // Referências para a HUD dinâmica
         CobblebrainClientCommon.keyUp = CMD_UP
         CobblebrainClientCommon.keyDown = CMD_DOWN
         CobblebrainClientCommon.keyExecute = CMD_EXECUTE
         CobblebrainClientCommon.keyToggle = CMD_TOGGLE
+        CobblebrainClientCommon.keyMode = CMD_MODE
         CobblebrainClientCommon.keyPing = KEY_PING
+        CobblebrainClientCommon.keyVoice = KEY_VOICE
+        CobblebrainClientCommon.keyDebug = KEY_DEBUG
     }
 
-    // registra keybind
     fun onRegisterKeybinds(event: RegisterKeyMappingsEvent) {
         event.register(OPEN_CONFIG)
         event.register(CMD_UP)
         event.register(CMD_DOWN)
         event.register(CMD_EXECUTE)
         event.register(CMD_TOGGLE)
+        event.register(CMD_MODE)
         event.register(KEY_PING)
+        event.register(KEY_VOICE)
+        event.register(KEY_DEBUG)
     }
 
-    // tick
     fun onClientTick(event: ClientTickEvent.Post) {
         MigrationNoticeChecker.checkAndShow(Minecraft.getInstance())
+        vito.cobblebrain.client.KeyInputClientManager.clientTick()
         while (OPEN_CONFIG.consumeClick()) {
             CobblebrainClientCommon.openConfig()
+        }
+        while (KEY_DEBUG.consumeClick()) {
+            vito.cobblebrain.client.StoryDebugClientHandler.handleF8Pressed()
         }
         while (CMD_UP.consumeClick()) {
             HudSystem.navigateUp()
@@ -107,8 +141,47 @@ object CobbleBrainModClientNeoForge {
         while (CMD_TOGGLE.consumeClick()) {
             HudSystem.toggleVisibility()
         }
+        while (CMD_MODE.consumeClick()) {
+            HudSystem.toggleTargetMode()
+        }
         while (KEY_PING.consumeClick()) {
             vito.cobblebrain.client.PingClient.triggerPingRaycast()
+        }
+        val isVoiceDown = KEY_VOICE.isDown && Minecraft.getInstance().screen == null
+        if (isVoiceDown && !wasVoiceKeyDown) {
+            wasVoiceKeyDown = true
+            if (!CobblebrainClientCommon.isMcmtiInstalled()) {
+                Minecraft.getInstance().setScreen(
+                    vito.cobblebrain.client.McmtiNotInstalledNoticeScreen(Minecraft.getInstance().screen)
+                )
+            } else if (!ClientConfigHandler.clientConfig.enableStt) {
+                Minecraft.getInstance().player?.displayClientMessage(
+                    net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Speech-to-Text (STT) is disabled in the settings."),
+                    true
+                )
+            } else {
+                val started = vito.cobblebrain.client.mcmti.McmtiNeoForgeHandler.startRecording()
+                if (started) {
+                    Minecraft.getInstance().player?.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§a🎙 [CobbleBrain] Recording voice... (release [H] to send)"),
+                        true
+                    )
+                } else {
+                    Minecraft.getInstance().player?.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§c❌ [CobbleBrain] Could not start voice recording. Check MCMti keybinding."),
+                        true
+                    )
+                }
+            }
+        } else if (!isVoiceDown && wasVoiceKeyDown) {
+            wasVoiceKeyDown = false
+            if (CobblebrainClientCommon.isVoiceRecording) {
+                vito.cobblebrain.client.mcmti.McmtiNeoForgeHandler.stopRecording()
+                Minecraft.getInstance().player?.displayClientMessage(
+                    net.minecraft.network.chat.Component.literal("§e⏳ [CobbleBrain] Processing voice..."),
+                    true
+                )
+            }
         }
     }
 
@@ -124,14 +197,12 @@ object CobbleBrainModClientNeoForge {
         )
     }
 
-    // HUD
     @SubscribeEvent
     fun onHudRender(event: RenderGuiEvent.Post) {
         val guiGraphics = event.guiGraphics
         val client = Minecraft.getInstance()
         val player = client.player ?: return
 
-        // Converte DeltaTracker para Float se necessário
         val delta = event.partialTick.gameTimeDeltaTicks
 
         val invis = player.hasEffect(MobEffects.INVISIBILITY)

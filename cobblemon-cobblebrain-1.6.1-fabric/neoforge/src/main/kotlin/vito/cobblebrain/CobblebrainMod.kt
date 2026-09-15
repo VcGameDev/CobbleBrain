@@ -35,8 +35,8 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
         println("o mod cobblebrain carregou (NeoForge)")
         modEventBus.addListener(CobblebrainPayloadRegistrarNeoForge::register)
 
-        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d ->
-            CobblebrainNetworkingNeoForge.sendCooldowns(player, b, r, s, d)
+        vito.cobblebrain.sensors.PokemonCommands.sendCooldowns = { player, b, r, s, d, t ->
+            CobblebrainNetworkingNeoForge.sendCooldowns(player, b, r, s, d, t)
         }
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
@@ -72,6 +72,10 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
             CobblebrainNetworkingNeoForge.sendToPlayer(player, prompt)
         }
 
+        DialogueSystem.sendToPlayerBackground = { player, prompt ->
+            CobblebrainNetworkingNeoForge.sendBackgroundToPlayer(player, prompt)
+        }
+
         DialogueSystem.sendToPlayerSummary = { player, contextData ->
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
                 player,
@@ -79,10 +83,42 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
             )
         }
 
+        DialogueSystem.sendAIDialogueBoxToPlayer = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        DialogueSystem.sendSetEntityTexture = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        DialogueSystem.sendClearEntityTexture = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryDebugger.sendDebugSync = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryDebugger.sendSessionStateSync = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryExecutor.sendStartKeyInput = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
+        vito.cobblebrain.engine.StoryExecutor.sendCancelKeyInput = { player, payload ->
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player, payload)
+        }
+
         // ===== CONFIG =====
         ConfigHandler.load()
 
-        val pasta = File("cobblebrain-ai")
+        val legacyPasta = File("cobblebrain-ai")
+        val pasta = File("cobblebrain")
+        if (!pasta.exists() && legacyPasta.exists() && legacyPasta.isDirectory) {
+            legacyPasta.renameTo(pasta)
+        }
         if (!pasta.exists()) pasta.mkdirs()
 
         // ===== EVENT BUS =====

@@ -146,6 +146,18 @@ object RecentEventsSystem {
         override fun merge(other: RecentEvent): RecentEvent = this
     }
 
+    data class WakeUpEvent(
+        val pokemonName: String,
+        val reason: String,
+        override val timestamp: Long
+    ) : RecentEvent {
+        override fun format(currentTime: Long): String {
+            return "${formatElapsed(timestamp, currentTime)} $pokemonName woke up because $reason"
+        }
+        override fun canMergeWith(other: RecentEvent): Boolean = false
+        override fun merge(other: RecentEvent): RecentEvent = this
+    }
+
     // Storage: pokemonUuid -> events list
     private val storage = ConcurrentHashMap<UUID, CopyOnWriteArrayList<RecentEvent>>()
 

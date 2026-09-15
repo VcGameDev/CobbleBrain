@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "cobblebrain",
-  "version": "Fabric-1.4.1",
+  "version": "Fabric-1.5.3",
   "name": "CobbleBrain",
   "description": "a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons",
   "icon": "cobblebrain_icon.png",
@@ -37,7 +37,7 @@
     "java": ">=21",
     "minecraft": "1.21.1",
     "fabric": "*",
-    "cobblemon": "1.7.*",
+    "cobblemon": ">=1.7.0 <1.9.0",
     "cloth-config2": ">=15.0.0"
   }
 }

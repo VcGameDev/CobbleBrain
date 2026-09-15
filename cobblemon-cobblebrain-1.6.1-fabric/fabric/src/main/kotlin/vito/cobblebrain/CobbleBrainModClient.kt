@@ -20,13 +20,14 @@ import vito.cobblebrain.config.SyncedConfig
 import kotlin.math.sin
 
 object CobbleBrainModClient : ClientModInitializer {
+    private var wasVoiceKeyDown = false
+
     override fun onInitializeClient() {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
         registerReceivers()
         println("Cobblebrain loaded on the client (Fabric)")
 
-        // conecta com o common
         CobblebrainClientCommon.openConfigScreen = {
             Minecraft.getInstance().setScreen(
                 CobblebrainConfigScreen.create(Minecraft.getInstance().screen)
@@ -37,6 +38,14 @@ object CobbleBrainModClient : ClientModInitializer {
             Minecraft.getInstance().setScreen(
                 PersonalityListScreen(Minecraft.getInstance().screen, json)
             )
+        }
+
+        CobblebrainClientCommon.isMcmtiInstalled = {
+            net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("mcmti")
+        }
+
+        if (CobblebrainClientCommon.isMcmtiInstalled()) {
+            vito.cobblebrain.client.mcmti.McmtiFabricHandler.register()
         }
 
         val openConfig = KeyMapping(
@@ -71,9 +80,27 @@ object CobbleBrainModClient : ClientModInitializer {
             "category.cobblebrain"
         )
 
+        val commandKeyMode = KeyMapping(
+            "key.cobblebrain.cmd_mode",
+            GLFW.GLFW_KEY_I,
+            "category.cobblebrain"
+        )
+
         val keyPing = KeyMapping(
             "key.cobblebrain.ping",
             GLFW.GLFW_KEY_G,
+            "category.cobblebrain"
+        )
+
+        val keyVoice = KeyMapping(
+            "key.cobblebrain.voice_input",
+            GLFW.GLFW_KEY_H,
+            "category.cobblebrain"
+        )
+
+        val keyDebug = KeyMapping(
+            "key.cobblebrain.story_debug",
+            GLFW.GLFW_KEY_F8,
             "category.cobblebrain"
         )
 
@@ -83,19 +110,28 @@ object CobbleBrainModClient : ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(commandKeyE)
         KeyBindingHelper.registerKeyBinding(commandKeyR)
         KeyBindingHelper.registerKeyBinding(commandKeyToggle)
+        KeyBindingHelper.registerKeyBinding(commandKeyMode)
         KeyBindingHelper.registerKeyBinding(keyPing)
+        KeyBindingHelper.registerKeyBinding(keyVoice)
+        KeyBindingHelper.registerKeyBinding(keyDebug)
 
-        // Passa as referências para a HUD dinâmica
         CobblebrainClientCommon.keyUp = commandKeyQ
         CobblebrainClientCommon.keyDown = commandKeyE
         CobblebrainClientCommon.keyExecute = commandKeyR
         CobblebrainClientCommon.keyToggle = commandKeyToggle
+        CobblebrainClientCommon.keyMode = commandKeyMode
         CobblebrainClientCommon.keyPing = keyPing
+        CobblebrainClientCommon.keyVoice = keyVoice
+        CobblebrainClientCommon.keyDebug = keyDebug
 
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick { client ->
             MigrationNoticeChecker.checkAndShow(client)
+            vito.cobblebrain.client.KeyInputClientManager.clientTick()
             while (openConfig.consumeClick()) {
                 CobblebrainClientCommon.openConfig()
+            }
+            while (keyDebug.consumeClick()) {
+                vito.cobblebrain.client.StoryDebugClientHandler.handleF8Pressed()
             }
             while (commandKeyQ.consumeClick()) {
                 HudSystem.navigateUp()
@@ -109,8 +145,47 @@ object CobbleBrainModClient : ClientModInitializer {
             while (commandKeyToggle.consumeClick()) {
                 HudSystem.toggleVisibility()
             }
+            while (commandKeyMode.consumeClick()) {
+                HudSystem.toggleTargetMode()
+            }
             while (keyPing.consumeClick()) {
                 vito.cobblebrain.client.PingClient.triggerPingRaycast()
+            }
+            val isVoiceDown = keyVoice.isDown && client.screen == null
+            if (isVoiceDown && !wasVoiceKeyDown) {
+                wasVoiceKeyDown = true
+                if (!CobblebrainClientCommon.isMcmtiInstalled()) {
+                    Minecraft.getInstance().setScreen(
+                        vito.cobblebrain.client.McmtiNotInstalledNoticeScreen(Minecraft.getInstance().screen)
+                    )
+                } else if (!ClientConfigHandler.clientConfig.enableStt) {
+                    client.player?.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Speech-to-Text (STT) is disabled in the settings."),
+                        true
+                    )
+                } else {
+                    val started = vito.cobblebrain.client.mcmti.McmtiFabricHandler.startRecording()
+                    if (started) {
+                        client.player?.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal("§a🎙 [CobbleBrain] Recording voice... (release [H] to send)"),
+                            true
+                        )
+                    } else {
+                        client.player?.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal("§c❌ [CobbleBrain] Could not start voice recording. Check MCMti keybinding."),
+                            true
+                        )
+                    }
+                }
+            } else if (!isVoiceDown && wasVoiceKeyDown) {
+                wasVoiceKeyDown = false
+                if (CobblebrainClientCommon.isVoiceRecording) {
+                    vito.cobblebrain.client.mcmti.McmtiFabricHandler.stopRecording()
+                    client.player?.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§e⏳ [CobbleBrain] Processing voice..."),
+                        true
+                    )
+                }
             }
         })
 
@@ -118,7 +193,6 @@ object CobbleBrainModClient : ClientModInitializer {
             val client = Minecraft.getInstance()
             val player = client.player ?: return@register
 
-            // Converte DeltaTracker para Float se necessário
             val delta = tickDelta.gameTimeDeltaTicks
 
             val invis = player.hasEffect(MobEffects.INVISIBILITY)
@@ -134,9 +208,9 @@ object CobbleBrainModClient : ClientModInitializer {
                 val minAlpha = 50
                 val maxAlpha = 180
 
-                // pulsar mais lento (20.0 em vez de 10.0)
+                // Slower pulsing rate
                 val pulse = ((sin(time / 20.0) + 1) / 2.0 * (maxAlpha - minAlpha) + minAlpha).toInt()
-                // roxo escuro discreto
+                // Subtle dark purple overlay
                 val color = (pulse shl 24) or 0x3A0066
                 guiGraphics.fill(0, 0, width, height, color)
             }

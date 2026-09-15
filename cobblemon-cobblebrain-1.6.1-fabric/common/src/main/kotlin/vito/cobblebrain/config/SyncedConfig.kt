@@ -35,6 +35,8 @@ object SyncedConfig {
         private set
     var maxRelevantMemories = 4
         private set
+    var favoriteMemorySlots = 5
+        private set
     var baseCandidateMemories = 10
         private set
     var allowClientPersonalityEditing = true
@@ -43,6 +45,35 @@ object SyncedConfig {
         private set
     var enableAiMemoryRetrieval = false
         private set
+    var optimizedMode = true
+        private set
+    var actionSettings: ActionSettings = ActionSettings()
+        private set
+
+    fun isActionActiveForPlayer(actionName: String): Boolean {
+        val client = Minecraft.getInstance()
+        val settings = try {
+            if (client.isLocalServer) ConfigHandler.config.actionSettings else actionSettings
+        } catch (_: Throwable) {
+            actionSettings
+        }
+        return settings.isActionActiveForPlayer(actionName)
+    }
+
+    fun isActionActiveForAI(actionName: String): Boolean {
+        if (!outputActions) return false
+        val client = Minecraft.getInstance()
+        val settings = try {
+            if (client.isLocalServer) ConfigHandler.config.actionSettings else actionSettings
+        } catch (_: Throwable) {
+            actionSettings
+        }
+        return settings.isActionActiveForAI(actionName)
+    }
+
+    fun isActionActive(actionName: String): Boolean {
+        return isActionActiveForPlayer(actionName) || isActionActiveForAI(actionName)
+    }
 
     fun apply(payload: CobblebrainPayloads.SyncConfigPayload) {
         useDefaultOutput = payload.useDefaultOutput
@@ -58,10 +89,18 @@ object SyncedConfig {
         enableKarma = payload.enableKarma
         maxStoredMemories = payload.maxStoredMemories
         maxRelevantMemories = payload.maxRelevantMemories
+        favoriteMemorySlots = payload.favoriteMemorySlots
         baseCandidateMemories = payload.baseCandidateMemories
         allowClientPersonalityEditing = payload.allowClientPersonalityEditing
         forceOfflineMode = payload.forceOfflineMode
         enableAiMemoryRetrieval = payload.enableAiMemoryRetrieval
+        optimizedMode = payload.optimizedMode
+        if (payload.actionSettingsJson.isNotBlank()) {
+            try {
+                actionSettings = com.google.gson.Gson().fromJson(payload.actionSettingsJson, ActionSettings::class.java) ?: ActionSettings()
+                actionSettings.migrateLegacy()
+            } catch (_: Exception) {}
+        }
         received = true
 
         val client = Minecraft.getInstance()
@@ -84,9 +123,11 @@ object SyncedConfig {
         enableKarma: Boolean,
         maxStoredMemories: Int,
         maxRelevantMemories: Int,
+        favoriteMemorySlots: Int = 5,
         baseCandidateMemories: Int = 10,
         allowClientPersonalityEditing: Boolean,
-        enableAiMemoryRetrieval: Boolean = false
+        enableAiMemoryRetrieval: Boolean = false,
+        optimizedMode: Boolean = true
     ) {
         if (isServerControlled) {
             println("Attempt to change config blocked (server-controlled)")
@@ -106,9 +147,11 @@ object SyncedConfig {
         this.enableKarma = enableKarma
         this.maxStoredMemories = maxStoredMemories
         this.maxRelevantMemories = maxRelevantMemories
+        this.favoriteMemorySlots = favoriteMemorySlots
         this.baseCandidateMemories = baseCandidateMemories
         this.allowClientPersonalityEditing = allowClientPersonalityEditing
         this.enableAiMemoryRetrieval = enableAiMemoryRetrieval
+        this.optimizedMode = optimizedMode
 
         val cfg = ConfigHandler.config
 
@@ -125,9 +168,11 @@ object SyncedConfig {
         cfg.enableKarma = enableKarma
         cfg.maxStoredMemories = maxStoredMemories
         cfg.maxRelevantMemories = maxRelevantMemories
+        cfg.favoriteMemorySlots = favoriteMemorySlots
         cfg.baseCandidateMemories = baseCandidateMemories
         cfg.allowClientPersonalityEditing = allowClientPersonalityEditing
         cfg.enableAiMemoryRetrieval = enableAiMemoryRetrieval
+        cfg.optimizedMode = optimizedMode
 
         ConfigHandler.save()
     }

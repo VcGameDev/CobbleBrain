@@ -12,6 +12,7 @@ import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.ChatFormatting
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
+import net.minecraft.world.entity.Pose
 import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainConfig
@@ -19,6 +20,15 @@ import vito.cobblebrain.config.ConfigHandler
 import java.io.File
 
 object PokemonQuery {
+
+    fun isPokemonSleeping(pokemon: Pokemon): Boolean {
+        val hasSleepStatus = pokemon.status?.status?.name?.path?.lowercase() == "sleep"
+        val entity = pokemon.entity
+        val entitySleeping = entity?.isSleeping == true ||
+                entity?.pose == Pose.SLEEPING ||
+                (entity != null && vito.cobblebrain.sensors.sleepingState[entity.uuid] == true)
+        return hasSleepStatus || entitySleeping
+    }
 
     fun getAllPokemon(player: ServerPlayer): List<Pokemon> {
         val storage = Cobblemon.storage
@@ -44,7 +54,7 @@ object PokemonQuery {
                 matches(player.shoulderEntityRight)
     }
 
-    // Retorna apenas os Pokémon vivos e invocados no mundo (fora da Pokébola) ou no ombro
+    // Returns only living Pokémon summoned into the world (outside Pokéball) or shoulder-mounted
     fun findActivePokemon(player: ServerPlayer): List<Pokemon> {
         val party: PartyStore = Cobblemon.storage.getParty(player)
 
@@ -56,6 +66,12 @@ object PokemonQuery {
             }
         }
         return ativos
+    }
+
+    fun parsePartySlotIndex(slotStr: String?): Int {
+        if (slotStr.isNullOrBlank()) return 0
+        val raw = slotStr.trim().toIntOrNull() ?: 1
+        return (raw - 1).coerceIn(0, 5)
     }
 }
 
@@ -69,49 +85,29 @@ object PokemonTalkCommand {
                             val player: ServerPlayer = ctx.source.playerOrException
                             val conteudo = StringArgumentType.getString(ctx, "message")
 
-                            DialogueSystem.lastPlayerMessage[player.uuid] = conteudo
-
-                            //DialogueSystem.onSendPromptClient?.invoke()
-
-                            // UTIL PRA DEBUG
-                            //player.sendSystemMessage(Component.literal("1 - comando executou"))
-
-                            // limpa fila
-                            //DialogueSystem.scheduledMessages[player.uuid]?.clear()
-
-                            //player.sendSystemMessage(Component.literal("2 - limpou mensagens"))
-
-                            //val ativos = PokemonQuery.findActivePokemon(player)
-                            //player.sendSystemMessage(Component.literal("3 - ativos size: ${ativos.size}"))
-
-                            //val prompt = DialogueSystem.buildPrompt(player, ativos, "\n\n$conteudo")
-                            //player.sendSystemMessage(Component.literal("4 - prompt gerado: ${prompt.take(50)}"))
-
-                            //if (DialogueSystem.sendToPlayer == null) {
-                                //player.sendSystemMessage(Component.literal("5 - SEND É NULL"))
-                            //} else {
-                                //player.sendSystemMessage(Component.literal("5 - SEND NÃO É NULL"))
-                            //}
-
-                            //DialogueSystem.sendToPlayer?.invoke(player, prompt)
-
-                            //player.sendSystemMessage(Component.literal("6 - passou do send"))
-
-                            // Chamada unificada: cuida da trava de missão, contexto narrativo e envio para IA
-                            val success = DialogueSystem.onPlayerChat(
-                                player, 
-                                "${player.name.string} said: $conteudo"
-                            )
-
-                            // Mostra o que você escreveu apenas se a mensagem passou pela trava
-                            if (success) {
-                                player.sendSystemMessage(Component.literal("${player.name.string}: $conteudo"))
-                            }
-
+                            processTalk(player, conteudo, isStt = false)
                             1
                         }
                 )
         )
+    }
+
+    fun processTalk(player: ServerPlayer, conteudo: String, isStt: Boolean = false): Boolean {
+        if (conteudo.isBlank()) return false
+        DialogueSystem.lastPlayerMessage[player.uuid] = conteudo
+
+        val success = DialogueSystem.onPlayerChat(
+            player,
+            conteudo,
+            isStt = isStt
+        )
+
+        if (success) {
+            val prefix = if (isStt) "[STT] " else ""
+            player.sendSystemMessage(Component.literal("$prefix${player.name.string}: $conteudo"))
+        }
+
+        return success
     }
 }
 
@@ -120,7 +116,6 @@ object ConfigCommands {
     private val configFile = File("config/cobblebrain.json5")
     private val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
 
-    // Agora você já tem o objeto carregado
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
             Commands.literal("cobblebrain")
@@ -253,6 +248,38 @@ object ConfigCommands {
 
                             1
                         }
+                )
+
+                .then(
+                    Commands.literal("story")
+                        .then(
+                            Commands.literal("start")
+                                .then(
+                                    Commands.argument("id", StringArgumentType.string())
+                                        .executes { ctx ->
+                                            val player = ctx.source.playerOrException
+                                            val storyId = StringArgumentType.getString(ctx, "id")
+                                            val project = vito.cobblebrain.model.StorySerializer.loadByName(storyId)
+
+                                            if (project != null) {
+                                                vito.cobblebrain.engine.StoryExecutor.startStory(project, player)
+                                                player.sendSystemMessage(Component.literal("Story '$storyId' started successfully!"))
+                                            } else {
+                                                player.sendSystemMessage(Component.literal("Story pack '$storyId' not found in storypacks!"))
+                                            }
+                                            1
+                                        }
+                                )
+                        )
+                        .then(
+                            Commands.literal("stop")
+                                .executes { ctx ->
+                                    val player = ctx.source.playerOrException
+                                    vito.cobblebrain.engine.StoryExecutor.stopAllStories(player)
+                                    player.sendSystemMessage(Component.literal("All active stories have been stopped."))
+                                    1
+                                }
+                        )
                 )
 
                 .then(
@@ -389,7 +416,7 @@ object ConfigCommands {
                             Commands.argument("value", StringArgumentType.string())
                                 .executes { ctx ->
                                     val value = StringArgumentType.getString(ctx, "value")
-                                    ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.clientConfig.instruct.plus(value)
+                                    ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(ClientConfigHandler.clientConfig.instruct.plus(value))
                                     ConfigHandler.save()
                                     ctx.source.sendSuccess(
                                         { Component.literal("instruct set to $value") },
@@ -481,14 +508,14 @@ object ConfigCommands {
                                             "message"
                                         )
 
-                                    // Feedback temporário
+                                    // Temporary feedback
                                     DialogueSystem.addFeedback(
                                         player,
                                         feedback
                                     )
 
                                     // Feedback + addInstruct
-                                    ClientConfigHandler.clientConfig.instruct += feedback
+                                    ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(ClientConfigHandler.clientConfig.instruct + feedback)
 
                                     ConfigHandler.save()
 

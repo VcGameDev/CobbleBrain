@@ -9,29 +9,37 @@ import vito.cobblebrain.network.CobblebrainPayloads.AIResponsePayload
 
 object CobblebrainServerHandlerFabric {
     fun register() {
-        // ACTION do client
+        // Client action
         ServerPlayNetworking.registerGlobalReceiver(ActionPayload.TYPE) { payload: ActionPayload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
-                //player.sendSystemMessage(Component.literal("Executando ação: ${payload.action}"))
+                //player.sendSystemMessage(Component.literal("Executing action: ${payload.action}"))
 
-                // chama o Common
                 CobblebrainServerHandler.processAction(player, payload.action)
             }
         }
 
-        // Resposta da IA
+        // AI Response (Stage 1 Foreground)
         ServerPlayNetworking.registerGlobalReceiver(AIResponsePayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
                 println("[SERVER RECEIVED RESPONSE] from ${player.name.string}")
 
-                // chama o Common
                 CobblebrainServerHandler.processIaResponse(player.server, player, payload.content)
             }
         }
 
-        // Requisição de Resumo (Tecla L)
+        // Background Response (Stage 2 Background State Resolution)
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.BackgroundResponsePayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                println("[SERVER RECEIVED BACKGROUND RESPONSE] from ${player.name.string}")
+
+                CobblebrainServerHandler.processBackgroundResponse(player.server, player, payload.content)
+            }
+        }
+
+        // Summary Request (L key)
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestSummaryPayload.TYPE) { _, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -39,7 +47,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Requisição de Rebuild de Prompt com Memória
+        // Prompt Rebuild Request with Memory
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestPromptWithMemoryPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -47,7 +55,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Recebimento de Nickname Preferido do jogador
+        // Player Preferred Nickname
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PlayerNicknamePayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -55,7 +63,7 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Recebimento de Offline Settings do jogador
+        // Player Offline Settings
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.OfflineSettingsPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -65,7 +73,15 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
-        // Recebimento de Ping do jogador
+        // Voice Input (STT)
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.VoiceInputPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                vito.cobblebrain.social.PokemonTalkCommand.processTalk(player, payload.text, isStt = true)
+            }
+        }
+
+        // Player Ping
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.PingPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
@@ -79,13 +95,13 @@ object CobblebrainServerHandlerFabric {
                 if (accepted) {
                     val level = player.serverLevel()
                     val pos = payload.pos
-                    // Partículas visíveis no local do Ping
+                    // Visible particles at Ping location
                     level.sendParticles(
                         net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
                         pos.x + 0.5, pos.y + 1.2, pos.z + 0.5,
                         15, 0.3, 0.3, 0.3, 0.05
                     )
-                    // Som de feedback
+                    // Feedback sound
                     player.playNotifySound(
                         SoundEvents.EXPERIENCE_ORB_PICKUP,
                         SoundSource.PLAYERS,
@@ -107,7 +123,7 @@ object CobblebrainServerHandlerFabric {
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.SavePersonalityPayload.TYPE) { payload, context ->
             context.server().execute {
                 val player: ServerPlayer = context.player()
-                CobblebrainServerHandler.handleSavePersonality(player, payload.pokemonUuid, payload.personalityJson)
+                CobblebrainServerHandler.handleSavePersonality(player, payload.pokemonUuid, payload.personalityJson, payload.memoriesJson)
             }
         }
 
@@ -115,6 +131,58 @@ object CobblebrainServerHandlerFabric {
             context.server().execute {
                 val player: ServerPlayer = context.player()
                 CobblebrainServerHandler.handleDeletePersonality(player, payload.pokemonUuid)
+            }
+        }
+
+        // Advance AI Dialogue Payload
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.AdvanceAIDialoguePayload.TYPE) { payload, context ->
+            context.server().execute {
+                val inst = vito.cobblebrain.engine.StoryExecutor.activeStories.values.find { it.storyId == payload.instanceId }
+                if (inst != null) {
+                    val node = inst.project.scenes.flatMap { it.nodes }.find { it.id == payload.nodeId }
+                    if (node != null) {
+                        val outPort = node.outputs.find { it.name.equals("OUT", true) || it.name.equals("OUT_SUCCESS", true) } ?: node.outputs.firstOrNull()
+                        if (outPort != null) {
+                            vito.cobblebrain.engine.StoryExecutor.continuePortConnections(inst, node, outPort.id, 1)
+                        }
+                    }
+                }
+            }
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.StoryControlRequestPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player = context.player()
+                val server = context.server()
+                val canControl = player.hasPermissions(3) ||
+                    (server.isSingleplayer && server.isSingleplayerOwner(player.gameProfile))
+
+                if (!canControl) {
+                    println("[CobbleBrain Security] Player ${player.scoreboardName} attempted to ${payload.action} story '${payload.storyId}' without Level 3 permissions.")
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Insufficient permissions: Requires Level 3 (Admin) to manage stories."))
+                    return@execute
+                }
+
+                when (payload.action) {
+                    "START" -> {
+                        val project = vito.cobblebrain.model.StorySerializer.loadByName(payload.storyId)
+                        if (project != null) {
+                            vito.cobblebrain.engine.StoryExecutor.startStory(project, player, server)
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a[CobbleBrain] Story '${project.name}' started successfully!"))
+                        } else {
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c[CobbleBrain] Story pack '${payload.storyId}' not found in storypacks!"))
+                        }
+                    }
+                    "PAUSE" -> vito.cobblebrain.engine.StoryExecutor.pauseStory(payload.storyId)
+                    "RESUME" -> vito.cobblebrain.engine.StoryExecutor.resumeStory(payload.storyId)
+                    "STOP" -> vito.cobblebrain.engine.StoryExecutor.stopStory(payload.storyId)
+                }
+            }
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.KeyInputResultPayload.TYPE) { payload, context ->
+            context.server().execute {
+                vito.cobblebrain.engine.StoryExecutor.handleKeyInputResult(context.player(), payload.storyId, payload.nodeId, payload.resultEvent)
             }
         }
     }

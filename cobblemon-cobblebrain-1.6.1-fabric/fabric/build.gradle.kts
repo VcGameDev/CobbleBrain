@@ -44,6 +44,9 @@ dependencies {
     modImplementation("com.terraformersmc:modmenu:${property("modmenu_version")}")
     modImplementation("me.shedaniel.cloth:cloth-config-fabric:${property("cloth_config_version")}")
 
+    // MCMti (Speech-to-Text - Opcional)
+    compileOnly("maven.modrinth:mcmti:3.0.1+26.1.2-fabric")
+
     implementation(project(":common", configuration = "namedElements"))
     "developmentFabric"(project(":common", configuration = "namedElements"))
 

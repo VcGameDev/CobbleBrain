@@ -1,6 +1,7 @@
 package vito.cobblebrain.social
 
 import com.cobblemon.mod.common.Cobblemon
+import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -21,7 +22,8 @@ data class Memory(
     val memory: String,
     val keywords: List<String>,
     val createdTick: Long,
-    val playerMessage: String = ""
+    val playerMessage: String = "",
+    val isFavorite: Boolean = false
 )
 
 data class PokemonPersonality(
@@ -45,10 +47,35 @@ object MemorySystem {
 
     private val gson: Gson = GsonBuilder().create()
 
+    @Suppress("unused")
     fun getTraitsFile(pokemonUuid: String): File = resolveTraitsFile(pokemonUuid, null)
 
+    fun isWild(pokemonUuid: String): Boolean {
+        val uuid = try { UUID.fromString(pokemonUuid) } catch (_: Exception) { null }
+        if (uuid != null) {
+            val entity = currentServer?.allLevels?.firstNotNullOfOrNull { it.getEntity(uuid) as? PokemonEntity }
+            if (entity != null) {
+                return entity.pokemon.getOwnerUUID() == null
+            }
+        }
+        val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
+        return wildObj?.has(pokemonUuid) == true
+    }
+
     fun hasStoredPersonality(pokemonUuid: String, displayName: String? = null): Boolean {
+        if (isWild(pokemonUuid)) {
+            val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
+            return wildObj?.getAsJsonObject(pokemonUuid)?.has("personality") == true
+        }
         return resolveExistingFile(pokemonUuid, displayName, FileType.TRAITS)?.exists() == true
+    }
+
+    fun getLastModifiedTime(pokemonUuid: String, displayName: String? = null): Long {
+        val traits = resolveExistingFile(pokemonUuid, displayName, FileType.TRAITS)
+        val memories = resolveExistingFile(pokemonUuid, displayName, FileType.MEMORIES)
+        val tTime = traits?.takeIf { it.exists() }?.lastModified() ?: 0L
+        val mTime = memories?.takeIf { it.exists() }?.lastModified() ?: 0L
+        return maxOf(tTime, mTime)
     }
 
     fun warnAboutFilenameConflict(player: ServerPlayer, pokemonUuid: String) {
@@ -70,6 +97,36 @@ object MemorySystem {
     }
 
     fun loadPersonality(pokemonUuid: String, displayName: String?): PokemonPersonality {
+        if (isWild(pokemonUuid)) {
+            val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
+            val record = wildObj?.getAsJsonObject(pokemonUuid)
+            var personality = if (record != null && record.has("personality")) {
+                try {
+                    gson.fromJson(record.getAsJsonObject("personality"), PokemonPersonality::class.java) ?: PokemonPersonality()
+                } catch (_: Exception) {
+                    PokemonPersonality()
+                }
+            } else {
+                PokemonPersonality()
+            }
+
+            if (displayName != null && personality.about.isBlank()) {
+                val matched = config.characteristics.firstOrNull { entry ->
+                    val split = entry.split(":", limit = 2)
+                    if (split.size >= 2) {
+                        val charName = split[0].trim()
+                        charName.equals(displayName, ignoreCase = true)
+                    } else false
+                }
+                if (matched != null) {
+                    val desc = matched.split(":", limit = 2)[1].trim()
+                    personality = personality.copy(about = desc)
+                    savePersonality(pokemonUuid, personality, displayName)
+                }
+            }
+            return personality
+        }
+
         val file = resolveTraitsFile(pokemonUuid, displayName)
         var personality = if (!file.exists()) PokemonPersonality()
         else {
@@ -100,11 +157,21 @@ object MemorySystem {
         return personality
     }
 
+    @Suppress("unused")
     fun savePersonality(pokemonUuid: String, personality: PokemonPersonality) {
-        savePersonality(pokemonUuid, personality, null)
+        savePersonality(pokemonUuid, personality, null, false)
     }
 
-    fun savePersonality(pokemonUuid: String, personality: PokemonPersonality, displayName: String?) {
+    fun savePersonality(pokemonUuid: String, personality: PokemonPersonality, displayName: String?, forcePermanent: Boolean = false) {
+        if (!forcePermanent && isWild(pokemonUuid)) {
+            val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
+                ?: JsonObject().also { CobblebrainWorldSave.data.add("wild_pokemon_personalities", it) }
+            val record = wildObj.getAsJsonObject(pokemonUuid) ?: JsonObject().also { wildObj.add(pokemonUuid, it) }
+            record.add("personality", gson.toJsonTree(personality))
+            CobblebrainWorldSave.save()
+            return
+        }
+
         val file = resolveTraitsFile(pokemonUuid, displayName)
         try {
             file.parentFile?.mkdirs()
@@ -115,11 +182,36 @@ object MemorySystem {
         }
     }
 
+    @Suppress("unused")
     fun loadMemories(pokemonUuid: String): List<Memory> {
         return loadMemories(pokemonUuid, null)
     }
 
     fun loadMemories(pokemonUuid: String, displayName: String?): List<Memory> {
+        if (isWild(pokemonUuid)) {
+            val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
+            val record = wildObj?.getAsJsonObject(pokemonUuid)
+            if (record == null || !record.has("memories")) return emptyList()
+            val memories = mutableListOf<Memory>()
+            try {
+                record.getAsJsonArray("memories")?.forEach { el ->
+                    if (el.isJsonObject) {
+                        val obj = el.asJsonObject
+                        val participants = obj.getAsJsonArray("participants")?.map { it.asString } ?: emptyList()
+                        val memory = obj.get("memory")?.asString ?: ""
+                        val keywords = obj.getAsJsonArray("keywords")?.map { it.asString } ?: emptyList()
+                        val createdTick = obj.get("createdTick")?.asLong ?: 0L
+                        val playerMessage = obj.get("playerMessage")?.asString ?: ""
+                        val isFavorite = obj.get("isFavorite")?.asBoolean ?: obj.get("favorite")?.asBoolean ?: false
+                        memories.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
+                    }
+                }
+            } catch (e: Exception) {
+                println("Error loading wild memories for $pokemonUuid: ${e.message}")
+            }
+            return memories
+        }
+
         val file = resolveMemoryFile(pokemonUuid, displayName)
         if (!file.exists()) return emptyList()
         val memories = mutableListOf<Memory>()
@@ -132,7 +224,8 @@ object MemorySystem {
                     val keywords = obj.getAsJsonArray("keywords").map { it.asString }
                     val createdTick = obj.get("createdTick").asLong
                     val playerMessage = obj.get("playerMessage")?.asString ?: ""
-                    memories.add(Memory(participants, memory, keywords, createdTick, playerMessage))
+                    val isFavorite = obj.get("isFavorite")?.asBoolean ?: obj.get("favorite")?.asBoolean ?: false
+                    memories.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
                 }
             }
         } catch (e: Exception) {
@@ -141,20 +234,30 @@ object MemorySystem {
         return memories
     }
 
+    @Suppress("unused")
     fun saveMemory(pokemonUuid: String, memory: Memory) {
         saveMemory(pokemonUuid, memory, null)
     }
 
     fun saveMemory(pokemonUuid: String, memory: Memory, displayName: String?) {
-        val file = resolveMemoryFile(pokemonUuid, displayName)
-        val memories = loadMemories(pokemonUuid, displayName).toMutableList()
-        memories.add(memory)
-
-        val limit = config.maxStoredMemories
-        val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+        if (isWild(pokemonUuid)) {
+            val memories = loadMemories(pokemonUuid, displayName).toMutableList()
+            memories.add(memory)
+            val limit = config.maxStoredMemories
+            val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+            saveMemories(pokemonUuid, toSave, displayName)
+            return
+        }
 
         DiskWriteExecutor.submit {
             try {
+                val file = resolveMemoryFile(pokemonUuid, displayName)
+                val memories = loadMemories(pokemonUuid, displayName).toMutableList()
+                memories.add(memory)
+
+                val limit = config.maxStoredMemories
+                val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+
                 file.parentFile?.mkdirs()
                 PrintWriter(FileWriter(file, false)).use { writer ->
                     toSave.forEach { m ->
@@ -168,6 +271,7 @@ object MemorySystem {
                             add("keywords", kwArr)
                             addProperty("createdTick", m.createdTick)
                             addProperty("playerMessage", m.playerMessage)
+                            addProperty("isFavorite", m.isFavorite)
                         }
                         writer.println(gson.toJson(obj))
                     }
@@ -178,15 +282,84 @@ object MemorySystem {
         }
     }
 
-    private fun resolveTraitsFile(pokemonUuid: String, displayName: String?): File {
+    @Suppress("unused")
+    fun saveMemories(pokemonUuid: String, memories: List<Memory>) {
+        saveMemories(pokemonUuid, memories, null, false)
+    }
+
+    fun saveMemories(pokemonUuid: String, memories: List<Memory>, displayName: String?, forcePermanent: Boolean = false) {
+        if (!forcePermanent && isWild(pokemonUuid)) {
+            val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
+                ?: JsonObject().also { CobblebrainWorldSave.data.add("wild_pokemon_personalities", it) }
+            val record = wildObj.getAsJsonObject(pokemonUuid) ?: JsonObject().also { wildObj.add(pokemonUuid, it) }
+            val limit = config.maxStoredMemories
+            val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+            val memArr = com.google.gson.JsonArray()
+            toSave.forEach { m ->
+                val obj = JsonObject().apply {
+                    val partsArr = com.google.gson.JsonArray()
+                    m.participants.forEach { partsArr.add(it) }
+                    add("participants", partsArr)
+                    addProperty("memory", m.memory)
+                    val kwArr = com.google.gson.JsonArray()
+                    m.keywords.forEach { kwArr.add(it.lowercase()) }
+                    add("keywords", kwArr)
+                    addProperty("createdTick", m.createdTick)
+                    addProperty("playerMessage", m.playerMessage)
+                    addProperty("isFavorite", m.isFavorite)
+                }
+                memArr.add(obj)
+            }
+            record.add("memories", memArr)
+            CobblebrainWorldSave.save()
+            return
+        }
+
+        DiskWriteExecutor.submit {
+            try {
+                val file = resolveMemoryFile(pokemonUuid, displayName)
+                val limit = config.maxStoredMemories
+                val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+
+                file.parentFile?.mkdirs()
+                PrintWriter(FileWriter(file, false)).use { writer ->
+                    toSave.forEach { m ->
+                        val obj = JsonObject().apply {
+                            val partsArr = com.google.gson.JsonArray()
+                            m.participants.forEach { partsArr.add(it) }
+                            add("participants", partsArr)
+                            addProperty("memory", m.memory)
+                            val kwArr = com.google.gson.JsonArray()
+                            m.keywords.forEach { kwArr.add(it.lowercase()) }
+                            add("keywords", kwArr)
+                            addProperty("createdTick", m.createdTick)
+                            addProperty("playerMessage", m.playerMessage)
+                            addProperty("isFavorite", m.isFavorite)
+                        }
+                        writer.println(gson.toJson(obj))
+                    }
+                }
+            } catch (e: Exception) {
+                println("Error saving memories for $pokemonUuid: ${e.message}")
+            }
+        }
+    }
+
+    fun resolveTraitsFile(pokemonUuid: String, displayName: String?): File {
         val preferred = buildPreferredFile(pokemonUuid, displayName, FileType.TRAITS)
         val existing = resolveExistingFile(pokemonUuid, displayName, FileType.TRAITS)
+        if (displayName.isNullOrBlank() && existing != null) {
+            return existing
+        }
         return moveIfNeeded(existing, preferred)
     }
 
-    private fun resolveMemoryFile(pokemonUuid: String, displayName: String?): File {
+    fun resolveMemoryFile(pokemonUuid: String, displayName: String?): File {
         val preferred = buildPreferredFile(pokemonUuid, displayName, FileType.MEMORIES)
         val existing = resolveExistingFile(pokemonUuid, displayName, FileType.MEMORIES)
+        if (displayName.isNullOrBlank() && existing != null) {
+            return existing
+        }
         return moveIfNeeded(existing, preferred)
     }
 
@@ -194,6 +367,11 @@ object MemorySystem {
         if (existing == null || existing.absolutePath == preferred.absolutePath) {
             preferred.parentFile?.mkdirs()
             return existing ?: preferred
+        }
+
+        // Never downgrade an existing named file to generic "Pokemon-xxxxxxx"
+        if (preferred.name.startsWith("Pokemon-") && !existing.name.startsWith("Pokemon-")) {
+            return existing
         }
 
         return try {
@@ -265,7 +443,7 @@ object MemorySystem {
     private fun findPokemonByUuid(pokemonUuid: String): PokemonFileInfo? {
         val uuid = try {
             UUID.fromString(pokemonUuid)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             return null
         }
 
@@ -288,7 +466,7 @@ object MemorySystem {
 
         server.allLevels.forEach { level ->
             val entity = level.getEntity(uuid)
-            if (entity is com.cobblemon.mod.common.entity.pokemon.PokemonEntity) {
+            if (entity is PokemonEntity) {
                 return PokemonFileInfo(entity.pokemon.uuid.toString(), getDisplayName(entity.pokemon))
             }
         }
@@ -307,7 +485,11 @@ object MemorySystem {
     }
 
     private fun getModernBaseDirectory(): File {
-        val dir = File("cobblebrain-ai/stored_memories")
+        val legacyAiDir = File("cobblebrain-ai/stored_memories")
+        val dir = File("cobblebrain/stored_memories")
+        if (!dir.exists() && legacyAiDir.exists() && legacyAiDir.isDirectory) {
+            legacyAiDir.renameTo(dir)
+        }
         if (!dir.exists()) dir.mkdirs()
         return dir
     }

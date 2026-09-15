@@ -45,8 +45,8 @@ object StoryTimerSystem {
     private fun onTimerExpire(timerId: String, server: MinecraftServer) {
         println("[STORY TIMER] Timer $timerId expired!")
         
-        // Exemplo: notificar todos os jogadores ou disparar evento de história
-        // lembrar q isso é só uma sugestão, dps trocar pra ser apenas rodado em singleplayer ou LAN
+        // Example: notify all players or trigger story event
+        // Note: suggestion for now, could be changed to singleplayer or LAN only
         server.playerList.players.forEach { player ->
             player.sendSystemMessage(
                 Component.literal("A story event has triggered! ($timerId)")
@@ -54,13 +54,13 @@ object StoryTimerSystem {
             )
         }
         
-        // posso adicionar lógica específica para cada timerId
+        // Specific logic per timerId
         when (timerId) {
             "invasion" -> {
-                // Disparar invasão
+                // Trigger invasion
             }
             "mystery_solved" -> {
-                // Liberar nova área
+                // Unlock new area
             }
         }
     }

@@ -4,18 +4,47 @@ import com.cobblemon.mod.common.client.CobblemonClient
 import com.google.gson.JsonParser
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.resources.language.I18n
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import kotlin.math.atan2
 import kotlin.math.sin
+import vito.cobblebrain.config.ClientConfigHandler
+import vito.cobblebrain.config.ConfigHandler
+import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.engine.StoryDebugger
+import vito.cobblebrain.engine.StoryExecutor
 
 object HudSystem {
 
-    // Lista de comandos disponíveis
-    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT")
+    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "EXCAVATE", "BUILD", "REST")
     private var selectedActionIndex = 0
     private var isVisible = true
+    var isSoloMode: Boolean = false
+        private set
     private val cooldowns = mutableMapOf<String, Long>()
+
+    fun toggleTargetMode() {
+        isSoloMode = !isSoloMode
+        val client = Minecraft.getInstance()
+        playSelectSound(client)
+    }
+
+    fun getSelectedPokemonName(): String? {
+        return try {
+            val selectedSlot = CobblemonClient.storage.selectedSlot
+            val pokemon = CobblemonClient.storage.party.get(selectedSlot)
+            pokemon?.nickname?.string?.takeIf { it.isNotBlank() } ?: pokemon?.species?.name
+        } catch (_: Throwable) {
+            try {
+                val party = CobblemonClient.storage.party
+                val firstActive = party.firstOrNull { it != null && it.currentHealth > 0 }
+                firstActive?.nickname?.string?.takeIf { it.isNotBlank() } ?: firstActive?.species?.name
+            } catch (_: Throwable) {
+                null
+            }
+        }
+    }
 
     private val actionRequirements = mapOf(
         "cook" to "fire",
@@ -26,12 +55,17 @@ object HudSystem {
         "nightmare" to "dark",
         "light" to "electric",
         "scout" to "flying",
-        "teleport" to "psychic"
+        "teleport" to "psychic",
+        "excavate" to "steel",
+        "demolish" to "steel"
     )
 
     private fun isCommandAvailable(
         command: String
     ): Boolean {
+        if (!vito.cobblebrain.config.SyncedConfig.isActionActiveForPlayer(command)) {
+            return false
+        }
 
         val requiredType =
             actionRequirements[
@@ -52,38 +86,42 @@ object HudSystem {
     }
 
     private fun getSortedCommands(): List<String> {
-        return commands.sortedWith(
+        val filtered = commands.filter { vito.cobblebrain.config.SyncedConfig.isActionActiveForPlayer(it) }
+        return filtered.sortedWith(
             compareByDescending<String> { isCommandAvailable(it) }
                 .thenBy { commands.indexOf(it) }
         )
     }
 
-    private fun getAvailableCommands(): List<String> {
-        return getSortedCommands()
-            .filter {
-                isCommandAvailable(it)
-            }
-    }
 
     fun toggleVisibility() {
         isVisible = !isVisible
     }
 
     /**
-     * Ponto de entrada principal para toda a renderização de HUD do CobbleBrain.
+     * Main entry point for all CobbleBrain HUD rendering.
      */
-    fun render(guiGraphics: GuiGraphics, tickDelta: Float) {
+    fun render(guiGraphics: GuiGraphics, @Suppress("UNUSED_PARAMETER") tickDelta: Float) {
         val client = Minecraft.getInstance()
         if (client.player == null || client.options.hideGui) return
 
-        // 1. HUD de Missões (Já funcional)
+        // 1. Quest HUD
         renderQuestHud(guiGraphics, client)
 
-        // 2. HUD de Comandos do Pokémon (Placeholder)
+        // 2. Pokemon Commands HUD
         renderCommandsHud(guiGraphics, client)
 
-        // 4. Indicador de Ação (Próximo ao ícone do Cobblemon - Placeholder)
+        // 3. Action Indicator (Placeholder)
         renderActionIndicator(guiGraphics, client)
+
+        // 5. Checkpoint Loading Transition Overlay
+        LoadingTransitionOverlay.render(guiGraphics, client)
+
+        // 6. AI Dialogue HUD Overlay Box
+        DialogueHudOverlay.render(guiGraphics, client)
+
+        // 7. KeyInput QTE HUD Overlay
+        KeyInputClientManager.renderHud(guiGraphics, client.font, client.window.guiScaledWidth, client.window.guiScaledHeight)
     }
 
     // ===================================================================================
@@ -119,7 +157,7 @@ object HudSystem {
                 y += currentHeight + 4
             }
 
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     private fun renderSingleQuest(guiGraphics: GuiGraphics, client: Minecraft, quest: com.google.gson.JsonObject, x: Int, y: Int, boxHeight: Int) {
@@ -233,16 +271,17 @@ object HudSystem {
         val screenWidth = client.window.guiScaledWidth
         val screenHeight = client.window.guiScaledHeight
 
-        // Centro-Direito (Compacto: Largura dinâmica, Item 10)
+        // Center-right positioning (compact dynamic width)
         val itemHeight = 10
         val sortedCommands = getSortedCommands()
         val totalCount = sortedCommands.size
+        if (totalCount == 0) return
 
-        // Calcula a largura do menu com base no nome mais longo (escala 0.7)
+        // Calculate menu width based on longest label (scale 0.7)
         val textScale = 0.7f
         val minMenuWidth = 42
         val longestNameWidth = sortedCommands.maxOfOrNull { cmd ->
-            val displayName = net.minecraft.client.resources.language.I18n.get("cobblebrain.action.${cmd.lowercase()}")
+            val displayName = getActionDisplayName(cmd)
             ((client.font.width("> $displayName") * textScale) + 6).toInt()
         } ?: minMenuWidth
         val menuWidth = maxOf(minMenuWidth, longestNameWidth)
@@ -263,13 +302,28 @@ object HudSystem {
         val x = screenWidth - menuWidth - 8
         val y = (screenHeight - totalHeight) / 2
 
-        // Fundo
+        // Background
         guiGraphics.fill(x - 2, y - 2, x + menuWidth + 2, y + totalHeight + 2, 0x99000000.toInt())
         guiGraphics.fill(x - 2, y - 2, x - 1, y + totalHeight + 2, 0xFF5555FF.toInt())
 
         val hasAbove = startVisible > 0
         val hasBelow = endVisible < totalCount
         val centerX = x + (menuWidth / 2)
+
+        // Mode Status Header (SOLO vs MULTI)
+        val modeHeaderText = if (isSoloMode) {
+            val pokeName = getSelectedPokemonName()
+            "MODE: SOLO [${pokeName ?: "Selected"}]"
+        } else {
+            "MODE: MULTI (ALL)"
+        }
+        val modeColor = if (isSoloMode) 0xFFFFAA00.toInt() else 0xFF00AAFF.toInt()
+
+        guiGraphics.pose().pushPose()
+        guiGraphics.pose().translate(x.toDouble(), (y - 20).toDouble(), 0.0)
+        guiGraphics.pose().scale(0.6f, 0.6f, 1f)
+        guiGraphics.drawString(client.font, modeHeaderText, 0, 0, modeColor, true)
+        guiGraphics.pose().popPose()
 
         if (hasAbove) {
             val upStr = "▲"
@@ -295,14 +349,14 @@ object HudSystem {
             guiGraphics.pose().translate((x + 2).toDouble(), (itemY + 2).toDouble(), 0.0)
             guiGraphics.pose().scale(0.7f, 0.7f, 1f)
 
-            val displayName = net.minecraft.client.resources.language.I18n.get("cobblebrain.action.${cmd.lowercase()}")
+            val displayName = getActionDisplayName(cmd)
 
             if (isSelected) {
                 val time = client.level?.gameTime ?: 0L
                 val pulse = (sin(time.toDouble() / 4.0) * 20 + 50).toInt()
                 guiGraphics.pose().popPose()
 
-                // Se estiver em cooldown, pulsa em Vermelho, senão em Azul
+                // Pulsing indicator: red on cooldown, blue when ready
                 val pulseColor = if (remaining > 0) 0xFF5555 else 0x5555FF
                 guiGraphics.fill(x, itemY, x + menuWidth, itemY + itemHeight - 1, (pulse shl 24) or pulseColor)
 
@@ -314,7 +368,7 @@ object HudSystem {
                     val timerText = formatTime(remaining)
                     val timerWidth = client.font.width(timerText)
                     guiGraphics.drawString(client.font, timerText, -timerWidth - 4, 0, 0xFFFF5555.toInt())
-                    guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFAAAAAA.toInt()) // Cinza em cooldown
+                    guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFAAAAAA.toInt()) // Gray when on cooldown
                 } else {
                     guiGraphics.drawString(client.font, "> $displayName", 0, 0, 0xFFFFFFFF.toInt())
                 }
@@ -337,28 +391,60 @@ object HudSystem {
             guiGraphics.pose().popPose()
         }
 
-        // Dicas separadas por "parágrafo" (linhas)
+        // Keybind hints
         val upKey = CobblebrainClientCommon.keyUp?.translatedKeyMessage?.string ?: "B"
         val downKey = CobblebrainClientCommon.keyDown?.translatedKeyMessage?.string ?: "V"
         val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
         val toggleKey = CobblebrainClientCommon.keyToggle?.translatedKeyMessage?.string ?: "N"
+        val modeKey = CobblebrainClientCommon.keyMode?.translatedKeyMessage?.string ?: "I"
         val pingKey = CobblebrainClientCommon.keyPing?.translatedKeyMessage?.string ?: "G"
-
-        val selectUpMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_up")
-        val selectDownMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.select_down")
-        val confirmOrderMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.confirm_order")
-        val toggleHudMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.toggle_hud")
-        val markLocationMsg = net.minecraft.client.resources.language.I18n.get("cobblebrain.hud.mark_location")
+        val voiceKey = CobblebrainClientCommon.keyVoice?.translatedKeyMessage?.string ?: "H"
+        val debugKey = CobblebrainClientCommon.keyDebug?.translatedKeyMessage?.string ?: "F8"
 
         guiGraphics.pose().pushPose()
         guiGraphics.pose().translate((x).toDouble(), (y + totalHeight + 6).toDouble(), 0.0)
-        guiGraphics.pose().scale(0.5f, 0.5f, 1f) // Voltando para o tamanho anterior
+        guiGraphics.pose().scale(0.5f, 0.5f, 1f)
 
-        guiGraphics.drawString(client.font, "$upKey: $selectUpMsg", 0, 5, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$downKey: $selectDownMsg", 0, 15, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$execKey: $confirmOrderMsg", 0, 25, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$toggleKey: $toggleHudMsg", 0, 35, 0x99FFFFFF.toInt(), false)
-        guiGraphics.drawString(client.font, "$pingKey: $markLocationMsg", 0, 45, 0x99FFFFFF.toInt(), false)
+        val upDownText = I18n.get("cobblebrain.hud.up_down")
+        val confirmOrderText = I18n.get("cobblebrain.hud.confirm_order")
+        val toggleHudText = I18n.get("cobblebrain.hud.toggle_hud")
+        val modeText = I18n.get("cobblebrain.hud.mode")
+        val pingText = I18n.get("cobblebrain.hud.ping")
+
+        var tipY = 5
+        guiGraphics.drawString(client.font, "[$downKey/$upKey]: $upDownText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$execKey: $confirmOrderText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$toggleKey: $toggleHudText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$modeKey: $modeText (${if (isSoloMode) "SOLO" else "MULTI"})", 0, tipY, 0x99FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "--------", 0, tipY, 0x66FFFFFF.toInt(), false)
+        tipY += 10
+        guiGraphics.drawString(client.font, "$pingKey: $pingText", 0, tipY, 0x99FFFFFF.toInt(), false)
+
+        val isSttEnabled = try {
+            ClientConfigHandler.clientConfig.enableStt && CobblebrainClientCommon.isMcmtiInstalled()
+        } catch (_: Throwable) {
+            false
+        }
+        if (isSttEnabled) {
+            tipY += 10
+            val sttText = I18n.get("cobblebrain.hud.hold_record_stt", voiceKey)
+            guiGraphics.drawString(client.font, sttText, 0, tipY, 0x99FFFFFF.toInt(), false)
+        }
+
+        val isStoryRunning = try {
+            StoryDebugger.hasActiveSession() || StoryExecutor.activeStories.isNotEmpty()
+        } catch (_: Throwable) {
+            false
+        }
+        if (isStoryRunning) {
+            tipY += 10
+            val debuggerText = I18n.get("cobblebrain.hud.story_debugger")
+            guiGraphics.drawString(client.font, "$debugKey: $debuggerText", 0, tipY, 0x99FFFFFF.toInt(), false)
+        }
 
         guiGraphics.pose().popPose()
     }
@@ -392,6 +478,12 @@ object HudSystem {
             // Psychic
             "TELEPORT" ->
                 0xFFFF55FF.toInt()
+            // Steel (Excavate)
+            "EXCAVATE", "DEMOLISH" ->
+                0xFFB8B8D0.toInt()
+            // Build
+            "BUILD" ->
+                0xFFAAAAAA.toInt()
             else -> 0xFFAAAAAA.toInt() // Default Gray for neutral actions
         }
     }
@@ -418,8 +510,9 @@ object HudSystem {
     // 3. ACTION INDICATOR (Placeholder)
     // ===================================================================================
 
+    @Suppress("UNUSED_PARAMETER")
     private fun renderActionIndicator(guiGraphics: GuiGraphics, client: Minecraft) {
-        // Reservado para mostrar a ação atual do Pokémon (ex: "Buscando...", "Lutando...") próximo ao ícone do Cobblemon
+        // Reserved to display current Pokémon action (e.g., "Searching...", "Fighting...") near Cobblemon icon
     }
 
     // ===================================================================================
@@ -501,22 +594,39 @@ object HudSystem {
 
     fun executeAction() {
         val sortedCommands = getSortedCommands()
-        val cmd = sortedCommands[selectedActionIndex].uppercase()
+        if (sortedCommands.isEmpty()) return
+        val safeIndex = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
+        val cmd = sortedCommands[safeIndex].uppercase()
 
-        // Bloqueia se estiver em cooldown
         if (getCooldownRemaining(cmd) > 0) {
             return
         }
 
         val action = cmd.lowercase()
-        CobblebrainClientCommon.callTeamAction?.invoke("#ALL:$action")
+        if (isSoloMode) {
+            val selectedName = getSelectedPokemonName()
+            if (selectedName != null) {
+                CobblebrainClientCommon.callTeamAction?.invoke("#$selectedName:$action")
+            } else {
+                CobblebrainClientCommon.callTeamAction?.invoke("#ALL:$action")
+            }
+        } else {
+            CobblebrainClientCommon.callTeamAction?.invoke("#ALL:$action")
+        }
         playConfirmSound(Minecraft.getInstance())
 
-        // Inicia cooldown
         val duration = when(cmd) {
             "BUFF" -> 150000L // 2:30 (150s)
             "REPAIR" -> 300000L // 5:00 (300s)
             "SHIFT" -> 240000L // 4:00 (240s)
+            "TELEPORT" -> {
+                val cdSec = try {
+                    val mc = Minecraft.getInstance()
+                    if (mc.isLocalServer) ConfigHandler.config.actionSettings.teleport.cooldownSeconds
+                    else SyncedConfig.actionSettings.teleport.cooldownSeconds
+                } catch (_: Throwable) { 30 }
+                cdSec * 1000L
+            }
             else -> 0L
         }
         if (duration > 0) {
@@ -547,11 +657,26 @@ object HudSystem {
             SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.MASTER, 0.5f, 1.0f)
     }
 
-    fun updateCooldowns(buff: Long, repair: Long, shift: Long, debuff: Long) {
+    fun updateCooldowns(buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
         val now = System.currentTimeMillis()
         if (buff > 0) cooldowns["BUFF"] = now + buff
         if (repair > 0) cooldowns["REPAIR"] = now + repair
         if (shift > 0) cooldowns["SHIFT"] = now + shift
         if (debuff > 0) cooldowns["DEBUFF ENEMY"] = now + debuff
+        if (teleport > 0) cooldowns["TELEPORT"] = now + teleport
+    }
+
+    private fun getActionDisplayName(cmd: String): String {
+        val key = "cobblebrain.action.${cmd.lowercase().replace(" ", "_")}"
+        if (I18n.exists(key)) {
+            val text = I18n.get(key)
+            if (text.isNotBlank() && !text.startsWith("cobblebrain.action.")) return text
+        }
+        val altKey = "cobblebrain.action.${cmd.lowercase()}"
+        if (I18n.exists(altKey)) {
+            val text = I18n.get(altKey)
+            if (text.isNotBlank() && !text.startsWith("cobblebrain.action.")) return text
+        }
+        return cmd.replace("_", " ").uppercase()
     }
 }

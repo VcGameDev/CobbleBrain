@@ -1,11 +1,14 @@
 package vito.cobblebrain.client
 
+import com.cobblemon.mod.common.client.CobblemonClient
+import com.cobblemon.mod.common.pokemon.Pokemon
 import com.google.gson.Gson
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
 import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.social.DialogueFilter
 import java.io.IOException
 import java.net.URI
 import java.net.http.HttpClient
@@ -66,9 +69,14 @@ object ConversationMemory {
 class AIHandler {
     companion object {
         private val sessionLogFile: Path by lazy {
-            val dir = Minecraft.getInstance().gameDirectory.toPath()
+            val legacyDir = Minecraft.getInstance().gameDirectory.toPath()
                 .resolve("cobblebrain-ai/logs")
+            val dir = Minecraft.getInstance().gameDirectory.toPath()
+                .resolve("cobblebrain/logs")
 
+            if (!Files.exists(dir) && Files.exists(legacyDir)) {
+                try { Files.move(legacyDir, dir) } catch (_: Throwable) {}
+            }
             Files.createDirectories(dir)
 
             val fileName = "session_${
@@ -80,9 +88,12 @@ class AIHandler {
         }
 
         private val gson = Gson()
-        private val INSTRUCTS get() = clientConfig.instruct
-            .filterNotNull()
-            .joinToString("\n")
+        private val INSTRUCTS: String
+            get() {
+                val rawList = clientConfig.instruct.filter { it.isNotBlank() }
+                val filtered = rawList.filterNot { it.trim().equals("[CREATIVEPROMPT]", ignoreCase = true) }
+                return (listOf("[CREATIVEPROMPT]") + filtered).joinToString("\n")
+            }
         private val TEMPERATURE get() = clientConfig.temperature
         private val SHOW_HUNGER get() = clientConfig.showHunger
         private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
@@ -105,6 +116,7 @@ class AIHandler {
         separator=|
         short dialogue only
         wild pokemon allowed
+        never embed action codes inside dialogue text
         response language=$USER_LANGUAGE
         """
 
@@ -146,15 +158,63 @@ class AIHandler {
         Generate exactly one memory at the end of each conversation.
         """
 
-        const val ACTION = """
-        ACTION FORMAT
-        Use actions only when appropriate to the dialogue, environment, or situation.
-        Format: #<PokemonName>:<action_code>
-        Action codes:
-        A (attack a mob), E (eat/ask for food), B (buff owner), D (debuff enemy), S (sit), P (protect owner/attack agressive mobs), I (idle)
-        fire type: C (cook/smelt ores) | steel type: R (repair tools) | grass type: G (grow crops/saplings) | ghost type: SH (shift)
-        | dark type: N (nightmare aura) | fly type: SC (scout) | eletric type: L (light)
-        """
+        fun getActionSection(): String {
+            val party: List<Pokemon> = try {
+                CobblemonClient.storage.party.filterNotNull().filter { it.currentHealth > 0 }
+            } catch (_: Throwable) {
+                emptyList()
+            }
+            val presentTypes = party.flatMap { it.types }.map { it.name.lowercase() }.toSet()
+
+            val available = mutableListOf<String>()
+            val wildActions = mutableListOf<String>()
+            val typeActions = mutableListOf<String>()
+
+            if (SyncedConfig.outputActions) {
+                if (SyncedConfig.isActionActiveForAI("attack")) available += "A (attack)"
+                if (SyncedConfig.isActionActiveForAI("hostile")) wildActions += "H (hostile - #<WildPokemon>:H[:<Target>]). Hostility escalation rules: 1st H puts the wild Pokémon in an IRRITATED warning stage. 2nd H while listed as (IRRITATED) in [NEARBY POKEMON] makes it enter combat and actively attack the target. EXCEPTION: If physically attacked/damaged by player or target, H triggers immediate combat. NEVER speak or narrate system status in dialogue. Speak ONLY in natural character dialogue. In normal or annoyed dialogue, use #<WildPokemon>:I."
+                if (SyncedConfig.isActionActiveForAI("eat")) available += "E (eat)"
+                if (SyncedConfig.isActionActiveForAI("buff")) available += "B (buff owner)"
+                if (SyncedConfig.isActionActiveForAI("debuff_enemy")) available += "D (debuff enemy)"
+                if (SyncedConfig.isActionActiveForAI("sit")) available += "S (sit/rest - if night time, pokémon sleeps)"
+                if (SyncedConfig.isActionActiveForAI("protect")) available += "P (protect owner)"
+                if (SyncedConfig.isActionActiveForAI("idle")) available += "I (idle)"
+                if (SyncedConfig.isActionActiveForAI("build")) available += "BU (build)"
+
+                if (SyncedConfig.isActionActiveForAI("cook") && ("fire" in presentTypes || presentTypes.isEmpty())) typeActions += "fire type: C (cook/smelt ores)"
+                if (SyncedConfig.isActionActiveForAI("repair") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: R (repair tools)"
+                if (SyncedConfig.isActionActiveForAI("excavate") && ("steel" in presentTypes || presentTypes.isEmpty())) typeActions += "steel type: EX (excavate tunnel)"
+                if (SyncedConfig.isActionActiveForAI("grow") && ("grass" in presentTypes || presentTypes.isEmpty())) typeActions += "grass type: G (grow crops)"
+                if (SyncedConfig.isActionActiveForAI("shift") && ("ghost" in presentTypes || presentTypes.isEmpty())) typeActions += "ghost type: SH (shift)"
+                if (SyncedConfig.isActionActiveForAI("nightmare") && ("dark" in presentTypes || presentTypes.isEmpty())) typeActions += "dark type: N (nightmare aura)"
+                if (SyncedConfig.isActionActiveForAI("scout") && ("flying" in presentTypes || presentTypes.isEmpty())) typeActions += "flying type: SC (scout)"
+                if (SyncedConfig.isActionActiveForAI("light") && ("electric" in presentTypes || presentTypes.isEmpty())) typeActions += "electric type: L (light)"
+                if (SyncedConfig.isActionActiveForAI("fish") && ("water" in presentTypes || presentTypes.isEmpty())) typeActions += "water type: F (fish)"
+                if (SyncedConfig.isActionActiveForAI("teleport") && ("psychic" in presentTypes || presentTypes.isEmpty())) typeActions += "psychic type: T (teleport)"
+            }
+
+            if (available.isEmpty() && wildActions.isEmpty() && typeActions.isEmpty()) return ""
+
+            return buildString {
+                appendLine("ACTION FORMAT")
+                appendLine("Use actions only when appropriate to the dialogue, environment, or situation.")
+                appendLine("Format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
+                appendLine("Always separate actions from dialogue using '|' (e.g. Pikachu: Look! | #Pikachu:P). Never put action codes inside spoken dialogue.")
+                appendLine("The mod automatically notifies players of irritation and hostility. Never narrate or speak system notifications in character dialogue.")
+                if (available.isNotEmpty()) {
+                    appendLine("Universal actions (any Pokémon):")
+                    appendLine("  ${available.joinToString(", ")}")
+                }
+                if (wildActions.isNotEmpty()) {
+                    appendLine("Wild Pokémon actions (nearby wild Pokémon only):")
+                    appendLine("  ${wildActions.joinToString(", ")}")
+                }
+                if (typeActions.isNotEmpty()) {
+                    appendLine("Type-specific actions (available for current Pokémon types):")
+                    appendLine("  ${typeActions.joinToString(" | ")}")
+                }
+            }.trim()
+        }
 
         const val CATCH = """
         GUARANTEED CATCH FORMAT
@@ -200,15 +260,15 @@ class AIHandler {
             appendLine("GENERAL RULES")
             appendLine("- strict format only")
             appendLine("- keep section order")
-            appendLine("- pokemon + player only")
+            appendLine("- pokemon + player only unless the [CREATIVEPROMPT] tells the opposite")
             appendLine("- only ACTIVE or NEARBY Pokémon may speak")
             appendLine("- unavailable Pokémon never speak")
-            appendLine("- if no Pokémon can respond, output only: \"No Pokémon heard what you said\" in $USER_LANGUAGE")
+            appendLine("- if no Pokémon can respond, output only: \"NO POK HEARD\"")
             appendLine("- consistent names")
-            appendLine("- no self-talk unless specified")
+            appendLine("- no self-talk unless the [CREATIVEPROMPT] tells the opposite")
             appendLine("- never speak or act for the player")
-            appendLine("- nearby Pokémon do not know the player's name")
             appendLine("- player IDs belong to players, not Pokémon")
+            appendLine("- unless a specific wild Pokémon's name explicitly appeared in [LAST INTERACTIONS] or the [CREATIVEPROMPT] tells the opposite, that pokemon treats the player as a complete stranger with zero prior knowledge of their name, past actions or reputation.")
 
             if (!SHOW_HUNGER) {
                 appendLine("- never initiate conversations about hunger, food, eating, or fullness. Only discuss them if the player explicitly asks.")
@@ -237,14 +297,14 @@ class AIHandler {
         canonDialogue: Boolean
     ): String? {
 
-        // prioridade 1: item
+        // Priority 1: item
         if (needsTranslator) {
             val hasTranslator = shouldUseNormalDialogue()
 
             return if (hasTranslator) DIALOGUE else CANON_DIALOGUE
         }
 
-        // prioridade 2: config
+        // Priority 2: config
         if (canonDialogue) return CANON_DIALOGUE
         if (dialogue) return DIALOGUE
 
@@ -277,7 +337,10 @@ class AIHandler {
 
         if (friendship) sections += FRIENDSHIP
         if (memories) sections += MEMORY
-        if (actions) sections += ACTION
+        if (actions) {
+            val actionSec = getActionSection()
+            if (actionSec.isNotBlank()) sections += actionSec
+        }
         if (psychicTranslation) sections += PSYCHIC_TRANSLATION
         
         if (guaranteedCatch && dialogue) {
@@ -299,6 +362,43 @@ class AIHandler {
     }
 
     private fun getDefaultOutputFormat(): String {
+        if (SyncedConfig.optimizedMode) {
+            val sections = mutableListOf<String>()
+            sections += HEADER
+            resolveDialogueSection(
+                SyncedConfig.needsPokemonTranslator,
+                SyncedConfig.outputDialogue,
+                SyncedConfig.outputPokemonLanguage
+            )?.let { sections += it }
+
+            if (SyncedConfig.outputActions) {
+                val actionSec = getActionSection()
+                if (actionSec.isNotBlank()) sections += actionSec
+            }
+
+            if (clientConfig.psychicTranslation) sections += PSYCHIC_TRANSLATION
+            sections += GENERAL
+            val actionsRestriction = if (SyncedConfig.outputActions) ", optional # actions (separated by |)" else ""
+            val noActionsNote = if (!SyncedConfig.outputActions) "\nDo NOT generate any # action tags." else ""
+            sections += """
+            ##ROUTING FLAGS##
+            Append applicable tags at the very end of your response (omit entirely if mundane):
+            Format: [FLAG: TAG1, TAG2]
+
+            - FRIENDSHIP: Meaningful emotional impact (praise, comfort, affection, insult). Skip small-talk/orders.
+            - QUEST: Active quest discussion, progress, completion, or advice.
+            - MEMORY: Memorable bonding, humor, secrets, promises, battle milestones. Skip routine small-talk.
+            - TRAIT: Major psychological/worldview shift (trauma, overcoming fear, huge victory). Never for routine chatter or open slots.
+            - QUIRK: Developing or breaking a distinct habit, tic, or ritual from a profound event. Never for routine actions or open slots.
+            - CATCH: Wild Pokémon persuaded and explicitly agrees to join team (wild only).
+            
+            ##STAGE 1 RESTRICTIONS##
+            Generate ONLY in-character spoken dialogue$actionsRestriction and flags.$noActionsNote
+            """.trimIndent()
+
+            return sections.joinToString("\n\n")
+        }
+
         return buildOutputFormat(
             dialogue = SyncedConfig.outputDialogue,
             actions = SyncedConfig.outputActions,
@@ -316,7 +416,7 @@ class AIHandler {
             psychicTranslation = clientConfig.psychicTranslation
         )
     }
-    // agora usando rotadores
+    // Using API key rotators
     private val apiKeyRotator = ApiKeyRotator(clientConfig.apiKey)
     private val modelRotator = ModelRotator(clientConfig.aiModel)
 
@@ -333,7 +433,7 @@ class AIHandler {
             address.isAnyLocalAddress ||
                     address.isLoopbackAddress ||
                     address.isSiteLocalAddress
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
@@ -370,7 +470,7 @@ class AIHandler {
         //StandardWatchEventKinds.ENTRY_CREATE
         //)
 
-        // Executor para rodar o pingHealth a cada 60s
+        // Executor to run pingHealth every 60s
         if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true)
             && isLocalAddress(clientConfig.apiBaseUrl)
@@ -412,12 +512,12 @@ class AIHandler {
                 log("Health OK → ${res.body()}")
                 println("Health OK → ${res.body()}")
             } else {
-                log("Health ping falhou: HTTP ${res.statusCode()} → ${res.body()}")
-                println("Health ping falhou: HTTP ${res.statusCode()} → ${res.body()}")
+                log("Health ping failed: HTTP ${res.statusCode()} → ${res.body()}")
+                println("Health ping failed: HTTP ${res.statusCode()} → ${res.body()}")
             }
         } catch (e: Exception) {
-            log("Erro no health ping: ${e.message}")
-            println("Erro no health ping: ${e.message}")
+            log("Health ping error: ${e.message}")
+            println("Health ping error: ${e.message}")
         }
     }
 
@@ -464,7 +564,7 @@ class AIHandler {
     //println(comandoPath.fileName.toString())
     //if (fullText.isEmpty()) return
 
-    // usa o prompt inteiro como base do hash
+    // Uses full prompt as hash base
     //val hash = sha256(fullText)
     //if (hash == lastPromptHash) {
     // println("duplicata detectada")
@@ -473,7 +573,7 @@ class AIHandler {
 
     //lastPromptHash = hash
 
-    // log detalhado mostrando início do prompt e hash
+    // Detailed log showing prompt start and hash
     //log("FULL PROMPT:\n${fullText.lines().joinToString("\n") { "│ $it" }}")
     //log("HASH BASE (primeiras linhas):\n${fullText.lines().take(5).joinToString("\n") { "│ $it" }}\n→ $hash")
 
@@ -482,7 +582,7 @@ class AIHandler {
     //}
 
     // ------------------------------------------------------------
-    // Lista de erros HTTP mais comuns
+    // List of most common HTTP errors
     private val errorMessages = mapOf(
         400 to """
         !Error 400! Bad Request: Invalid request format.
@@ -525,37 +625,36 @@ class AIHandler {
     """.trimIndent()
     )
 
-    //Extrai uma mensagem de erro amigável a partir do status HTTP (opcional) e do corpo.
-    //* - Se status != 200, tenta detalhar via JSON ou regex.
-    //* - Se não houver status, tenta extrair do body (JSON/regex) e fornece fallback.
-
+    // Extracts a user-friendly error message from HTTP status and response body.
     fun extractErrorMessage(body: String, status: Int? = null): String {
-        // tenta JSON
+        // Try JSON
         try {
             val json = gson.fromJson(body, Map::class.java)
             val error = json["error"] as? Map<*, *>
             if (error != null) {
-                val code = (error["code"] as? Number)?.toInt() ?: status
-                val msg = error["message"] as? String ?: "Erro desconhecido"
-                return if (code != null) "Erro $code: $msg" else "Erro: $msg"
+                val code = (error["code"] as? Number)?.toInt()
+                    ?: (error["code"] as? String)?.toIntOrNull()
+                    ?: status
+                val msg = error["message"] as? String ?: "Unknown error"
+                return if (code != null) "!Error $code! $msg" else "!Error! $msg"
             }
         } catch (_: Exception) {
-            // tenta regex
+            // Try regex
             val regex = Regex("HTTP (\\d+)")
             val match = regex.find(body)
             if (match != null) {
                 val code = match.groupValues[1].toInt()
-                return errorMessages[code] ?: "Erro HTTP $code: não mapeado"
+                return errorMessages[code] ?: "!Error $code! HTTP Error $code: unmapped"
             }
         }
 
-        // se status veio e não é 200, devolve junto
+        // Append HTTP status code if non-200
         if (status != null && status != 200) {
-            return "HTTP $status: $body"
+            return errorMessages[status] ?: "!Error $status! HTTP $status: $body"
         }
 
         // fallback final
-        return body
+        return if (body.startsWith("!Error")) body else "!Error! ${body.ifBlank { "Unknown Error" }}"
     }
 
     private fun isLocalApi(apiBase: String): Boolean {
@@ -590,7 +689,7 @@ class AIHandler {
                 isLocalApi(apiBase) -> callOpenAISchema(memorySearchPrompt, systemOverride)
                 else -> callOpenAISchema(memorySearchPrompt, systemOverride)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "NO_MEMORY"
         }
         println("[MemoryRetrievalAI] Decision/Selection response:\n$response")
@@ -602,7 +701,7 @@ class AIHandler {
 
         val cleanPrompt = prompt
 
-        // Injeta LAST INTERACTIONS no prompt vindo do servidor
+        // Inject LAST INTERACTIONS into server prompt
         val interactions = ConversationMemory.get()
         val finalPrompt = if (interactions.isNotEmpty()) {
             buildString {
@@ -633,49 +732,94 @@ class AIHandler {
         } catch (e: Exception) {
             println("Request error")
             when (e) {
-                is HttpTimeoutException -> "Error: Request timeout"
-                is IOException -> "Error: Network problem (${e.message})"
-                else -> "Error: ${e.message}"
+                is HttpTimeoutException -> "!Error 408! Request timeout"
+                is IOException -> "!Error! Network problem (${e.message})"
+                else -> "!Error! ${e.message}"
             }
         }
 
-        if (responseText.isBlank() || responseText.startsWith("Error")) {
+        if (responseText.isBlank() || DialogueFilter.isErrorResponse(responseText)) {
             val msg = extractErrorMessage(responseText)
             lastPromptHash = null
             log("Error handled for prompt ${sha256(prompt)}: $msg")
             return msg
         }
 
-        val formatted = responseText
+        val sanitizedRaw = DialogueFilter.sanitizeRawResponse(responseText)
+
+        val formatted = sanitizedRaw
             .replace("\\n", "\n")
             .replace("\n", "|")
             .replace("\\", "")
 
         historico.add(Mensagem("user", cleanPrompt))
-        historico.add(Mensagem("assistant", responseText))
+        historico.add(Mensagem("assistant", sanitizedRaw))
         limitarHistorico()
 
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
 
-        // Processa !RESUME para a memória local
-        val parts = formatted.split("|")
-        println("[DEBUG] Parsing AI response lines for resumes. Total parts: ${parts.size}")
-        parts.forEach { line ->
-            val trimmed = line.trim()
-            println("[DEBUG] Checking line: \"$trimmed\"")
+        // Process LAST INTERACTIONS for local ConversationMemory
+        val parts = formatted.split("|").map { it.trim() }
+        println("[DEBUG] Parsing AI response lines for conversation memory. Total parts: ${parts.size}")
+        
+        // 1. Try legacy explicit summary (!RESUME or =)
+        var savedExplicit = false
+        parts.forEach { rawPart ->
+            val trimmed = DialogueFilter.stripListPrefix(rawPart)
             if (trimmed.startsWith("!RESUME", ignoreCase = true)) {
                 val resumeText = trimmed.substringAfter("!RESUME")
                     .removePrefix(":")
                     .trim()
                 if (resumeText.isNotBlank()) {
                     ConversationMemory.save(resumeText)
+                    savedExplicit = true
                 }
             } else if (trimmed.startsWith("=")) {
                 val resumeText = trimmed.removePrefix("=")
                     .trim()
                 if (resumeText.isNotBlank()) {
                     ConversationMemory.save(resumeText)
+                    savedExplicit = true
                 }
+            }
+        }
+
+        // 2. If no explicit summary, synthesize locally: Player Input -> Pokémon Dialogue
+        if (!savedExplicit) {
+            val playerMsg = if (cleanPrompt.contains("[PLAYER_MESSAGE]")) {
+                cleanPrompt.substringAfter("[PLAYER_MESSAGE]").substringBefore("[").trim()
+            } else {
+                ""
+            }
+
+            val dialogueLines = parts.map { line ->
+                val stripped = DialogueFilter.stripListPrefix(line)
+                DialogueFilter.cleanSpeechText(stripped)
+            }.filter { line ->
+                line.isNotBlank() &&
+                !line.startsWith("#") &&
+                !line.startsWith("&") &&
+                !line.startsWith("%") &&
+                !line.startsWith("!") &&
+                !line.startsWith("=") &&
+                !line.startsWith("[FLAG:", ignoreCase = true) &&
+                !DialogueFilter.isPromptArtifact(line) &&
+                line.contains(":")
+            }
+
+            val pokesSpeech = dialogueLines.joinToString(" | ")
+            val entry = when {
+                playerMsg.isNotBlank() && pokesSpeech.isNotBlank() ->
+                    "Player: \"$playerMsg\" -> $pokesSpeech"
+                pokesSpeech.isNotBlank() ->
+                    pokesSpeech
+                playerMsg.isNotBlank() ->
+                    "Player: \"$playerMsg\""
+                else -> ""
+            }
+
+            if (entry.isNotBlank()) {
+                ConversationMemory.save(entry)
             }
         }
 
@@ -708,8 +852,41 @@ class AIHandler {
             responseText.replace("\\n", "\n").replace("\n", " ").replace("\\", "")
         }
 
-        // Envia de volta para o servidor processar
         CobblebrainClientCommon.sendToServer?.invoke(formatted)
+    }
+
+    fun generateBackgroundState(prompt: String): String {
+        val systemOverride = "You are the background state analysis engine for CobbleBrain. Analyze the conversation and player input, and output state updates for remaining systems (traits, quirks, memory diary, quest scoring, friendship, guaranteed catch) following the specified format strictly. Do NOT output dialogue or greeting text."
+
+        val responseText = try {
+            when {
+                apiBase.contains("generativelanguage.googleapis.com") -> {
+                    callGoogleGemma(prompt, systemOverride)
+                }
+                isLocalApi(apiBase) -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+                else -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+            }
+        } catch (e: Exception) {
+            println("[CobbleBrain AI] Background state evaluation error: ${e.message}")
+            "Error: ${e.message}"
+        }
+
+        if (responseText.isBlank() || responseText.startsWith("Error")) {
+            val msg = extractErrorMessage(responseText)
+            log("Background state error for prompt ${sha256(prompt)}: $msg")
+            return msg
+        }
+
+        val formatted = responseText
+            .replace("\\n", "\n")
+            .replace("\n", "|")
+            .replace("\\", "")
+
+        return formatted
     }
 
 
@@ -722,17 +899,13 @@ class AIHandler {
         log("\n--- PROMPT ---")
         log(prompt)
 
-        // Nota: buildOpenAIJson já usa o prompt final com as interações injetadas
+        // Note: buildOpenAIJson uses the final prompt with injected interactions
         val jsonBody = buildOpenAIJson(prompt, systemOverride)
 
         log("\n--- REQUEST JSON ---")
         log(jsonBody.lines().joinToString("\n") { "│ $it" })
 
         val url = when {
-            isNovelAI() -> {
-                val cleanBase = apiBase.replace(Regex("""/v1/chat/completions.*$"""), "").trimEnd('/')
-                if (cleanBase.endsWith("/ai/generate")) cleanBase else "$cleanBase/ai/generate"
-            }
             clientConfig.useChatEndpoint -> "$apiBase/v1/chat/completions"
             else -> apiBase
         }
@@ -743,7 +916,7 @@ class AIHandler {
             .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
 
-        // Autenticação
+        // Authentication
         if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true)
             && isLocalAddress(clientConfig.apiBaseUrl)
@@ -805,7 +978,7 @@ class AIHandler {
             log("Stacktrace:")
             e.printStackTrace()
 
-            "Erro API (${clientConfig.customApiProvider} | $getEnvironment): ${e.message}"
+            "!Error! Error API (${clientConfig.customApiProvider}): ${e.message}"
         }
     }
 
@@ -813,19 +986,14 @@ class AIHandler {
         apiBase.contains("openrouter.ai", ignoreCase = true)
 
     private fun isLMStudio() =
-        // ajuste conforme sua URL local do LM Studio
         clientConfig.customApiProvider.contains("lmstudio", ignoreCase = true)
-
-    private fun isNovelAI() =
-        clientConfig.customApiProvider.contains("novelai", ignoreCase = true) ||
-                apiBase.contains("novelai.net", ignoreCase = true)
 
     //private fun usesMaxTokens(apiBase: String) =
     //isOpenRouter(apiBase) || isLMStudio(apiBase)
 
 
     private fun buildOpenAIJson(prompt: String, systemOverride: String? = null): String {
-        // Se tem override (é um resumo), não envia o histórico de conversas para economizar tokens e evitar confusão.
+        // If override is present (summary), skip conversation history to save tokens
         val tempHistory = if (systemOverride != null) {
             listOf(Mensagem("user", prompt))
         } else {
@@ -840,7 +1008,7 @@ class AIHandler {
         extras.add("\"temperature\": $TEMPERATURE")
         extras.add("\"stream\": false")
 
-        // extras específicos de OpenRouter/LM Studio
+        // Provider-specific options for OpenRouter/LM Studio
         if (isOpenRouter(apiBase) || isLMStudio()) {
             if (PROVIDER_HINT.isNotEmpty()) {
                 extras.add(
@@ -865,28 +1033,14 @@ class AIHandler {
 
         val extraJson = if (extras.isNotEmpty()) ",\n" + extras.joinToString(",\n") else ""
 
-        // Se for Player2, não inclui "model"
-        val outputFormatToUse = if (SyncedConfig.useDefaultOutput) {
+        // Do not include "model" for Player2
+        val outputFormatToUse = if (SyncedConfig.optimizedMode || SyncedConfig.useDefaultOutput) {
             getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat
         }
 
-        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
-
-        if (isNovelAI()) {
-            val fullPromptText = "[System: ${escape(systemContent)}]\n\n" + tempHistory.joinToString("\n") { "${it.role}: ${escape(it.text)}" }
-            return """
-        {
-          "input": "$fullPromptText",
-          "model": "${modelRotator.current()}",
-          "parameters": {
-            "max_length": 300,
-            "temperature": $TEMPERATURE
-          }
-        }
-        """.trimIndent()
-        }
+        val systemContent = systemOverride ?: if (INSTRUCTS.isNotBlank()) "$INSTRUCTS\n\n$outputFormatToUse" else outputFormatToUse
 
         return if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true) &&
@@ -918,38 +1072,31 @@ class AIHandler {
         return try {
             println(body)
             val json = gson.fromJson(body, Map::class.java)
-            // Formato NovelAI
-            val outputText = json["output"] as? String
-            if (!outputText.isNullOrBlank()) {
-                return removeThinkBlocks(outputText)
-            }
 
-            val choices = json["choices"] as? List<*> ?: return "Erro parsing resposta"
-            val first = choices.firstOrNull() as? Map<*, *> ?: return "Erro parsing resposta"
+            val choices = json["choices"] as? List<*> ?: return "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
+            val first = choices.firstOrNull() as? Map<*, *> ?: return "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
 
-            // Formato OpenAI/OpenRouter
+            // OpenAI/OpenRouter format
             val message = first["message"] as? Map<*, *>
             val content = message?.get("content") as? String
             if (!content.isNullOrBlank()) {
-                return removeThinkBlocks(content) // <<< limpeza aplicada aqui
+                return removeThinkBlocks(content) // <<< cleanup applied here
             }
 
-            // Alguns provedores retornam "text"
+            // Some providers return "text"
             val text = first["text"] as? String
             if (!text.isNullOrBlank()) {
-                return removeThinkBlocks(text) // <<< limpeza aplicada aqui também
+                return removeThinkBlocks(text)
             }
 
-            "Erro parsing resposta"
+            "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
         } catch (_: Exception) {
-            "Erro parsing resposta"
+            "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
         }
     }
 
-    // Função auxiliar para remover blocos <think>...</think>
     private fun removeThinkBlocks(text: String): String {
-        val regex = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
-        return text.replace(regex, "")
+        return DialogueFilter.sanitizeRawResponse(text)
     }
 
     // ================= GOOGLE GEMMA / GEMINI =================
@@ -972,13 +1119,13 @@ class AIHandler {
 
         val url = "$apiBase/v1beta/models/$currentModel:generateContent?key=$currentKey"
 
-        val outputFormatToUse = if (SyncedConfig.useDefaultOutput) {
+        val outputFormatToUse = if (SyncedConfig.optimizedMode || SyncedConfig.useDefaultOutput) {
             getDefaultOutputFormat()
         } else {
             clientConfig.outputFormat
         }
 
-        val systemContent = systemOverride ?: (INSTRUCTS + outputFormatToUse)
+        val systemContent = systemOverride ?: if (INSTRUCTS.isNotBlank()) "$INSTRUCTS\n\n$outputFormatToUse" else outputFormatToUse
 
         val contents = if (systemOverride != null) {
             listOf(
@@ -1051,7 +1198,7 @@ class AIHandler {
             log("Message: ${e.message}")
             e.printStackTrace()
 
-            "Erro API Google: ${e.message}"
+            "!Error! Error API Google: ${e.message}"
         }
     }
 
@@ -1065,7 +1212,7 @@ class AIHandler {
             val textPart = parts[0] as Map<*, *>
             textPart["text"] as String
         } catch (_: Exception) {
-            "Erro parsing resposta Google"
+            "!Error! Erro parsing resposta Google: ${body.take(200)}"
         }
 
     // ------------------------------------------------------------

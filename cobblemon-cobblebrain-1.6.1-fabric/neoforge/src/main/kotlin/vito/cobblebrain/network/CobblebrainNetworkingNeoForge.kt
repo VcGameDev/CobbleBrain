@@ -39,6 +39,13 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendBackgroundToPlayer(player: ServerPlayer, prompt: String) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.BackgroundPromptPayload(prompt)
+        )
+    }
+
     // CLIENT → SERVER
     fun sendToServer(response: String) {
         PacketDistributor.sendToServer(
@@ -46,9 +53,21 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendBackgroundToServer(response: String) {
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.BackgroundResponsePayload(response)
+        )
+    }
+
     fun sendActionToServer(action: String) {
         PacketDistributor.sendToServer(
             CobblebrainPayloads.ActionPayload(action)
+        )
+    }
+
+    fun sendVoiceInputToServer(text: String) {
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.VoiceInputPayload(text)
         )
     }
 
@@ -75,10 +94,13 @@ object CobblebrainNetworkingNeoForge {
             cfg.enableKarma,
             cfg.maxStoredMemories,
             cfg.maxRelevantMemories,
+            cfg.favoriteMemorySlots,
             cfg.baseCandidateMemories,
             cfg.allowClientPersonalityEditing,
             cfg.forceOfflineMode,
-            cfg.enableAiMemoryRetrieval
+            cfg.enableAiMemoryRetrieval,
+            cfg.optimizedMode,
+            com.google.gson.Gson().toJson(cfg.actionSettings)
         )
 
         PacketDistributor.sendToPlayer(player, payload)
@@ -97,10 +119,10 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
-    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long) {
+    fun sendCooldowns(player: ServerPlayer, buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
         PacketDistributor.sendToPlayer(
             player,
-            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff)
+            CobblebrainPayloads.SyncCooldownsPayload(buff, repair, shift, debuff, teleport)
         )
     }
 
@@ -135,8 +157,8 @@ object CobblebrainNetworkingNeoForge {
                 }
             }
 
-            CobblebrainClientCommon.savePersonality = { uuid, json ->
-                PacketDistributor.sendToServer(CobblebrainPayloads.SavePersonalityPayload(uuid, json))
+            CobblebrainClientCommon.savePersonality = { uuid, json, memoriesJson ->
+                PacketDistributor.sendToServer(CobblebrainPayloads.SavePersonalityPayload(uuid, json, memoriesJson))
             }
 
             CobblebrainClientCommon.deletePersonality = { uuid ->

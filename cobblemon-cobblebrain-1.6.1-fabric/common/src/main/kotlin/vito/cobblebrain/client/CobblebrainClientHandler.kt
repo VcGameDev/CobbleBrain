@@ -8,28 +8,35 @@ object CobblebrainClientCommon {
         openConfigScreen?.invoke()
     }
 
-    // Fabric/NeoForge vão injetar isso
+    // Injected by loader runtime (Fabric / NeoForge)
     var sendToServer: ((String) -> Unit)? = null
+    var sendBackgroundToServer: ((String) -> Unit)? = null
     var callTeamAction: ((String) -> Unit)? = null
     var sendNicknameToServer: ((String) -> Unit)? = null
     var sendOfflineSettingsToServer: ((Boolean, Boolean) -> Unit)? = null
     var requestPersonalityList: (() -> Unit)? = null
-    var savePersonality: ((String, String) -> Unit)? = null
+    var savePersonality: ((String, String, String) -> Unit)? = null
     var deletePersonality: ((String) -> Unit)? = null
     var sendRequestPromptWithMemory: ((String) -> Unit)? = null
+    var sendVoiceInputToServer: ((String) -> Unit)? = null
+    var startVoiceRecording: (() -> Boolean)? = null
+    var stopVoiceRecording: (() -> Unit)? = null
+    var isVoiceRecording: Boolean = false
+    var isMcmtiInstalled: (() -> Boolean) = { false }
 
-    // Callback ao receber do servidor
     var onPersonalityListReceived: ((String) -> Unit)? = null
     
     // HUD Quests
     var currentQuestsJson: String = "[]"
     
-    // KeyMappings para a HUD dinâmica
     var keyUp: KeyMapping? = null
     var keyDown: KeyMapping? = null
     var keyExecute: KeyMapping? = null
     var keyToggle: KeyMapping? = null
+    var keyMode: KeyMapping? = null
     var keyPing: KeyMapping? = null
+    var keyVoice: KeyMapping? = null
+    var keyDebug: KeyMapping? = null
 
     fun onQuestsSynced(json: String) {
         currentQuestsJson = json
@@ -73,7 +80,7 @@ object CobblebrainClientCommon {
             return
         }
 
-        // fluxo normal da IA (quando já reconstruído com RELEVANT MEMORIES ou quando AI memory retrieval está desligado)
+        // Standard AI pipeline (when prompt is rebuilt with RELEVANT MEMORIES or retrieval is disabled)
         AIClientHandler.sendPrompt(prompt).thenAccept { response ->
             sendToServer?.invoke(response)
         }.exceptionally { e ->
@@ -86,7 +93,16 @@ object CobblebrainClientCommon {
         AIClientHandler.sendSummaryPrompt(contextData)
     }
 
-    fun onCooldownsSynced(buff: Long, repair: Long, shift: Long, debuff: Long) {
-        HudSystem.updateCooldowns(buff, repair, shift, debuff)
+    fun onBackgroundPromptReceived(prompt: String) {
+        AIClientHandler.sendBackgroundPrompt(prompt).thenAccept { response ->
+            sendBackgroundToServer?.invoke(response)
+        }.exceptionally { e ->
+            println("[CobbleBrain AI Client] Background prompt execution failed: ${e.message}")
+            null
+        }
+    }
+
+    fun onCooldownsSynced(buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {
+        HudSystem.updateCooldowns(buff, repair, shift, debuff, teleport)
     }
 }

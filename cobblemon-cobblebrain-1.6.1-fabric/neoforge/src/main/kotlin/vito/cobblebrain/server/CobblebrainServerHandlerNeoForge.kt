@@ -15,7 +15,15 @@ object CobblebrainServerHandlers {
             player,
             payload.content
         )
-     }
+    }
+
+    fun onBackgroundResponse(player: ServerPlayer, payload: CobblebrainPayloads.BackgroundResponsePayload) {
+        CobblebrainServerHandler.processBackgroundResponse(
+            player.server,
+            player,
+            payload.content
+        )
+    }
 
     fun onRequestPromptWithMemory(player: ServerPlayer, payload: CobblebrainPayloads.RequestPromptWithMemoryPayload) {
         vito.cobblebrain.social.DialogueSystem.rebuildPromptForPlayer(player, payload.memoryText)
@@ -29,7 +37,8 @@ object CobblebrainServerHandlers {
         CobblebrainServerHandler.handleSavePersonality(
             player,
             payload.pokemonUuid,
-            payload.personalityJson
+            payload.personalityJson,
+            payload.memoriesJson
         )
     }
 

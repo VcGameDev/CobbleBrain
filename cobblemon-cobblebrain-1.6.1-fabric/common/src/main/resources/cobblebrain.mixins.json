@@ -4,7 +4,11 @@
   "package": "vito.cobblebrain.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "MobAccessor"
+    "MobAccessor",
+    "PersistentStatusContainerMixin"
+  ],
+  "client": [
+    "EntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

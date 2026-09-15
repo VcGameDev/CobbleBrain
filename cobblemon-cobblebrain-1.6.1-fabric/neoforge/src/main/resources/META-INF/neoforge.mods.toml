@@ -4,7 +4,7 @@ license="MPL_2.0"
 
 [[mods]]
 modId="cobblebrain"
-version="1.4.1"
+version="1.5.3"
 displayName="CobbleBrain"
 description='''
 a mod that uses generative AI for dialogue generation and behavior changes in Cobblemons
@@ -35,7 +35,7 @@ side="BOTH"
 [[dependencies.cobblebrain]]
 modId="cobblemon"
 mandatory=true
-versionRange="[1.7,)"
+versionRange="[1.7,1.9)"
 ordering="NONE"
 side="BOTH"
 
