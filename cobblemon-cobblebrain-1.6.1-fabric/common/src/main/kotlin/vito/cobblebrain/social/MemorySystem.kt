@@ -12,6 +12,7 @@ import java.io.FileWriter
 import java.io.PrintWriter
 import java.util.UUID
 import net.minecraft.network.chat.Component
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.storage.LevelResource
 import vito.cobblebrain.config.ConfigHandler.config
@@ -31,8 +32,23 @@ data class PokemonPersonality(
     val quirks: MutableList<String> = mutableListOf(),
     val about: String = "",
     val likes: MutableList<String> = mutableListOf(),
-    val dislikes: MutableList<String> = mutableListOf()
-)
+    val dislikes: MutableList<String> = mutableListOf(),
+    val canTalk: Boolean? = true,
+    val canAct: Boolean? = true,
+    val canUpdatePersonality: Boolean? = true
+) {
+    val effectiveCanTalk: Boolean
+        get() = canTalk ?: true
+
+    val effectiveCanAct: Boolean
+        get() = canAct ?: true
+
+    val effectiveCanUpdatePersonality: Boolean
+        get() = canUpdatePersonality ?: true
+
+    val isMuted: Boolean
+        get() = !effectiveCanTalk
+}
 
 object MemorySystem {
     private enum class FileType(val suffix: String) {
@@ -46,6 +62,15 @@ object MemorySystem {
     )
 
     private val gson: Gson = GsonBuilder().create()
+    private val personalityCache = java.util.concurrent.ConcurrentHashMap<String, PokemonPersonality>()
+
+    fun invalidatePersonalityCache(pokemonUuid: String) {
+        personalityCache.remove(pokemonUuid)
+    }
+
+    fun updatePersonalityCache(pokemonUuid: String, personality: PokemonPersonality) {
+        personalityCache[pokemonUuid] = personality
+    }
 
     @Suppress("unused")
     fun getTraitsFile(pokemonUuid: String): File = resolveTraitsFile(pokemonUuid, null)
@@ -53,9 +78,18 @@ object MemorySystem {
     fun isWild(pokemonUuid: String): Boolean {
         val uuid = try { UUID.fromString(pokemonUuid) } catch (_: Exception) { null }
         if (uuid != null) {
-            val entity = currentServer?.allLevels?.firstNotNullOfOrNull { it.getEntity(uuid) as? PokemonEntity }
-            if (entity != null) {
-                return entity.pokemon.getOwnerUUID() == null
+            val server = currentServer
+            if (server != null) {
+                for (p in server.playerList.players) {
+                    if (PokemonQuery.getAllPokemon(p).any { it.uuid == uuid }) return false
+                }
+                for (level in server.allLevels) {
+                    val entity = level.getEntity(uuid) as? PokemonEntity
+                        ?: (level as? ServerLevel)?.allEntities?.firstOrNull { (it as? PokemonEntity)?.pokemon?.uuid == uuid } as? PokemonEntity
+                    if (entity != null) {
+                        return entity.pokemon.getOwnerUUID() == null
+                    }
+                }
             }
         }
         val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
@@ -97,6 +131,9 @@ object MemorySystem {
     }
 
     fun loadPersonality(pokemonUuid: String, displayName: String?): PokemonPersonality {
+        val cached = personalityCache[pokemonUuid]
+        if (cached != null) return cached
+
         if (isWild(pokemonUuid)) {
             val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
             val record = wildObj?.getAsJsonObject(pokemonUuid)
@@ -154,6 +191,7 @@ object MemorySystem {
             }
         }
 
+        personalityCache[pokemonUuid] = personality
         return personality
     }
 
@@ -163,6 +201,7 @@ object MemorySystem {
     }
 
     fun savePersonality(pokemonUuid: String, personality: PokemonPersonality, displayName: String?, forcePermanent: Boolean = false) {
+        personalityCache[pokemonUuid] = personality
         if (!forcePermanent && isWild(pokemonUuid)) {
             val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
                 ?: JsonObject().also { CobblebrainWorldSave.data.add("wild_pokemon_personalities", it) }
@@ -400,6 +439,37 @@ object MemorySystem {
 
         val legacy = File(getLegacyBaseDirectory(), legacyFileName(pokemonUuid, type))
         if (legacy.exists()) return legacy
+
+        val pUuid = try { UUID.fromString(pokemonUuid) } catch (_: Exception) { null }
+        if (pUuid != null) {
+            val server = currentServer
+            if (server != null) {
+                var activeEntityUuid: UUID? = null
+                for (player in server.playerList.players) {
+                    val p = PokemonQuery.getAllPokemon(player).firstOrNull { it.uuid == pUuid }
+                    if (p?.entity != null) {
+                        activeEntityUuid = p.entity?.uuid
+                        break
+                    }
+                }
+                if (activeEntityUuid == null) {
+                    for (level in server.allLevels) {
+                        val e = (level as? ServerLevel)?.allEntities?.firstOrNull { (it as? PokemonEntity)?.pokemon?.uuid == pUuid }
+                        if (e != null) {
+                            activeEntityUuid = e.uuid
+                            break
+                        }
+                    }
+                }
+                if (activeEntityUuid != null) {
+                    val entityUuidStr = activeEntityUuid.toString()
+                    val entitySuffixMatches = worldDir.listFiles()
+                        ?.filter { it.isFile && it.name.endsWith("-${uuidSuffix(entityUuidStr)}${type.suffix}") }
+                        .orEmpty()
+                    if (entitySuffixMatches.size == 1) return entitySuffixMatches.first()
+                }
+            }
+        }
 
         return null
     }

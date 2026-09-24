@@ -64,6 +64,7 @@ object CobblebrainNetworkingFabric {
             config.forceOfflineMode,
             config.enableAiMemoryRetrieval,
             config.optimizedMode,
+            config.allowCustomClientPrompt,
             com.google.gson.Gson().toJson(config.actionSettings)
         )
 
@@ -92,6 +93,13 @@ object CobblebrainNetworkingFabric {
         ServerPlayNetworking.send(
             player,
             CobblebrainPayloads.PersonalityListPayload(dataJson)
+        )
+    }
+
+    fun sendPokemonMemories(player: ServerPlayer, uuid: String, memoriesJson: String) {
+        ServerPlayNetworking.send(
+            player,
+            CobblebrainPayloads.PokemonMemoriesPayload(uuid, memoriesJson)
         )
     }
 }

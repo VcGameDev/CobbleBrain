@@ -45,4 +45,8 @@ object CobblebrainServerHandlers {
     fun onDeletePersonality(player: ServerPlayer, payload: CobblebrainPayloads.DeletePersonalityPayload) {
         CobblebrainServerHandler.handleDeletePersonality(player, payload.pokemonUuid)
     }
+
+    fun onRequestPokemonMemories(player: ServerPlayer, payload: CobblebrainPayloads.RequestPokemonMemoriesPayload) {
+        CobblebrainServerHandler.handleRequestPokemonMemories(player, payload.pokemonUuid)
+    }
 }

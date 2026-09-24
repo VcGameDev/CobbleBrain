@@ -41,6 +41,8 @@ object SyncedConfig {
         private set
     var allowClientPersonalityEditing = true
         private set
+    var allowCustomClientPrompt = true
+        private set
     var forceOfflineMode = false
         private set
     var enableAiMemoryRetrieval = false
@@ -92,6 +94,7 @@ object SyncedConfig {
         favoriteMemorySlots = payload.favoriteMemorySlots
         baseCandidateMemories = payload.baseCandidateMemories
         allowClientPersonalityEditing = payload.allowClientPersonalityEditing
+        allowCustomClientPrompt = payload.allowCustomClientPrompt
         forceOfflineMode = payload.forceOfflineMode
         enableAiMemoryRetrieval = payload.enableAiMemoryRetrieval
         optimizedMode = payload.optimizedMode
@@ -127,7 +130,8 @@ object SyncedConfig {
         baseCandidateMemories: Int = 10,
         allowClientPersonalityEditing: Boolean,
         enableAiMemoryRetrieval: Boolean = false,
-        optimizedMode: Boolean = true
+        optimizedMode: Boolean = true,
+        allowCustomClientPrompt: Boolean = true
     ) {
         if (isServerControlled) {
             println("Attempt to change config blocked (server-controlled)")
@@ -152,6 +156,7 @@ object SyncedConfig {
         this.allowClientPersonalityEditing = allowClientPersonalityEditing
         this.enableAiMemoryRetrieval = enableAiMemoryRetrieval
         this.optimizedMode = optimizedMode
+        this.allowCustomClientPrompt = allowCustomClientPrompt
 
         val cfg = ConfigHandler.config
 
@@ -173,6 +178,7 @@ object SyncedConfig {
         cfg.allowClientPersonalityEditing = allowClientPersonalityEditing
         cfg.enableAiMemoryRetrieval = enableAiMemoryRetrieval
         cfg.optimizedMode = optimizedMode
+        cfg.allowCustomClientPrompt = allowCustomClientPrompt
 
         ConfigHandler.save()
     }

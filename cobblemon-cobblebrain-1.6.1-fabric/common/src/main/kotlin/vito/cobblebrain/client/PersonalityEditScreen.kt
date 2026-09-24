@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.config.SyncedConfig
@@ -16,7 +17,8 @@ class PersonalityEditScreen(
     private val displayName: String,
     private val species: String,
     personalityJson: String,
-    memoriesJson: String = "[]"
+    memoriesJson: String = "[]",
+    private var isMemoriesLoading: Boolean = false
 ) : Screen(Component.literal("Edit Personality - $displayName")) {
 
     private val gson = Gson()
@@ -46,6 +48,7 @@ class PersonalityEditScreen(
     private var editingMemoryIndex: Int? = null
 
     private var searchMemoryQuery: String = ""
+    private var saveButton: Button? = null
 
     private val scrollTop = IntArray(4) { 0 }
 
@@ -147,30 +150,40 @@ class PersonalityEditScreen(
         )
 
         val saveText = if (isReadOnly) "cobblebrain.button.close" else "cobblebrain.button.save"
-        addRenderableWidget(
-            Button.builder(Component.translatable(saveText)) {
-                if (!isReadOnly) {
-                    saveCurrentAbout()
-                    savePendingInput()
-                    val complexityScore = getComplexityScore()
-                    if (complexityScore >= 300.0) {
-                        minecraft?.setScreen(
-                            ConfirmPersonalityComplexityScreen(
-                                this,
-                                displayName,
-                                complexityScore,
-                            ) {
-                                persistPersonality()
-                            }
-                        )
-                    } else {
-                        persistPersonality()
-                    }
-                } else {
-                    minecraft?.setScreen(parentScreen)
+        val saveBtn = Button.builder(Component.translatable(saveText)) {
+            if (!isReadOnly) {
+                if (isMemoriesLoading) {
+                    minecraft?.player?.displayClientMessage(
+                        Component.translatable("cobblebrain.screen.personality_edit.saving_disabled_loading"),
+                        true
+                    )
+                    return@builder
                 }
-            }.bounds(sw / 2 - 105, height - 35, 100, 20).build()
-        )
+                saveCurrentAbout()
+                savePendingInput()
+                val complexityScore = getComplexityScore()
+                if (complexityScore >= 300.0) {
+                    minecraft?.setScreen(
+                        ConfirmPersonalityComplexityScreen(
+                            this,
+                            displayName,
+                            complexityScore,
+                        ) {
+                            persistPersonality()
+                        }
+                    )
+                } else {
+                    persistPersonality()
+                }
+            } else {
+                minecraft?.setScreen(parentScreen)
+            }
+        }.bounds(sw / 2 - 105, height - 35, 100, 20).build()
+        if (!isReadOnly && isMemoriesLoading) {
+            saveBtn.active = false
+        }
+        saveButton = saveBtn
+        addRenderableWidget(saveBtn)
         addRenderableWidget(
             Button.builder(Component.translatable("cobblebrain.button.cancel")) {
                 minecraft?.setScreen(parentScreen)
@@ -281,7 +294,50 @@ class PersonalityEditScreen(
             editBox.setHint(Component.translatable("cobblebrain.placeholder.write_here").withStyle { it.withColor(0xFF555555.toInt()) })
             aboutEdit = editBox
             addRenderableWidget(editBox)
+
+            if (!isReadOnly) {
+                val btnW = 84
+                val btnGap = 4
+                val startX = sw / 2 - 130
+                val btnY = listAreaTop + 35
+
+                val talkKey = if (personality.effectiveCanTalk) "cobblebrain.button.toggle_dialogue.on" else "cobblebrain.button.toggle_dialogue.off"
+                addRenderableWidget(
+                    Button.builder(Component.translatable(talkKey)) {
+                        saveCurrentAbout()
+                        val next = !personality.effectiveCanTalk
+                        personality = personality.copy(canTalk = next)
+                        refreshWidgets()
+                    }.tooltip(Tooltip.create(Component.translatable("cobblebrain.button.toggle_dialogue.tooltip")))
+                     .bounds(startX, btnY, btnW, 20).build()
+                )
+
+                val actKey = if (personality.effectiveCanAct) "cobblebrain.button.toggle_action.on" else "cobblebrain.button.toggle_action.off"
+                addRenderableWidget(
+                    Button.builder(Component.translatable(actKey)) {
+                        saveCurrentAbout()
+                        val next = !personality.effectiveCanAct
+                        personality = personality.copy(canAct = next)
+                        refreshWidgets()
+                    }.tooltip(Tooltip.create(Component.translatable("cobblebrain.button.toggle_action.tooltip")))
+                     .bounds(startX + btnW + btnGap, btnY, btnW, 20).build()
+                )
+
+                val charKey = if (personality.effectiveCanUpdatePersonality) "cobblebrain.button.toggle_personality.on" else "cobblebrain.button.toggle_personality.off"
+                addRenderableWidget(
+                    Button.builder(Component.translatable(charKey)) {
+                        saveCurrentAbout()
+                        val next = !personality.effectiveCanUpdatePersonality
+                        personality = personality.copy(canUpdatePersonality = next)
+                        refreshWidgets()
+                    }.tooltip(Tooltip.create(Component.translatable("cobblebrain.button.toggle_personality.tooltip")))
+                     .bounds(startX + (btnW + btnGap) * 2, btnY, btnW, 20).build()
+                )
+            }
         } else if (currentTab == 3) {
+            if (isMemoriesLoading) {
+                return
+            }
             // ================= MEMORY DIARY TAB =================
             val leftX = sw / 2 - 145
 
@@ -559,6 +615,10 @@ class PersonalityEditScreen(
         if (currentTab == 0) {
             guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.personality_edit.about_desc"), sw / 2 - 130, listAreaTop - 10, 0xFFAAAAAA.toInt())
         } else if (currentTab == 3) {
+            if (isMemoriesLoading) {
+                guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.personality_edit.loading_memories"), sw / 2, height / 2 - 10, 0xFFFFA500.toInt())
+                return
+            }
             val leftX = sw / 2 - 145
             val vis = visibleRows()
             val topIdx = topIndex()
@@ -1032,10 +1092,30 @@ class PersonalityEditScreen(
 
         searchMemoryEditBox?.let { box ->
             if (box.isFocused || box.value.isNotEmpty()) {
-                box.setHint(null)
+                box.setHint(Component.empty())
             } else {
                 box.setHint(Component.translatable("cobblebrain.screen.personality_edit.search_placeholder").withStyle { it.withColor(0xFF888888.toInt()) })
             }
+        }
+    }
+
+    fun onMemoriesLoaded(uuid: String, json: String) {
+        if (uuid != pokemonUuid) return
+        try {
+            val memoryListType = object : com.google.gson.reflect.TypeToken<MutableList<Memory>>() {}.type
+            val loaded: MutableList<Memory> = gson.fromJson(json, memoryListType) ?: mutableListOf()
+            memories.clear()
+            memories.addAll(loaded)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        isMemoriesLoading = false
+        saveButton?.active = true
+        if (parentScreen is PersonalityListScreen) {
+            parentScreen.onMemoriesReceived(pokemonUuid, json)
+        }
+        if (currentTab == 3) {
+            refreshWidgets()
         }
     }
 

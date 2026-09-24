@@ -15,6 +15,7 @@ object CobblebrainClientCommon {
     var sendNicknameToServer: ((String) -> Unit)? = null
     var sendOfflineSettingsToServer: ((Boolean, Boolean) -> Unit)? = null
     var requestPersonalityList: (() -> Unit)? = null
+    var requestPokemonMemories: ((String) -> Unit)? = null
     var savePersonality: ((String, String, String) -> Unit)? = null
     var deletePersonality: ((String) -> Unit)? = null
     var sendRequestPromptWithMemory: ((String) -> Unit)? = null
@@ -25,6 +26,15 @@ object CobblebrainClientCommon {
     var isMcmtiInstalled: (() -> Boolean) = { false }
 
     var onPersonalityListReceived: ((String) -> Unit)? = null
+    var onPokemonMemoriesReceived: ((String, String) -> Unit)? = { uuid, json ->
+        val mc = net.minecraft.client.Minecraft.getInstance()
+        val screen = mc.screen
+        if (screen is PersonalityEditScreen) {
+            screen.onMemoriesLoaded(uuid, json)
+        } else if (screen is PersonalityListScreen) {
+            screen.onMemoriesReceived(uuid, json)
+        }
+    }
     
     // HUD Quests
     var currentQuestsJson: String = "[]"
@@ -32,6 +42,7 @@ object CobblebrainClientCommon {
     var keyUp: KeyMapping? = null
     var keyDown: KeyMapping? = null
     var keyExecute: KeyMapping? = null
+    var keyScroll: KeyMapping? = null
     var keyToggle: KeyMapping? = null
     var keyMode: KeyMapping? = null
     var keyPing: KeyMapping? = null
@@ -48,7 +59,7 @@ object CobblebrainClientCommon {
             return
         }
 
-        if (vito.cobblebrain.config.SyncedConfig.enableAiMemoryRetrieval && !prompt.contains("[RELEVANT MEMORIES]")) {
+        if (vito.cobblebrain.config.SyncedConfig.enableAiMemoryRetrieval && prompt.contains("[CANDIDATE_MEMORIES]") && !prompt.contains("[SPONTANEOUS POKÉMON CONVERSATION]")) {
             val playerMessage = if (prompt.contains("[PLAYER_MESSAGE]")) {
                 prompt.substringAfter("[PLAYER_MESSAGE]").substringBefore("[").trim()
             } else {

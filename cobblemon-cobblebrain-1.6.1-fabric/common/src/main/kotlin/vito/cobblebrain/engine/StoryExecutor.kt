@@ -162,10 +162,9 @@ object StoryExecutor {
             armSceneStandaloneKeyInputs(instance, scene)
             armGlobalStandaloneKeyInputs(instance)
 
-            // Locate BeginSceneBlock or Trigger/Initial node as entry point of scene
             val initialNode = scene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
-                ?: scene.nodes.find { it.nodeType == NodeType.TRIGGER }
-                ?: scene.nodes.firstOrNull()
+                ?: scene.nodes.find { it.nodeType == NodeType.TRIGGER && ((it.params["triggerType"] ?: "START") in listOf("START", "STORY_STARTED")) && it.params["requireInputSignal"] == "false" }
+                ?: scene.nodes.firstOrNull { it.nodeType != NodeType.TRIGGER }
 
             if (initialNode != null) {
                 executeNodeChain(instance, initialNode, targetPortId = null, stepCount = 0)
@@ -178,13 +177,17 @@ object StoryExecutor {
         val instance = activeStories.remove(storyId)
         instance?.context?.isCancelled = true
         instance?.context?.waitingCondOutNodes?.clear()
+        instance?.context?.waitingTriggers?.clear()
         if (instance?.context?.player != null) {
             sendCancelKeyInput?.invoke(instance.context.player, vito.cobblebrain.network.CobblebrainPayloads.CancelKeyInputPayload(storyId, ""))
             instance.context.waitingKeyInputNodeId = null
+            StoryListenerManager.onStoryEnded(instance.context.player, storyId)
         }
         StoryDebugger.clearNodeStatuses(storyId)
         StoryLookAtManager.clearAll()
         StoryJumpManager.clearAll()
+        StoryMissionManager.clearMissionsForStory(storyId)
+        StoryListenerManager.clearStatesForStory(storyId)
         if (instance != null) {
             val server = instance.context.server ?: instance.context.player?.server
             StoryDebugger.broadcastSessionState(
@@ -990,8 +993,8 @@ object StoryExecutor {
 
                 // Start destination scene prioritizing BeginSceneBlock (Scene Entry Point)
                 val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
-                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
-                    ?: targetScene.nodes.firstOrNull()
+                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER && (it.params["triggerType"] ?: "START") == "START" && it.params["requireInputSignal"] == "false" }
+                    ?: targetScene.nodes.firstOrNull { it.nodeType != NodeType.TRIGGER }
 
                 if (initialNode != null) {
                     executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
@@ -1176,8 +1179,8 @@ object StoryExecutor {
                 StorySerializer.ensureSceneLoaded(instance.project, targetScene)
                 instance.project.activeSceneId = targetScene.id
                 val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
-                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
-                    ?: targetScene.nodes.firstOrNull()
+                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER && (it.params["triggerType"] ?: "START") == "START" && it.params["requireInputSignal"] == "false" }
+                    ?: targetScene.nodes.firstOrNull { it.nodeType != NodeType.TRIGGER }
                 if (initialNode != null) {
                     executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
                 }
@@ -1326,8 +1329,8 @@ object StoryExecutor {
                 StorySerializer.ensureSceneLoaded(instance.project, targetScene)
                 instance.project.activeSceneId = targetScene.id
                 val initialNode = targetScene.nodes.find { it.nodeType == NodeType.BEGIN_SCENE }
-                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER }
-                    ?: targetScene.nodes.firstOrNull()
+                    ?: targetScene.nodes.find { it.nodeType == NodeType.TRIGGER && (it.params["triggerType"] ?: "START") == "START" && it.params["requireInputSignal"] == "false" }
+                    ?: targetScene.nodes.firstOrNull { it.nodeType != NodeType.TRIGGER }
                 if (initialNode != null) {
                     executeNodeChain(instance, initialNode, targetPortId = null, stepCount = stepCount + 1)
                 }
@@ -1457,13 +1460,7 @@ object StoryExecutor {
             NodeType.AUDIO -> {
                 executeAudioNode(context, node)
             }
-            NodeType.QUEST -> {
-                val inst = activeStories.values.find { it.context == context }
-                if (inst != null) {
-                    StoryMissionManager.startMission(inst, node)
-                }
-            }
-            NodeType.TIMER, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.CONSTRUCTION, NodeType.BEGIN_CONSTRUCTION, NodeType.END_CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT, NodeType.VARIABLE_GET, NodeType.VARIABLE_SET -> {
+            NodeType.QUEST, NodeType.TIMER, NodeType.CONDITION_NODE, NodeType.COMMAND_NODE, NodeType.CONSTRUCTION, NodeType.BEGIN_CONSTRUCTION, NodeType.END_CONSTRUCTION, NodeType.END_SCENE, NodeType.GATE, NodeType.LINK_SEND, NodeType.LINK_RECEIVE, NodeType.LOOP, NodeType.COMMENT, NodeType.VARIABLE_GET, NodeType.VARIABLE_SET -> {
                 // Executed by graph flow control logic
             }
             else -> {}

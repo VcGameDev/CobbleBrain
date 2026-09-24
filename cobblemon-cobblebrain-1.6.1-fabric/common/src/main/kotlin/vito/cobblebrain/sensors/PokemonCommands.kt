@@ -5,6 +5,7 @@ import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.minecraft.ChatFormatting
 import vito.cobblebrain.social.CobblebrainWorldSave
+import vito.cobblebrain.social.MobBridge
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.Holder
@@ -180,16 +181,14 @@ object CommandState {
 // Stores removed goals to restore later
 private val disabledGoals: MutableMap<UUID, List<Goal>> = mutableMapOf()
 
-object MobBridge {
-    var addGoal: ((Mob, Int, Goal) -> Unit)? = null
-    var removeGoal: ((Mob, Goal) -> Unit)? = null
-    var getGoals: ((Mob) -> List<Goal>)? = null
-}
-
 private fun enterAttackMode(pokemon: Mob) {
+    if (disabledGoals.containsKey(pokemon.uuid)) {
+        pokemon.isAggressive = true
+        return
+    }
     val getGoals = MobBridge.getGoals ?: return
     val toDisable = getGoals(pokemon)
-        .filterIsInstance<FollowOwnerGoal>()
+        .filter { it is FollowOwnerGoal || it.javaClass.simpleName.contains("Follow", ignoreCase = true) }
 
     if (toDisable.isNotEmpty()) {
         disabledGoals[pokemon.uuid] = toDisable
@@ -199,9 +198,12 @@ private fun enterAttackMode(pokemon: Mob) {
 }
 
 private fun exitAttackMode(pokemon: Mob) {
-    disabledGoals.remove(pokemon.uuid)?.forEach { goal ->
-        val addGoal = MobBridge.addGoal ?: return
-        addGoal(pokemon, 2, goal)
+    val currentCmd = CommandState.activeCommands[pokemon.uuid]
+    if (currentCmd != "rest" && currentCmd != "sit") {
+        disabledGoals.remove(pokemon.uuid)?.forEach { goal ->
+            val addGoal = MobBridge.addGoal ?: return
+            addGoal(pokemon, 2, goal)
+        }
     }
 
     pokemon.isAggressive = false
@@ -270,17 +272,23 @@ fun getWoolCarpetForType(type: String): net.minecraft.world.level.block.Block {
 
 fun updateWoolCarpet(pokemon: PokemonEntity, primaryType: String) {
     val level = pokemon.level() as? ServerLevel ?: return
-    val targetPos = pokemon.blockPosition()
     val currentInfo = activeCarpets[pokemon.uuid]
-
-    if (currentInfo != null && currentInfo.pos == targetPos && currentInfo.levelKey == level.dimension()) {
-        return
+    if (currentInfo != null && currentInfo.levelKey == level.dimension()) {
+        val distSqr = pokemon.distanceToSqr(
+            currentInfo.pos.x + 0.5,
+            currentInfo.pos.y.toDouble(),
+            currentInfo.pos.z + 0.5
+        )
+        if (distSqr < 4.0) {
+            return
+        }
     }
 
     if (currentInfo != null) {
         removeWoolCarpet(pokemon.uuid, level.server)
     }
 
+    val targetPos = pokemon.blockPosition()
     val currentState = level.getBlockState(targetPos)
     if (currentState.isAir || currentState.canBeReplaced()) {
         val carpetBlock = getWoolCarpetForType(primaryType)
@@ -758,8 +766,7 @@ object CommandTickHandler {
             } else {
                 disableFollowGoal(pokemon)
                 pokemon.navigation.stop()
-                (pokemon as? TamableAnimal)?.isOrderedToSit = true
-                (pokemon as? TamableAnimal)?.isInSittingPose = true
+                pokemon.deltaMovement = Vec3(0.0, pokemon.deltaMovement.y.coerceAtMost(0.0), 0.0)
             }
 
             when (action) {
@@ -1249,14 +1256,15 @@ object CommandTickHandler {
                 "rest", "sit" -> {
                     disableFollowGoal(pokemon)
                     pokemon.navigation.stop()
-                    (pokemon as? TamableAnimal)?.isOrderedToSit = true
-                    (pokemon as? TamableAnimal)?.isInSittingPose = true
-                    exitAttackMode(pokemon)
+                    pokemon.deltaMovement = Vec3(0.0, pokemon.deltaMovement.y.coerceAtMost(0.0), 0.0)
+                    pokemon.isAggressive = false
+                    pokemon.target = null
+                    CommandState.clearPokemonIrritation(pokemon.uuid)
+                    CommandState.clearPhysicalAttack(pokemon.uuid)
 
                     val restDuration = (restTicks[pokemonId] ?: 0) + 1
                     restTicks[pokemonId] = restDuration
 
-                    // Only sleeps at night after 15 seconds (300 ticks). During the day, it only sits and never sleeps.
                     val shouldSleepNow = level.isNight && restDuration >= 300
 
                     if (shouldSleepNow) {
@@ -1269,8 +1277,8 @@ object CommandTickHandler {
                             } catch (_: Throwable) {}
                         }
                     } else {
-                        pokemon.pose = Pose.STANDING
                         if (sleepingState.remove(pokemonId) == true) {
+                            pokemon.pose = Pose.STANDING
                             try {
                                 if (cobblemonPokemon.status?.status?.name?.path?.lowercase() == "sleep") {
                                     cobblemonPokemon.status = null
@@ -3160,9 +3168,13 @@ fun playFishingLootSound(
 }
 
 fun suspendFollowGoal(pokemon: Mob) {
+    if (disabledGoals.containsKey(pokemon.uuid)) return
     val getGoals = MobBridge.getGoals ?: return
     val toDisable = getGoals(pokemon)
-        .filter { it is FollowOwnerGoal || it is LookAtPlayerGoal || it is RandomLookAroundGoal }
+        .filter {
+            it is FollowOwnerGoal || it is LookAtPlayerGoal || it is RandomLookAroundGoal ||
+            it.javaClass.simpleName.contains("Follow", ignoreCase = true)
+        }
 
     if (toDisable.isNotEmpty()) {
         disabledGoals[pokemon.uuid] = toDisable

@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
+import vito.cobblebrain.config.CobblebrainClientConfig
 import vito.cobblebrain.config.SyncedConfig
 import vito.cobblebrain.social.DialogueFilter
 import java.io.IOException
@@ -90,10 +91,32 @@ class AIHandler {
         private val gson = Gson()
         private val INSTRUCTS: String
             get() {
-                val rawList = clientConfig.instruct.filter { it.isNotBlank() }
+                val sourceList = if (!SyncedConfig.allowCustomClientPrompt) {
+                    CobblebrainClientConfig.DEFAULT_INSTRUCT
+                } else {
+                    clientConfig.instruct
+                }
+                val rawList = sourceList.filter { it.isNotBlank() }
                 val filtered = rawList.filterNot { it.trim().equals("[CREATIVEPROMPT]", ignoreCase = true) }
                 return (listOf("[CREATIVEPROMPT]") + filtered).joinToString("\n")
             }
+
+        private val PLAYER_ABOUT: String
+            get() {
+                if (!SyncedConfig.allowCustomClientPrompt) return ""
+                val rawList = clientConfig.playerAbout.filter { it.isNotBlank() }
+                val filtered = rawList.filterNot { it.trim().equals("[ABOUT THE PLAYER]", ignoreCase = true) }
+                if (filtered.isEmpty()) return ""
+                return (listOf("[ABOUT THE PLAYER]") + filtered).joinToString("\n")
+            }
+
+        private fun getCombinedSystemInstructions(): String {
+            val parts = listOfNotNull(
+                INSTRUCTS.ifBlank { null },
+                PLAYER_ABOUT.ifBlank { null }
+            )
+            return parts.joinToString("\n\n")
+        }
         private val TEMPERATURE get() = clientConfig.temperature
         private val SHOW_HUNGER get() = clientConfig.showHunger
         private val PROVIDER_HINT get() = clientConfig.aiProvider.trim()
@@ -380,6 +403,7 @@ class AIHandler {
             sections += GENERAL
             val actionsRestriction = if (SyncedConfig.outputActions) ", optional # actions (separated by |)" else ""
             val noActionsNote = if (!SyncedConfig.outputActions) "\nDo NOT generate any # action tags." else ""
+            val catchFlag = if (SyncedConfig.outputGuaranteedCatch) "\n- CATCH: Wild Pokémon persuaded and explicitly agrees to join team (wild only)." else ""
             sections += """
             ##ROUTING FLAGS##
             Append applicable tags at the very end of your response (omit entirely if mundane):
@@ -389,8 +413,7 @@ class AIHandler {
             - QUEST: Active quest discussion, progress, completion, or advice.
             - MEMORY: Memorable bonding, humor, secrets, promises, battle milestones. Skip routine small-talk.
             - TRAIT: Major psychological/worldview shift (trauma, overcoming fear, huge victory). Never for routine chatter or open slots.
-            - QUIRK: Developing or breaking a distinct habit, tic, or ritual from a profound event. Never for routine actions or open slots.
-            - CATCH: Wild Pokémon persuaded and explicitly agrees to join team (wild only).
+            - QUIRK: Developing or breaking a distinct habit, tic, or ritual from a profound event. Never for routine actions or open slots.$catchFlag
             
             ##STAGE 1 RESTRICTIONS##
             Generate ONLY in-character spoken dialogue$actionsRestriction and flags.$noActionsNote
@@ -1040,7 +1063,8 @@ class AIHandler {
             clientConfig.outputFormat
         }
 
-        val systemContent = systemOverride ?: if (INSTRUCTS.isNotBlank()) "$INSTRUCTS\n\n$outputFormatToUse" else outputFormatToUse
+        val promptInstructions = getCombinedSystemInstructions()
+        val systemContent = systemOverride ?: if (promptInstructions.isNotBlank()) "$promptInstructions\n\n$outputFormatToUse" else outputFormatToUse
 
         return if (
             clientConfig.customApiProvider.equals("player2", ignoreCase = true) &&
@@ -1125,7 +1149,8 @@ class AIHandler {
             clientConfig.outputFormat
         }
 
-        val systemContent = systemOverride ?: if (INSTRUCTS.isNotBlank()) "$INSTRUCTS\n\n$outputFormatToUse" else outputFormatToUse
+        val promptInstructions = getCombinedSystemInstructions()
+        val systemContent = systemOverride ?: if (promptInstructions.isNotBlank()) "$promptInstructions\n\n$outputFormatToUse" else outputFormatToUse
 
         val contents = if (systemOverride != null) {
             listOf(

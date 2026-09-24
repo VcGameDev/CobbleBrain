@@ -1888,13 +1888,42 @@ class NodeInspectorWidget(
                         addWidgetItem(f1, relY, 16)
                         relY += 22
 
+                        val ops = listOf(">=", ">", "<=", "<", "==")
+                        val currentOp = node.params["comparisonOp"] ?: ">="
+                        val validOp = if (ops.contains(currentOp)) currentOp else ">="
+                        node.params["comparisonOp"] = validOp
+
+                        labels.add(InspectorLabel("Comparison Operator:", relY))
+                        relY += 12
+
+                        val opBtn = Button.builder(Component.literal("Op: $validOp")) {
+                            val nextOp = ops[(ops.indexOf(validOp) + 1) % ops.size]
+                            node.params["comparisonOp"] = nextOp
+                            buildUi()
+                            onDataChanged()
+                        }.bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                        addWidgetItem(opBtn, relY, 16)
+                        relY += 22
+
+                        if (trigDef.id == "KARMA_CHECK") {
+                            labels.add(InspectorLabel("Species (Optional, blank=Total):", relY))
+                            relY += 12
+                            val fSpecies = EditBox(font, inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16, Component.literal("Species"))
+                            fSpecies.value = node.params["targetSpecies"] ?: ""
+                            fSpecies.setHint(Component.literal("§8e.g. Pikachu or blank"))
+                            fSpecies.setResponder { node.params["targetSpecies"] = it; onDataChanged() }
+                            addWidgetItem(fSpecies, relY, 16)
+                            relY += 22
+                        }
+
                         if (trigDef.id == "PLAYER_ITEM_COUNT") {
-                            val currentItem = node.params["checkItemId"] ?: "cobblemon:poke_ball"
+                            val currentItem = node.params["checkItemId"] ?: node.params["targetItem"] ?: "cobblemon:poke_ball"
                             labels.add(InspectorLabel("Required Item (Catalog):", relY))
                             relY += 12
                             val pickBtn = Button.builder(Component.literal("📦 $currentItem")) {
                                 onOpenResourcePicker?.invoke(ResourcePickerType.ITEM) { chosen ->
                                     node.params["checkItemId"] = chosen
+                                    node.params["targetItem"] = chosen
                                     buildUi()
                                     onDataChanged()
                                 }
@@ -1911,6 +1940,12 @@ class NodeInspectorWidget(
 
                         relY = addCoordinateInputSection("Target Center Coordinates:", initCoords, inputX, inputW, relY, showSafetyControls = false) {
                             node.params["coordinates"] = it
+                            val parts = it.trim().split("[,\\s]+".toRegex()).filter { p -> p.isNotBlank() }
+                            if (parts.size >= 3) {
+                                parts[0].toDoubleOrNull()?.let { x -> node.params["targetX"] = x.toString() }
+                                parts[1].toDoubleOrNull()?.let { y -> node.params["targetY"] = y.toString() }
+                                parts[2].toDoubleOrNull()?.let { z -> node.params["targetZ"] = z.toString() }
+                            }
                         }
 
                         labels.add(InspectorLabel("Radius (Blocks):", relY))
@@ -1931,13 +1966,16 @@ class NodeInspectorWidget(
                     }
 
                     "PLAYER_HELD_ITEM", "PLAYER_INVENTORY_ITEM_REMOVED" -> {
-                        val currentItem = node.params["heldItemId"] ?: "minecraft:diamond_sword"
-                        labels.add(InspectorLabel("Item (Catalog):", relY))
+                        val currentItem = node.params["heldItemId"] ?: node.params["targetItem"] ?: node.params["removedItemId"] ?: "minecraft:diamond_sword"
+                        val itemLabel = if (trigDef.id == "PLAYER_INVENTORY_ITEM_REMOVED") "Removed Item (Catalog):" else "Held Item (Catalog):"
+                        labels.add(InspectorLabel(itemLabel, relY))
                         relY += 12
 
                         val pickBtn = Button.builder(Component.literal("📦 $currentItem")) {
                             onOpenResourcePicker?.invoke(ResourcePickerType.ITEM) { chosen ->
                                 node.params["heldItemId"] = chosen
+                                node.params["targetItem"] = chosen
+                                node.params["removedItemId"] = chosen
                                 buildUi()
                                 onDataChanged()
                             }
@@ -1947,13 +1985,14 @@ class NodeInspectorWidget(
                     }
 
                     "PLAYER_INVENTORY_HAS_ITEM", "ITEM_IN_INVENTORY" -> {
-                        val currentItem = node.params["requiredItem"] ?: "cobblemon:potion"
+                        val currentItem = node.params["requiredItem"] ?: node.params["targetItem"] ?: "cobblemon:potion"
                         labels.add(InspectorLabel("Required Item (Catalog):", relY))
                         relY += 12
 
                         val pickBtn = Button.builder(Component.literal("📦 $currentItem")) {
                             onOpenResourcePicker?.invoke(ResourcePickerType.ITEM) { chosen ->
                                 node.params["requiredItem"] = chosen
+                                node.params["targetItem"] = chosen
                                 buildUi()
                                 onDataChanged()
                             }
@@ -1963,7 +2002,10 @@ class NodeInspectorWidget(
 
                         labels.add(InspectorLabel("Required Quantity:", relY))
                         relY += 12
-                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Qty", node.params["requiredCount"] ?: "1") { node.params["requiredCount"] = it }
+                        val f2 = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Qty", node.params["requiredCount"] ?: "1") { 
+                            node.params["requiredCount"] = it
+                            node.params["targetCount"] = it
+                        }
                         addWidgetItem(f2, relY, 16)
                         relY += 22
                     }
@@ -2452,10 +2494,67 @@ class NodeInspectorWidget(
                     relY += 22
                 }
 
+                val isItemQuest = currentTrigId in listOf(
+                    "PLAYER_HELD_ITEM",
+                    "PLAYER_INVENTORY_HAS_ITEM",
+                    "ITEM_IN_INVENTORY",
+                    "PLAYER_INVENTORY_ITEM_REMOVED",
+                    "PLAYER_ITEM_COUNT"
+                ) || trigDef.defaultParams.keys.any { it in listOf("heldItemId", "requiredItem", "checkItemId", "removedItemId", "itemId", "targetItem") }
+
+                if (isItemQuest) {
+                    val currentItem = (node.params["targetItem"]
+                        ?: node.params["requiredItem"]
+                        ?: node.params["heldItemId"]
+                        ?: node.params["checkItemId"]
+                        ?: node.params["removedItemId"]
+                        ?: node.params["itemId"]
+                        ?: when (currentTrigId) {
+                            "PLAYER_HELD_ITEM" -> "minecraft:diamond_sword"
+                            "PLAYER_INVENTORY_HAS_ITEM", "ITEM_IN_INVENTORY" -> "cobblemon:potion"
+                            else -> "cobblemon:poke_ball"
+                        }).ifBlank {
+                            when (currentTrigId) {
+                                "PLAYER_HELD_ITEM" -> "minecraft:diamond_sword"
+                                "PLAYER_INVENTORY_HAS_ITEM", "ITEM_IN_INVENTORY" -> "cobblemon:potion"
+                                else -> "cobblemon:poke_ball"
+                            }
+                        }
+
+                    val itemLabel = when (currentTrigId) {
+                        "PLAYER_HELD_ITEM" -> "Held Item (Catalog):"
+                        "PLAYER_INVENTORY_HAS_ITEM", "ITEM_IN_INVENTORY" -> "Required Item (Catalog):"
+                        "PLAYER_INVENTORY_ITEM_REMOVED" -> "Removed Item (Catalog):"
+                        "PLAYER_ITEM_COUNT" -> "Target Item (Catalog):"
+                        else -> "Target Item (Catalog):"
+                    }
+                    labels.add(InspectorLabel(itemLabel, relY))
+                    relY += 12
+
+                    val pickBtn = Button.builder(Component.literal("📦 $currentItem")) {
+                        onOpenResourcePicker?.invoke(ResourcePickerType.ITEM) { chosen ->
+                            val finalItem = chosen.trim()
+                            node.params["targetItem"] = finalItem
+                            node.params["requiredItem"] = finalItem
+                            node.params["heldItemId"] = finalItem
+                            node.params["checkItemId"] = finalItem
+                            node.params["removedItemId"] = finalItem
+                            node.params["itemId"] = finalItem
+                            buildUi()
+                            onDataChanged()
+                        }
+                    }.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Selected Item: $currentItem\nClick to browse or search items"))).bounds(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, 16).build()
+                    addWidgetItem(pickBtn, relY, 16)
+                    relY += 22
+                }
+
+                val countVal = node.params["targetCount"] ?: node.params["requiredCount"] ?: node.params["minCount"] ?: "1"
                 labels.add(InspectorLabel("Target Count:", relY))
                 relY += 12
-                val countEdit = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Qty", node.params["targetCount"] ?: "1") {
+                val countEdit = createNumEdit(inputX, (panelY + 20 + relY - scrollOffset).toInt(), inputW, "Qty", countVal) {
                     node.params["targetCount"] = it
+                    node.params["requiredCount"] = it
+                    node.params["minCount"] = it
                     onDataChanged()
                 }
                 addWidgetItem(countEdit, relY, 16)

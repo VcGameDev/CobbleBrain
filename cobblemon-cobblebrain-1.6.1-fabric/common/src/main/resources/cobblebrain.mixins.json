@@ -8,7 +8,8 @@
     "PersistentStatusContainerMixin"
   ],
   "client": [
-    "EntityRendererMixin"
+    "EntityRendererMixin",
+    "MouseHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

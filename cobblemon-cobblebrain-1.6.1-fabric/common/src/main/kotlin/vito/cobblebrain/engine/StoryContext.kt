@@ -36,6 +36,7 @@ data class StoryContext(
     val pendingResumes: MutableList<() -> Unit> = mutableListOf(),
     var waitingKeyInputNodeId: String? = null,
     var waitingKeyInputStepCount: Int = 0,
-    val waitingCondOutNodes: MutableMap<String, Int> = mutableMapOf()
+    val waitingCondOutNodes: MutableMap<String, Int> = mutableMapOf(),
+    val executedEventTags: MutableSet<String> = mutableSetOf()
 )
 

@@ -100,6 +100,7 @@ object CobblebrainNetworkingNeoForge {
             cfg.forceOfflineMode,
             cfg.enableAiMemoryRetrieval,
             cfg.optimizedMode,
+            cfg.allowCustomClientPrompt,
             com.google.gson.Gson().toJson(cfg.actionSettings)
         )
 
@@ -133,6 +134,13 @@ object CobblebrainNetworkingNeoForge {
         )
     }
 
+    fun sendPokemonMemories(player: ServerPlayer, uuid: String, memoriesJson: String) {
+        PacketDistributor.sendToPlayer(
+            player,
+            CobblebrainPayloads.PokemonMemoriesPayload(uuid, memoriesJson)
+        )
+    }
+
     fun onClientSetup(event: FMLClientSetupEvent) {
         event.enqueueWork {
 
@@ -155,6 +163,10 @@ object CobblebrainNetworkingNeoForge {
                 } else {
                     mc.setScreen(PersonalityListScreen(mc.screen, "[]", noWorld = true))
                 }
+            }
+
+            CobblebrainClientCommon.requestPokemonMemories = { uuid ->
+                PacketDistributor.sendToServer(CobblebrainPayloads.RequestPokemonMemoriesPayload(uuid))
             }
 
             CobblebrainClientCommon.savePersonality = { uuid, json, memoriesJson ->

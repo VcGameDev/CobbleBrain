@@ -241,6 +241,25 @@ object CobblebrainPayloadRegistrarNeoForge {
             }
         }
 
+        registrar.playToServer(
+            CobblebrainPayloads.RequestPokemonMemoriesPayload.TYPE,
+            CobblebrainPayloads.RequestPokemonMemoriesPayload.CODEC
+        ) { payload, context ->
+            val player = context.player() as? ServerPlayer ?: return@playToServer
+            context.enqueueWork {
+                CobblebrainServerHandlers.onRequestPokemonMemories(player, payload)
+            }
+        }
+
+        registrar.playToClient(
+            CobblebrainPayloads.PokemonMemoriesPayload.TYPE,
+            CobblebrainPayloads.PokemonMemoriesPayload.CODEC
+        ) { payload, context ->
+            context.enqueueWork {
+                CobblebrainClientHandlers.onPokemonMemories(payload)
+            }
+        }
+
         // =========================
         // AI DIALOGUE BOX PAYLOADS
         // =========================

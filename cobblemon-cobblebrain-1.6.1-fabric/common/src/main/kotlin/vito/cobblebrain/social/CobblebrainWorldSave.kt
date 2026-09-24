@@ -15,6 +15,7 @@ import net.minecraft.core.component.DataComponents
 import net.minecraft.network.chat.ClickEvent
 import net.minecraft.network.chat.Component
 import net.minecraft.server.MinecraftServer
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.network.Filterable
 import net.minecraft.world.entity.Mob
@@ -154,7 +155,10 @@ object CobblebrainWorldSave {
                 toRemove.add(uuidStr)
                 return@forEach
             }
-            val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(uuid) as? PokemonEntity }
+            val entity = server.allLevels.firstNotNullOfOrNull { level ->
+                (level.getEntity(uuid) as? PokemonEntity)
+                    ?: (level as? ServerLevel)?.allEntities?.firstOrNull { (it as? PokemonEntity)?.pokemon?.uuid == uuid } as? PokemonEntity
+            }
             if (entity == null || !entity.isAlive || entity.isRemoved) {
                 toRemove.add(uuidStr)
             }
@@ -167,8 +171,11 @@ object CobblebrainWorldSave {
 
     fun migrateWildToPermanent(pokemon: com.cobblemon.mod.common.pokemon.Pokemon) {
         val uuidStr = pokemon.uuid.toString()
+        val entityUuidStr = pokemon.entity?.uuid?.toString()
         val wildObj = data.getAsJsonObject("wild_pokemon_personalities") ?: return
-        val wildData = wildObj.getAsJsonObject(uuidStr) ?: return
+        val wildData = wildObj.getAsJsonObject(uuidStr)
+            ?: (if (entityUuidStr != null) wildObj.getAsJsonObject(entityUuidStr) else null)
+            ?: return
 
         try {
             val personality = if (wildData.has("personality")) {
@@ -195,6 +202,9 @@ object CobblebrainWorldSave {
             val displayName = pokemon.nickname?.string?.takeIf { it.isNotBlank() } ?: pokemon.species.name
 
             wildObj.remove(uuidStr)
+            if (entityUuidStr != null) {
+                wildObj.remove(entityUuidStr)
+            }
             save()
 
             if (personality != null) {
@@ -659,6 +669,7 @@ object CobblebrainWorldSave {
 
     fun getActiveQuests(player: ServerPlayer): List<JsonObject> {
         val result = mutableListOf<JsonObject>()
+        result.addAll(vito.cobblebrain.engine.StoryMissionManager.getActiveMissionsJson(player))
         getStoryQuest(player)?.let { result.add(it) }
         result.addAll(getSecondaryQuests(player))
         return result
@@ -760,6 +771,7 @@ object CobblebrainWorldSave {
 
             pokemon.navigation.stop()
             followers.remove(giverUuid)
+            DialogueSystem.discardSecondaryBubble(pokemon.uuid)
 
             println("[DEBUG] FollowGoal removed")
         }

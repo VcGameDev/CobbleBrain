@@ -120,6 +120,7 @@ class ConfigBuilder<T> private constructor(
             "\"increaseFriendship\"" to "\n// Allows dialogue to increase friendship.",
             "\"showFriendship\"" to "\n// Displays friendship changes in chat.",
             "\"instruct\"" to "\n\n//========================= // PROMPT AND OUTPUT // =========================\n\n\n// Custom instructions sent to the AI before every conversation.",
+            "\"playerAbout\"" to "\n// Custom description of the player/trainer sent to the AI (appearance, personality, habits, backstory).",
             "\"outputFormat\"" to "\n// Custom AI output format. Only edit if you know how CobbleBrain parses responses.",
             "\"useDefaultOutput\"" to "\n// Uses the recommended output format bundled with this version of CobbleBrain.",
             "\"keyRotation\"" to "\n// Automatically switches API keys when configured errors occur.",
@@ -141,6 +142,8 @@ class ConfigBuilder<T> private constructor(
             "\"outputGuaranteedCatch\"" to "\n// Enables the Guaranteed Catch mechanic after exceptional interactions.",
             "\"outputApril1\"" to "\n// Activates special April Fools actions. Only enable this if you want chaos!",
             "\"allowClientPersonalityEditing\"" to "\n// Allows clients to edit Pokémon personality characteristics.",
+            "\"hidePersonalityCreation\"" to "\n// Hides notifications in chat when personality traits and quirks are created or evolved.",
+            "\"allowCustomClientPrompt\"" to "\n// Allows clients to use their own custom instruct and player description on the server.",
             "\"enableTraits\"" to "\n// Enables Pokémon personality traits and behavioral characteristics.",
             "\"wildPokemonCanBeHostile\"" to "\n// Allows wild Pokémon to use the hostile action (H) to target and attack players.",
             "\"hostileDamageMultiplier\"" to "\n// Multiplies physical damage of wild Pokémon executing H and creatures generated in Raids."
@@ -189,13 +192,21 @@ object ClientConfigHandler {
         return listOf("[CREATIVEPROMPT]") + clean
     }
 
+    fun ensurePlayerAboutHeader(list: List<String>?): List<String> {
+        val base = list ?: CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
+        val clean = base.filter { it.isNotBlank() && !it.trim().equals("[ABOUT THE PLAYER]", ignoreCase = true) }
+        return listOf("[ABOUT THE PLAYER]") + clean
+    }
+
     fun load() {
         clientConfig = ConfigBuilder.load(CobblebrainClientConfig::class.java, "cobblebrain_client")
         clientConfig.instruct = ensureCreativePrompt(clientConfig.instruct)
+        clientConfig.playerAbout = ensurePlayerAboutHeader(clientConfig.playerAbout)
     }
 
     fun save() {
         clientConfig.instruct = ensureCreativePrompt(clientConfig.instruct)
+        clientConfig.playerAbout = ensurePlayerAboutHeader(clientConfig.playerAbout)
         val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
         val json = JsonParser.parseString(gson.toJson(clientConfig)).asJsonObject
         val file = File("config/cobblebrain_client.json5")

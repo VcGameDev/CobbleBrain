@@ -101,6 +101,7 @@ object CobblebrainPayloads {
         val forceOfflineMode: Boolean,
         val enableAiMemoryRetrieval: Boolean,
         val optimizedMode: Boolean = true,
+        val allowCustomClientPrompt: Boolean = true,
         val actionSettingsJson: String = ""
     ) : CustomPacketPayload {
 
@@ -130,6 +131,7 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.forceOfflineMode)
                         buf.writeBoolean(payload.enableAiMemoryRetrieval)
                         buf.writeBoolean(payload.optimizedMode)
+                        buf.writeBoolean(payload.allowCustomClientPrompt)
                         buf.writeUtf(payload.actionSettingsJson, 262144)
                     },
                     { buf ->
@@ -149,6 +151,7 @@ object CobblebrainPayloads {
                             buf.readInt(),
                             buf.readInt(),
                             buf.readInt(),
+                            buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
@@ -362,8 +365,8 @@ object CobblebrainPayloads {
 
             val CODEC: StreamCodec<RegistryFriendlyByteBuf, PersonalityListPayload> =
                 StreamCodec.of(
-                    { buf, payload -> buf.writeUtf(payload.dataJson, 1887436) },
-                    { buf -> PersonalityListPayload(buf.readUtf(1887436)) }
+                    { buf, payload -> buf.writeUtf(payload.dataJson, 52428800) },
+                    { buf -> PersonalityListPayload(buf.readUtf(52428800)) }
                 )
         }
 
@@ -385,13 +388,13 @@ object CobblebrainPayloads {
                     { buf, payload ->
                         buf.writeUtf(payload.pokemonUuid, 128)
                         buf.writeUtf(payload.personalityJson, 262144)
-                        buf.writeUtf(payload.memoriesJson, 1887436)
+                        buf.writeUtf(payload.memoriesJson, 52428800)
                     },
                     { buf ->
                         SavePersonalityPayload(
                             buf.readUtf(128),
                             buf.readUtf(262144),
-                            buf.readUtf(1887436)
+                            buf.readUtf(52428800)
                         )
                     }
                 )
@@ -410,6 +413,47 @@ object CobblebrainPayloads {
                 StreamCodec.of(
                     { buf, payload -> buf.writeUtf(payload.pokemonUuid) },
                     { buf -> DeletePersonalityPayload(buf.readUtf()) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    data class RequestPokemonMemoriesPayload(val pokemonUuid: String) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "request_pokemon_memories")
+            val TYPE = CustomPacketPayload.Type<RequestPokemonMemoriesPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestPokemonMemoriesPayload> =
+                StreamCodec.of(
+                    { buf, payload -> buf.writeUtf(payload.pokemonUuid, 128) },
+                    { buf -> RequestPokemonMemoriesPayload(buf.readUtf(128)) }
+                )
+        }
+
+        override fun type() = TYPE
+    }
+
+    data class PokemonMemoriesPayload(
+        val pokemonUuid: String,
+        val memoriesJson: String
+    ) : CustomPacketPayload {
+        companion object {
+            val ID = ResourceLocation("cobblebrain", "pokemon_memories")
+            val TYPE = CustomPacketPayload.Type<PokemonMemoriesPayload>(ID)
+
+            val CODEC: StreamCodec<RegistryFriendlyByteBuf, PokemonMemoriesPayload> =
+                StreamCodec.of(
+                    { buf, payload ->
+                        buf.writeUtf(payload.pokemonUuid, 128)
+                        buf.writeUtf(payload.memoriesJson, 52428800)
+                    },
+                    { buf ->
+                        PokemonMemoriesPayload(
+                            buf.readUtf(128),
+                            buf.readUtf(52428800)
+                        )
+                    }
                 )
         }
 

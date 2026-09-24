@@ -3,9 +3,11 @@ package vito.cobblebrain.client
 import com.google.gson.JsonParser
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
+import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.config.SyncedConfig
+import vito.cobblebrain.social.PokemonPersonality
 
 class PersonalityListScreen(
     private val parentScreen: Screen?,
@@ -19,8 +21,27 @@ class PersonalityListScreen(
         val species: String,
         val personalityJson: String,
         val memoriesJson: String = "[]",
+        val memoriesLoaded: Boolean = false,
         val inParty: Boolean
-    )
+    ) {
+        val canTalk: Boolean
+            get() = try {
+                val obj = JsonParser.parseString(personalityJson).asJsonObject
+                if (obj.has("canTalk")) obj.get("canTalk").asBoolean else true
+            } catch (_: Exception) { true }
+
+        val canAct: Boolean
+            get() = try {
+                val obj = JsonParser.parseString(personalityJson).asJsonObject
+                if (obj.has("canAct")) obj.get("canAct").asBoolean else true
+            } catch (_: Exception) { true }
+
+        val canUpdatePersonality: Boolean
+            get() = try {
+                val obj = JsonParser.parseString(personalityJson).asJsonObject
+                if (obj.has("canUpdatePersonality")) obj.get("canUpdatePersonality").asBoolean else true
+            } catch (_: Exception) { true }
+    }
 
     private val partyPokemons = mutableListOf<PokemonEntry>()
     private val pcPokemons = mutableListOf<PokemonEntry>()
@@ -33,13 +54,15 @@ class PersonalityListScreen(
                     if (element.isJsonObject) {
                         val obj = element.asJsonObject
                         val inParty = obj.get("inParty")?.asBoolean ?: true
+                        val memStr = obj.get("memoriesJson")?.asString ?: "[]"
                         val entry = PokemonEntry(
                             obj.get("uuid").asString,
                             obj.get("displayName").asString,
                             obj.get("species").asString,
                             obj.get("personalityJson").asString,
-                            obj.get("memoriesJson")?.asString ?: "[]",
-                            inParty
+                            memStr,
+                            memoriesLoaded = inParty || (memStr.isNotBlank() && memStr != "[]"),
+                            inParty = inParty
                         )
                         if (inParty) partyPokemons.add(entry) else pcPokemons.add(entry)
                     }
@@ -90,12 +113,31 @@ class PersonalityListScreen(
         val partyIdx = partyPokemons.indexOfFirst { it.uuid == uuid }
         if (partyIdx >= 0) {
             val old = partyPokemons[partyIdx]
-            partyPokemons[partyIdx] = old.copy(personalityJson = newJson, memoriesJson = if (memoriesJson.isNotBlank()) memoriesJson else old.memoriesJson)
+            partyPokemons[partyIdx] = old.copy(
+                personalityJson = newJson,
+                memoriesJson = if (memoriesJson.isNotBlank()) memoriesJson else old.memoriesJson,
+                memoriesLoaded = true
+            )
         }
         val pcIdx = pcPokemons.indexOfFirst { it.uuid == uuid }
         if (pcIdx >= 0) {
             val old = pcPokemons[pcIdx]
-            pcPokemons[pcIdx] = old.copy(personalityJson = newJson, memoriesJson = if (memoriesJson.isNotBlank()) memoriesJson else old.memoriesJson)
+            pcPokemons[pcIdx] = old.copy(
+                personalityJson = newJson,
+                memoriesJson = if (memoriesJson.isNotBlank()) memoriesJson else old.memoriesJson,
+                memoriesLoaded = true
+            )
+        }
+    }
+
+    fun onMemoriesReceived(uuid: String, memoriesJson: String) {
+        val pcIdx = pcPokemons.indexOfFirst { it.uuid == uuid }
+        if (pcIdx >= 0) {
+            val old = pcPokemons[pcIdx]
+            pcPokemons[pcIdx] = old.copy(
+                memoriesJson = memoriesJson,
+                memoriesLoaded = true
+            )
         }
     }
 
@@ -133,13 +175,94 @@ class PersonalityListScreen(
 
             if (item is PokemonEntry) {
                 val btnY = currentY
+                if (!isReadOnly) {
+                    val capturedItem = item
+                    val targetUuid = capturedItem.uuid
+
+                    fun updatePersonalityAndSave(updated: PokemonPersonality, feedbackKey: String) {
+                        val newJson = com.google.gson.Gson().toJson(updated)
+                        val partyIdx = partyPokemons.indexOfFirst { it.uuid == targetUuid }
+                        if (partyIdx >= 0) {
+                            partyPokemons[partyIdx] = partyPokemons[partyIdx].copy(personalityJson = newJson)
+                        }
+                        val pcIdx = pcPokemons.indexOfFirst { it.uuid == targetUuid }
+                        if (pcIdx >= 0) {
+                            pcPokemons[pcIdx] = pcPokemons[pcIdx].copy(personalityJson = newJson)
+                        }
+                        CobblebrainClientCommon.savePersonality?.invoke(
+                            targetUuid,
+                            newJson,
+                            if (capturedItem.memoriesLoaded) capturedItem.memoriesJson else ""
+                        )
+                        minecraft?.player?.displayClientMessage(Component.translatable(feedbackKey, capturedItem.displayName), true)
+                        clearWidgets()
+                        init()
+                    }
+
+                    val talkKey = if (item.canTalk) "cobblebrain.button.toggle_dialogue.on" else "cobblebrain.button.toggle_dialogue.off"
+                    val talkTooltipKey = if (item.canTalk) "cobblebrain.button.toggle_dialogue.on.tooltip" else "cobblebrain.button.toggle_dialogue.off.tooltip"
+                    addRenderableWidget(
+                        Button.builder(Component.translatable(talkKey)) {
+                            val p = try {
+                                com.google.gson.Gson().fromJson(capturedItem.personalityJson, PokemonPersonality::class.java) ?: PokemonPersonality()
+                            } catch (_: Exception) { PokemonPersonality() }
+                            val newTalk = !p.effectiveCanTalk
+                            val updated = p.copy(canTalk = newTalk)
+                            updatePersonalityAndSave(updated, if (newTalk) "cobblebrain.feedback.dialogue_on" else "cobblebrain.feedback.dialogue_off")
+                        }.tooltip(Tooltip.create(Component.translatable(talkTooltipKey)))
+                         .bounds(x + 134, btnY + 2, 34, 18).build()
+                    )
+
+                    val actKey = if (item.canAct) "cobblebrain.button.toggle_action.on" else "cobblebrain.button.toggle_action.off"
+                    val actTooltipKey = if (item.canAct) "cobblebrain.button.toggle_action.on.tooltip" else "cobblebrain.button.toggle_action.off.tooltip"
+                    addRenderableWidget(
+                        Button.builder(Component.translatable(actKey)) {
+                            val p = try {
+                                com.google.gson.Gson().fromJson(capturedItem.personalityJson, PokemonPersonality::class.java) ?: PokemonPersonality()
+                            } catch (_: Exception) { PokemonPersonality() }
+                            val newAct = !p.effectiveCanAct
+                            val updated = p.copy(canAct = newAct)
+                            updatePersonalityAndSave(updated, if (newAct) "cobblebrain.feedback.action_on" else "cobblebrain.feedback.action_off")
+                        }.tooltip(Tooltip.create(Component.translatable(actTooltipKey)))
+                         .bounds(x + 170, btnY + 2, 34, 18).build()
+                    )
+
+                    val persKey = if (item.canUpdatePersonality) "cobblebrain.button.toggle_personality.on" else "cobblebrain.button.toggle_personality.off"
+                    val persTooltipKey = if (item.canUpdatePersonality) "cobblebrain.button.toggle_personality.on.tooltip" else "cobblebrain.button.toggle_personality.off.tooltip"
+                    addRenderableWidget(
+                        Button.builder(Component.translatable(persKey)) {
+                            val p = try {
+                                com.google.gson.Gson().fromJson(capturedItem.personalityJson, PokemonPersonality::class.java) ?: PokemonPersonality()
+                            } catch (_: Exception) { PokemonPersonality() }
+                            val newPers = !p.effectiveCanUpdatePersonality
+                            val updated = p.copy(canUpdatePersonality = newPers)
+                            updatePersonalityAndSave(updated, if (newPers) "cobblebrain.feedback.personality_on" else "cobblebrain.feedback.personality_off")
+                        }.tooltip(Tooltip.create(Component.translatable(persTooltipKey)))
+                         .bounds(x + 206, btnY + 2, 34, 18).build()
+                    )
+                }
+
+                val editBtnX = if (isReadOnly) x + 265 else x + 244
+                val editBtnW = if (isReadOnly) 55 else 38
                 val buttonTextKey = if (isReadOnly) "cobblebrain.button.view" else "cobblebrain.button.edit"
                 addRenderableWidget(
                     Button.builder(Component.translatable(buttonTextKey)) {
+                        val needsLoading = !item.inParty && !item.memoriesLoaded
+                        if (needsLoading) {
+                            CobblebrainClientCommon.requestPokemonMemories?.invoke(item.uuid)
+                        }
                         minecraft?.setScreen(
-                            PersonalityEditScreen(this, item.uuid, item.displayName, item.species, item.personalityJson, item.memoriesJson)
+                            PersonalityEditScreen(
+                                parentScreen = this,
+                                pokemonUuid = item.uuid,
+                                displayName = item.displayName,
+                                species = item.species,
+                                personalityJson = item.personalityJson,
+                                memoriesJson = item.memoriesJson,
+                                isMemoriesLoading = needsLoading
+                            )
                         )
-                    }.bounds(x + 215, btnY + 2, 55, 18).build()
+                    }.bounds(editBtnX, btnY + 2, editBtnW, 18).build()
                 )
                 if (!isReadOnly) {
                     val capturedPoke = item
@@ -162,7 +285,7 @@ class PersonalityListScreen(
                                     }
                                 }
                             )
-                        }.bounds(x + 273, btnY + 2, 50, 18).build()
+                        }.bounds(x + 284, btnY + 2, 38, 18).build()
                     )
                 }
                 currentY += rowHeight
@@ -211,16 +334,34 @@ class PersonalityListScreen(
 
             if (item is PokemonEntry) {
                 val isPc = !item.inParty
-                val rowColor = if (isPc) 0x44003366 else 0x55000000
+                val rowColor = when {
+                    !item.canTalk -> 0x44550000
+                    !item.canAct -> 0x44332200
+                    isPc -> 0x44003366
+                    else -> 0x55000000
+                }
                 guiGraphics.fill(x, currentY, x + 325, currentY + 24, rowColor)
 
                 val nameStr = item.displayName
                 val speciesStr = "(${item.species})"
-                val nameColor = if (isPc) 0xFFCCDDFF.toInt() else 0xFFFFFFFF.toInt()
-                val speciesColor = if (isPc) 0xFF8899BB.toInt() else 0xFFAAAAAA.toInt()
+                val nameColor = when {
+                    !item.canTalk -> 0xFFFF7777.toInt()
+                    !item.canAct -> 0xFFFFFFAA.toInt()
+                    isPc -> 0xFFCCDDFF.toInt()
+                    else -> 0xFFFFFFFF.toInt()
+                }
+                val speciesColor = when {
+                    !item.canTalk -> 0xFFCC5555.toInt()
+                    !item.canAct -> 0xFFCCCC88.toInt()
+                    isPc -> 0xFF8899BB.toInt()
+                    else -> 0xFFAAAAAA.toInt()
+                }
 
+                val maxTextWidth = if (isReadOnly) 250 else 122
+                guiGraphics.enableScissor(x, currentY, x + 8 + maxTextWidth, currentY + 24)
                 guiGraphics.drawString(font, nameStr, x + 8, currentY + 8, nameColor)
                 guiGraphics.drawString(font, speciesStr, x + 8 + font.width(nameStr) + 4, currentY + 8, speciesColor)
+                guiGraphics.disableScissor()
 
                 currentY += rowHeight
             } else if (item is Component) {

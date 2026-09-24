@@ -22,6 +22,9 @@ object HudSystem {
     private var isVisible = true
     var isSoloMode: Boolean = false
         private set
+    var isScrollActive: Boolean = false
+        private set
+    private var wasScrollKeyDown: Boolean = false
     private val cooldowns = mutableMapOf<String, Long>()
 
     fun toggleTargetMode() {
@@ -63,7 +66,10 @@ object HudSystem {
     private fun isCommandAvailable(
         command: String
     ): Boolean {
-        if (!vito.cobblebrain.config.SyncedConfig.isActionActiveForPlayer(command)) {
+        if (command.equals("CANCEL", ignoreCase = true)) {
+            return true
+        }
+        if (!SyncedConfig.isActionActiveForPlayer(command)) {
             return false
         }
 
@@ -86,11 +92,15 @@ object HudSystem {
     }
 
     private fun getSortedCommands(): List<String> {
-        val filtered = commands.filter { vito.cobblebrain.config.SyncedConfig.isActionActiveForPlayer(it) }
-        return filtered.sortedWith(
+        val filtered = commands.filter { SyncedConfig.isActionActiveForPlayer(it) }
+        val sorted = filtered.sortedWith(
             compareByDescending<String> { isCommandAvailable(it) }
                 .thenBy { commands.indexOf(it) }
-        )
+        ).toMutableList()
+        if (isScrollActive) {
+            sorted.add("CANCEL")
+        }
+        return sorted
     }
 
 
@@ -103,6 +113,10 @@ object HudSystem {
      */
     fun render(guiGraphics: GuiGraphics, @Suppress("UNUSED_PARAMETER") tickDelta: Float) {
         val client = Minecraft.getInstance()
+        if (client.screen != null && isScrollActive) {
+            isScrollActive = false
+            wasScrollKeyDown = false
+        }
         if (client.player == null || client.options.hideGui) return
 
         // 1. Quest HUD
@@ -128,6 +142,8 @@ object HudSystem {
     // 1. QUEST HUD SYSTEM
     // ===================================================================================
     private fun renderQuestHud(guiGraphics: GuiGraphics, client: Minecraft) {
+        if (!isVisible) return
+
         val questsJson = CobblebrainClientCommon.currentQuestsJson
         val screenWidth = client.window.guiScaledWidth
         val x = screenWidth - 140 // Adjusted for increased width (120 -> 140)
@@ -147,10 +163,10 @@ object HudSystem {
                 return
             }
 
-            for (i in 0 until minOf(activeQuests.size, 2)) {
+            for (i in 0 until minOf(activeQuests.size, 3)) {
                 val quest = activeQuests[i].asJsonObject
                 val type = quest.get("type")?.asString ?: "generic"
-                val isLarge = type == "ADVICE" || type == "ITEM"
+                val isLarge = type == "ADVICE" || type == "ITEM" || type == "STORY_MISSION" || type == "QUEST"
                 val currentHeight = if (isLarge) 34 else 24 // Even more compressed (38/28 -> 34/24)
 
                 renderSingleQuest(guiGraphics, client, quest, x, y, currentHeight)
@@ -168,13 +184,18 @@ object HudSystem {
         guiGraphics.fill(x, y, x + 130, y + boxHeight, 0xAA000000.toInt())
         guiGraphics.fill(x, y, x + 2, y + boxHeight, 0xFF55FF55.toInt())
 
-        val title = when(type) {
+        val customTitle = quest.get("title")?.asString
+        val rawTitle = if (!customTitle.isNullOrBlank()) {
+            customTitle
+        } else when(type) {
             "BATTLE" -> "Battle Mission"
             "ITEM" -> "Item Delivery"
             "ADVICE" -> "Advice Needed"
             "TREASURE" -> "Lost Item Search"
+            "STORY_MISSION", "QUEST" -> "Story Mission"
             else -> "Quest"
         }
+        val title = client.font.plainSubstrByWidth(rawTitle, 100)
         guiGraphics.pose().pushPose()
         guiGraphics.pose().translate((x + 6).toDouble(), (y + 3).toDouble(), 0.0)
         guiGraphics.pose().scale(0.95f, 0.95f, 1f) // Increased title scale
@@ -185,6 +206,19 @@ object HudSystem {
         var progressText = ""
 
         when(type) {
+            "STORY_MISSION", "QUEST" -> {
+                progress = quest.get("progress")?.asFloat ?: 0f
+                val baseText = quest.get("progressText")?.asString ?: "In Progress"
+                val timeLimitSec = quest.get("timeLimitSec")?.asInt ?: 0
+                val startTimeMs = quest.get("startTimeMs")?.asLong ?: 0L
+                if (timeLimitSec > 0 && startTimeMs > 0) {
+                    val elapsedSec = (System.currentTimeMillis() - startTimeMs) / 1000
+                    val remainingSec = (timeLimitSec - elapsedSec).coerceAtLeast(0)
+                    progressText = "$baseText (${remainingSec}s)"
+                } else {
+                    progressText = baseText
+                }
+            }
             "BATTLE" -> {
                 val target = quest.get("targetSpecies")?.asString ?: "Target"
                 val status = quest.get("status")?.asString ?: "IN_PROGRESS"
@@ -302,13 +336,36 @@ object HudSystem {
         val x = screenWidth - menuWidth - 8
         val y = (screenHeight - totalHeight) / 2
 
-        // Background
-        guiGraphics.fill(x - 2, y - 2, x + menuWidth + 2, y + totalHeight + 2, 0x99000000.toInt())
-        guiGraphics.fill(x - 2, y - 2, x - 1, y + totalHeight + 2, 0xFF5555FF.toInt())
+        val borderColor = if (isScrollActive) 0xFFFFAA00.toInt() else 0xFF5555FF.toInt()
+        val bgAlpha = if (isScrollActive) 0xCC000000.toInt() else 0x99000000.toInt()
+        guiGraphics.fill(x - 2, y - 2, x + menuWidth + 2, y + totalHeight + 2, bgAlpha)
+        guiGraphics.fill(x - 2, y - 2, x - 1, y + totalHeight + 2, borderColor)
+        if (isScrollActive) {
+            guiGraphics.fill(x + menuWidth + 1, y - 2, x + menuWidth + 2, y + totalHeight + 2, borderColor)
+            guiGraphics.fill(x - 2, y - 2, x + menuWidth + 2, y - 1, borderColor)
+            guiGraphics.fill(x - 2, y + totalHeight + 1, x + menuWidth + 2, y + totalHeight + 2, borderColor)
+        }
 
         val hasAbove = startVisible > 0
         val hasBelow = endVisible < totalCount
         val centerX = x + (menuWidth / 2)
+
+        if (isScrollActive) {
+            val safeIdx = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
+            val currentCmd = sortedCommands.getOrNull(safeIdx)?.uppercase() ?: ""
+            guiGraphics.pose().pushPose()
+            guiGraphics.pose().translate(x.toDouble(), (y - 32).toDouble(), 0.0)
+            guiGraphics.pose().scale(0.6f, 0.6f, 1f)
+            if (currentCmd == "CANCEL") {
+                val cancelText = I18n.get("cobblebrain.hud.release_to_cancel")
+                guiGraphics.drawString(client.font, "§c✖ $cancelText", 0, 0, 0xFFFF5555.toInt(), true)
+            } else {
+                val actionDisp = getActionDisplayName(currentCmd)
+                val releaseText = I18n.get("cobblebrain.hud.release_to_execute", actionDisp)
+                guiGraphics.drawString(client.font, "§e$releaseText", 0, 0, 0xFFFFAA00.toInt(), true)
+            }
+            guiGraphics.pose().popPose()
+        }
 
         // Mode Status Header (SOLO vs MULTI)
         val modeHeaderText = if (isSoloMode) {
@@ -392,6 +449,7 @@ object HudSystem {
         }
 
         // Keybind hints
+        val scrollKey = CobblebrainClientCommon.keyScroll?.translatedKeyMessage?.string ?: "X"
         val upKey = CobblebrainClientCommon.keyUp?.translatedKeyMessage?.string ?: "B"
         val downKey = CobblebrainClientCommon.keyDown?.translatedKeyMessage?.string ?: "V"
         val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
@@ -405,17 +463,26 @@ object HudSystem {
         guiGraphics.pose().translate((x).toDouble(), (y + totalHeight + 6).toDouble(), 0.0)
         guiGraphics.pose().scale(0.5f, 0.5f, 1f)
 
+        val isManual = try { ClientConfigHandler.clientConfig.manualActionNav } catch (_: Throwable) { false }
         val upDownText = I18n.get("cobblebrain.hud.up_down")
         val confirmOrderText = I18n.get("cobblebrain.hud.confirm_order")
+        val scrollActionsText = I18n.get("cobblebrain.hud.scroll_actions")
         val toggleHudText = I18n.get("cobblebrain.hud.toggle_hud")
         val modeText = I18n.get("cobblebrain.hud.mode")
         val pingText = I18n.get("cobblebrain.hud.ping")
 
         var tipY = 5
-        guiGraphics.drawString(client.font, "[$downKey/$upKey]: $upDownText", 0, tipY, 0x99FFFFFF.toInt(), false)
-        tipY += 10
-        guiGraphics.drawString(client.font, "$execKey: $confirmOrderText", 0, tipY, 0x99FFFFFF.toInt(), false)
-        tipY += 10
+        if (isManual) {
+            guiGraphics.drawString(client.font, "[$downKey/$upKey]: $upDownText", 0, tipY, 0x99FFFFFF.toInt(), false)
+            tipY += 10
+            guiGraphics.drawString(client.font, "$execKey: $confirmOrderText", 0, tipY, 0x99FFFFFF.toInt(), false)
+            tipY += 10
+            guiGraphics.drawString(client.font, "[Hold $scrollKey]: $scrollActionsText", 0, tipY, 0xFFFFAA00.toInt(), false)
+            tipY += 10
+        } else {
+            guiGraphics.drawString(client.font, "[Hold $scrollKey]: $scrollActionsText", 0, tipY, 0xFFFFAA00.toInt(), false)
+            tipY += 10
+        }
         guiGraphics.drawString(client.font, "$toggleKey: $toggleHudText", 0, tipY, 0x99FFFFFF.toInt(), false)
         tipY += 10
         guiGraphics.drawString(client.font, "$modeKey: $modeText (${if (isSoloMode) "SOLO" else "MULTI"})", 0, tipY, 0x99FFFFFF.toInt(), false)
@@ -484,6 +551,8 @@ object HudSystem {
             // Build
             "BUILD" ->
                 0xFFAAAAAA.toInt()
+            "CANCEL" ->
+                0xFFFF6666.toInt()
             else -> 0xFFAAAAAA.toInt() // Default Gray for neutral actions
         }
     }
@@ -518,6 +587,52 @@ object HudSystem {
     // ===================================================================================
     // INPUT HANDLING
     // ===================================================================================
+    fun onMouseScroll(delta: Double): Boolean {
+        val mc = Minecraft.getInstance()
+        if (mc.screen != null || mc.player == null) {
+            if (isScrollActive) {
+                isScrollActive = false
+                wasScrollKeyDown = false
+            }
+            return false
+        }
+        if (!isScrollActive) return false
+
+        if (delta > 0) {
+            navigateUp()
+        } else if (delta < 0) {
+            navigateDown()
+        }
+        return true
+    }
+
+    fun handleScrollKeyTick(scrollKey: net.minecraft.client.KeyMapping?) {
+        val mc = Minecraft.getInstance()
+        if (mc.screen != null || mc.player == null) {
+            if (isScrollActive) {
+                isScrollActive = false
+            }
+            wasScrollKeyDown = false
+            return
+        }
+
+        val isKeyDown = scrollKey?.isDown == true
+        if (isKeyDown) {
+            if (!wasScrollKeyDown) {
+                wasScrollKeyDown = true
+                isScrollActive = true
+            }
+        } else {
+            if (wasScrollKeyDown) {
+                wasScrollKeyDown = false
+                if (isScrollActive) {
+                    isScrollActive = false
+                    executeAction()
+                }
+            }
+        }
+    }
+
     fun navigateUp() {
         val sortedCommands =
             getSortedCommands()
@@ -598,7 +713,13 @@ object HudSystem {
         val safeIndex = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
         val cmd = sortedCommands[safeIndex].uppercase()
 
+        if (cmd == "CANCEL") {
+            return
+        }
+
         if (getCooldownRemaining(cmd) > 0) {
+            val mc = Minecraft.getInstance()
+            playDenySound(mc)
             return
         }
 
@@ -655,6 +776,12 @@ object HudSystem {
     private fun playConfirmSound(client: Minecraft) {
         client.level?.playSound(client.player, client.player!!.blockPosition(),
             SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.MASTER, 0.5f, 1.0f)
+    }
+
+    private fun playDenySound(client: Minecraft) {
+        val player = client.player ?: return
+        client.level?.playSound(player, player.blockPosition(),
+            SoundEvents.DISPENSER_FAIL, SoundSource.MASTER, 0.5f, 1.2f)
     }
 
     fun updateCooldowns(buff: Long, repair: Long, shift: Long, debuff: Long, teleport: Long = 0L) {

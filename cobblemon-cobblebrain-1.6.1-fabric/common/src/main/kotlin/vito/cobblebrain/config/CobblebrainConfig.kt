@@ -6,6 +6,7 @@ data class CobblebrainConfig(
     var increaseFriendship: Boolean = true,
     var maxFriendship: Int = 255,
     var showFriendship: Boolean = true,
+    var hidePersonalityCreation: Boolean = false,
 
     // ================= DIALOGUE & UI SETTINGS =================
     var allowPokemonPVP: Boolean = false,
@@ -48,6 +49,7 @@ data class CobblebrainConfig(
     var needsPokemonTranslator: Boolean = false,
     var outputGuaranteedCatch: Boolean = true,
     var allowClientPersonalityEditing: Boolean = true,
+    var allowCustomClientPrompt: Boolean = true,
     var enableTraits: Boolean = true,
     var wildPokemonCanBeHostile: Boolean = false,
     var hostileDamageMultiplier: Float = 0.75f,

@@ -32,6 +32,7 @@ import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.phys.Vec3
 import vito.cobblebrain.social.CobblebrainWorldSave.adjustKarma
 import vito.cobblebrain.social.CobblebrainWorldSave.adjustKillCount
 import vito.cobblebrain.config.ConfigHandler.config
@@ -326,6 +327,10 @@ object DialogueSystem {
             }
 
             is PokemonEntity -> {
+                if (newHealth <= 0f) {
+                    discardSecondaryBubble(entity.uuid)
+                    discardSecondaryBubble(entity.pokemon.uuid)
+                }
                 val targetName = entity.pokemon.nickname?.string ?: entity.pokemon.species.name
                 RecentEventsSystem.recordEvent(
                     entity.pokemon.uuid,
@@ -379,6 +384,7 @@ object DialogueSystem {
     fun onServerTick(server: MinecraftServer) {
         flushScheduledMessages(server)
         tickBubbles(currentServer!!)
+        tickSecondaryBubbles(currentServer!!)
         StoryTimerSystem.tick(server)
         AmbientReactionManager.tick(server)
 
@@ -471,6 +477,7 @@ object DialogueSystem {
     var sendToPlayer: ((ServerPlayer, String) -> Unit)? = null
     var sendToPlayerBackground: ((ServerPlayer, String) -> Unit)? = null
     var sendPersonalityList: ((ServerPlayer, String) -> Unit)? = null
+    var sendPokemonMemories: ((ServerPlayer, String, String) -> Unit)? = null
     var syncQuests: ((ServerPlayer) -> Unit)? = null
     var sendAIDialogueBoxToPlayer: ((ServerPlayer, vito.cobblebrain.network.CobblebrainPayloads.AIDialogueBoxPayload) -> Unit)? = null
     var sendSetEntityTexture: ((ServerPlayer, vito.cobblebrain.network.CobblebrainPayloads.SetEntityTexturePayload) -> Unit)? = null
@@ -825,8 +832,9 @@ object DialogueSystem {
             "${player.name.string} said: $text"
         }
 
-        // Store context for possible rebuildPromptForPlayer after memory search
-        lastPromptContext[player.uuid] = Pair(ativos, "\n\n$formattedText")
+        if (!config.optimizedMode && config.enableAiMemoryRetrieval) {
+            lastPromptContext[player.uuid] = Pair(ativos, "\n\n$formattedText")
+        }
         val prompt = buildPrompt(player, ativos, "\n\n$formattedText")
 
         // Send prompt to client for processing
@@ -839,7 +847,7 @@ object DialogueSystem {
      * Called by the server after the client intercepts BEGIN_MEMORY_SEARCH and selects a memory.
      */
     fun rebuildPromptForPlayer(player: ServerPlayer, forcedMemory: String) {
-        val (pokemons, moreText) = lastPromptContext[player.uuid] ?: return
+        val (pokemons, moreText) = lastPromptContext.remove(player.uuid) ?: return
         val prompt = buildPrompt(player, pokemons, moreText, forcedRelevantMemory = forcedMemory.ifBlank { null })
         sendToPlayer?.invoke(player, prompt)
     }
@@ -1095,8 +1103,9 @@ object DialogueSystem {
     private val bubbleStands = mutableMapOf<UUID, UUID>()
 
     fun getBubbleY(entity: Entity): Double {
-        // Dynamically calculate bubble height above mob bounding box
-        return entity.eyeY + 0.5
+        val clearance = if (entity.bbHeight < 0.6f) 0.35 else 0.25
+        val desiredY = entity.y + entity.bbHeight + clearance
+        return desiredY - 2.10
     }
 
     fun spawnEntitySpeechBubble(
@@ -1214,7 +1223,7 @@ object DialogueSystem {
         var count = 0
         server.allLevels.forEach { level ->
             val filter = java.util.function.Predicate<ArmorStand> { entity ->
-                val isTagged = entity.tags.contains("cobblebrain_chat_bubble")
+                val isTagged = entity.tags.contains("cobblebrain_chat_bubble") || entity.tags.contains("cobblebrain_secondary_bubble")
                 val isLegacyBubble = strongMode && entity.isInvisible && entity.isNoGravity && entity.tags.contains("Marker")
                 isTagged || isLegacyBubble
             }
@@ -1231,7 +1240,186 @@ object DialogueSystem {
         bubbleProgress.clear()
         bubbleSpeed.clear()
         bubbleLevelMap.clear()
+        secondaryBubbleStands.clear()
+        secondaryBubbleLevelMap.clear()
+        secondaryBubbleState.clear()
         return count
+    }
+
+    private val secondaryBubbleStands = mutableMapOf<UUID, UUID>()          // pokemonEntityUuid -> standUuid
+    private val secondaryBubbleLevelMap = mutableMapOf<UUID, ServerLevel>() // standUuid -> ServerLevel dimension
+    private val secondaryBubbleState = mutableMapOf<UUID, String>()          // pokemonEntityUuid -> stateKey (for change detection)
+    val guaranteedCatchPokemon: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
+
+    fun getSecondaryBubblePos(entity: Entity): Vec3 {
+        val yaw = (entity as? LivingEntity)?.yBodyRot ?: entity.yRot
+        val yawRad = Math.toRadians(yaw.toDouble())
+        val rightX = -Math.cos(yawRad)
+        val rightZ = -Math.sin(yawRad)
+
+        val halfWidth = entity.bbWidth * 0.5
+        val shoulderDist = maxOf(0.40, halfWidth + 0.25)
+
+        val desiredY = entity.y + maxOf(0.40, entity.bbHeight * 0.70)
+        val targetY = desiredY - 2.10
+
+        val targetX = entity.x + (rightX * shoulderDist)
+        val targetZ = entity.z + (rightZ * shoulderDist)
+
+        return Vec3(targetX, targetY, targetZ)
+    }
+
+    enum class SecondaryBubbleStatus(
+        val id: String,
+        val translationKey: String,
+        val color: ChatFormatting
+    ) {
+        HOSTILE("hostile", "cobblebrain.status.hostile", ChatFormatting.RED),
+        IRRITATED("irritated", "cobblebrain.status.irritated", ChatFormatting.YELLOW),
+        CATCH_FOLLOWING("catch_following", "cobblebrain.status.catch_following", ChatFormatting.GREEN),
+        CATCH("catch", "cobblebrain.status.guaranteed_catch", ChatFormatting.GREEN),
+        FOLLOWING("following", "cobblebrain.status.following", ChatFormatting.AQUA);
+
+        fun createComponent(): Component {
+            return Component.translatable(translationKey).withStyle(color, ChatFormatting.BOLD)
+        }
+    }
+
+    fun getSecondaryBubbleStatus(entity: PokemonEntity): SecondaryBubbleStatus? {
+        if (entity.pokemon.getOwnerUUID() != null) return null
+
+        val isHostile = CommandState.activeCommands[entity.uuid] == "hostile"
+        if (isHostile) {
+            return SecondaryBubbleStatus.HOSTILE
+        }
+
+        val isIrritated = CommandState.isWildIrritated(entity.uuid)
+        if (isIrritated) {
+            return SecondaryBubbleStatus.IRRITATED
+        }
+
+        val hasCatchTag = entity.tags.any { it.startsWith("cobblebrain:guaranteed_") }
+        val isFollowing = CobblebrainWorldSave.followers.containsKey(entity.uuid.toString())
+
+        return when {
+            hasCatchTag && isFollowing -> SecondaryBubbleStatus.CATCH_FOLLOWING
+            hasCatchTag -> SecondaryBubbleStatus.CATCH
+            isFollowing -> SecondaryBubbleStatus.FOLLOWING
+            else -> null
+        }
+    }
+
+    fun discardSecondaryBubble(pokemonUuid: UUID?) {
+        if (pokemonUuid == null) return
+        val standUuid = secondaryBubbleStands.remove(pokemonUuid)
+        if (standUuid != null) {
+            val level = secondaryBubbleLevelMap.remove(standUuid)
+            val stand = level?.getEntity(standUuid)
+            if (stand is ArmorStand) {
+                stand.discard()
+            }
+        }
+        secondaryBubbleState.remove(pokemonUuid)
+        guaranteedCatchPokemon.remove(pokemonUuid)
+    }
+
+    fun onPokemonCaptured(pokemon: Pokemon) {
+        discardSecondaryBubble(pokemon.uuid)
+        pokemon.entity?.uuid?.let { discardSecondaryBubble(it) }
+    }
+
+    fun tickSecondaryBubbles(server: MinecraftServer) {
+        if (!config.chatbubbles) {
+            if (secondaryBubbleStands.isNotEmpty()) {
+                secondaryBubbleStands.keys.toList().forEach { discardSecondaryBubble(it) }
+            }
+            return
+        }
+
+        val toDiscard = mutableListOf<UUID>()
+        secondaryBubbleStands.forEach { (pokemonUuid, standUuid) ->
+            val level = secondaryBubbleLevelMap[standUuid]
+            val poke = level?.getEntity(pokemonUuid) as? PokemonEntity
+            val stand = level?.getEntity(standUuid) as? ArmorStand
+
+            if (poke == null || !poke.isAlive || poke.isRemoved || poke.pokemon.getOwnerUUID() != null || stand == null || !stand.isAlive) {
+                stand?.discard()
+                toDiscard.add(pokemonUuid)
+            } else {
+                val status = getSecondaryBubbleStatus(poke)
+                if (status == null) {
+                    stand.discard()
+                    toDiscard.add(pokemonUuid)
+                } else {
+                    val pos = getSecondaryBubblePos(poke)
+                    stand.moveTo(pos.x, pos.y, pos.z)
+
+                    if (secondaryBubbleState[pokemonUuid] != status.id) {
+                        stand.customName = status.createComponent()
+                        secondaryBubbleState[pokemonUuid] = status.id
+                    }
+                }
+            }
+        }
+        toDiscard.forEach { discardSecondaryBubble(it) }
+
+        val candidateUuids = mutableSetOf<UUID>()
+
+        CobblebrainWorldSave.followers.values.forEach { triple ->
+            candidateUuids.add(triple.first.uuid)
+        }
+
+        candidateUuids.addAll(CommandState.irritatedEntities.keys)
+
+        CommandState.activeCommands.forEach { (uuid, action) ->
+            if (action == "hostile") candidateUuids.add(uuid)
+        }
+
+        candidateUuids.addAll(guaranteedCatchPokemon)
+
+        if (server.tickCount % 20 == 0) {
+            for (player in server.playerList.players) {
+                val level = player.serverLevel()
+                val nearby = level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(32.0)) {
+                    it.pokemon.getOwnerUUID() == null && it.tags.any { tag -> tag.startsWith("cobblebrain:guaranteed_") }
+                }
+                for (entity in nearby) {
+                    guaranteedCatchPokemon.add(entity.uuid)
+                    candidateUuids.add(entity.uuid)
+                }
+            }
+        }
+
+        for (candUuid in candidateUuids) {
+            if (secondaryBubbleStands.containsKey(candUuid)) continue
+
+            val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(candUuid) } as? PokemonEntity ?: continue
+            if (!entity.isAlive || entity.isRemoved || entity.pokemon.getOwnerUUID() != null) {
+                guaranteedCatchPokemon.remove(candUuid)
+                continue
+            }
+
+            val status = getSecondaryBubbleStatus(entity) ?: continue
+            val level = entity.level() as? ServerLevel ?: continue
+
+            val stand = ArmorStand(EntityType.ARMOR_STAND, level)
+            stand.isInvisible = true
+            stand.isNoGravity = true
+            stand.isCustomNameVisible = true
+            stand.addTag("Marker")
+            stand.addTag("cobblebrain_chat_bubble")
+            stand.addTag("cobblebrain_secondary_bubble")
+
+            val pos = getSecondaryBubblePos(entity)
+            stand.moveTo(pos.x, pos.y, pos.z)
+            stand.customName = status.createComponent()
+
+            level.addFreshEntity(stand)
+
+            secondaryBubbleStands[candUuid] = stand.uuid
+            secondaryBubbleLevelMap[stand.uuid] = level
+            secondaryBubbleState[candUuid] = status.id
+        }
     }
 
     // ---------------         QUEST SECTION            -----------------------
@@ -1830,6 +2018,7 @@ object DialogueSystem {
                 MobBridge.removeGoal?.invoke(pokemon, goal)
                 pokemon.navigation.stop()
                 iterator.remove()
+                discardSecondaryBubble(pokemon.uuid)
                 println("[DEBUG] Follower removed for abandoned quest: $giverName")
             }
         }
@@ -2044,7 +2233,11 @@ object DialogueSystem {
             return
         }
 
-        val ativos = PokemonQuery.findActivePokemon(player).filter { !PokemonQuery.isPokemonSleeping(it) }
+
+        val ativos = PokemonQuery.findActivePokemon(player).filter { p ->
+            val name = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+            !PokemonQuery.isPokemonSleeping(p) && MemorySystem.loadPersonality(p.uuid.toString(), name).effectiveCanTalk
+        }
         if (ativos.isEmpty()) return
 
         val now = player.server?.tickCount?.toLong() ?: 0L
@@ -2131,7 +2324,7 @@ object DialogueSystem {
         playPokemonCry(pokemon, variedPitch)
 
         val isResting = vito.cobblebrain.sensors.isCobblemonPokemonResting(pokemon) ||
-            vito.cobblebrain.sensors.CommandState.activeCommands[entity.uuid] in listOf("rest", "sit") ||
+            CommandState.activeCommands[entity.uuid] in listOf("rest", "sit") ||
             PokemonQuery.isPokemonSleeping(pokemon) ||
             entity.isSleeping
 
@@ -2203,8 +2396,12 @@ object DialogueSystem {
     ): String {
         lastPlayerMessage[player.uuid] = if (recommendedTopics != null) "[SPONTANEOUS DIALOGUE]" else moreText
         val shoulderPokemon = PokemonQuery.getAllPokemon(player)
-            .filter { it.currentHealth > 0 && !PokemonQuery.isPokemonSleeping(it) && PokemonQuery.isShoulderMounted(player, it) }
-        val activePokemon = (pokemons.filter { !PokemonQuery.isPokemonSleeping(it) } + shoulderPokemon).distinctBy { it.uuid }
+            .filter {
+                it.currentHealth > 0 && !PokemonQuery.isPokemonSleeping(it) && PokemonQuery.isShoulderMounted(player, it)
+            }
+        val activePokemon = (pokemons.filter {
+            !PokemonQuery.isPokemonSleeping(it)
+        } + shoulderPokemon).distinctBy { it.uuid }
         val activeUuids = activePokemon.map { it.uuid }.toSet()
 
         generatePokemonAliases(player, activePokemon)
@@ -2229,7 +2426,10 @@ object DialogueSystem {
             }
 
             val displayName = if (sameNameCount <= 1) baseName else "$baseName#$current"
-            pokemonAliasMap[player.uuid]?.put(displayName, pokemon.entity?.uuid ?: pokemon.uuid)
+            pokemonAliasMap[player.uuid]?.put(displayName, pokemon.uuid)
+            if (displayName.contains("#")) {
+                pokemonAliasMap[player.uuid]?.putIfAbsent(baseName, pokemon.uuid)
+            }
             reversePokemonAliasMap[player.uuid]?.put(pokemon.uuid, displayName)
             pokemon.entity?.uuid?.let { reversePokemonAliasMap[player.uuid]?.put(it, displayName) }
         }
@@ -2243,10 +2443,10 @@ object DialogueSystem {
 
             val wildNameEntity = "${baseName}_$eUuid4"
             val wildNamePoke = "${baseName}_$pUuid4"
-            pokemonAliasMap[player.uuid]?.put(wildNameEntity, entity.uuid)
-            pokemonAliasMap[player.uuid]?.put(wildNamePoke, entity.uuid)
+            pokemonAliasMap[player.uuid]?.put(wildNameEntity, poke.uuid)
+            pokemonAliasMap[player.uuid]?.put(wildNamePoke, poke.uuid)
             if (pokemonAliasMap[player.uuid]?.containsKey(baseName) != true) {
-                pokemonAliasMap[player.uuid]?.put(baseName, entity.uuid)
+                pokemonAliasMap[player.uuid]?.put(baseName, poke.uuid)
             }
             reversePokemonAliasMap[player.uuid]?.put(poke.uuid, wildNameEntity)
             reversePokemonAliasMap[player.uuid]?.put(entity.uuid, wildNameEntity)
@@ -2381,6 +2581,20 @@ object DialogueSystem {
                     if (personalityParts.isNotEmpty()) {
                         appendLine(personalityParts.joinToString(" | "))
                     }
+
+                    val restrictions = mutableListOf<String>()
+                    if (!personality.effectiveCanTalk) {
+                        restrictions += "Cannot talk (Must remain silent; do NOT generate speech or spoken dialogue for this Pokémon)"
+                    }
+                    if (!personality.effectiveCanAct) {
+                        restrictions += "Cannot execute actions (Action commands # disabled for this Pokémon)"
+                    }
+                    if (!personality.effectiveCanUpdatePersonality) {
+                        restrictions += "Cannot alter personality (Personality/traits/quirks are locked)"
+                    }
+                    if (restrictions.isNotEmpty()) {
+                        appendLine("Restrictions: ${restrictions.joinToString(" | ")}")
+                    }
                 }
             }
             appendLine()
@@ -2430,25 +2644,25 @@ object DialogueSystem {
             appendLine("[UNAVAILABLE POKEMON]")
             val allPartyPokemon = PokemonQuery.getAllPokemon(player)
             val unavailableCount = allPartyPokemon.count {
-                (it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)) || PokemonQuery.isPokemonSleeping(it)
+                (it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)) || PokemonQuery.isPokemonSleeping(it) || it.currentHealth <= 0
             }
             if (unavailableCount == 0) {
                 appendLine("none")
             } else {
                 allPartyPokemon.forEach { p ->
+                    if (p.uuid in activeUuids || (PokemonQuery.isShoulderMounted(player, p) && p.currentHealth > 0 && !PokemonQuery.isPokemonSleeping(p))) {
+                        return@forEach
+                    }
                     val name = p.nickname?.string ?: p.species.name
                     if (PokemonQuery.isPokemonSleeping(p)) {
                         appendLine("$name is SLEEPING, unable to talk or interact.")
                         return@forEach
                     }
-                    if (p.uuid in activeUuids || PokemonQuery.isShoulderMounted(player, p)) {
-                        return@forEach
-                    }
                     if (p.currentHealth <= 0) {
                         appendLine("$name is FAINTED, unable to talk or interact.")
-                    } else {
-                        appendLine("$name is STORED, unable to talk or interact.")
+                        return@forEach
                     }
+                    appendLine("$name is STORED, unable to talk or interact.")
                 }
             }
             appendLine()
@@ -2463,6 +2677,7 @@ object DialogueSystem {
                 appendLine("Deliver immediate spoken dialogue ONLY. Do NOT generate action commands.")
                 appendLine("- Spoken dialogue format: <PokemonName>: <message>")
             }
+            appendLine("- Strictly respect individual Pokémon restrictions: if marked with 'Cannot talk', do NOT generate speech lines for it. If marked with 'Cannot execute actions', do NOT generate # action commands for it.")
 
             val presentTypes = allPokemon.flatMap { it.types }.map { it.name.lowercase() }.toSet()
 
@@ -2577,6 +2792,10 @@ object DialogueSystem {
                 activePokemon.forEach { p ->
                     val displayName = reverseAliases[p.uuid] ?: p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
                     val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
+                    if (!personality.effectiveCanUpdatePersonality) {
+                        appendLine("- $displayName | Personality update LOCKED (do not add or change traits/quirks)")
+                        return@forEach
+                    }
                     val freeTraits = personality.traits.size < 2
                     val freeQuirks = personality.quirks.size < 2
                     val traitStatus = if (freeTraits) "open (${personality.traits.size}/2)" else "full (2/2)"
@@ -2660,8 +2879,12 @@ object DialogueSystem {
         recommendedTopics: List<String>? = null
     ): String {
         val shoulderPokemon = PokemonQuery.getAllPokemon(player)
-            .filter { it.currentHealth > 0 && !PokemonQuery.isPokemonSleeping(it) && PokemonQuery.isShoulderMounted(player, it) }
-        val activePokemon = (pokemons.filter { !PokemonQuery.isPokemonSleeping(it) } + shoulderPokemon).distinctBy { it.uuid }
+            .filter {
+                it.currentHealth > 0 && !PokemonQuery.isPokemonSleeping(it) && PokemonQuery.isShoulderMounted(player, it)
+            }
+        val activePokemon = (pokemons.filter {
+            !PokemonQuery.isPokemonSleeping(it)
+        } + shoulderPokemon).distinctBy { it.uuid }
         val activeUuids = activePokemon.map { it.uuid }.toSet()
 
         generatePokemonAliases(player, activePokemon)
@@ -2687,7 +2910,10 @@ object DialogueSystem {
             }
 
             val displayName = if (sameNameCount <= 1) baseName else "$baseName#$current"
-            pokemonAliasMap[player.uuid]?.put(displayName, pokemon.entity?.uuid ?: pokemon.uuid)
+            pokemonAliasMap[player.uuid]?.put(displayName, pokemon.uuid)
+            if (displayName.contains("#")) {
+                pokemonAliasMap[player.uuid]?.putIfAbsent(baseName, pokemon.uuid)
+            }
             reversePokemonAliasMap[player.uuid]?.put(pokemon.uuid, displayName)
             pokemon.entity?.uuid?.let { reversePokemonAliasMap[player.uuid]?.put(it, displayName) }
         }
@@ -2701,10 +2927,10 @@ object DialogueSystem {
 
             val wildNameEntity = "${baseName}_$eUuid4"
             val wildNamePoke = "${baseName}_$pUuid4"
-            pokemonAliasMap[player.uuid]?.put(wildNameEntity, entity.uuid)
-            pokemonAliasMap[player.uuid]?.put(wildNamePoke, entity.uuid)
+            pokemonAliasMap[player.uuid]?.put(wildNameEntity, poke.uuid)
+            pokemonAliasMap[player.uuid]?.put(wildNamePoke, poke.uuid)
             if (pokemonAliasMap[player.uuid]?.containsKey(baseName) != true) {
-                pokemonAliasMap[player.uuid]?.put(baseName, entity.uuid)
+                pokemonAliasMap[player.uuid]?.put(baseName, poke.uuid)
             }
             reversePokemonAliasMap[player.uuid]?.put(poke.uuid, wildNameEntity)
             reversePokemonAliasMap[player.uuid]?.put(entity.uuid, wildNameEntity)
@@ -3146,8 +3372,22 @@ object DialogueSystem {
                         appendLine(personalityParts.joinToString(" | "))
                     }
 
+                    val restrictions = mutableListOf<String>()
+                    if (!personality.effectiveCanTalk) {
+                        restrictions += "Cannot talk (Must remain silent; do NOT generate speech or spoken dialogue for this Pokémon)"
+                    }
+                    if (!personality.effectiveCanAct) {
+                        restrictions += "Cannot execute actions (Action commands # disabled for this Pokémon)"
+                    }
+                    if (!personality.effectiveCanUpdatePersonality) {
+                        restrictions += "Cannot alter personality (Personality/traits/quirks are locked)"
+                    }
+                    if (restrictions.isNotEmpty()) {
+                        appendLine("Restrictions: ${restrictions.joinToString(" | ")}")
+                    }
+
                     // A personality slot is free — only when enableTraits is on
-                    if (config.enableTraits && p.uuid == genCandidateUuid) {
+                    if (config.enableTraits && p.uuid == genCandidateUuid && personality.effectiveCanUpdatePersonality) {
                         val maxTraits = 2
                         val maxQuirks = 2
                         val freeTraits = personality.traits.size < maxTraits
@@ -3259,18 +3499,18 @@ object DialogueSystem {
             appendLine("[UNAVAILABLE POKEMON]")
             val allPartyPokemon = PokemonQuery.getAllPokemon(player)
             val unavailableCount = allPartyPokemon.count {
-                (it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)) || PokemonQuery.isPokemonSleeping(it)
+                (it.uuid !in activeUuids && !PokemonQuery.isShoulderMounted(player, it)) || PokemonQuery.isPokemonSleeping(it) || it.currentHealth <= 0
             }
             if (unavailableCount == 0) {
                 appendLine("none")
             } else {
                 allPartyPokemon.forEach { p ->
+                    if (p.uuid in activeUuids || (PokemonQuery.isShoulderMounted(player, p) && p.currentHealth > 0 && !PokemonQuery.isPokemonSleeping(p))) {
+                        return@forEach
+                    }
                     val name = p.nickname?.string ?: p.species.name
                     if (PokemonQuery.isPokemonSleeping(p)) {
                         appendLine("$name is SLEEPING, unable to talk or interact.")
-                        return@forEach
-                    }
-                    if (p.uuid in activeUuids || PokemonQuery.isShoulderMounted(player, p)) {
                         return@forEach
                     }
                     when {
@@ -3339,7 +3579,7 @@ object DialogueSystem {
                 val needInit = activePokemon.filter { p ->
                     val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
                     val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
-                    personality.traits.isEmpty() && personality.quirks.isEmpty()
+                    personality.effectiveCanUpdatePersonality && personality.traits.isEmpty() && personality.quirks.isEmpty()
                 }
                 if (needInit.isNotEmpty()) {
                     appendLine()
@@ -3502,7 +3742,7 @@ object DialogueSystem {
             it.startsWith("#") ||
             it.startsWith("&") ||
             it.startsWith("=") ||
-            it.startsWith("!RESUME") ||
+            it.startsWith("!") ||
             it.startsWith("[FLAG", ignoreCase = true) ||
             (it.startsWith("%") && !it.contains(":")) ||
             (!config.showFriendship &&
@@ -3530,8 +3770,9 @@ object DialogueSystem {
                     }
 
                     val pokemon: Mob? = (if (targetUuid != null) {
-                        level?.getEntity(targetUuid) as? Mob
-                            ?: activePokemons.firstOrNull { it.uuid == targetUuid }?.entity as? Mob
+                        activePokemons.firstOrNull { it.uuid == targetUuid }?.entity as? Mob
+                            ?: context.nearbyPokemonEntities.firstOrNull { it.pokemon.uuid == targetUuid || it.uuid == targetUuid }
+                            ?: level?.getEntity(targetUuid) as? Mob
                     } else null) ?: run {
                         // 1. Primary lookup: context.nearbyPokemonEntities by uuid4
                         if (uuid4 != null) {
@@ -3569,6 +3810,19 @@ object DialogueSystem {
                         it.displayName?.string?.equals(cleanCmdName, ignoreCase = true) == true ||
                         it.displayName?.string?.equals(species, ignoreCase = true) == true
                     }?.firstOrNull()
+
+                    val pokeObj = (pokemon as? PokemonEntity)?.pokemon ?: run {
+                        if (targetUuid != null) {
+                            PokemonQuery.getAllPokemon(player).firstOrNull { it.uuid == targetUuid }
+                        } else null
+                    }
+                    if (pokeObj != null) {
+                        val pokeDisplayName = pokeObj.nickname?.string?.takeIf { it.isNotBlank() } ?: pokeObj.species.name
+                        val personality = MemorySystem.loadPersonality(pokeObj.uuid.toString(), pokeDisplayName)
+                        if (!personality.effectiveCanAct) {
+                            return@forEach
+                        }
+                    }
 
                     if (pokemon != null) {
                         if (cmd.action == "hostile" && config.wildPokemonCanBeHostile) {
@@ -3716,6 +3970,30 @@ object DialogueSystem {
             val cosmeticLine = if (line.contains(":")) "$cleanSpeakerName: $messageBody" else line
 
             val speaker = extractSpeakerPokemon(player, rawSpeakerName, activePokemons, nearbyWildEntities)
+            if (speaker != null) {
+                val speakerDisplayName = speaker.nickname?.string?.takeIf { it.isNotBlank() } ?: speaker.species.name
+                if (!MemorySystem.loadPersonality(speaker.uuid.toString(), speakerDisplayName).effectiveCanTalk) {
+                    return@forEachIndexed
+                }
+            } else {
+                val aliases = pokemonAliasMap[player.uuid] ?: emptyMap()
+                val targetUuid = aliases[rawSpeakerName] ?: aliases.entries.firstOrNull { it.key.equals(rawSpeakerName, ignoreCase = true) }?.value
+                val party = PokemonQuery.getAllPokemon(player)
+                val targetPoke = if (targetUuid != null) {
+                    party.firstOrNull { it.uuid == targetUuid }
+                } else {
+                    party.firstOrNull {
+                        it.species.name.equals(rawSpeakerName, ignoreCase = true) ||
+                        it.nickname?.string?.equals(rawSpeakerName, ignoreCase = true) == true
+                    }
+                }
+                if (targetPoke != null) {
+                    val pokeDisplayName = targetPoke.nickname?.string?.takeIf { it.isNotBlank() } ?: targetPoke.species.name
+                    if (!MemorySystem.loadPersonality(targetPoke.uuid.toString(), pokeDisplayName).effectiveCanTalk) {
+                        return@forEachIndexed
+                    }
+                }
+            }
 
             var mod = 0f
             val lineIndexInAll = allLines.indexOfFirst { raw ->
@@ -3859,22 +4137,74 @@ object DialogueSystem {
 
         val newlyIdentified = mutableMapOf<String, MutableList<String>>()
 
-        fun resolvePokemonUuid(name: String): UUID? {
+        data class TargetPokemonResult(
+            val uuid: UUID,
+            val cleanDisplayName: String,
+            val pokemon: Pokemon? = null
+        )
+
+        fun resolveTargetPokemon(name: String): TargetPokemonResult? {
+            val raw = name.trim()
+            if (raw.isBlank()) return null
+            val baseName = raw.substringBefore("#").trim()
+            val speciesPrefix = if (baseName.contains("_") && baseName.substringAfterLast("_").length == 4) {
+                baseName.substringBeforeLast("_")
+            } else {
+                baseName
+            }
+
             val aliases = pokemonAliasMap[player.uuid] ?: emptyMap()
-            var uuid = aliases[name] ?: aliases.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
-            if (uuid == null) {
-                val cleaned = name.substringBefore("#").trim()
-                uuid = aliases.entries.firstOrNull { it.key.substringBefore("#").equals(cleaned, ignoreCase = true) }?.value
+            val targetUuid = aliases[raw]
+                ?: aliases.entries.firstOrNull { it.key.equals(raw, ignoreCase = true) }?.value
+                ?: aliases[baseName]
+                ?: aliases.entries.firstOrNull { it.key.substringBefore("#").equals(baseName, ignoreCase = true) }?.value
+                ?: aliases[speciesPrefix]
+                ?: aliases.entries.firstOrNull { it.key.substringBefore("_").equals(speciesPrefix, ignoreCase = true) }?.value
+
+            val party = PokemonQuery.getAllPokemon(player)
+            val matchedParty = (if (targetUuid != null) {
+                party.firstOrNull { it.uuid == targetUuid }
+            } else null) ?: party.firstOrNull { p ->
+                p.nickname?.string?.equals(raw, ignoreCase = true) == true ||
+                p.nickname?.string?.equals(baseName, ignoreCase = true) == true ||
+                p.species.name.equals(raw, ignoreCase = true) ||
+                p.species.name.equals(baseName, ignoreCase = true) ||
+                p.species.name.equals(speciesPrefix, ignoreCase = true) ||
+                p.species.resourceIdentifier.path.equals(speciesPrefix, ignoreCase = true)
             }
-            if (uuid == null) {
-                val party = PokemonQuery.getAllPokemon(player)
-                uuid = party.firstOrNull { 
-                    it.species.name.equals(name, ignoreCase = true) || 
-                    it.nickname?.string?.equals(name, ignoreCase = true) == true 
-                }?.uuid
+
+            if (matchedParty != null) {
+                val cleanDisplay = matchedParty.nickname?.string?.takeIf { it.isNotBlank() } ?: matchedParty.species.name
+                return TargetPokemonResult(matchedParty.uuid, cleanDisplay, matchedParty)
             }
-            return uuid
+
+            val nearbyWild = collectWorldContext(player).nearbyPokemonEntities
+            val matchedWild = (if (targetUuid != null) {
+                nearbyWild.firstOrNull { it.pokemon.uuid == targetUuid || it.uuid == targetUuid }
+            } else null) ?: nearbyWild.firstOrNull { e ->
+                val p = e.pokemon
+                p.nickname?.string?.equals(raw, ignoreCase = true) == true ||
+                p.nickname?.string?.equals(baseName, ignoreCase = true) == true ||
+                p.species.name.equals(raw, ignoreCase = true) ||
+                p.species.name.equals(baseName, ignoreCase = true) ||
+                p.species.name.equals(speciesPrefix, ignoreCase = true) ||
+                p.species.resourceIdentifier.path.equals(speciesPrefix, ignoreCase = true)
+            }
+
+            if (matchedWild != null) {
+                val p = matchedWild.pokemon
+                val cleanDisplay = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                return TargetPokemonResult(p.uuid, cleanDisplay, p)
+            }
+
+            if (targetUuid != null) {
+                return TargetPokemonResult(targetUuid, speciesPrefix)
+            }
+
+            return null
         }
+
+        fun resolvePokemonUuid(name: String): UUID? = resolveTargetPokemon(name)?.uuid
 
         // 1. Process Replace Traits (&REPLACE_TRAIT:<PokemonName>:<OldTrait>-><NewTrait>)
         replaceTraitRegex.findAll(sanitized).forEach { match ->
@@ -3883,9 +4213,12 @@ object DialogueSystem {
             val rawOld = match.groupValues[2].trim()
             val rawNew = match.groupValues[3].trim()
 
-            val uuid = resolvePokemonUuid(rawPokeName)
-            if (uuid != null && rawNew.isNotBlank()) {
-                val personality = MemorySystem.loadPersonality(uuid.toString(), rawPokeName)
+            val target = resolveTargetPokemon(rawPokeName)
+            if (target != null && rawNew.isNotBlank()) {
+                val uuid = target.uuid
+                val displayName = target.cleanDisplayName
+                val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
+                if (!personality.effectiveCanUpdatePersonality) return@forEach
                 val oldIndex = personality.traits.indexOfFirst {
                     it.equals(rawOld, ignoreCase = true) ||
                     it.contains(rawOld, ignoreCase = true) ||
@@ -3894,24 +4227,25 @@ object DialogueSystem {
                 if (oldIndex != -1) {
                     val previous = personality.traits[oldIndex]
                     personality.traits[oldIndex] = rawNew
-                    MemorySystem.savePersonality(uuid.toString(), personality, rawPokeName)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
                     vito.cobblebrain.engine.StoryDebugger.recordLog(
                         storyId = "system",
                         blockId = "stage2_background",
                         blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
                         status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
                         level = "INFO",
-                        message = "[Trait Evolved] $rawPokeName: $previous -> $rawNew",
+                        message = "[Trait Evolved] $displayName: $previous -> $rawNew",
                         server = server
                     )
-                    player.sendSystemMessage(
-                        Component.literal("§6[Character Development] §f$rawPokeName's trait evolved: §e$previous §7-> §a$rawNew")
-                    )
+                    if (!config.hidePersonalityCreation) {
+                        player.sendSystemMessage(
+                            Component.literal("§6[Character Development] §f$displayName's trait evolved: §e$previous §7-> §a$rawNew")
+                        )
+                    }
                 } else if (personality.traits.size < 2) {
                     personality.traits.add(rawNew)
-                    MemorySystem.savePersonality(uuid.toString(), personality, rawPokeName)
-                    val cleanName = rawPokeName.substringBefore("#").trim()
-                    newlyIdentified.getOrPut(cleanName) { mutableListOf() }.add(rawNew)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
+                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(rawNew)
                 }
             }
         }
@@ -3923,9 +4257,12 @@ object DialogueSystem {
             val rawOld = match.groupValues[2].trim()
             val rawNew = match.groupValues[3].trim()
 
-            val uuid = resolvePokemonUuid(rawPokeName)
-            if (uuid != null && rawNew.isNotBlank()) {
-                val personality = MemorySystem.loadPersonality(uuid.toString(), rawPokeName)
+            val target = resolveTargetPokemon(rawPokeName)
+            if (target != null && rawNew.isNotBlank()) {
+                val uuid = target.uuid
+                val displayName = target.cleanDisplayName
+                val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
+                if (!personality.effectiveCanUpdatePersonality) return@forEach
                 val oldIndex = personality.quirks.indexOfFirst {
                     it.equals(rawOld, ignoreCase = true) ||
                     it.contains(rawOld, ignoreCase = true) ||
@@ -3934,24 +4271,25 @@ object DialogueSystem {
                 if (oldIndex != -1) {
                     val previous = personality.quirks[oldIndex]
                     personality.quirks[oldIndex] = rawNew
-                    MemorySystem.savePersonality(uuid.toString(), personality, rawPokeName)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
                     vito.cobblebrain.engine.StoryDebugger.recordLog(
                         storyId = "system",
                         blockId = "stage2_background",
                         blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
                         status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
                         level = "INFO",
-                        message = "[Quirk Evolved] $rawPokeName: $previous -> $rawNew",
+                        message = "[Quirk Evolved] $displayName: $previous -> $rawNew",
                         server = server
                     )
-                    player.sendSystemMessage(
-                        Component.literal("§6[Behavioral Shift] §f$rawPokeName's quirk evolved: §e$previous §7-> §a$rawNew")
-                    )
+                    if (!config.hidePersonalityCreation) {
+                        player.sendSystemMessage(
+                            Component.literal("§6[Behavioral Shift] §f$displayName's quirk evolved: §e$previous §7-> §a$rawNew")
+                        )
+                    }
                 } else if (personality.quirks.size < 2) {
                     personality.quirks.add(rawNew)
-                    MemorySystem.savePersonality(uuid.toString(), personality, rawPokeName)
-                    val cleanName = rawPokeName.substringBefore("#").trim()
-                    newlyIdentified.getOrPut(cleanName) { mutableListOf() }.add(rawNew)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
+                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(rawNew)
                 }
             }
         }
@@ -3960,8 +4298,11 @@ object DialogueSystem {
         fun applySingleTrait(targetName: String, traitText: String) {
             val cleanTrait = DialogueFilter.stripListPrefix(traitText).trim()
             if (cleanTrait.isBlank()) return
-            val uuid = resolvePokemonUuid(targetName) ?: return
-            val personality = MemorySystem.loadPersonality(uuid.toString(), targetName)
+            val target = resolveTargetPokemon(targetName) ?: return
+            val uuid = target.uuid
+            val displayName = target.cleanDisplayName
+            val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
+            if (!personality.effectiveCanUpdatePersonality) return
             if (personality.traits.size < 2) {
                 val isDup = personality.traits.any { existing ->
                     existing.equals(cleanTrait, ignoreCase = true) ||
@@ -3970,9 +4311,8 @@ object DialogueSystem {
                 }
                 if (!isDup) {
                     personality.traits.add(cleanTrait)
-                    MemorySystem.savePersonality(uuid.toString(), personality, targetName)
-                    val cleanName = targetName.substringBefore("#").trim()
-                    newlyIdentified.getOrPut(cleanName) { mutableListOf() }.add(cleanTrait)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
+                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(cleanTrait)
                 }
             }
         }
@@ -4002,8 +4342,11 @@ object DialogueSystem {
         fun applySingleQuirk(targetName: String, quirkText: String) {
             val cleanQuirk = DialogueFilter.stripListPrefix(quirkText).trim()
             if (cleanQuirk.isBlank()) return
-            val uuid = resolvePokemonUuid(targetName) ?: return
-            val personality = MemorySystem.loadPersonality(uuid.toString(), targetName)
+            val target = resolveTargetPokemon(targetName) ?: return
+            val uuid = target.uuid
+            val displayName = target.cleanDisplayName
+            val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
+            if (!personality.effectiveCanUpdatePersonality) return
             if (personality.quirks.size < 2) {
                 val isDup = personality.quirks.any { existing ->
                     existing.equals(cleanQuirk, ignoreCase = true) ||
@@ -4012,9 +4355,8 @@ object DialogueSystem {
                 }
                 if (!isDup) {
                     personality.quirks.add(cleanQuirk)
-                    MemorySystem.savePersonality(uuid.toString(), personality, targetName)
-                    val cleanName = targetName.substringBefore("#").trim()
-                    newlyIdentified.getOrPut(cleanName) { mutableListOf() }.add(cleanQuirk)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
+                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(cleanQuirk)
                 }
             }
         }
@@ -4040,7 +4382,7 @@ object DialogueSystem {
             }
         }
 
-        if (newlyIdentified.isNotEmpty()) {
+        if (!config.hidePersonalityCreation && newlyIdentified.isNotEmpty()) {
             newlyIdentified.forEach { (pokeName, traitsOrQuirks) ->
                 val traitsList = traitsOrQuirks.joinToString(", ")
                 player.sendSystemMessage(
@@ -4061,21 +4403,10 @@ object DialogueSystem {
             val keywordsStr = match.groupValues[3].trim()
 
             val names = namesStr.split(",").map { it.trim() }
-            val uuids = names.mapNotNull { name ->
-                val aliases = pokemonAliasMap[player.uuid] ?: emptyMap()
-                var uuid = aliases[name]
-                if (uuid == null) {
-                    uuid = aliases.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
-                }
-                if (uuid == null) {
-                    val cleaned = name.substringBefore("#").trim()
-                    uuid = aliases.entries.firstOrNull { it.key.substringBefore("#").equals(cleaned, ignoreCase = true) }?.value
-                }
-                uuid
-            }
+            val targets = names.mapNotNull { resolveTargetPokemon(it) }
 
-            if (uuids.isNotEmpty()) {
-                val participantsList = uuids.map { it.toString() }
+            if (targets.isNotEmpty()) {
+                val participantsList = targets.map { it.uuid.toString() }
                 val keywordsList = keywordsStr.split(",")
                     .map { it.trim().lowercase() }
                     .filter { it.isNotEmpty() }
@@ -4088,8 +4419,8 @@ object DialogueSystem {
                     playerMessage = lastPlayerMessage[player.uuid] ?: ""
                 )
 
-                uuids.forEachIndexed { index, uuid ->
-                    MemorySystem.saveMemory(uuid.toString(), memoryObj, names.getOrNull(index))
+                targets.forEach { target ->
+                    MemorySystem.saveMemory(target.uuid.toString(), memoryObj, target.cleanDisplayName)
                 }
             }
         }
@@ -4134,36 +4465,52 @@ object DialogueSystem {
         }
 
         // 6. Process Guaranteed Catch (!CATCH or !<Pokemon>)
-        if (content.contains("!CATCH") || allParts.any { it.startsWith("!") && !it.startsWith("!RESUME") && !it.startsWith("!CATCH") }) {
-            val nameMatch = Regex("""!CATCH:\s*([^|%\n]+)""").find(content)
-            val pokemonName = if (nameMatch != null) {
-                nameMatch.groupValues[1].trim()
-            } else {
-                val catchLine = allParts.firstOrNull { it.startsWith("!") && !it.startsWith("!RESUME") && !it.startsWith("!CATCH") }
-                catchLine?.removePrefix("!")?.trim() ?: ""
-            }
+        if (config.outputGuaranteedCatch) {
+            val catchMatch = DialogueFilter.CATCH_REGEX.find(content)
+            if (catchMatch != null) {
+                val rawPokemonName = catchMatch.groupValues.getOrNull(1)?.trim().orEmpty()
+                val targetUuid = if (rawPokemonName.isNotEmpty()) resolvePokemonUuid(rawPokemonName) else null
+                val cleanSpeciesName = rawPokemonName.substringBefore("_").substringBefore("#").trim()
 
-            val level = player.serverLevel()
-            val pokemon = if (pokemonName.isNotEmpty()) {
-                level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(16.0)) {
-                    it.displayName?.string?.contains(pokemonName, ignoreCase = true) == true ||
-                    it.pokemon.species.name.contains(pokemonName, ignoreCase = true)
-                }.minByOrNull { it.distanceTo(player) }
-            } else {
-                level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(10.0))
-                    .minByOrNull { it.distanceTo(player) }
-            }
+                val level = player.serverLevel()
+                val wildPokemon = when {
+                    targetUuid != null -> {
+                        (level.getEntity(targetUuid) as? PokemonEntity)?.takeIf { it.pokemon.getOwnerUUID() == null }
+                            ?: level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(32.0)) {
+                                (it.uuid == targetUuid || it.pokemon.uuid == targetUuid) && it.pokemon.getOwnerUUID() == null
+                            }.firstOrNull()
+                    }
+                    cleanSpeciesName.isNotEmpty() -> {
+                        level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(24.0)) {
+                            it.pokemon.getOwnerUUID() == null && (
+                                it.pokemon.species.name.equals(cleanSpeciesName, ignoreCase = true) ||
+                                it.displayName?.string?.contains(cleanSpeciesName, ignoreCase = true) == true
+                            )
+                        }.minByOrNull { it.distanceTo(player) }
+                    }
+                    catchMatch.value.contains("CATCH", ignoreCase = true) -> {
+                        level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(16.0)) {
+                            it.pokemon.getOwnerUUID() == null
+                        }.minByOrNull { it.distanceTo(player) }
+                    }
+                    else -> null
+                }
 
-            pokemon?.let {
-                it.addTag("cobblebrain:guaranteed_${player.uuid}")
-                val originalName = it.displayName?.string
-                it.customName = Component.literal(originalName).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
-                it.isCustomNameVisible = true
+                wildPokemon?.let { entity ->
+                    val wasAlreadyGuaranteed = entity.tags.contains("cobblebrain:guaranteed_${player.uuid}")
+                    entity.addTag("cobblebrain:guaranteed_${player.uuid}")
+                    guaranteedCatchPokemon.add(entity.uuid)
+                    val nameToDisplay = entity.pokemon.species.name
+                    entity.customName = Component.literal(nameToDisplay).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
+                    entity.isCustomNameVisible = true
 
-                player.sendSystemMessage(
-                    Component.translatable("cobblebrain.pokemon.convinced", originalName)
-                        .withStyle(ChatFormatting.GREEN, ChatFormatting.ITALIC)
-                )
+                    if (!wasAlreadyGuaranteed) {
+                        player.sendSystemMessage(
+                            Component.translatable("cobblebrain.pokemon.convinced", nameToDisplay)
+                                .withStyle(ChatFormatting.GREEN, ChatFormatting.ITALIC)
+                        )
+                    }
+                }
             }
         }
 

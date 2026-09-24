@@ -35,12 +35,23 @@ class DialogueSystemNeoForge {
                 CobblebrainNetworkingNeoForge.sendPersonalityList(player, dataJson)
             }
 
+            DialogueSystem.sendPokemonMemories = { player, uuid, memoriesJson ->
+                CobblebrainNetworkingNeoForge.sendPokemonMemories(player, uuid, memoriesJson)
+            }
+
             DialogueSystem.syncQuests = { player ->
                 CobblebrainNetworkingNeoForge.sendQuests(player)
             }
 
             CobblemonEvents.BATTLE_STARTED_POST.subscribe {
                 DialogueSystem.onBattleStarted(it)
+                it.battle.players.forEach { p ->
+                    val enemySpecies = it.battle.activePokemon
+                        .mapNotNull { b -> b.battlePokemon }
+                        .filter { b -> b.originalPokemon.getOwnerUUID() != p.uuid }
+                        .firstOrNull()?.originalPokemon?.species?.name ?: ""
+                    vito.cobblebrain.engine.StoryListenerManager.onBattleStart(p, enemySpecies)
+                }
             }
 
             CobblemonEvents.POKEMON_SENT_POST.subscribe {
@@ -48,7 +59,12 @@ class DialogueSystemNeoForge {
             }
 
             CobblemonEvents.POKEMON_CAPTURED.subscribe {
+                if (it.pokemon.nickname?.string.equals(it.pokemon.species.name, ignoreCase = true)) {
+                    it.pokemon.nickname = null
+                }
                 CobblebrainWorldSave.migrateWildToPermanent(it.pokemon)
+                vito.cobblebrain.engine.StoryListenerManager.onPokemonCatch(it.player, it.pokemon.species.name)
+                DialogueSystem.onPokemonCaptured(it.pokemon)
             }
 
             CobblemonEvents.BATTLE_FLED.subscribe {
@@ -180,5 +196,36 @@ class DialogueSystemNeoForge {
     fun onBlockBreak(event: net.neoforged.neoforge.event.level.BlockEvent.BreakEvent) {
         val player = event.player as? ServerPlayer ?: return
         DialogueSystem.onBlockBreak(player, event.pos, event.state)
+    }
+
+    @SubscribeEvent
+    fun onEntityInteract(event: net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.EntityInteract) {
+        val player = event.entity as? ServerPlayer ?: return
+        if (event.hand == net.minecraft.world.InteractionHand.MAIN_HAND && !event.level.isClientSide) {
+            vito.cobblebrain.engine.StoryListenerManager.onEntityInteract(player, event.target)
+        }
+    }
+
+    @SubscribeEvent
+    fun onBlockInteract(event: net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock) {
+        val player = event.entity as? ServerPlayer ?: return
+        if (event.hand == net.minecraft.world.InteractionHand.MAIN_HAND && !event.level.isClientSide) {
+            val blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(event.level.getBlockState(event.pos).block).toString()
+            vito.cobblebrain.engine.StoryListenerManager.onBlockInteract(player, blockId)
+        }
+    }
+
+    @SubscribeEvent
+    fun onBlockPlace(event: net.neoforged.neoforge.event.level.BlockEvent.EntityPlaceEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        val blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(event.placedBlock.block).toString()
+        vito.cobblebrain.engine.StoryListenerManager.onBlockPlaced(player, blockId)
+    }
+
+    @SubscribeEvent
+    fun onEntityJoin(event: net.neoforged.neoforge.event.entity.EntityJoinLevelEvent) {
+        if (!event.level.isClientSide) {
+            vito.cobblebrain.engine.StoryListenerManager.onEntitySpawned(event.entity)
+        }
     }
 }

@@ -42,4 +42,8 @@ object CobblebrainClientHandlers {
     fun onPersonalityList(payload: CobblebrainPayloads.PersonalityListPayload) {
         CobblebrainClientCommon.onPersonalityListReceived?.invoke(payload.dataJson)
     }
+
+    fun onPokemonMemories(payload: CobblebrainPayloads.PokemonMemoriesPayload) {
+        CobblebrainClientCommon.onPokemonMemoriesReceived?.invoke(payload.pokemonUuid, payload.memoriesJson)
+    }
 }

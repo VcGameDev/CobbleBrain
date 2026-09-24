@@ -16,6 +16,7 @@ import vito.cobblebrain.social.PokemonQuery
 import vito.cobblebrain.social.RecentEventsSystem
 
 object CobblebrainServerHandler {
+    private val gson = com.google.gson.Gson()
     fun processAction(player: ServerPlayer, action: String) {
         val command: PokemonCommand? = parseCommand(action)
         if (command != null) {
@@ -109,12 +110,7 @@ object CobblebrainServerHandler {
     fun handleRequestPersonalityList(player: ServerPlayer) {
         try {
             MemorySystem.warnAboutAnyFilenameConflicts(player)
-            val gson = com.google.gson.Gson()
             val array = com.google.gson.JsonArray()
-
-            val maxSafeChars = 1_790_000 // ~95% of 1.8 MB limit (1,887,436 chars)
-            val nearLimitThreshold = 1_650_000 // Threshold to warn player about high memory volume
-            var currentEstimatedChars = 2 // Represents JSON array brackets "[]"
 
             // --- Party Pokémon (always prioritized and added first) ---
             val partyPokemon = PokemonQuery.getAllPokemon(player)
@@ -136,11 +132,9 @@ object CobblebrainServerHandler {
                 entry.addProperty("memoriesJson", memoriesJson)
                 entry.addProperty("inParty", true)
                 array.add(entry)
-                currentEstimatedChars += entry.toString().length + 2
             }
 
             // --- PC Pokémon that have a personality file (previously edited) ---
-            var omittedPcCount = 0
             try {
                 val pc = com.cobblemon.mod.common.Cobblemon.storage.getPC(player)
 
@@ -158,8 +152,6 @@ object CobblebrainServerHandler {
                     eligiblePc.add(PcCandidate(p, displayName, lastModified))
                 }
 
-                // Sort descending: most recently modified first, oldest files last
-                // That way, if limit is reached, the oldest files are omitted first
                 eligiblePc.sortByDescending { it.lastModified }
 
                 for (candidate in eligiblePc) {
@@ -168,45 +160,18 @@ object CobblebrainServerHandler {
                     val displayName = candidate.displayName
                     val personality = MemorySystem.loadPersonality(uuidStr, displayName)
                     val personalityJson = gson.toJson(personality)
-                    val memories = MemorySystem.loadMemories(uuidStr, displayName)
-                    val memoriesJson = gson.toJson(memories)
 
                     val entry = com.google.gson.JsonObject()
                     entry.addProperty("uuid", uuidStr)
                     entry.addProperty("displayName", displayName)
                     entry.addProperty("species", p.species.name)
                     entry.addProperty("personalityJson", personalityJson)
-                    entry.addProperty("memoriesJson", memoriesJson)
+                    entry.addProperty("memoriesJson", "[]") // Lazy loaded on demand
                     entry.addProperty("inParty", false)
-
-                    val entryLength = entry.toString().length + 2
-                    if (currentEstimatedChars + entryLength > maxSafeChars) {
-                        omittedPcCount++
-                        continue
-                    }
-
                     array.add(entry)
-                    currentEstimatedChars += entryLength
                 }
             } catch (e: Exception) {
                 println("[CobbleBrain] Could not read PC storage for personality list: ${e.message}")
-            }
-
-            if (omittedPcCount > 0) {
-                player.sendSystemMessage(
-                    Component.translatableWithFallback(
-                        "cobblebrain.personality_list.limit_warning",
-                        "§e[CobbleBrain] Warning: $omittedPcCount PC Pokémon were omitted from the editor to stay within the 1.8 MB network limit. Consider deleting old memories to free up space.",
-                        omittedPcCount
-                    )
-                )
-            } else if (currentEstimatedChars >= nearLimitThreshold) {
-                player.sendSystemMessage(
-                    Component.translatableWithFallback(
-                        "cobblebrain.personality_list.limit_near",
-                        "§6[CobbleBrain] Notice: Your Pokémon personalities and memories are reaching 95% of the 1.8 MB network limit. Consider cleaning up old memories in the editor."
-                    )
-                )
             }
 
             DialogueSystem.sendPersonalityList?.invoke(player, array.toString())
@@ -214,6 +179,32 @@ object CobblebrainServerHandler {
             println("[CobbleBrain] Error handling request personality list: ${e.message}")
             e.printStackTrace()
         }
+    }
+
+    fun handleRequestPokemonMemories(player: ServerPlayer, pokemonUuid: String) {
+        val uuid = try {
+            java.util.UUID.fromString(pokemonUuid)
+        } catch (_: Exception) {
+            return
+        }
+
+        val partyPoke = PokemonQuery.getAllPokemon(player).firstOrNull { it.uuid == uuid }
+        val pcPoke = if (partyPoke == null) {
+            try {
+                com.cobblemon.mod.common.Cobblemon.storage.getPC(player).firstOrNull { it.uuid == uuid }
+            } catch (_: Exception) { null }
+        } else null
+
+        val poke = partyPoke ?: pcPoke
+        if (poke == null && !player.hasPermissions(2)) {
+            return
+        }
+
+        val displayName = poke?.let { it.nickname?.string?.takeIf { n -> n.isNotBlank() } ?: it.species.name }
+        val memories = MemorySystem.loadMemories(pokemonUuid, displayName)
+        val memoriesJson = gson.toJson(memories)
+
+        DialogueSystem.sendPokemonMemories?.invoke(player, pokemonUuid, memoriesJson)
     }
 
     fun handleSavePersonality(player: ServerPlayer, pokemonUuid: String, personalityJson: String, memoriesJson: String = "") {
@@ -302,6 +293,7 @@ object CobblebrainServerHandler {
         val file = MemorySystem.resolveTraitsFile(pokemonUuid, displayName)
         if (file.exists()) {
             file.delete()
+            MemorySystem.invalidatePersonalityCache(pokemonUuid)
             player.sendSystemMessage(Component.literal("Personality reset successfully.").withStyle(net.minecraft.ChatFormatting.GREEN))
         }
     }

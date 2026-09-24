@@ -134,6 +134,13 @@ object CobblebrainServerHandlerFabric {
             }
         }
 
+        ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.RequestPokemonMemoriesPayload.TYPE) { payload, context ->
+            context.server().execute {
+                val player: ServerPlayer = context.player()
+                CobblebrainServerHandler.handleRequestPokemonMemories(player, payload.pokemonUuid)
+            }
+        }
+
         // Advance AI Dialogue Payload
         ServerPlayNetworking.registerGlobalReceiver(vito.cobblebrain.network.CobblebrainPayloads.AdvanceAIDialoguePayload.TYPE) { payload, context ->
             context.server().execute {

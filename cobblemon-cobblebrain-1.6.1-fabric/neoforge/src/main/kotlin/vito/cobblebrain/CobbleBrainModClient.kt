@@ -46,6 +46,12 @@ object CobbleBrainModClientNeoForge {
         "category.cobblebrain"
     )
 
+    private val CMD_SCROLL = KeyMapping(
+        "key.cobblebrain.cmd_scroll",
+        GLFW.GLFW_KEY_X,
+        "category.cobblebrain"
+    )
+
     private val CMD_TOGGLE = KeyMapping(
         "key.cobblebrain.cmd_toggle",
         GLFW.GLFW_KEY_N,
@@ -101,6 +107,7 @@ object CobbleBrainModClientNeoForge {
         CobblebrainClientCommon.keyUp = CMD_UP
         CobblebrainClientCommon.keyDown = CMD_DOWN
         CobblebrainClientCommon.keyExecute = CMD_EXECUTE
+        CobblebrainClientCommon.keyScroll = CMD_SCROLL
         CobblebrainClientCommon.keyToggle = CMD_TOGGLE
         CobblebrainClientCommon.keyMode = CMD_MODE
         CobblebrainClientCommon.keyPing = KEY_PING
@@ -113,6 +120,7 @@ object CobbleBrainModClientNeoForge {
         event.register(CMD_UP)
         event.register(CMD_DOWN)
         event.register(CMD_EXECUTE)
+        event.register(CMD_SCROLL)
         event.register(CMD_TOGGLE)
         event.register(CMD_MODE)
         event.register(KEY_PING)
@@ -129,15 +137,23 @@ object CobbleBrainModClientNeoForge {
         while (KEY_DEBUG.consumeClick()) {
             vito.cobblebrain.client.StoryDebugClientHandler.handleF8Pressed()
         }
+        val isManual = try { ClientConfigHandler.clientConfig.manualActionNav } catch (_: Throwable) { false }
         while (CMD_UP.consumeClick()) {
-            HudSystem.navigateUp()
+            if (isManual) {
+                HudSystem.navigateUp()
+            }
         }
         while (CMD_DOWN.consumeClick()) {
-            HudSystem.navigateDown()
+            if (isManual) {
+                HudSystem.navigateDown()
+            }
         }
         while (CMD_EXECUTE.consumeClick()) {
-            HudSystem.executeAction()
+            if (isManual) {
+                HudSystem.executeAction()
+            }
         }
+        HudSystem.handleScrollKeyTick(CMD_SCROLL)
         while (CMD_TOGGLE.consumeClick()) {
             HudSystem.toggleVisibility()
         }

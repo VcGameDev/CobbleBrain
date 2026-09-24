@@ -76,6 +76,12 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        CobblebrainClientCommon.requestPokemonMemories = { uuid ->
+            if (net.minecraft.client.Minecraft.getInstance().player != null) {
+                ClientPlayNetworking.send(CobblebrainPayloads.RequestPokemonMemoriesPayload(uuid))
+            }
+        }
+
         CobblebrainClientCommon.sendRequestPromptWithMemory = { memoryText ->
             if (net.minecraft.client.Minecraft.getInstance().player != null) {
                 ClientPlayNetworking.send(CobblebrainPayloads.RequestPromptWithMemoryPayload(memoryText))
@@ -180,6 +186,14 @@ object CobblebrainClientHandlerFabric {
         ) { payload, context ->
             context.client().execute {
                 CobblebrainClientCommon.onPersonalityListReceived?.invoke(payload.dataJson)
+            }
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            CobblebrainPayloads.PokemonMemoriesPayload.TYPE
+        ) { payload, context ->
+            context.client().execute {
+                CobblebrainClientCommon.onPokemonMemoriesReceived?.invoke(payload.pokemonUuid, payload.memoriesJson)
             }
         }
 

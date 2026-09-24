@@ -15,6 +15,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.Pose
 import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.ClientConfigHandler
+import vito.cobblebrain.config.CobblebrainClientConfig
 import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.config.ConfigHandler
 import java.io.File
@@ -218,6 +219,27 @@ object ConfigCommands {
                                 player.sendSystemMessage(Component.literal(" "))
 
                                 player.sendSystemMessage(
+                                    Component.literal("/cobblebrain AddPlayerAbout <message> - adds player description/about details to the AI.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain clearPlayerAbout - clears your player description/about.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
+                                    Component.literal("/cobblebrain resetPlayerAbout - resets your player description/about to default.")
+                                        .withStyle(color)
+                                )
+
+                                player.sendSystemMessage(Component.literal(" "))
+
+                                player.sendSystemMessage(
                                     Component.literal("/cobblebrain clearChatBubbles <mode>[safe|strong] (OP only) - Removes stuck chat bubbles from the world (safe: tagged bubbles, strong: legacy bubbles, can delete other invisible armor stands with no gravity).")
                                         .withStyle(color)
                                 )
@@ -388,6 +410,7 @@ object ConfigCommands {
                                     MobBridge.removeGoal?.invoke(pokemon, goal)
                                     pokemon.navigation.stop()
                                     iterator.remove()
+                                    DialogueSystem.discardSecondaryBubble(pokemon.uuid)
                                     stopped++
                                 }
                             }
@@ -417,7 +440,7 @@ object ConfigCommands {
                                 .executes { ctx ->
                                     val value = StringArgumentType.getString(ctx, "value")
                                     ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(ClientConfigHandler.clientConfig.instruct.plus(value))
-                                    ConfigHandler.save()
+                                    ClientConfigHandler.save()
                                     ctx.source.sendSuccess(
                                         { Component.literal("instruct set to $value") },
                                         true
@@ -425,6 +448,86 @@ object ConfigCommands {
                                     1
                                 }
                         )
+                )
+                .then(
+                    Commands.literal("AddPlayerAbout")
+                        .then(
+                            Commands.argument("value", StringArgumentType.string())
+                                .executes { ctx ->
+                                    val value = StringArgumentType.getString(ctx, "value")
+                                    ClientConfigHandler.clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(ClientConfigHandler.clientConfig.playerAbout.plus(value))
+                                    ClientConfigHandler.save()
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("Player about updated: $value") },
+                                        true
+                                    )
+                                    1
+                                }
+                        )
+                )
+                .then(
+                    Commands.literal("addAbout")
+                        .then(
+                            Commands.argument("value", StringArgumentType.string())
+                                .executes { ctx ->
+                                    val value = StringArgumentType.getString(ctx, "value")
+                                    ClientConfigHandler.clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(ClientConfigHandler.clientConfig.playerAbout.plus(value))
+                                    ClientConfigHandler.save()
+                                    ctx.source.sendSuccess(
+                                        { Component.literal("Player about updated: $value") },
+                                        true
+                                    )
+                                    1
+                                }
+                        )
+                )
+                .then(
+                    Commands.literal("clearPlayerAbout")
+                        .executes { ctx ->
+                            ClientConfigHandler.clientConfig.playerAbout = listOf("[ABOUT THE PLAYER]")
+                            ClientConfigHandler.save()
+                            ctx.source.sendSuccess(
+                                { Component.literal("Player about cleared.") },
+                                true
+                            )
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("clearAbout")
+                        .executes { ctx ->
+                            ClientConfigHandler.clientConfig.playerAbout = listOf("[ABOUT THE PLAYER]")
+                            ClientConfigHandler.save()
+                            ctx.source.sendSuccess(
+                                { Component.literal("Player about cleared.") },
+                                true
+                            )
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("resetPlayerAbout")
+                        .executes { ctx ->
+                            ClientConfigHandler.clientConfig.playerAbout = CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
+                            ClientConfigHandler.save()
+                            ctx.source.sendSuccess(
+                                { Component.literal("Player about reset to default.") },
+                                true
+                            )
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("resetAbout")
+                        .executes { ctx ->
+                            ClientConfigHandler.clientConfig.playerAbout = CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
+                            ClientConfigHandler.save()
+                            ctx.source.sendSuccess(
+                                { Component.literal("Player about reset to default.") },
+                                true
+                            )
+                            1
+                        }
                 )
                 .then(
                     Commands.literal("summary")

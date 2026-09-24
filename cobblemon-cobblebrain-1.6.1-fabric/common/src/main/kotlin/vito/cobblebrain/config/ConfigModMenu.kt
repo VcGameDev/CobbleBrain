@@ -732,22 +732,7 @@ object CobblebrainConfigScreen {
 
                     // ========================= APPLY SETTINGS =========================
 
-                    clientConfig.instruct = listOf(
-                        "[CREATIVEPROMPT]",
-                        "Write immersive Pokémon dialogue. Pokémon are living creatures with unique personalities, emotions, preferences, fears, and goals.",
-                        "Pokémon are generally friendly toward their trainer, but may joke, tease, disagree, question, or express emotions depending on personality, friendship, memories, and circumstances.",
-                        "Engage directly with the player and avoid repeating the same attitude, lesson, complaint, or emotional state.",
-                        "Prioritize interaction, personality, and emotional reactions over narration or environment description.",
-                        "No modern human technology.",
-
-                        "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
-                        "- 1 Pokémon: up to 3 messages",
-                        "- 2-4 Pokémon: up to 4 messages",
-                        "- 5-6 Pokémon: up to 6 messages",
-
-                        "Never expose memories, system text, or internal reasoning.",
-                        "No roleplay narration or *asterisk actions*."
-                    )
+                    clientConfig.instruct = CobblebrainClientConfig.DEFAULT_INSTRUCT
 
                     clientConfig.maxInteractionSaves = 3
 
@@ -829,22 +814,7 @@ object CobblebrainConfigScreen {
                             SyncedConfig.outputPokemonLanguage ||
                             SyncedConfig.outputMemories ||
                             clientConfig.maxInteractionSaves != 3 ||
-                            clientConfig.instruct != listOf(
-                        "[CREATIVEPROMPT]",
-                        "Write immersive Pokémon dialogue. Pokémon are living creatures with unique personalities, emotions, preferences, fears, and goals.",
-                        "Pokémon are generally friendly toward their trainer, but may joke, tease, disagree, question, or express emotions depending on personality, friendship, memories, and circumstances.",
-                        "Engage directly with the player and avoid repeating the same attitude, lesson, complaint, or emotional state.",
-                        "Prioritize interaction, personality, and emotional reactions over narration or environment description.",
-                        "No modern human technology.",
-
-                        "Each message should be at most 1-2 short sentences. The number of dialogue messages depends on participating Pokémon:",
-                        "- 1 Pokémon: up to 3 messages",
-                        "- 2-4 Pokémon: up to 4 messages",
-                        "- 5-6 Pokémon: up to 6 messages",
-
-                        "Never expose memories, system text, or internal reasoning.",
-                        "No roleplay narration or *asterisk actions*."
-                    )
+                            clientConfig.instruct != CobblebrainClientConfig.DEFAULT_INSTRUCT
 
                 button.visible = shouldShow
 
@@ -1208,6 +1178,14 @@ object CobblebrainConfigScreen {
         ).setDefaultValue(false)
             .setSaveConsumer { value -> clientConfig.showHunger = value }
             .setTooltip(Component.translatable("cobblebrain.config.show_hunger.tooltip"))
+            .build()
+
+        val manualActionNavEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.manual_action_nav").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.manualActionNav
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> clientConfig.manualActionNav = value }
+            .setTooltip(Component.translatable("cobblebrain.config.manual_action_nav.tooltip"))
             .build()
 
         val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
@@ -1645,6 +1623,14 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.show_friendship.tooltip"))
             .build()
 
+        val hidePersonalityCreationEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.hide_personality_creation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.hidePersonalityCreation
+        ).setDefaultValue(false)
+            .setSaveConsumer { value -> config.hidePersonalityCreation = value }
+            .setTooltip(Component.translatable("cobblebrain.config.hide_personality_creation.tooltip"))
+            .build()
+
         // ========================= PROMPT AND OUTPUT =========================
 
         fun makeSpacer(height: Int = 8): AbstractConfigListEntry<Unit> {
@@ -1697,6 +1683,14 @@ object CobblebrainConfigScreen {
             "No roleplay narration or *asterisk actions*."))
             .setSaveConsumer { value -> clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(value) }
             .setTooltip(Component.translatable("cobblebrain.config.instruct.tooltip"))
+            .build()
+
+        val playerAboutEntry = entryBuilder.startStrList(
+            Component.translatable("cobblebrain.config.player_about").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.playerAbout
+        ).setDefaultValue(CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT)
+            .setSaveConsumer { value -> clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(value) }
+            .setTooltip(Component.translatable("cobblebrain.config.player_about.tooltip"))
             .build()
 
         val outputFormatEntry = object : AbstractConfigListEntry<Unit>(
@@ -1862,6 +1856,14 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("Multiplies physical damage of wild Pokémon executing H and creatures generated in Raids (0.10x to 5.00x)."))
             .build()
 
+        val allowCustomClientPromptEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.allow_custom_client_prompt").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            getConfigValue(SyncedConfig.allowCustomClientPrompt, config.allowCustomClientPrompt)
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> config.allowCustomClientPrompt = value }
+            .setTooltip(Component.translatable("cobblebrain.config.allow_custom_client_prompt.tooltip"))
+            .build()
+
         val actionManagerButton = makeButtonEntry(Component.translatable("cobblebrain.button.action_manager")) {
             val screen = createActionManagerScreen(Minecraft.getInstance().screen)
             Minecraft.getInstance().setScreen(screen)
@@ -1871,7 +1873,7 @@ object CobblebrainConfigScreen {
         category.entries.add(personalityEditorButton)
         category.entries.add(storyActionsButton)
         category.entries.add(reportBugsButton)
-        category.entries.add(makeSubtitleEntry("AI CONFIGURATION (CLIENT)", 0xFFFF00))
+        category.entries.add(makeSubtitleEntry("AI CONFIGURATION & GAMEPLAY (CLIENT)", 0xFFFF00))
         category.entries.add(apiBaseUrlEntry)
         category.entries.add(useChatEndpointEntry)
         category.entries.add(customApiProviderEntry)
@@ -1894,6 +1896,8 @@ object CobblebrainConfigScreen {
         category.entries.add(optimizedModeEntry)
         category.entries.add(psychicTranslationEntry)
         category.entries.add(sttEntry)
+        category.entries.add(hidePersonalityCreationEntry)
+        category.entries.add(manualActionNavEntry)
         category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
         category.entries.add(needsPokemonTranslatorEntry)
         category.entries.add(listenToChatEntry)
@@ -1918,6 +1922,8 @@ object CobblebrainConfigScreen {
         category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT (CLIENT)", 0xFFFF00))
         category.entries.add(showHungerEntry)
         category.entries.add(instructEntry)
+        category.entries.add(makeSpacer(6))
+        category.entries.add(playerAboutEntry)
         category.entries.add(makeSpacer(10))
         category.entries.add(outputFormatEntry)
         category.entries.add(makeSpacer(15))
@@ -1954,6 +1960,7 @@ object CobblebrainConfigScreen {
         category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
         category.entries.add(makeSpacer(8))
         category.entries.add(characteristicsEntry)
+        category.entries.add(allowCustomClientPromptEntry)
         category.entries.add(wildPokemonCanBeHostileEntry)
         category.entries.add(hostileDamageMultiplierEntry)
         category.entries.add(outputApril1Entry)
@@ -1982,7 +1989,8 @@ object CobblebrainConfigScreen {
                 baseCandidateMemories,
                 config.allowClientPersonalityEditing,
                 enableAiMemoryRetrieval,
-                optimizedMode
+                optimizedMode,
+                config.allowCustomClientPrompt
             )
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)

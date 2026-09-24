@@ -17,6 +17,7 @@ object DialogueFilter {
     val REPLACE_QUIRK_REGEX = Regex("""(?:^|[\s|;])&REPLACE_QUIRK:([^:\n|]+):([^->\n;|]+)->([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val TRAIT_REGEX = Regex("""(?:^|[\s|;])&TRAIT:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val QUIRK_REGEX = Regex("""(?:^|[\s|;])&QUIRK:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
+    val CATCH_REGEX = Regex("""(?:^|[\n|;])\s*(?:[-*•+]|\d+\.)?\s*!(?!RESUME\b|Error\b|Erro\b)(?:CATCH[:\s-]*)?([A-Za-z0-9_.'♀♂#-]+)?""", RegexOption.IGNORE_CASE)
 
     val MULTI_SPACE_REGEX = Regex("""[ \t]+""")
     val PUNCTUATION_SPACING_REGEX = Regex("""\s+([,.:!?])""")

@@ -157,6 +157,16 @@ object CobblebrainMod : ModInitializer {
             CobblebrainPayloads.DeletePersonalityPayload.CODEC
         )
 
+        PayloadTypeRegistry.playC2S().register(
+            CobblebrainPayloads.RequestPokemonMemoriesPayload.TYPE,
+            CobblebrainPayloads.RequestPokemonMemoriesPayload.CODEC
+        )
+
+        PayloadTypeRegistry.playS2C().register(
+            CobblebrainPayloads.PokemonMemoriesPayload.TYPE,
+            CobblebrainPayloads.PokemonMemoriesPayload.CODEC
+        )
+
         // AI DIALOGUE PAYLOADS
         PayloadTypeRegistry.playS2C().register(
             CobblebrainPayloads.AIDialogueBoxPayload.TYPE,
