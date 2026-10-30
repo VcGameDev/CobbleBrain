@@ -199,9 +199,28 @@ object ClientConfigHandler {
     }
 
     fun load() {
+        val configFile = File("config/cobblebrain_client.json5")
+        val existedBefore = configFile.exists()
+        var hadPresetKey = false
+        if (existedBefore) {
+            try {
+                val text = configFile.readText()
+                val cleanText = text.replace(Regex("""^\s*//.*$""", RegexOption.MULTILINE), "")
+                val obj = JsonParser.parseString(cleanText).asJsonObject
+                hadPresetKey = obj.has("presetMode")
+            } catch (e: Exception) {
+            }
+        }
+
         clientConfig = ConfigBuilder.load(CobblebrainClientConfig::class.java, "cobblebrain_client")
         clientConfig.instruct = ensureCreativePrompt(clientConfig.instruct)
         clientConfig.playerAbout = ensurePlayerAboutHeader(clientConfig.playerAbout)
+
+        if (existedBefore && !hadPresetKey) {
+            clientConfig.presetMode = "Custom"
+            clientConfig.isCustomizedFromPreset = false
+            save()
+        }
     }
 
     fun save() {

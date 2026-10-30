@@ -29,7 +29,7 @@ data class CobblebrainConfig(
     var spontaneousDialogueChance: Double = 0.05,
     var listenToChat: Boolean = false,
     var onlyNearbyChat: Boolean = false,
-    var maxStoredMemories: Int = 100,
+    var maxStoredMemories: Int = 90,
     var maxRelevantMemories: Int = 4,
     var favoriteMemorySlots: Int = 5,
     var baseCandidateMemories: Int = 10,

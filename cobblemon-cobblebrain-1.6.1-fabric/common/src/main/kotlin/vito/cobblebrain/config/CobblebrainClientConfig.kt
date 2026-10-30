@@ -28,6 +28,9 @@ data class CobblebrainClientConfig(
     var enableStt: Boolean = false,
     var seenMigrationNotice140: Boolean = false,
     var manualActionNav: Boolean = false,
+    var presetMode: String = "Normal",
+    var isCustomizedFromPreset: Boolean = false,
+    var showAdvancedAiOptions: Boolean = false,
 
     // ================= DIALOGUE & UI SETTINGS =================
 
@@ -59,9 +62,7 @@ data class CobblebrainClientConfig(
         )
 
         val DEFAULT_PLAYER_ABOUT: List<String> = listOf(
-            "[ABOUT THE PLAYER]",
-            "Physical appearance: A Pokémon trainer exploring the world.",
-            "Personality: Friendly, curious, and respectful towards Pokémon."
+            "[ABOUT THE PLAYER]"
         )
     }
 }

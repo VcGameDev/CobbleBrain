@@ -77,10 +77,7 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
         }
 
         DialogueSystem.sendToPlayerSummary = { player, contextData ->
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
-                player,
-                vito.cobblebrain.network.CobblebrainPayloads.SummaryPromptPayload(contextData)
-            )
+            CobblebrainNetworkingNeoForge.sendSummaryToPlayer(player, contextData)
         }
 
         DialogueSystem.sendAIDialogueBoxToPlayer = { player, payload ->
@@ -158,6 +155,12 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
             giveCobblebrainGuide(player)
             CobblebrainWorldSave.markGuideReceived(player)
         }
+    }
+
+    @SubscribeEvent
+    fun onPlayerLogout(event: PlayerEvent.PlayerLoggedOutEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        vito.cobblebrain.server.CobblebrainServerHandler.clearPendingRequests(player.uuid)
     }
 
     @SubscribeEvent

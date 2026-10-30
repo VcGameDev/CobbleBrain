@@ -116,6 +116,13 @@ object DialogueFilter {
         return line
             .replace(ACTION_TAG_REGEX, "")
             .replace(SCORE_TAG_REGEX, "")
+            .replace(FLAG_REGEX, "")
+            .replace(TRAIT_REGEX, "")
+            .replace(QUIRK_REGEX, "")
+            .replace(REPLACE_TRAIT_REGEX, "")
+            .replace(REPLACE_QUIRK_REGEX, "")
+            .replace(MEMORY_REGEX, "")
+            .replace(CATCH_REGEX, "")
             .replace(MULTI_SPACE_REGEX, " ")
             .replace(PUNCTUATION_SPACING_REGEX, "$1")
             .trim()

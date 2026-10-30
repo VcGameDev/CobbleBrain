@@ -13,15 +13,17 @@ object CobblebrainClientHandlerFabric {
         }
 
         // CLIENT → SERVER
-        CobblebrainClientCommon.sendToServer = { response ->
+        CobblebrainClientCommon.sendToServer = { response, requestId ->
+            val reqId = if (requestId.isNotBlank()) requestId else CobblebrainClientCommon.activeRequestId
             ClientPlayNetworking.send(
-                CobblebrainPayloads.AIResponsePayload(response)
+                CobblebrainPayloads.AIResponsePayload(response, reqId)
             )
         }
 
-        CobblebrainClientCommon.sendBackgroundToServer = { response ->
+        CobblebrainClientCommon.sendBackgroundToServer = { response, requestId ->
+            val reqId = if (requestId.isNotBlank()) requestId else CobblebrainClientCommon.activeBackgroundRequestId
             ClientPlayNetworking.send(
-                CobblebrainPayloads.BackgroundResponsePayload(response)
+                CobblebrainPayloads.BackgroundResponsePayload(response, reqId)
             )
         }
 
@@ -117,13 +119,17 @@ object CobblebrainClientHandlerFabric {
             }
         }
 
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register { handler, client ->
+            SyncedConfig.resetToLocal()
+        }
+
         // SERVER → CLIENT
         ClientPlayNetworking.registerGlobalReceiver(
             CobblebrainPayloads.PromptPayload.TYPE
         ) { payload, context ->
 
             context.client().execute {
-                CobblebrainClientCommon.onPromptReceived(payload.prompt)
+                CobblebrainClientCommon.onPromptReceived(payload.prompt, payload.requestId)
             }
         }
 
@@ -149,7 +155,7 @@ object CobblebrainClientHandlerFabric {
             CobblebrainPayloads.SummaryPromptPayload.TYPE
         ) { payload, context ->
             context.client().execute {
-                CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData)
+                CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData, payload.requestId)
             }
         }
 
@@ -157,7 +163,7 @@ object CobblebrainClientHandlerFabric {
             CobblebrainPayloads.BackgroundPromptPayload.TYPE
         ) { payload, context ->
             context.client().execute {
-                CobblebrainClientCommon.onBackgroundPromptReceived(payload.prompt)
+                CobblebrainClientCommon.onBackgroundPromptReceived(payload.prompt, payload.requestId)
             }
         }
 

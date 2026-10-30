@@ -25,7 +25,7 @@ object CobblebrainServerHandlerFabric {
                 val player: ServerPlayer = context.player()
                 println("[SERVER RECEIVED RESPONSE] from ${player.name.string}")
 
-                CobblebrainServerHandler.processIaResponse(player.server, player, payload.content)
+                CobblebrainServerHandler.processIaResponse(player.server, player, payload.content, payload.requestId)
             }
         }
 
@@ -35,7 +35,7 @@ object CobblebrainServerHandlerFabric {
                 val player: ServerPlayer = context.player()
                 println("[SERVER RECEIVED BACKGROUND RESPONSE] from ${player.name.string}")
 
-                CobblebrainServerHandler.processBackgroundResponse(player.server, player, payload.content)
+                CobblebrainServerHandler.processBackgroundResponse(player.server, player, payload.content, payload.requestId)
             }
         }
 

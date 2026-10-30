@@ -54,8 +54,9 @@ object CobblebrainServerHandler {
                 }
                 
                 val actionKey = command.action.lowercase().replace(" ", "_")
-                val actionTransName = Component.translatable("cobblebrain.action.$actionKey")
-                val explanationTrans = Component.translatable("cobblebrain.action.desc.$actionKey")
+                val normalizedKey = if (actionKey == "debuff") "debuff_enemy" else actionKey
+                val actionTransName = Component.translatable("cobblebrain.action.$normalizedKey")
+                val explanationTrans = Component.translatable("cobblebrain.action.desc.$normalizedKey")
                 
                 val actionColor = when(actionName) {
                     "COOK" -> net.minecraft.ChatFormatting.GOLD
@@ -89,7 +90,10 @@ object CobblebrainServerHandler {
                 pokemon?.entity?.let { entity ->
                     RecentEventsSystem.commandSources[entity.uuid] = RecentEventsSystem.CommandSource.HUD
                     CommandState.activeCommands[entity.uuid] = command.action
-                    player.sendSystemMessage(Component.translatable("cobblebrain.feedback.command_applied", command.action, command.pokemonName))
+                    val actionKey = command.action.lowercase().replace(" ", "_")
+                    val normalizedKey = if (actionKey == "debuff") "debuff_enemy" else actionKey
+                    val actionTransName = Component.translatable("cobblebrain.action.$normalizedKey")
+                    player.sendSystemMessage(Component.translatable("cobblebrain.feedback.command_applied", actionTransName, command.pokemonName))
                 } ?: run {
                     player.sendSystemMessage(Component.translatable("cobblebrain.feedback.pokemon_not_found", command.pokemonName))
                 }
@@ -97,13 +101,51 @@ object CobblebrainServerHandler {
         }
     }
 
+    data class PendingRequest(val requestId: String, val timestamp: Long)
+    private val pendingRequests = java.util.concurrent.ConcurrentHashMap<java.util.UUID, java.util.concurrent.CopyOnWriteArrayList<PendingRequest>>()
+    private const val REQUEST_TIMEOUT_MS = 120_000L // 2 minutes
+
+    fun registerPendingRequest(player: ServerPlayer): String {
+        val requestId = java.util.UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        val list = pendingRequests.computeIfAbsent(player.uuid) { java.util.concurrent.CopyOnWriteArrayList() }
+        list.removeIf { now - it.timestamp > REQUEST_TIMEOUT_MS }
+        list.add(PendingRequest(requestId, now))
+        return requestId
+    }
+
+    fun validateAndConsumeRequest(player: ServerPlayer, requestId: String): Boolean {
+        if (requestId.isBlank()) return false
+        val list = pendingRequests[player.uuid] ?: return false
+        val now = System.currentTimeMillis()
+        list.removeIf { now - it.timestamp > REQUEST_TIMEOUT_MS }
+        val found = list.find { it.requestId == requestId }
+        if (found != null) {
+            list.remove(found)
+            return true
+        }
+        return false
+    }
+
+    fun clearPendingRequests(playerUuid: java.util.UUID) {
+        pendingRequests.remove(playerUuid)
+    }
+
     // Stage 1: Process foreground AI response
-    fun processIaResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
+    fun processIaResponse(server: MinecraftServer, player: ServerPlayer, content: String, requestId: String = "") {
+        if (!validateAndConsumeRequest(player, requestId)) {
+            println("[CobbleBrain] REJECTED unauthorized, forged or expired AI response from ${player.name.string}")
+            return
+        }
         checkIaResponse(server, player, content)
     }
 
     // Stage 2: Background State Resolution
-    fun processBackgroundResponse(server: MinecraftServer, player: ServerPlayer, content: String) {
+    fun processBackgroundResponse(server: MinecraftServer, player: ServerPlayer, content: String, requestId: String = "") {
+        if (!validateAndConsumeRequest(player, requestId)) {
+            println("[CobbleBrain] REJECTED unauthorized, forged or expired background response from ${player.name.string}")
+            return
+        }
         DialogueSystem.checkBackgroundResponse(server, player, content)
     }
 

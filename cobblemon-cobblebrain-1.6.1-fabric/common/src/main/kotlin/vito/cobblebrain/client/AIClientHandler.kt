@@ -11,7 +11,9 @@ object AIClientHandler {
                 val handler = createHandler()
                 handler.respostaNormal(prompt)
             } catch (e: Exception) {
-                "!Error! Failed to generate AI response: ${e.message}"
+                val err = "!Error! Failed to generate AI response: ${e.message}"
+                CobblebrainClientCommon.sendToServer?.invoke(err, CobblebrainClientCommon.activeRequestId)
+                err
             }
         }
     }

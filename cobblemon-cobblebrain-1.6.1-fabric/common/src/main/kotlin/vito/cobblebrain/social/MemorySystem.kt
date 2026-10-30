@@ -161,6 +161,7 @@ object MemorySystem {
                     savePersonality(pokemonUuid, personality, displayName)
                 }
             }
+            personalityCache[pokemonUuid] = personality
             return personality
         }
 

@@ -12,8 +12,12 @@ object CobblebrainClientRuntimeNeoForge {
     private var waitTicks = 0
 
     fun init() {
-        CobblebrainClientCommon.sendToServer = { response ->
-            CobblebrainNetworkingNeoForge.sendToServer(response)
+        CobblebrainClientCommon.sendToServer = { response, requestId ->
+            CobblebrainNetworkingNeoForge.sendToServer(response, requestId)
+        }
+
+        CobblebrainClientCommon.sendBackgroundToServer = { response, requestId ->
+            CobblebrainNetworkingNeoForge.sendBackgroundToServer(response, requestId)
         }
 
         CobblebrainClientCommon.callTeamAction = { action ->

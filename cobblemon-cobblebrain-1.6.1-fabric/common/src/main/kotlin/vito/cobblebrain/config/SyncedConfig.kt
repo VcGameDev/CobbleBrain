@@ -31,7 +31,7 @@ object SyncedConfig {
         private set
     var enableKarma = true
         private set
-    var maxStoredMemories = 100
+    var maxStoredMemories = 90
         private set
     var maxRelevantMemories = 4
         private set
@@ -133,8 +133,9 @@ object SyncedConfig {
         optimizedMode: Boolean = true,
         allowCustomClientPrompt: Boolean = true
     ) {
-        if (isServerControlled) {
-            println("Attempt to change config blocked (server-controlled)")
+        val client = Minecraft.getInstance()
+        if (isServerControlled || (client.player != null && !client.isLocalServer)) {
+            println("[CobbleBrain] Attempt to change synced config blocked (connected to remote server)")
             return
         }
 
@@ -186,5 +187,29 @@ object SyncedConfig {
     fun resetToLocal() {
         isServerControlled = false
         received = false
+        try {
+            val cfg = ConfigHandler.config
+            useDefaultOutput = cfg.useDefaultOutput
+            outputDialogue = cfg.outputDialogue
+            outputActions = cfg.outputActions
+            outputFriendship = cfg.outputFriendship
+            outputMemories = cfg.outputMemories
+            outputApril1 = cfg.outputApril1
+            outputQuests = cfg.outputQuests
+            outputPokemonLanguage = cfg.outputPokemonLanguage
+            needsPokemonTranslator = cfg.needsPokemonTranslator
+            outputGuaranteedCatch = cfg.outputGuaranteedCatch
+            enableKarma = cfg.enableKarma
+            maxStoredMemories = cfg.maxStoredMemories
+            maxRelevantMemories = cfg.maxRelevantMemories
+            favoriteMemorySlots = cfg.favoriteMemorySlots
+            baseCandidateMemories = cfg.baseCandidateMemories
+            allowClientPersonalityEditing = cfg.allowClientPersonalityEditing
+            allowCustomClientPrompt = cfg.allowCustomClientPrompt
+            forceOfflineMode = false
+            enableAiMemoryRetrieval = cfg.enableAiMemoryRetrieval
+            optimizedMode = cfg.optimizedMode
+            actionSettings = cfg.actionSettings
+        } catch (_: Throwable) {}
     }
 }

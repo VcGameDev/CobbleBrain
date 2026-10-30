@@ -497,6 +497,8 @@ object DialogueSystem {
         }
     }
 
+    private val lastBattleDialogueTime = ConcurrentHashMap<UUID, Long>()
+
     fun onBattleStarted(event: BattleStartedEvent) {
         val battle = event.battle
         val server = battle.players.firstOrNull()?.server ?: return
@@ -507,7 +509,6 @@ object DialogueSystem {
             val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
 
             if (ativos.size < 2) {
-                println("Battle started, but no active Pokémon detected yet.")
                 return@execute
             }
 
@@ -520,6 +521,11 @@ object DialogueSystem {
             } ?: return@execute
 
             if (OfflinePlayers.isOffline(player.uuid)) return@execute
+
+            val now = System.currentTimeMillis()
+            val lastTime = lastBattleDialogueTime.getOrDefault(player.uuid, 0L)
+            if (now - lastTime < 8_000L) return@execute
+            lastBattleDialogueTime[player.uuid] = now
 
             scheduledMessages[player.uuid]?.clear()
 
@@ -561,6 +567,11 @@ object DialogueSystem {
             val ownerPlayer = pokemon.getOwnerPlayer() ?: return
 
             if (OfflinePlayers.isOffline(ownerPlayer.uuid)) return
+
+            val now = System.currentTimeMillis()
+            val lastTime = lastBattleDialogueTime.getOrDefault(ownerPlayer.uuid, 0L)
+            if (now - lastTime < 8_000L) return
+            lastBattleDialogueTime[ownerPlayer.uuid] = now
 
             scheduledMessages[ownerPlayer.uuid]?.clear()
 
@@ -618,6 +629,7 @@ object DialogueSystem {
 
             if (OfflinePlayers.isOffline(player.uuid)) return@forEach
 
+            lastBattleDialogueTime[player.uuid] = System.currentTimeMillis()
             scheduledMessages[player.uuid]?.clear()
 
             val prompt = buildPrompt(
@@ -656,6 +668,7 @@ object DialogueSystem {
                 )
             }
 
+            lastBattleDialogueTime[player.uuid] = System.currentTimeMillis()
             scheduledMessages[player.uuid]?.clear()
 
             if (won) {
@@ -1047,7 +1060,8 @@ object DialogueSystem {
                                 cosmeticText.substringAfter("Friendship", "").substringBefore(":").trim()
                             }
                             val change = cosmeticText.substringAfter(":").trim()
-                            Component.literal("Friendship $name: $change").withStyle(ChatFormatting.GREEN)
+                            val isPos = !change.startsWith("-")
+                            Component.literal("Friendship $name: $change").withStyle(if (isPos) ChatFormatting.GREEN else ChatFormatting.RED)
                         } else if (isError) {
                             Component.literal(cosmeticText).withStyle { style ->
                                 style.withColor(ChatFormatting.RED)
@@ -1393,8 +1407,8 @@ object DialogueSystem {
         for (candUuid in candidateUuids) {
             if (secondaryBubbleStands.containsKey(candUuid)) continue
 
-            val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(candUuid) } as? PokemonEntity ?: continue
-            if (!entity.isAlive || entity.isRemoved || entity.pokemon.getOwnerUUID() != null) {
+            val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(candUuid) } as? PokemonEntity
+            if (entity == null || !entity.isAlive || entity.isRemoved || entity.pokemon.getOwnerUUID() != null) {
                 guaranteedCatchPokemon.remove(candUuid)
                 continue
             }
@@ -2222,14 +2236,12 @@ object DialogueSystem {
         // If player just sent a message, don't trigger spontaneous dialogue this tick
         if (justSentMessage[player.uuid] == true) {
             justSentMessage[player.uuid] = false
-            println("[DEBUG] Bloqueando diálogo espontâneo para ${player.name.string} porque ele acabou de falar")
             return
         }
 
         // If player has pending messages, don't trigger spontaneous dialogue
         val playerMessages = scheduledMessages[player.uuid] ?: emptyList()
         if (playerMessages.isNotEmpty()) {
-            println("[DEBUG] Jogador ${player.name.string} tem mensagens pendentes, não disparar espontâneo")
             return
         }
 
@@ -2243,8 +2255,6 @@ object DialogueSystem {
         val now = player.server?.tickCount?.toLong() ?: 0L
 
         val chance = config.spontaneousDialogueChance
-
-        println("Chance: $chance | Roll: ${Random.nextDouble()}")
 
         if (Random.nextDouble() <= chance) {
 
@@ -2280,8 +2290,6 @@ object DialogueSystem {
             )
 
             sendToPlayer?.invoke(player, prompt)
-
-            println("[DEBUG] Spontaneous dialogue for ${player.name.string} | Recommended: ${recommendedTopics.joinToString(" | ")}")
         }
     }
 
@@ -2487,7 +2495,7 @@ object DialogueSystem {
                 appendLine()
                 appendLine("Topic & Character Guidelines:")
                 appendLine("- Look at [LAST INTERACTIONS] and [RECOMMENDED TOPICS].")
-                appendLine("- Choose a topic directly from [RECOMMENDED TOPICS] (or continue [LAST INTERACTIONS] if there is a conversation already flowing) that best fits each Pokémon's nature, traits, and the significance of recent events:")
+                appendLine("- Choose a topic directly from [RECOMMENDED TOPICS] (continue [LAST INTERACTIONS] only if the Pokémon involved are still present in [ACTIVE POKEMON] or [NEARBY POKEMON], otherwise pick a new topic from [RECOMMENDED TOPICS]) that best fits each Pokémon's nature, traits, and the significance of recent events:")
                 appendLine("  * If a high-impact event occurred recently (e.g. took heavy damage, fainted a strong foe, found treasure, nearby danger), prioritize reacting to that event from [RECOMMENDED TOPICS]!")
                 appendLine("  * If recent events are minor or uneventful, choose the topic from [RECOMMENDED TOPICS] that best aligns with their nature and traits.")
                 appendLine("- If commenting on a topic, keep it direct, casual, and in-character.")
@@ -2822,12 +2830,17 @@ object DialogueSystem {
                 appendLine()
             }
 
-            // Friendship Settings: Only append if [FLAG: FRIENDSHIP] is present
-            if (config.outputFriendship && ("FRIENDSHIP" in flags || flags.isEmpty())) {
+            // Friendship Settings: Only append if [FLAG: FRIENDSHIP] is present and enabled
+            if (config.outputFriendship && (config.increaseFriendship || config.decreaseFriendship) && ("FRIENDSHIP" in flags || flags.isEmpty())) {
                 appendLine("[FRIENDSHIP]")
                 appendLine("plus=${config.increaseFriendship}")
                 appendLine("minus=${config.decreaseFriendship}")
-                appendLine("Format: %<PokemonName>:<delta> (Where <delta> is an integer between -5 and +5) (Only output if the interaction was meaningful)")
+                val rangeDesc = when {
+                    config.increaseFriendship && config.decreaseFriendship -> "between -5 and +5"
+                    config.increaseFriendship -> "between +1 and +5 (negative delta is DISABLED: only positive or 0)"
+                    else -> "between -5 and -1 (positive delta is DISABLED: only negative or 0)"
+                }
+                appendLine("Format: %<PokemonName>:<delta> (Where <delta> is an integer $rangeDesc) (Only output if the interaction was meaningful)")
                 appendLine()
             }
 
@@ -3225,7 +3238,7 @@ object DialogueSystem {
                 appendLine()
                 appendLine("Topic & Character Guidelines:")
                 appendLine("- Look at [LAST INTERACTIONS] and [RECOMMENDED TOPICS].")
-                appendLine("- Choose a topic directly from [RECOMMENDED TOPICS] (or continue [LAST INTERACTIONS] if there is a conversation already flowing) that best fits each Pokémon's nature, traits, and the significance of recent events:")
+                appendLine("- Choose a topic directly from [RECOMMENDED TOPICS] (continue [LAST INTERACTIONS] only if the Pokémon involved are still present in [ACTIVE POKEMON] or [NEARBY POKEMON], otherwise pick a new topic from [RECOMMENDED TOPICS]) that best fits each Pokémon's nature, traits, and the significance of recent events:")
                 appendLine("  * If a high-impact event occurred recently (e.g. took heavy damage, fainted a strong foe, found treasure, nearby danger), prioritize reacting to that event from [RECOMMENDED TOPICS]!")
                 appendLine("  * If recent events are minor or uneventful, choose the topic from [RECOMMENDED TOPICS] that best aligns with their nature and traits.")
                 appendLine("- If commenting on a topic, keep it direct, casual, and in-character.")
@@ -3571,9 +3584,18 @@ object DialogueSystem {
                 appendLine()
             }
 
-            appendLine("[FRIENDSHIP]")
-            appendLine("plus=${config.increaseFriendship}")
-            appendLine("minus=${config.decreaseFriendship}")
+            if (config.outputFriendship && (config.increaseFriendship || config.decreaseFriendship)) {
+                appendLine("[FRIENDSHIP]")
+                appendLine("plus=${config.increaseFriendship}")
+                appendLine("minus=${config.decreaseFriendship}")
+                val rangeDesc = when {
+                    config.increaseFriendship && config.decreaseFriendship -> "between -5 and +5"
+                    config.increaseFriendship -> "between +1 and +5 (negative delta is DISABLED: only positive or 0)"
+                    else -> "between -5 and -1 (positive delta is DISABLED: only negative or 0)"
+                }
+                appendLine("Format: %<PokemonName>:<delta> (Where <delta> is an integer $rangeDesc) (Only output if the interaction was meaningful)")
+                appendLine()
+            }
 
             if (config.enableTraits && !config.optimizedMode) {
                 val needInit = activePokemon.filter { p ->
@@ -3744,10 +3766,8 @@ object DialogueSystem {
             it.startsWith("=") ||
             it.startsWith("!") ||
             it.startsWith("[FLAG", ignoreCase = true) ||
-            (it.startsWith("%") && !it.contains(":")) ||
-            (!config.showFriendship &&
-                    (it.startsWith("friendship", ignoreCase = true) ||
-                            (it.startsWith("%") && it.contains(":")))) ||
+            it.startsWith("%") ||
+            it.startsWith("friendship", ignoreCase = true) ||
             (it.contains(":") && DialogueFilter.isReservedSystemKeyword(it.substringBefore(":"))) ||
             !it.contains(":")
         }
@@ -4426,7 +4446,7 @@ object DialogueSystem {
         }
 
         // 4. Process Resumes
-        val allParts = content.split("|").map { it.trim() }
+        val allParts = content.split(Regex("[|\n]")).map { it.trim() }
         val resumeLines = allParts.filter { it.startsWith("!RESUME", ignoreCase = true) || it.startsWith("=") }
         resumeLines.forEach { line ->
             val resumeText = if (line.startsWith("!RESUME", ignoreCase = true)) {
@@ -4497,6 +4517,13 @@ object DialogueSystem {
                 }
 
                 wildPokemon?.let { entity ->
+                    CommandState.clearPokemonIrritation(entity.uuid)
+                    if (CommandState.activeCommands[entity.uuid] == "hostile") {
+                        CommandState.activeCommands.remove(entity.uuid)
+                    }
+                    CommandState.activeTargets.remove(entity.uuid)
+                    entity.target = null
+
                     val wasAlreadyGuaranteed = entity.tags.contains("cobblebrain:guaranteed_${player.uuid}")
                     entity.addTag("cobblebrain:guaranteed_${player.uuid}")
                     guaranteedCatchPokemon.add(entity.uuid)
@@ -4523,8 +4550,10 @@ object DialogueSystem {
         val friendshipPercentRegex = Regex("""(?:^|[\s|;])%\s*([\w\s.'♀♂#-]+)\s*:\s*([+-]?\s*\d+)""", RegexOption.IGNORE_CASE)
 
         fun applyFriendship(nomePokemon: String, rawDelta: String) {
+            if (!config.outputFriendship) return
             val cleanDelta = rawDelta.replace(" ", "")
-            val incrementoInt = cleanDelta.toIntOrNull() ?: return
+            val rawIncremento = cleanDelta.toIntOrNull() ?: return
+            val incrementoInt = rawIncremento.coerceIn(-5, 5)
             if (incrementoInt == 0) return
 
             val uuid = resolvePokemonUuid(nomePokemon)
@@ -4540,30 +4569,35 @@ object DialogueSystem {
             }
 
             if (alvo != null) {
+                var applied = false
                 if (incrementoInt > 0 && config.increaseFriendship) {
                     alvo.incrementFriendship(incrementoInt)
+                    applied = true
                 } else if (incrementoInt < 0 && config.decreaseFriendship) {
                     alvo.decrementFriendship(-incrementoInt)
+                    applied = true
                 }
 
-                val displayName = alvo.nickname?.string?.takeIf { it.isNotBlank() } ?: alvo.species.name
+                if (applied) {
+                    val displayName = alvo.nickname?.string?.takeIf { it.isNotBlank() } ?: alvo.species.name
 
-                if (config.showFriendship) {
-                    val formatted = if (incrementoInt > 0) "+$incrementoInt" else "$incrementoInt"
-                    player.sendSystemMessage(
-                        Component.literal("Friendship $displayName: $formatted").withStyle(if (incrementoInt > 0) ChatFormatting.GREEN else ChatFormatting.RED)
+                    if (config.showFriendship) {
+                        val formatted = if (incrementoInt > 0) "+$incrementoInt" else "$incrementoInt"
+                        player.sendSystemMessage(
+                            Component.literal("Friendship $displayName: $formatted").withStyle(if (incrementoInt > 0) ChatFormatting.GREEN else ChatFormatting.RED)
+                        )
+                    }
+
+                    vito.cobblebrain.engine.StoryDebugger.recordLog(
+                        storyId = "system",
+                        blockId = "stage2_background",
+                        blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
+                        status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
+                        level = "INFO",
+                        message = "[Friendship Update] $displayName: ${if (incrementoInt > 0) "+$incrementoInt" else "$incrementoInt"}",
+                        server = server
                     )
                 }
-
-                vito.cobblebrain.engine.StoryDebugger.recordLog(
-                    storyId = "system",
-                    blockId = "stage2_background",
-                    blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
-                    status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
-                    level = "INFO",
-                    message = "[Friendship Update] $displayName: ${if (incrementoInt > 0) "+$incrementoInt" else "$incrementoInt"}",
-                    server = server
-                )
             }
         }
 

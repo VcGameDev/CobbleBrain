@@ -59,6 +59,7 @@ class DialogueSystemNeoForge {
             }
 
             CobblemonEvents.POKEMON_CAPTURED.subscribe {
+                if (OfflinePlayers.isOffline(it.player.uuid)) return@subscribe
                 if (it.pokemon.nickname?.string.equals(it.pokemon.species.name, ignoreCase = true)) {
                     it.pokemon.nickname = null
                 }

@@ -14,9 +14,12 @@ import vito.cobblebrain.config.ConfigHandler
 import vito.cobblebrain.config.SyncedConfig
 import vito.cobblebrain.engine.StoryDebugger
 import vito.cobblebrain.engine.StoryExecutor
+import net.minecraft.resources.ResourceLocation
+import com.mojang.blaze3d.systems.RenderSystem
 
 object HudSystem {
 
+    private val ACTION_SCROLL_TIP_TEXTURE = ResourceLocation.fromNamespaceAndPath("cobblebrain", "textures/gui/action_scroll_tip.png")
     private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "EXCAVATE", "BUILD", "REST")
     private var selectedActionIndex = 0
     private var isVisible = true
@@ -91,14 +94,19 @@ object HudSystem {
             }
     }
 
-    private fun getSortedCommands(): List<String> {
+    private fun getSortedCommands(includeCancel: Boolean = isScrollActive): List<String> {
         val filtered = commands.filter { SyncedConfig.isActionActiveForPlayer(it) }
         val sorted = filtered.sortedWith(
             compareByDescending<String> { isCommandAvailable(it) }
                 .thenBy { commands.indexOf(it) }
         ).toMutableList()
-        if (isScrollActive) {
-            sorted.add("CANCEL")
+        if (includeCancel) {
+            val lastAvailable = sorted.indexOfLast { isCommandAvailable(it) }
+            if (lastAvailable >= 0) {
+                sorted.add(lastAvailable + 1, "CANCEL")
+            } else {
+                sorted.add(0, "CANCEL")
+            }
         }
         return sorted
     }
@@ -313,7 +321,7 @@ object HudSystem {
 
         // Calculate menu width based on longest label (scale 0.7)
         val textScale = 0.7f
-        val minMenuWidth = 42
+        val minMenuWidth = 48
         val longestNameWidth = sortedCommands.maxOfOrNull { cmd ->
             val displayName = getActionDisplayName(cmd)
             ((client.font.width("> $displayName") * textScale) + 6).toInt()
@@ -335,6 +343,90 @@ object HudSystem {
         val totalHeight = visibleCount * itemHeight
         val x = screenWidth - menuWidth - 8
         val y = (screenHeight - totalHeight) / 2
+        val isManual = try { ClientConfigHandler.clientConfig.manualActionNav } catch (_: Throwable) { false }
+
+        if (isScrollActive) {
+            val scale = 0.7f
+            val baseSize = 32f
+            val scaledSize = baseSize * scale
+
+            val safeIdx = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
+            val currentCmd = sortedCommands.getOrNull(safeIdx)?.uppercase() ?: ""
+            val isCancel = currentCmd == "CANCEL"
+
+            val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
+            val line1Text = I18n.get("cobblebrain.hud.release_key_to", execKey)
+            val line2Text: String
+            val line1Color = if (isCancel) 0xFFFF8888.toInt() else 0xFFFFAA00.toInt()
+            val line2Color: Int
+
+            if (isCancel) {
+                line2Text = "§c" + I18n.get("cobblebrain.hud.release_to_cancel_line2")
+                line2Color = 0xFFFF4444.toInt()
+            } else {
+                val actionDisp = getActionDisplayName(currentCmd)
+                line2Text = "§e$actionDisp"
+                line2Color = 0xFFFFFF55.toInt()
+            }
+
+            val textScale = 0.55f
+            val line1W = (client.font.width(line1Text) * textScale).toInt()
+            val line2W = (client.font.width(line2Text) * textScale).toInt()
+            val maxTextW = maxOf(scaledSize.toInt(), line1W, line2W)
+
+            val tipCenterX = x - (maxTextW / 2f) - 6f
+            val spriteX = tipCenterX - (scaledSize / 2f)
+            val lineHeightScaled = client.font.lineHeight * textScale
+            val totalWidgetHeight = scaledSize + 3f + (2 * lineHeightScaled) + 2f
+            val tipStartY = y + (totalHeight - totalWidgetHeight) / 2f
+            val spriteY = tipStartY
+
+            val frameDuration = 100L
+            val pauseDuration = 800L
+            val totalCycle = (3 * frameDuration) + pauseDuration
+            val timeInCycle = System.currentTimeMillis() % totalCycle
+            val currentFrame = when {
+                timeInCycle < frameDuration -> 0
+                timeInCycle < frameDuration * 2 -> 1
+                timeInCycle < frameDuration * 3 -> 2
+                else -> 3
+            }
+
+            RenderSystem.enableBlend()
+            RenderSystem.defaultBlendFunc()
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f)
+            guiGraphics.pose().pushPose()
+            guiGraphics.pose().translate(spriteX.toDouble(), spriteY.toDouble(), 0.0)
+            guiGraphics.pose().scale(scale, scale, 1.0f)
+            guiGraphics.blit(
+                ACTION_SCROLL_TIP_TEXTURE,
+                0,
+                0,
+                (currentFrame * 32).toFloat(),
+                0f,
+                32,
+                32,
+                128,
+                32
+            )
+            guiGraphics.pose().popPose()
+
+            val textY1 = spriteY + scaledSize + 3f
+            val textX1 = tipCenterX - (line1W / 2f)
+            guiGraphics.pose().pushPose()
+            guiGraphics.pose().translate(textX1.toDouble(), textY1.toDouble(), 0.0)
+            guiGraphics.pose().scale(textScale, textScale, 1.0f)
+            guiGraphics.drawString(client.font, line1Text, 0, 0, line1Color, true)
+            guiGraphics.pose().popPose()
+
+            val textY2 = textY1 + lineHeightScaled + 1f
+            val textX2 = tipCenterX - (line2W / 2f)
+            guiGraphics.pose().pushPose()
+            guiGraphics.pose().translate(textX2.toDouble(), textY2.toDouble(), 0.0)
+            guiGraphics.pose().scale(textScale, textScale, 1.0f)
+            guiGraphics.drawString(client.font, line2Text, 0, 0, line2Color, true)
+            guiGraphics.pose().popPose()
+        }
 
         val borderColor = if (isScrollActive) 0xFFFFAA00.toInt() else 0xFF5555FF.toInt()
         val bgAlpha = if (isScrollActive) 0xCC000000.toInt() else 0x99000000.toInt()
@@ -350,42 +442,36 @@ object HudSystem {
         val hasBelow = endVisible < totalCount
         val centerX = x + (menuWidth / 2)
 
-        if (isScrollActive) {
-            val safeIdx = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
-            val currentCmd = sortedCommands.getOrNull(safeIdx)?.uppercase() ?: ""
-            guiGraphics.pose().pushPose()
-            guiGraphics.pose().translate(x.toDouble(), (y - 32).toDouble(), 0.0)
-            guiGraphics.pose().scale(0.6f, 0.6f, 1f)
-            if (currentCmd == "CANCEL") {
-                val cancelText = I18n.get("cobblebrain.hud.release_to_cancel")
-                guiGraphics.drawString(client.font, "§c✖ $cancelText", 0, 0, 0xFFFF5555.toInt(), true)
-            } else {
-                val actionDisp = getActionDisplayName(currentCmd)
-                val releaseText = I18n.get("cobblebrain.hud.release_to_execute", actionDisp)
-                guiGraphics.drawString(client.font, "§e$releaseText", 0, 0, 0xFFFFAA00.toInt(), true)
-            }
-            guiGraphics.pose().popPose()
-        }
-
-        // Mode Status Header (SOLO vs MULTI)
-        val modeHeaderText = if (isSoloMode) {
-            val pokeName = getSelectedPokemonName()
-            "MODE: SOLO [${pokeName ?: "Selected"}]"
-        } else {
-            "MODE: MULTI (ALL)"
-        }
+        // Mode Status Header (SOLO vs MULTI) with 2nd line for Pokémon name to avoid leaking
         val modeColor = if (isSoloMode) 0xFFFFAA00.toInt() else 0xFF00AAFF.toInt()
+        val modeLine1 = if (isSoloMode) "MODE: SOLO" else "MODE: MULTI"
+        val modeScale = 0.6f
+        val maxNameWidthPx = ((menuWidth + 4) / modeScale).toInt()
+        val modeLine2 = if (isSoloMode) {
+            val rawName = getSelectedPokemonName() ?: "Selected"
+            val fittedName = if (client.font.width("[$rawName]") > maxNameWidthPx) {
+                val bracketDotsW = client.font.width("[...]")
+                val availW = (maxNameWidthPx - bracketDotsW).coerceAtLeast(10)
+                client.font.plainSubstrByWidth(rawName, availW) + "..."
+            } else {
+                rawName
+            }
+            "[$fittedName]"
+        } else {
+            "(ALL)"
+        }
 
         guiGraphics.pose().pushPose()
-        guiGraphics.pose().translate(x.toDouble(), (y - 20).toDouble(), 0.0)
-        guiGraphics.pose().scale(0.6f, 0.6f, 1f)
-        guiGraphics.drawString(client.font, modeHeaderText, 0, 0, modeColor, true)
+        guiGraphics.pose().translate(x.toDouble(), (y - 25).toDouble(), 0.0)
+        guiGraphics.pose().scale(modeScale, modeScale, 1f)
+        guiGraphics.drawString(client.font, modeLine1, 0, 0, modeColor, true)
+        guiGraphics.drawString(client.font, modeLine2, 0, 10, modeColor, true)
         guiGraphics.pose().popPose()
 
         if (hasAbove) {
             val upStr = "▲"
             val upWidth = client.font.width(upStr)
-            guiGraphics.drawString(client.font, upStr, centerX - (upWidth / 2), y - 10, 0xFFFFFFFF.toInt(), false)
+            guiGraphics.drawString(client.font, upStr, centerX - (upWidth / 2), y - 8, 0xFFFFFFFF.toInt(), false)
         }
 
         if (hasBelow) {
@@ -449,7 +535,7 @@ object HudSystem {
         }
 
         // Keybind hints
-        val scrollKey = CobblebrainClientCommon.keyScroll?.translatedKeyMessage?.string ?: "X"
+        val scrollKey = CobblebrainClientCommon.keyScroll?.translatedKeyMessage?.string ?: "Z"
         val upKey = CobblebrainClientCommon.keyUp?.translatedKeyMessage?.string ?: "B"
         val downKey = CobblebrainClientCommon.keyDown?.translatedKeyMessage?.string ?: "V"
         val execKey = CobblebrainClientCommon.keyExecute?.translatedKeyMessage?.string ?: "Z"
@@ -463,7 +549,6 @@ object HudSystem {
         guiGraphics.pose().translate((x).toDouble(), (y + totalHeight + 6).toDouble(), 0.0)
         guiGraphics.pose().scale(0.5f, 0.5f, 1f)
 
-        val isManual = try { ClientConfigHandler.clientConfig.manualActionNav } catch (_: Throwable) { false }
         val upDownText = I18n.get("cobblebrain.hud.up_down")
         val confirmOrderText = I18n.get("cobblebrain.hud.confirm_order")
         val scrollActionsText = I18n.get("cobblebrain.hud.scroll_actions")
@@ -477,10 +562,8 @@ object HudSystem {
             tipY += 10
             guiGraphics.drawString(client.font, "$execKey: $confirmOrderText", 0, tipY, 0x99FFFFFF.toInt(), false)
             tipY += 10
-            guiGraphics.drawString(client.font, "[Hold $scrollKey]: $scrollActionsText", 0, tipY, 0xFFFFAA00.toInt(), false)
-            tipY += 10
         } else {
-            guiGraphics.drawString(client.font, "[Hold $scrollKey]: $scrollActionsText", 0, tipY, 0xFFFFAA00.toInt(), false)
+            guiGraphics.drawString(client.font, "[Hold $execKey]: $scrollActionsText", 0, tipY, 0xFFFFAA00.toInt(), false)
             tipY += 10
         }
         guiGraphics.drawString(client.font, "$toggleKey: $toggleHudText", 0, tipY, 0x99FFFFFF.toInt(), false)
@@ -626,8 +709,8 @@ object HudSystem {
             if (wasScrollKeyDown) {
                 wasScrollKeyDown = false
                 if (isScrollActive) {
-                    isScrollActive = false
                     executeAction()
+                    isScrollActive = false
                 }
             }
         }
@@ -708,12 +791,19 @@ object HudSystem {
     }
 
     fun executeAction() {
-        val sortedCommands = getSortedCommands()
+        val sortedCommands = getSortedCommands(includeCancel = true)
         if (sortedCommands.isEmpty()) return
         val safeIndex = selectedActionIndex.coerceIn(0, sortedCommands.size - 1)
         val cmd = sortedCommands[safeIndex].uppercase()
 
         if (cmd == "CANCEL") {
+            val normalCommands = getSortedCommands(includeCancel = false)
+            val available = normalCommands.filter { isCommandAvailable(it) }
+            selectedActionIndex = if (available.isNotEmpty()) {
+                val candidate = (safeIndex - 1).coerceAtLeast(0)
+                if (candidate < normalCommands.size && isCommandAvailable(normalCommands[candidate])) candidate else 0
+            } else 0
+            playSelectSound(Minecraft.getInstance())
             return
         }
 
@@ -736,10 +826,11 @@ object HudSystem {
         }
         playConfirmSound(Minecraft.getInstance())
 
-        val duration = when(cmd) {
+        val duration = when(cmd.uppercase()) {
             "BUFF" -> 150000L // 2:30 (150s)
             "REPAIR" -> 300000L // 5:00 (300s)
             "SHIFT" -> 240000L // 4:00 (240s)
+            "DEBUFF", "DEBUFF ENEMY" -> 60000L // 1:00 (60s)
             "TELEPORT" -> {
                 val cdSec = try {
                     val mc = Minecraft.getInstance()
@@ -751,12 +842,23 @@ object HudSystem {
             else -> 0L
         }
         if (duration > 0) {
-            cooldowns[cmd] = System.currentTimeMillis() + duration
+            val endTime = System.currentTimeMillis() + duration
+            cooldowns[cmd.uppercase()] = endTime
+            if (cmd.uppercase() in listOf("DEBUFF", "DEBUFF ENEMY")) {
+                cooldowns["DEBUFF"] = endTime
+                cooldowns["DEBUFF ENEMY"] = endTime
+            }
         }
     }
 
     private fun getCooldownRemaining(cmd: String): Long {
-        val endTime = cooldowns[cmd.uppercase()] ?: return 0L
+        val upper = cmd.uppercase()
+        val altKey = when (upper) {
+            "DEBUFF" -> "DEBUFF ENEMY"
+            "DEBUFF ENEMY" -> "DEBUFF"
+            else -> upper
+        }
+        val endTime: Long = cooldowns[upper] ?: cooldowns[altKey] ?: return 0L
         val remaining = endTime - System.currentTimeMillis()
         return if (remaining > 0) remaining else 0L
     }
@@ -789,7 +891,10 @@ object HudSystem {
         if (buff > 0) cooldowns["BUFF"] = now + buff
         if (repair > 0) cooldowns["REPAIR"] = now + repair
         if (shift > 0) cooldowns["SHIFT"] = now + shift
-        if (debuff > 0) cooldowns["DEBUFF ENEMY"] = now + debuff
+        if (debuff > 0) {
+            cooldowns["DEBUFF ENEMY"] = now + debuff
+            cooldowns["DEBUFF"] = now + debuff
+        }
         if (teleport > 0) cooldowns["TELEPORT"] = now + teleport
     }
 

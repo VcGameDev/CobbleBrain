@@ -73,23 +73,26 @@ object DialogueSystemFabric {
         }
 
         DialogueSystem.sendToPlayer = { player, prompt ->
+            val requestId = vito.cobblebrain.server.CobblebrainServerHandler.registerPendingRequest(player)
             ServerPlayNetworking.send(
                 player,
-                CobblebrainPayloads.PromptPayload(prompt)
+                CobblebrainPayloads.PromptPayload(prompt, requestId)
             )
         }
 
         DialogueSystem.sendToPlayerBackground = { player, prompt ->
+            val requestId = vito.cobblebrain.server.CobblebrainServerHandler.registerPendingRequest(player)
             ServerPlayNetworking.send(
                 player,
-                CobblebrainPayloads.BackgroundPromptPayload(prompt)
+                CobblebrainPayloads.BackgroundPromptPayload(prompt, requestId)
             )
         }
 
         DialogueSystem.sendToPlayerSummary = { player, contextData ->
+            val requestId = vito.cobblebrain.server.CobblebrainServerHandler.registerPendingRequest(player)
             ServerPlayNetworking.send(
                 player,
-                CobblebrainPayloads.SummaryPromptPayload(contextData)
+                CobblebrainPayloads.SummaryPromptPayload(contextData, requestId)
             )
         }
 

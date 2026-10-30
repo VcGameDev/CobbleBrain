@@ -13,7 +13,8 @@ object CobblebrainServerHandlers {
         CobblebrainServerHandler.processIaResponse(
             player.server,
             player,
-            payload.content
+            payload.content,
+            payload.requestId
         )
     }
 
@@ -21,7 +22,8 @@ object CobblebrainServerHandlers {
         CobblebrainServerHandler.processBackgroundResponse(
             player.server,
             player,
-            payload.content
+            payload.content,
+            payload.requestId
         )
     }
 

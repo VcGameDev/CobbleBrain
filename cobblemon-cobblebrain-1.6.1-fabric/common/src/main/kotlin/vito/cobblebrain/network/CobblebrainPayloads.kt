@@ -6,75 +6,110 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
 
 object CobblebrainPayloads {
-    data class PromptPayload(val prompt: String) : CustomPacketPayload {
+    data class PromptPayload(val prompt: String, val requestId: String = "") : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "send_prompt")
             val TYPE = CustomPacketPayload.Type<PromptPayload>(ID)
 
             val CODEC: StreamCodec<RegistryFriendlyByteBuf, PromptPayload> =
                 StreamCodec.of(
-                    { buf, payload -> buf.writeUtf(payload.prompt, 262144) },
-                    { buf -> PromptPayload(buf.readUtf(262144)) }
+                    { buf, payload ->
+                        buf.writeUtf(payload.prompt, 262144)
+                        buf.writeUtf(payload.requestId, 64)
+                    },
+                    { buf ->
+                        val prompt = buf.readUtf(262144)
+                        val reqId = if (buf.isReadable) buf.readUtf(64) else ""
+                        PromptPayload(prompt, reqId)
+                    }
                 )
         }
 
         override fun type() = TYPE
     }
 
-    data class AIResponsePayload(val content: String) : CustomPacketPayload {
+    data class AIResponsePayload(val content: String, val requestId: String = "") : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "ai_response")
             val TYPE = CustomPacketPayload.Type<AIResponsePayload>(ID)
 
             val CODEC: StreamCodec<RegistryFriendlyByteBuf, AIResponsePayload> =
                 StreamCodec.of(
-                    { buf, payload -> buf.writeUtf(payload.content, 262144) },
-                    { buf -> AIResponsePayload(buf.readUtf(262144)) }
+                    { buf, payload ->
+                        buf.writeUtf(payload.content, 262144)
+                        buf.writeUtf(payload.requestId, 64)
+                    },
+                    { buf ->
+                        val content = buf.readUtf(262144)
+                        val reqId = if (buf.isReadable) buf.readUtf(64) else ""
+                        AIResponsePayload(content, reqId)
+                    }
                 )
         }
 
         override fun type() = TYPE
     }
 
-    data class SummaryPromptPayload(val contextData: String) : CustomPacketPayload {
+    data class SummaryPromptPayload(val contextData: String, val requestId: String = "") : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "summary_prompt")
             val TYPE = CustomPacketPayload.Type<SummaryPromptPayload>(ID)
 
             val CODEC: StreamCodec<RegistryFriendlyByteBuf, SummaryPromptPayload> =
                 StreamCodec.of(
-                    { buf, payload -> buf.writeUtf(payload.contextData, 262144) },
-                    { buf -> SummaryPromptPayload(buf.readUtf(262144)) }
+                    { buf, payload ->
+                        buf.writeUtf(payload.contextData, 262144)
+                        buf.writeUtf(payload.requestId, 64)
+                    },
+                    { buf ->
+                        val contextData = buf.readUtf(262144)
+                        val reqId = if (buf.isReadable) buf.readUtf(64) else ""
+                        SummaryPromptPayload(contextData, reqId)
+                    }
                 )
         }
 
         override fun type() = TYPE
     }
 
-    data class BackgroundPromptPayload(val prompt: String) : CustomPacketPayload {
+    data class BackgroundPromptPayload(val prompt: String, val requestId: String = "") : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "background_prompt")
             val TYPE = CustomPacketPayload.Type<BackgroundPromptPayload>(ID)
 
             val CODEC: StreamCodec<RegistryFriendlyByteBuf, BackgroundPromptPayload> =
                 StreamCodec.of(
-                    { buf, payload -> buf.writeUtf(payload.prompt, 262144) },
-                    { buf -> BackgroundPromptPayload(buf.readUtf(262144)) }
+                    { buf, payload ->
+                        buf.writeUtf(payload.prompt, 262144)
+                        buf.writeUtf(payload.requestId, 64)
+                    },
+                    { buf ->
+                        val prompt = buf.readUtf(262144)
+                        val reqId = if (buf.isReadable) buf.readUtf(64) else ""
+                        BackgroundPromptPayload(prompt, reqId)
+                    }
                 )
         }
 
         override fun type() = TYPE
     }
 
-    data class BackgroundResponsePayload(val content: String) : CustomPacketPayload {
+    data class BackgroundResponsePayload(val content: String, val requestId: String = "") : CustomPacketPayload {
         companion object {
             val ID = ResourceLocation("cobblebrain", "background_response")
             val TYPE = CustomPacketPayload.Type<BackgroundResponsePayload>(ID)
 
             val CODEC: StreamCodec<RegistryFriendlyByteBuf, BackgroundResponsePayload> =
                 StreamCodec.of(
-                    { buf, payload -> buf.writeUtf(payload.content, 262144) },
-                    { buf -> BackgroundResponsePayload(buf.readUtf(262144)) }
+                    { buf, payload ->
+                        buf.writeUtf(payload.content, 262144)
+                        buf.writeUtf(payload.requestId, 64)
+                    },
+                    { buf ->
+                        val content = buf.readUtf(262144)
+                        val reqId = if (buf.isReadable) buf.readUtf(64) else ""
+                        BackgroundResponsePayload(content, reqId)
+                    }
                 )
         }
 

@@ -779,7 +779,7 @@ class AIHandler {
         historico.add(Mensagem("assistant", sanitizedRaw))
         limitarHistorico()
 
-        CobblebrainClientCommon.sendToServer?.invoke(formatted)
+        CobblebrainClientCommon.sendToServer?.invoke(formatted, CobblebrainClientCommon.activeRequestId)
 
         // Process LAST INTERACTIONS for local ConversationMemory
         val parts = formatted.split("|").map { it.trim() }
@@ -875,7 +875,7 @@ class AIHandler {
             responseText.replace("\\n", "\n").replace("\n", " ").replace("\\", "")
         }
 
-        CobblebrainClientCommon.sendToServer?.invoke(formatted)
+        CobblebrainClientCommon.sendToServer?.invoke(formatted, CobblebrainClientCommon.activeRequestId)
     }
 
     fun generateBackgroundState(prompt: String): String {

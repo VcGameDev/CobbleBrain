@@ -24,32 +24,41 @@ object CobblebrainNetworkingNeoForge {
 
     // SERVER → CLIENT
     fun sendToPlayer(player: ServerPlayer, prompt: String) {
-        // UTIL PRA DEBUG
-        //debug(player, "ENVIANDO PACOTE: ${prompt.take(50)}")
+        val requestId = vito.cobblebrain.server.CobblebrainServerHandler.registerPendingRequest(player)
         PacketDistributor.sendToPlayer(
             player,
-            CobblebrainPayloads.PromptPayload(prompt)
+            CobblebrainPayloads.PromptPayload(prompt, requestId)
         )
     }
 
     fun sendSummaryToPlayer(player: ServerPlayer, contextData: String) {
+        val requestId = vito.cobblebrain.server.CobblebrainServerHandler.registerPendingRequest(player)
         PacketDistributor.sendToPlayer(
             player,
-            CobblebrainPayloads.SummaryPromptPayload(contextData)
+            CobblebrainPayloads.SummaryPromptPayload(contextData, requestId)
         )
     }
 
     fun sendBackgroundToPlayer(player: ServerPlayer, prompt: String) {
+        val requestId = vito.cobblebrain.server.CobblebrainServerHandler.registerPendingRequest(player)
         PacketDistributor.sendToPlayer(
             player,
-            CobblebrainPayloads.BackgroundPromptPayload(prompt)
+            CobblebrainPayloads.BackgroundPromptPayload(prompt, requestId)
         )
     }
 
     // CLIENT → SERVER
-    fun sendToServer(response: String) {
+    fun sendToServer(response: String, requestId: String = "") {
+        val reqId = if (requestId.isNotBlank()) requestId else CobblebrainClientCommon.activeRequestId
         PacketDistributor.sendToServer(
-            CobblebrainPayloads.AIResponsePayload(response)
+            CobblebrainPayloads.AIResponsePayload(response, reqId)
+        )
+    }
+
+    fun sendBackgroundToServer(response: String, requestId: String = "") {
+        val reqId = if (requestId.isNotBlank()) requestId else CobblebrainClientCommon.activeBackgroundRequestId
+        PacketDistributor.sendToServer(
+            CobblebrainPayloads.BackgroundResponsePayload(response, reqId)
         )
     }
 

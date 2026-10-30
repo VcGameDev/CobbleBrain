@@ -46,12 +46,6 @@ object CobbleBrainModClientNeoForge {
         "category.cobblebrain"
     )
 
-    private val CMD_SCROLL = KeyMapping(
-        "key.cobblebrain.cmd_scroll",
-        GLFW.GLFW_KEY_X,
-        "category.cobblebrain"
-    )
-
     private val CMD_TOGGLE = KeyMapping(
         "key.cobblebrain.cmd_toggle",
         GLFW.GLFW_KEY_N,
@@ -107,7 +101,7 @@ object CobbleBrainModClientNeoForge {
         CobblebrainClientCommon.keyUp = CMD_UP
         CobblebrainClientCommon.keyDown = CMD_DOWN
         CobblebrainClientCommon.keyExecute = CMD_EXECUTE
-        CobblebrainClientCommon.keyScroll = CMD_SCROLL
+        CobblebrainClientCommon.keyScroll = CMD_EXECUTE
         CobblebrainClientCommon.keyToggle = CMD_TOGGLE
         CobblebrainClientCommon.keyMode = CMD_MODE
         CobblebrainClientCommon.keyPing = KEY_PING
@@ -120,7 +114,6 @@ object CobbleBrainModClientNeoForge {
         event.register(CMD_UP)
         event.register(CMD_DOWN)
         event.register(CMD_EXECUTE)
-        event.register(CMD_SCROLL)
         event.register(CMD_TOGGLE)
         event.register(CMD_MODE)
         event.register(KEY_PING)
@@ -129,6 +122,7 @@ object CobbleBrainModClientNeoForge {
     }
 
     fun onClientTick(event: ClientTickEvent.Post) {
+        CobblebrainConfigScreen.checkSession()
         MigrationNoticeChecker.checkAndShow(Minecraft.getInstance())
         vito.cobblebrain.client.KeyInputClientManager.clientTick()
         while (OPEN_CONFIG.consumeClick()) {
@@ -149,11 +143,8 @@ object CobbleBrainModClientNeoForge {
             }
         }
         while (CMD_EXECUTE.consumeClick()) {
-            if (isManual) {
-                HudSystem.executeAction()
-            }
         }
-        HudSystem.handleScrollKeyTick(CMD_SCROLL)
+        HudSystem.handleScrollKeyTick(CMD_EXECUTE)
         while (CMD_TOGGLE.consumeClick()) {
             HudSystem.toggleVisibility()
         }
@@ -211,6 +202,11 @@ object CobbleBrainModClientNeoForge {
             config.offlineMode || forceOfflineMode,
             config.offlineTalkMode
         )
+    }
+
+    @SubscribeEvent
+    fun onClientLogout(event: ClientPlayerNetworkEvent.LoggingOut) {
+        SyncedConfig.resetToLocal()
     }
 
     @SubscribeEvent

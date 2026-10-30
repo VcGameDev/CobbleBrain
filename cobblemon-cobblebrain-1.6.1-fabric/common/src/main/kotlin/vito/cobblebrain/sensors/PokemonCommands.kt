@@ -87,7 +87,12 @@ fun parseCommand(line: String): PokemonCommand? {
     if (parts.size < 2) return null
 
     val pokemonName = parts[0].replace(Regex("\\s*\\(.*?\\)"), "").substringBefore(" ").substringBefore("#").trim()
-    var action = parts[1].trim().lowercase().substringBefore(" ").substringBefore("#").trim()
+    val rawAction = parts[1].trim().lowercase().substringBefore("#").trim()
+    var action = if (rawAction.startsWith("debuff enemy") || rawAction.startsWith("debuff_enemy")) {
+        "debuff enemy"
+    } else {
+        rawAction.substringBefore(" ").trim()
+    }
     val target = if (parts.size >= 3) parts[2].replace(Regex("\\s*\\(.*?\\)"), "").substringBefore(" ").substringBefore("#").trim().takeIf { it.isNotEmpty() } else null
     
     action = when (action) {
@@ -95,7 +100,7 @@ fun parseCommand(line: String): PokemonCommand? {
         "h" -> "hostile"
         "e" -> "eat"
         "b" -> "buff"
-        "d" -> "debuff enemy"
+        "d", "debuff", "debuff enemy", "debuff_enemy" -> "debuff enemy"
         "s" -> "rest"
         "p" -> "protect"
         "i" -> "idle"
@@ -709,7 +714,9 @@ object CommandTickHandler {
                     val spd = cobblemonPokemon.speed
                     val scaledDamage = 2.0f + (atk * 0.03f)
                     val speed = 0.60 + (spd / 2.0) * 0.01
-                    pokemon.navigation.moveTo(target, speed)
+                    if (pokemon.navigation.isDone || server.tickCount % 6 == 0) {
+                        pokemon.navigation.moveTo(target, speed)
+                    }
 
                     val reach = (pokemon.bbWidth * 2.0f) + 1.5f
                     val inRange = pokemon.distanceToSqr(target) <= (reach * reach) && pokemon.hasLineOfSight(target)
@@ -1044,7 +1051,9 @@ object CommandTickHandler {
                     }
 
                     pokemon.target = finalTarget
-                    pokemon.navigation.moveTo(finalTarget, speed)
+                    if (pokemon.navigation.isDone || server.tickCount % 6 == 0) {
+                        pokemon.navigation.moveTo(finalTarget, speed)
+                    }
 
                     val reach = (pokemon.bbWidth * 2.0f) + 1.5f
                     val inRange = pokemon.distanceToSqr(finalTarget) <= (reach * reach) &&
@@ -1095,7 +1104,9 @@ object CommandTickHandler {
                     } else null
 
                     if (finalTarget == null) {
-                        pokemon.navigation.moveTo(owner, speed)
+                        if (pokemon.navigation.isDone || server.tickCount % 6 == 0) {
+                            pokemon.navigation.moveTo(owner, speed)
+                        }
                         pokemon.target = null
 
                         val idleTicks = chaseCooldown.getOrDefault(pokemonId, 0)
@@ -1115,7 +1126,9 @@ object CommandTickHandler {
                     }
 
                     pokemon.target = finalTarget
-                    pokemon.navigation.moveTo(finalTarget, speed)
+                    if (pokemon.navigation.isDone || server.tickCount % 6 == 0) {
+                        pokemon.navigation.moveTo(finalTarget, speed)
+                    }
 
                     val reach = (pokemon.bbWidth * 2.0f) + 1.5f
                     val inRange = pokemon.distanceToSqr(finalTarget) <= (reach * reach) &&
@@ -1322,7 +1335,7 @@ object CommandTickHandler {
                     }
                 }
 
-                "debuff enemy" -> {
+                "debuff enemy", "debuff", "debuff_enemy" -> {
                     if (announcedStates[pokemonId] != "debuff") {
                         sendMessage(
                             owner,

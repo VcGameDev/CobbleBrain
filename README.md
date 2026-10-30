@@ -1,6 +1,6 @@
 # Project CobbleBrain
 
-![Version](https://img.shields.io/badge/version-1.5.3-blue.svg)
+![Version](https://img.shields.io/badge/version-1.6.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MPL_2.0-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
@@ -349,6 +349,7 @@ The options below are grouped according to their category in the in-game Configu
 
 | Variable | Type | Description |
 |--------------------------------|------|------------------------------------------------------------------------------------------------------------------------------------|
+| `Preset Mode (presetMode)` | String | Selects a predefined configuration profile (Smart, Normal, Light, Offline, or Custom) to easily balance quality, token usage, and performance. |
 | `apiBaseUrl` | String | The base URL of the API endpoint. Examples include OpenRouter, Google AI Studio, or a local LM Studio server. |
 | `useChatEndpoint` | Boolean | Automatically includes '/v1/chat/completions' in the ApiBaseUrl address. Disable it if you are having trouble accessing your AI API. |
 | `Custom API Provider (customApiProvider)` | String | If apiBaseUrl is a local address (127.0.0.1), the system uses the provider name to adapt messages. Officially supported: player2, lmstudio |
@@ -371,6 +372,8 @@ The options below are grouped according to their category in the in-game Configu
 | `optimizedMode` | Boolean | Optimized two-step pipeline mode: evaluates interaction importance before updating memories or friendship, saving tokens and speeding up responses. |
 | `psychicTranslation` | Boolean | Allows Psychic-type Pokémon to translate other Pokémon without requiring an Exp Share. |
 | `enableStt` | Boolean | Enables Speech-to-Text / Voice Input via microphone with the MCMti mod. |
+| `Manual Action Navigation (manualActionNav)` | Boolean | When enabled, uses B/V keys to navigate actions and Z to execute. When disabled, hold X to scroll actions with the mouse wheel and release to execute. |
+| `Hide Personality Notifications (hidePersonalityCreation)` | Boolean | Hides chat notifications when a Pokémon's personality traits or quirks are discovered or evolve. |
 
 ### Game and Interactions (Server)
 
@@ -388,6 +391,7 @@ The options below are grouped according to their category in the in-game Configu
 | `forceOfflineMode` | Boolean | Forces all players to use CobbleBrain without AI, disabling AI-dependent features and adapting gameplay for offline use. |
 | `disableWelcomeMessage` | Boolean | Disables the welcome message displayed when joining a world. |
 | `allowClientPersonalityEditing` | Boolean | Allows servers to decide whether players can edit their Pokémon's personalities. |
+| `Allow Custom Client Prompt (allowCustomClientPrompt)` | Boolean | Allows servers to decide whether players can use their own custom instruct and player description. When disabled, server defaults are enforced. |
 | `allowPokemonPVP` | Boolean | Allows Pokémon to attack other players’ Pokémon. Disabling prevents player-versus-player battles. |
 | `allowPokemonPVE` | Boolean | Allows Pokémon to attack mobs in the world. Exceptions include tamed mobs and non-aggressive tagged mobs. |
 | `enableKarma` | Boolean | Enables or disables the species karma tracking system. |
@@ -403,6 +407,7 @@ The options below are grouped according to their category in the in-game Configu
 |--------------------------------|------|------------------------------------------------------------------------------------------------------------------------------------|
 | `Show Hunger (showHunger)` | Boolean | Shows or hides Pokémon hunger information from the AI. |
 | `instruct` | List of Strings | Global AI instructions/prompts shaping how Pokémon behave, think, and respond. Always prefixed with `[CREATIVEPROMPT]`. |
+| `Player Description (playerAbout)` | List of Strings | Dedicated description of the player/trainer character (appearance, habits, personality, backstory) that shapes how the AI and Pokémon perceive you. Prefixed with `[ABOUT THE PLAYER]`. |
 | `Custom Output (outputFormat)` | String | Only editable via config/cobblebrain.json5 |
 
 ### Actions Manager (Server)

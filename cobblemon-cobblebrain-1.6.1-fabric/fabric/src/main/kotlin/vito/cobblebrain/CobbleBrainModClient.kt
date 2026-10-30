@@ -74,13 +74,6 @@ object CobbleBrainModClient : ClientModInitializer {
             "category.cobblebrain"
         )
 
-        val commandKeyScroll = KeyMapping(
-            "key.cobblebrain.cmd_scroll",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_X,
-            "category.cobblebrain"
-        )
-
         val commandKeyToggle = KeyMapping(
             "key.cobblebrain.cmd_toggle",
             GLFW.GLFW_KEY_N,
@@ -116,7 +109,6 @@ object CobbleBrainModClient : ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(commandKeyQ)
         KeyBindingHelper.registerKeyBinding(commandKeyE)
         KeyBindingHelper.registerKeyBinding(commandKeyR)
-        KeyBindingHelper.registerKeyBinding(commandKeyScroll)
         KeyBindingHelper.registerKeyBinding(commandKeyToggle)
         KeyBindingHelper.registerKeyBinding(commandKeyMode)
         KeyBindingHelper.registerKeyBinding(keyPing)
@@ -126,7 +118,7 @@ object CobbleBrainModClient : ClientModInitializer {
         CobblebrainClientCommon.keyUp = commandKeyQ
         CobblebrainClientCommon.keyDown = commandKeyE
         CobblebrainClientCommon.keyExecute = commandKeyR
-        CobblebrainClientCommon.keyScroll = commandKeyScroll
+        CobblebrainClientCommon.keyScroll = commandKeyR
         CobblebrainClientCommon.keyToggle = commandKeyToggle
         CobblebrainClientCommon.keyMode = commandKeyMode
         CobblebrainClientCommon.keyPing = keyPing
@@ -134,6 +126,7 @@ object CobbleBrainModClient : ClientModInitializer {
         CobblebrainClientCommon.keyDebug = keyDebug
 
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick { client ->
+            CobblebrainConfigScreen.checkSession()
             MigrationNoticeChecker.checkAndShow(client)
             vito.cobblebrain.client.KeyInputClientManager.clientTick()
             while (openConfig.consumeClick()) {
@@ -154,11 +147,8 @@ object CobbleBrainModClient : ClientModInitializer {
                 }
             }
             while (commandKeyR.consumeClick()) {
-                if (isManual) {
-                    HudSystem.executeAction()
-                }
             }
-            HudSystem.handleScrollKeyTick(commandKeyScroll)
+            HudSystem.handleScrollKeyTick(commandKeyR)
             while (commandKeyToggle.consumeClick()) {
                 HudSystem.toggleVisibility()
             }

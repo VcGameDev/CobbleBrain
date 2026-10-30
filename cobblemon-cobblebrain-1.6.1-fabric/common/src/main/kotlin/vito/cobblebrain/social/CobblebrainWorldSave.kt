@@ -862,16 +862,17 @@ object CobblebrainWorldSave {
 
         val pages = listOf(
             Component.literal("")
-                .append(Component.literal("COBBLEBRAIN MANUAL\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Select a section:\n\n")
+                .append(Component.literal("COBBLEBRAIN MANUAL\n").withStyle(ChatFormatting.BOLD))
+                .append("Select a section:\n")
                 .append(clickablePage("Setup", 2)).append("\n")
-                .append(clickablePage("Talk to Pokemon", 4)).append("\n")
-                .append(clickablePage("Actions", 5)).append("\n")
-                .append(clickablePage("Quests", 7)).append("\n")
-                .append(clickablePage("Karma", 12)).append("\n")
-                .append(clickablePage("Raids", 15)).append("\n")
-                .append(clickablePage("Other Mechanics", 16)).append("\n")
-                .append(clickablePage("Gameplay Settings", 17)).append("\n"),
+                .append(clickablePage("Talk to Pokemon", 5)).append("\n")
+                .append(clickablePage("Voice Input (STT)", 6)).append("\n")
+                .append(clickablePage("Actions", 7)).append("\n")
+                .append(clickablePage("Quests", 9)).append("\n")
+                .append(clickablePage("Karma", 14)).append("\n")
+                .append(clickablePage("Raids", 17)).append("\n")
+                .append(clickablePage("Other Mechanics", 18)).append("\n")
+                .append(clickablePage("Settings", 19)).append("\n"),
 
             // PAGE 2 - SETUP
             Component.literal("")
@@ -906,8 +907,9 @@ object CobblebrainWorldSave {
                 )
                 .append("\n"),
 
+            // PAGE 3 - ALTERNATIVE SETUP
             Component.literal("")
-                .append(Component.literal("ALTERNATIVE SETUP\n\n").withStyle(ChatFormatting.BOLD))
+                .append(Component.literal("ALTERNATIVE SETUP (1/2)\n\n").withStyle(ChatFormatting.BOLD))
                 .append("You can use any API compatible with\n")
                 .append("the OpenAI format.\n\n")
                 .append("Examples:\n")
@@ -926,6 +928,17 @@ object CobblebrainWorldSave {
                         }
                 ),
 
+            // PAGE 4 - OFFLINE MODE
+            Component.literal("")
+                .append(Component.literal("ALTERNATIVE SETUP (2/2)\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Play offline without ")
+                .append("internet or AI.\n\n")
+                .append("In Settings [Y]:\n")
+                .append("Enable 'Offline Mode' and\n")
+                .append("'Offline Talk Mode' (or\n")
+                .append("pick the Offline preset).\n\n"),
+
+            // PAGE 5 - TALKING TO POKEMON
             Component.literal("")
                 .append(Component.literal("TALKING TO POKEMON\n\n").withStyle(ChatFormatting.BOLD))
                 .append("You have two ways to communicate.\n\n")
@@ -937,6 +950,18 @@ object CobblebrainWorldSave {
                 .append("Pokemon react to normal chat.\n")
                 .append("Other players can see your message."),
 
+            // PAGE 6 - VOICE INPUT (STT)
+            Component.literal("")
+                .append(Component.literal("VOICE INPUT (STT)\n\n").withStyle(ChatFormatting.BOLD))
+                .append("Speak directly to Pokémon ")
+                .append("using your microphone!\n")
+                .append("Hold [H] and speak, then ")
+                .append("release to send dialogue.\n")
+                .append("Requirements:\n")
+                .append("- Install the 'MCMti' mod\n")
+                .append("- Enable 'STT' in Settings [Y]."),
+
+            // PAGE 7 - ACTIONS
             Component.literal("")
                 .append(Component.literal("ACTIONS\n\n").withStyle(ChatFormatting.BOLD))
                 .append("Ask your Pokémon to perform actions.\n")
@@ -945,6 +970,7 @@ object CobblebrainWorldSave {
                 .append("General (gray) actions are always\n")
                 .append("available.\n\n"),
 
+            // PAGE 8 - TYPE ACTIONS
             Component.literal("")
                 .append("Type (colored) actions unlock when a\n")
                 .append("Pokémon of that PRIMARY type\n")
@@ -952,14 +978,15 @@ object CobblebrainWorldSave {
                 .append("Action colors match their\n")
                 .append("Pokémon type (e.g. orange = Fire)."),
 
+            // PAGE 9 - QUESTS
             Component.literal("")
                 .append(Component.literal("QUESTS\n\n").withStyle(ChatFormatting.BOLD))
                 .append("Wild Pokemon may generate quests\n")
                 .append("during spontaneous dialogue.\n\n")
-                .append("Default chance is 40%.\n")
                 .append("You can change this in settings.\n\n")
                 .append("There are currently 4 types of quests."),
 
+            // PAGE 10 - QUEST TYPES: ITEM & BATTLE
             Component.literal("")
                 .append(Component.literal("QUEST TYPES\n\n").withStyle(ChatFormatting.BOLD))
                 .append("ITEM QUEST\n")
@@ -970,16 +997,19 @@ object CobblebrainWorldSave {
                 .append("you find it.\n")
                 .append("Killing outside battle does not count.\n\n"),
 
+            // PAGE 11 - ADVICE QUEST
             Component.literal("")
                 .append("ADVICE QUEST\n")
                 .append("Give some advice to make the Pokemon happy.\n")
                 .append("Multiple solutions are possible."),
 
+            // PAGE 12 - LOST ITEM SEARCH
             Component.literal("")
                 .append("LOST ITEM SEARCH\n")
                 .append("find the lost Pokemon item barrel\n" +
                         "you must find and open it to complete the mission\n"),
 
+            // PAGE 13 - QUEST REWARDS
             Component.literal("")
                 .append(Component.literal("QUEST REWARDS\n\n").withStyle(ChatFormatting.BOLD))
                 .append("Completing quests grants Karma.\n\n")
@@ -990,6 +1020,7 @@ object CobblebrainWorldSave {
                 .append("You can modify quest chance\n")
                 .append("in 'wild quest chance' setting."),
 
+            // PAGE 14 - KARMA SYSTEM
             Component.literal("")
                 .append(Component.literal("KARMA SYSTEM\n\n").withStyle(ChatFormatting.BOLD))
                 .append("Karma represents how much\n")
@@ -997,9 +1028,12 @@ object CobblebrainWorldSave {
                 .append("Each species tracks you separately.\n\n")
                 .append("Use /cobblebrain karma\n")
                 .append("to view your Karma.\n\n"),
-            Component.literal("")
-                .append("The karma system can be enabled or disabled with 'Enable Karma'\n"),
 
+            // PAGE 15 - KARMA TOGGLE
+            Component.literal("")
+                .append("The karma system can be enabled or disabled with 'Enable Karma' in settings [Y]\n"),
+
+            // PAGE 16 - +/- KARMA
             Component.literal("")
                 .append("+Karma:\n")
                 .append(" °Complete quests\n\n")
@@ -1008,6 +1042,7 @@ object CobblebrainWorldSave {
                 .append(" °Annoy Pokémon in quests\n\n")
                 .append("Better karma = Better rewards in quests.\n"),
 
+            // PAGE 17 - RAID DETAILS
             Component.literal("")
                 .append(Component.literal("RAID DETAILS\n\n").withStyle(ChatFormatting.BOLD))
                 .append("Raids may occur when Karma\n")
@@ -1017,11 +1052,13 @@ object CobblebrainWorldSave {
                 .append("Disable them anytime with\n")
                 .append("'Schedule Raids'\n\n."),
 
+            // PAGE 18 - OTHER MECHANICS
             Component.literal("")
                 .append(Component.literal("OTHER MECHANICS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("Guaranteed catch: convince the Pokémon to be caught and get a 100% chance of capture on the next throw.\n\n")
-                .append("Food effect: When using the EAT command, certain foods give effects and XP to Pokémon."),
+                .append("Guaranteed catch: Convince wild Pokémon for 100% catch rate on next ball.\n\n")
+                .append("Food effect: EAT can grant buffs & XP based on food given."),
 
+            // PAGE 19 - GAMEPLAY SETTINGS
             Component.literal("")
                 .append(Component.literal("GAMEPLAY SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
                 .append("Press Y to open settings.\n")
@@ -1031,13 +1068,13 @@ object CobblebrainWorldSave {
                 .append("Hover options to read\n")
                 .append("their description."),
 
+            // PAGE 20 - PROMPT SETTINGS
             Component.literal("")
                 .append(Component.literal("PROMPT SETTINGS\n\n").withStyle(ChatFormatting.BOLD))
-                .append("The 'Instructs' setting works as a global prompt.\n")
+                .append("The 'Instructs' setting works as a global prompt. ")
                 .append("You can define how the AI or Pokémon behave, think and respond.\n\n")
-                .append("Use 'Characteristics' to customize\n")
-                .append("the behavior of specific Pokémon.\n"),
-            )
+                .append("Use the 'Personality Editor' to view and customize unique traits of your Pokémon.\n"),
+        )
 
         val content = WrittenBookContent(
             Filterable.passThrough("Cobblebrain Guide"),

@@ -7,7 +7,7 @@ object CobblebrainClientHandlers {
 
     fun onPrompt(payload: CobblebrainPayloads.PromptPayload) {
         CobblebrainClientRuntimeNeoForge.markResponseReceived()
-        CobblebrainClientCommon.onPromptReceived(payload.prompt)
+        CobblebrainClientCommon.onPromptReceived(payload.prompt, payload.requestId)
     }
 
     fun onConfigSync(payload: CobblebrainPayloads.SyncConfigPayload) {
@@ -21,12 +21,12 @@ object CobblebrainClientHandlers {
 
     fun onSummaryPrompt(payload: CobblebrainPayloads.SummaryPromptPayload) {
         CobblebrainClientRuntimeNeoForge.markResponseReceived()
-        CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData)
+        CobblebrainClientCommon.onSummaryPromptReceived(payload.contextData, payload.requestId)
     }
 
     fun onBackgroundPrompt(payload: CobblebrainPayloads.BackgroundPromptPayload) {
         CobblebrainClientRuntimeNeoForge.markResponseReceived()
-        CobblebrainClientCommon.onBackgroundPromptReceived(payload.prompt)
+        CobblebrainClientCommon.onBackgroundPromptReceived(payload.prompt, payload.requestId)
     }
 
     fun onCooldownSync(payload: CobblebrainPayloads.SyncCooldownsPayload) {

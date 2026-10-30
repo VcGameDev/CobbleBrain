@@ -9,8 +9,10 @@ object CobblebrainClientCommon {
     }
 
     // Injected by loader runtime (Fabric / NeoForge)
-    var sendToServer: ((String) -> Unit)? = null
-    var sendBackgroundToServer: ((String) -> Unit)? = null
+    var sendToServer: ((String, String) -> Unit)? = null
+    var sendBackgroundToServer: ((String, String) -> Unit)? = null
+    var activeRequestId: String = ""
+    var activeBackgroundRequestId: String = ""
     var callTeamAction: ((String) -> Unit)? = null
     var sendNicknameToServer: ((String) -> Unit)? = null
     var sendOfflineSettingsToServer: ((Boolean, Boolean) -> Unit)? = null
@@ -53,7 +55,8 @@ object CobblebrainClientCommon {
         currentQuestsJson = json
     }
 
-    fun onPromptReceived(prompt: String) {
+    fun onPromptReceived(prompt: String, requestId: String = "") {
+        activeRequestId = requestId
         if (prompt == "OPEN_CONFIG_SCREEN") {
             openConfig()
             return
@@ -92,21 +95,21 @@ object CobblebrainClientCommon {
         }
 
         // Standard AI pipeline (when prompt is rebuilt with RELEVANT MEMORIES or retrieval is disabled)
-        AIClientHandler.sendPrompt(prompt).thenAccept { response ->
-            sendToServer?.invoke(response)
-        }.exceptionally { e ->
+        AIClientHandler.sendPrompt(prompt).exceptionally { e ->
             e.printStackTrace()
             null
         }
     }
 
-    fun onSummaryPromptReceived(contextData: String) {
+    fun onSummaryPromptReceived(contextData: String, requestId: String = "") {
+        activeRequestId = requestId
         AIClientHandler.sendSummaryPrompt(contextData)
     }
 
-    fun onBackgroundPromptReceived(prompt: String) {
+    fun onBackgroundPromptReceived(prompt: String, requestId: String = "") {
+        activeBackgroundRequestId = requestId
         AIClientHandler.sendBackgroundPrompt(prompt).thenAccept { response ->
-            sendBackgroundToServer?.invoke(response)
+            sendBackgroundToServer?.invoke(response, requestId)
         }.exceptionally { e ->
             println("[CobbleBrain AI Client] Background prompt execution failed: ${e.message}")
             null

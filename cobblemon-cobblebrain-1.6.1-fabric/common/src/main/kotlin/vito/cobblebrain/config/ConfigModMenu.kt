@@ -1,5 +1,6 @@
 package vito.cobblebrain.config
 
+import com.google.gson.Gson
 import net.minecraft.client.gui.screens.Screen
 import me.shedaniel.clothconfig2.api.ConfigBuilder
 import me.shedaniel.clothconfig2.api.AbstractConfigListEntry
@@ -10,6 +11,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.sounds.SoundEvents
 import vito.cobblebrain.client.CobblebrainClientCommon
 import vito.cobblebrain.config.ClientConfigHandler.clientConfig
@@ -17,6 +19,76 @@ import vito.cobblebrain.config.ConfigHandler.config
 import java.util.Optional
 
 object CobblebrainConfigScreen {
+    private var backupConfigJson: String? = null
+    private var backupClientConfigJson: String? = null
+    private var activeSessionScreen: Screen? = null
+    private var isReloading: Boolean = false
+    private var isSaved: Boolean = false
+
+    fun isCobblebrainSubScreen(screen: Screen?): Boolean {
+        if (screen == null) return false
+        if (screen is vito.cobblebrain.client.gui.PlayStoryScreen || screen is vito.cobblebrain.client.gui.StoryEditorScreen) return true
+        val titleStr = screen.title?.string ?: ""
+        if (titleStr.startsWith("Action Settings:") || titleStr == Component.translatable("cobblebrain.config.action_manager.title").string) return true
+        return false
+    }
+
+    fun discardSession() {
+        val gson = Gson()
+        backupConfigJson?.let {
+            try {
+                ConfigHandler.config = gson.fromJson(it, CobblebrainConfig::class.java)
+            } catch (e: Exception) {
+                println("Failed to restore config snapshot: ${e.message}")
+            }
+        }
+        backupClientConfigJson?.let {
+            try {
+                ClientConfigHandler.clientConfig = gson.fromJson(it, CobblebrainClientConfig::class.java)
+            } catch (e: Exception) {
+                println("Failed to restore clientConfig snapshot: ${e.message}")
+            }
+        }
+        activeSessionScreen = null
+        backupConfigJson = null
+        backupClientConfigJson = null
+        isSaved = false
+    }
+
+    fun isSessionModified(): Boolean {
+        if (backupConfigJson == null && backupClientConfigJson == null) return false
+        val gson = Gson()
+        val currentConfigJson = gson.toJson(ConfigHandler.config)
+        val currentClientConfigJson = gson.toJson(ClientConfigHandler.clientConfig)
+        return (backupConfigJson != null && currentConfigJson != backupConfigJson) ||
+               (backupClientConfigJson != null && currentClientConfigJson != backupClientConfigJson)
+    }
+
+    fun checkSession() {
+        val currentScreen = Minecraft.getInstance().screen
+        val active = activeSessionScreen ?: return
+
+        if (currentScreen === active) {
+            return
+        }
+
+        if (isReloading) {
+            return
+        }
+
+        if (isCobblebrainSubScreen(currentScreen)) {
+            return
+        }
+
+        if (!isSaved) {
+            discardSession()
+        } else {
+            activeSessionScreen = null
+            backupConfigJson = null
+            backupClientConfigJson = null
+        }
+    }
+
     private fun effectiveForceOfflineMode(): Boolean {
         val mc = Minecraft.getInstance()
         return if (mc.isLocalServer) config.forceOfflineMode else SyncedConfig.forceOfflineMode
@@ -174,7 +246,18 @@ object CobblebrainConfigScreen {
             "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "build", "rest", "idle"
         )
 
-        category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFFFF00))
+        val mcPlayer = Minecraft.getInstance().player
+        val isRemoteServer = mcPlayer != null && !mc.isLocalServer
+        val isPrivileged = mc.isLocalServer || (mcPlayer?.hasPermissions(2) == true)
+        val isNonPrivilegedClientOnServer = isRemoteServer && !isPrivileged
+
+        val serverSectionColor = if (isNonPrivilegedClientOnServer) 0xFFA500 else 0xFFFF00
+        category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", serverSectionColor))
+        if (isNonPrivilegedClientOnServer) {
+            category.entries.add(makeSpacer(2))
+            category.entries.add(makeDescriptionEntry(Component.translatable("cobblebrain.config.server_settings_restricted").string, 0xFFA500, 14))
+            category.entries.add(makeSpacer(4))
+        }
         category.entries.add(makeDescriptionEntry("Configure active state and custom options for each action.", 0xAAAAAA, 14))
         category.entries.add(makeSpacer(8))
 
@@ -226,7 +309,7 @@ object CobblebrainConfigScreen {
             "protect" -> actionSettings.protect.enabledForPlayer
             "eat" -> actionSettings.eat.enabledForPlayer
             "buff" -> actionSettings.buff.enabledForPlayer
-            "debuff_enemy" -> actionSettings.debuffEnemy.enabledForPlayer
+            "debuff", "debuff_enemy", "debuff enemy" -> actionSettings.debuffEnemy.enabledForPlayer
             "excavate", "demolish" -> actionSettings.excavate.enabledForPlayer
             "build" -> actionSettings.build.enabledForPlayer
             "rest", "sit" -> actionSettings.rest.enabledForPlayer
@@ -248,7 +331,7 @@ object CobblebrainConfigScreen {
             "protect" -> actionSettings.protect.enabledForAI
             "eat" -> actionSettings.eat.enabledForAI
             "buff" -> actionSettings.buff.enabledForAI
-            "debuff_enemy" -> actionSettings.debuffEnemy.enabledForAI
+            "debuff", "debuff_enemy", "debuff enemy" -> actionSettings.debuffEnemy.enabledForAI
             "excavate", "demolish" -> actionSettings.excavate.enabledForAI
             "build" -> actionSettings.build.enabledForAI
             "rest", "sit" -> actionSettings.rest.enabledForAI
@@ -319,7 +402,18 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.action.enabled_for_ai.tooltip"))
             .build()
 
-        category.entries.add(makeSubtitleEntry("ACTION: $actionTransName (SERVER)", 0xFFFF00))
+        val mcPlayer = mc.player
+        val isRemoteServer = mcPlayer != null && !mc.isLocalServer
+        val isPrivileged = mc.isLocalServer || (mcPlayer?.hasPermissions(2) == true)
+        val isNonPrivilegedClientOnServer = isRemoteServer && !isPrivileged
+
+        val serverSectionColor = if (isNonPrivilegedClientOnServer) 0xFFA500 else 0xFFFF00
+        category.entries.add(makeSubtitleEntry("ACTION: $actionTransName (SERVER)", serverSectionColor))
+        if (isNonPrivilegedClientOnServer) {
+            category.entries.add(makeSpacer(2))
+            category.entries.add(makeDescriptionEntry(Component.translatable("cobblebrain.config.server_settings_restricted").string, 0xFFA500, 14))
+            category.entries.add(makeSpacer(4))
+        }
         category.entries.add(enabledForPlayerEntry)
         category.entries.add(enabledForAiEntry)
 
@@ -496,7 +590,7 @@ object CobblebrainConfigScreen {
                     .setSaveConsumer { value -> buffEffectLevelVal = value }
                     .setTooltip(Component.translatable("cobblebrain.config.action.effect_level.tooltip")).build())
             }
-            "debuff_enemy" -> {
+            "debuff", "debuff_enemy", "debuff enemy" -> {
                 category.entries.add(entryBuilder.startIntField(
                     Component.translatable("cobblebrain.config.action.duration"),
                     debuffDurationVal
@@ -630,7 +724,7 @@ object CobblebrainConfigScreen {
                     cfg.actionSettings.buff.durationSeconds = buffDurationVal
                     cfg.actionSettings.buff.effectLevel = buffEffectLevelVal
                 }
-                "debuff_enemy" -> {
+                "debuff", "debuff_enemy", "debuff enemy" -> {
                     cfg.actionSettings.debuffEnemy.enabledForPlayer = enabledForPlayerVal
                     cfg.actionSettings.debuffEnemy.enabledForAI = enabledForAiVal
                     cfg.actionSettings.debuffEnemy.durationSeconds = debuffDurationVal
@@ -668,168 +762,202 @@ object CobblebrainConfigScreen {
         local: T
     ): T {
         val mc = Minecraft.getInstance()
-        val isInWorld = mc.player != null
+        val isRemoteServer = mc.player != null && !mc.isLocalServer
 
-        return if (isInWorld && SyncedConfig.received) synced else local
+        return if (isRemoteServer && SyncedConfig.isServerControlled) synced else local
+    }
+
+    private fun applyPreset(mode: String) {
+        clientConfig.presetMode = mode
+        clientConfig.isCustomizedFromPreset = false
+        clientConfig.optimizedMode = true
+        config.optimizedMode = true
+
+        when (mode) {
+            "Smart" -> {
+                clientConfig.offlineMode = false
+                clientConfig.offlineTalkMode = false
+                clientConfig.maxInteractionSaves = 4
+                clientConfig.enableAiMemoryRetrieval = true
+
+                config.maxStoredMemories = 90
+                config.maxRelevantMemories = 4
+                config.enableAiMemoryRetrieval = true
+                config.lowTokenMode = false
+                config.outputWorldContext = true
+                config.outputMobsContext = true
+                config.outputQuests = true
+                config.enableTraits = true
+                config.outputDialogue = true
+                config.outputActions = true
+                config.outputFriendship = true
+                config.outputMemories = true
+                config.outputGuaranteedCatch = true
+            }
+            "Normal" -> {
+                clientConfig.offlineMode = false
+                clientConfig.offlineTalkMode = false
+                clientConfig.maxInteractionSaves = 3
+                clientConfig.enableAiMemoryRetrieval = false
+
+                config.maxStoredMemories = 90
+                config.maxRelevantMemories = 3
+                config.enableAiMemoryRetrieval = false
+                config.lowTokenMode = false
+                config.outputWorldContext = true
+                config.outputMobsContext = true
+                config.outputQuests = true
+                config.enableTraits = true
+                config.outputDialogue = true
+                config.outputActions = true
+                config.outputFriendship = true
+                config.outputMemories = true
+                config.outputGuaranteedCatch = true
+            }
+            "Light" -> {
+                clientConfig.offlineMode = false
+                clientConfig.offlineTalkMode = false
+                clientConfig.maxInteractionSaves = 2
+                clientConfig.enableAiMemoryRetrieval = false
+
+                config.maxStoredMemories = 90
+                config.maxRelevantMemories = 2
+                config.enableAiMemoryRetrieval = false
+                config.lowTokenMode = true
+                config.outputWorldContext = true
+                config.outputMobsContext = false
+                config.outputQuests = true
+                config.enableTraits = true
+                config.outputDialogue = true
+                config.outputActions = true
+                config.outputFriendship = true
+                config.outputMemories = false
+                config.outputGuaranteedCatch = true
+            }
+            "Offline" -> {
+                clientConfig.offlineMode = true
+                clientConfig.offlineTalkMode = true
+            }
+            "Custom" -> {
+            }
+        }
+    }
+
+    private fun isPresetModified(mode: String): Boolean {
+        return when (mode) {
+            "Smart" -> {
+                config.maxStoredMemories != 90 ||
+                config.maxRelevantMemories != 4 ||
+                !config.enableAiMemoryRetrieval ||
+                config.lowTokenMode ||
+                !config.outputWorldContext ||
+                !config.outputMobsContext ||
+                !config.outputQuests ||
+                !config.enableTraits ||
+                !config.outputDialogue ||
+                !config.outputActions ||
+                !config.outputFriendship ||
+                !config.outputMemories ||
+                !config.outputGuaranteedCatch ||
+                clientConfig.maxInteractionSaves != 4 ||
+                clientConfig.offlineMode ||
+                clientConfig.offlineTalkMode ||
+                !clientConfig.enableAiMemoryRetrieval
+            }
+            "Normal" -> {
+                config.maxStoredMemories != 90 ||
+                config.maxRelevantMemories != 3 ||
+                config.enableAiMemoryRetrieval ||
+                config.lowTokenMode ||
+                !config.outputWorldContext ||
+                !config.outputMobsContext ||
+                !config.outputQuests ||
+                !config.enableTraits ||
+                !config.outputDialogue ||
+                !config.outputActions ||
+                !config.outputFriendship ||
+                !config.outputMemories ||
+                !config.outputGuaranteedCatch ||
+                clientConfig.maxInteractionSaves != 3 ||
+                clientConfig.offlineMode ||
+                clientConfig.offlineTalkMode ||
+                clientConfig.enableAiMemoryRetrieval
+            }
+            "Light" -> {
+                config.maxStoredMemories != 90 ||
+                config.maxRelevantMemories != 2 ||
+                config.enableAiMemoryRetrieval ||
+                !config.lowTokenMode ||
+                !config.outputWorldContext ||
+                config.outputMobsContext ||
+                !config.outputQuests ||
+                !config.enableTraits ||
+                !config.outputDialogue ||
+                !config.outputActions ||
+                !config.outputFriendship ||
+                config.outputMemories ||
+                !config.outputGuaranteedCatch ||
+                clientConfig.maxInteractionSaves != 2 ||
+                clientConfig.offlineMode ||
+                clientConfig.offlineTalkMode ||
+                clientConfig.enableAiMemoryRetrieval
+            }
+            "Offline" -> {
+                !clientConfig.offlineMode ||
+                !clientConfig.offlineTalkMode
+            }
+            else -> false
+        }
     }
 
     fun create(parent: Screen?): Screen {
-        var useDefaultOutput = true
-        var outputDialogue = true
-        var outputActions = true
-        var outputFriendship = true
-        var outputMemories = true
-        var outputApril1 = false
-        var outputQuests = true
-        var outputPokemonLanguage = false
-        var needsPokemonTranslator = false
-        var outputGuaranteedCatch = true
-        var enableKarma = true
-        var maxStoredMemories = 100
-        var maxRelevantMemories = 4
-        var favoriteMemorySlots = 5
-        var baseCandidateMemories = 10
-        var enableAiMemoryRetrieval = false
-        var optimizedMode = true
+        if (!isReloading && backupConfigJson == null) {
+            val gson = Gson()
+            backupConfigJson = gson.toJson(config)
+            backupClientConfigJson = gson.toJson(clientConfig)
+            isSaved = false
+        }
+
+        val mc = Minecraft.getInstance()
+        val mcPlayer = mc.player
+        val isRemoteServer = mcPlayer != null && !mc.isLocalServer
+        val isPrivileged = mc.isLocalServer || (mcPlayer?.hasPermissions(2) == true)
+        val isNonPrivilegedClientOnServer = isRemoteServer && !isPrivileged
+
+        var useDefaultOutput = getConfigValue(SyncedConfig.useDefaultOutput, true)
+        var outputDialogue = getConfigValue(SyncedConfig.outputDialogue, config.outputDialogue)
+        var outputActions = getConfigValue(SyncedConfig.outputActions, config.outputActions)
+        var outputFriendship = getConfigValue(SyncedConfig.outputFriendship, config.outputFriendship)
+        var outputMemories = getConfigValue(SyncedConfig.outputMemories, config.outputMemories)
+        var outputApril1 = getConfigValue(SyncedConfig.outputApril1, config.outputApril1)
+        var outputQuests = getConfigValue(SyncedConfig.outputQuests, config.outputQuests)
+        var outputPokemonLanguage = getConfigValue(SyncedConfig.outputPokemonLanguage, config.outputPokemonLanguage)
+        var needsPokemonTranslator = getConfigValue(SyncedConfig.needsPokemonTranslator, config.needsPokemonTranslator)
+        var outputGuaranteedCatch = getConfigValue(SyncedConfig.outputGuaranteedCatch, config.outputGuaranteedCatch)
+        var enableKarma = getConfigValue(SyncedConfig.enableKarma, config.enableKarma)
+        var maxStoredMemories = getConfigValue(SyncedConfig.maxStoredMemories, config.maxStoredMemories)
+        var maxRelevantMemories = getConfigValue(SyncedConfig.maxRelevantMemories, config.maxRelevantMemories)
+        var favoriteMemorySlots = getConfigValue(SyncedConfig.favoriteMemorySlots, config.favoriteMemorySlots)
+        var baseCandidateMemories = getConfigValue(SyncedConfig.baseCandidateMemories, config.baseCandidateMemories)
+        var enableAiMemoryRetrieval = getConfigValue(SyncedConfig.enableAiMemoryRetrieval, config.enableAiMemoryRetrieval)
+        var optimizedMode = clientConfig.optimizedMode
+
+        val initialTemp = clientConfig.temperature
+        val initialDebug = clientConfig.debugLogging
+        val initialReqTimeout = clientConfig.requestTimeoutSeconds
+        val initialKeyRot = clientConfig.keyRotation
+        val initialModelRot = clientConfig.modelRotation
+        val initialChatEndpoint = clientConfig.useChatEndpoint
+
+        if (clientConfig.presetMode != "Custom") {
+            clientConfig.isCustomizedFromPreset = isPresetModified(clientConfig.presetMode)
+        }
 
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
             .setTitle(Component.literal("Cobblebrain Config"))
 
         val entryBuilder = builder.entryBuilder()
-
-        val recommendedPromptButton = object : AbstractConfigListEntry<Unit>(
-            Component.literal("Use Recommended Prompt"),
-            false
-        ) {
-
-            private var clicked = false
-
-            private var button: net.minecraft.client.gui.components.Button
-
-            init {
-
-                button = net.minecraft.client.gui.components.Button.builder(
-                    Component.literal("Use Recommended Prompt")
-                ) {
-
-                    // ========================= FIRST CLICK =========================
-
-                    if (!clicked) {
-
-                        clicked = true
-
-                        button.message = Component.literal("Are you sure?")
-
-                        Minecraft.getInstance().player?.playSound(
-                            SoundEvents.UI_BUTTON_CLICK.value(),
-                            1.0f,
-                            1.0f
-                        )
-
-                        return@builder
-                    }
-
-                    // ========================= APPLY SETTINGS =========================
-
-                    clientConfig.instruct = CobblebrainClientConfig.DEFAULT_INSTRUCT
-
-                    clientConfig.maxInteractionSaves = 3
-
-                    SyncedConfig.updateLocal(
-                        useDefaultOutput,
-                        outputDialogue,
-                        outputActions,
-                        outputFriendship,
-                        outputMemories,
-                        outputApril1,
-                        outputQuests,
-                        outputPokemonLanguage,
-                        needsPokemonTranslator,
-                        outputGuaranteedCatch,
-                        enableKarma,
-                        maxStoredMemories,
-                        maxRelevantMemories,
-                        favoriteMemorySlots,
-                        baseCandidateMemories,
-                        config.allowClientPersonalityEditing,
-                        enableAiMemoryRetrieval
-                    )
-
-                    ConfigHandler.save()
-                    ClientConfigHandler.save()
-
-                    // ========================= FEEDBACK =========================
-
-                    Minecraft.getInstance().player?.playSound(
-                        SoundEvents.PLAYER_LEVELUP,
-                        0.7f,
-                        1.3f
-                    )
-
-                    button.message = Component.literal(
-                        "Done! Leave the config screen to apply the changes."
-                    )
-
-                    button.active = false
-
-                    println("[Cobblebrain] Recommended Prompt Applied")
-
-                }.bounds(0, 0, 260, 20).build()
-            }
-
-            override fun getValue(): Unit? = null
-
-            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
-
-            override fun children(): MutableList<GuiEventListener> =
-                mutableListOf(button)
-
-            override fun narratables(): MutableList<NarratableEntry> =
-                mutableListOf(button)
-
-            override fun render(
-                guiGraphics: GuiGraphics,
-                index: Int,
-                y: Int,
-                x: Int,
-                listWidth: Int,
-                itemHeight: Int,
-                mouseX: Int,
-                mouseY: Int,
-                isSelected: Boolean,
-                delta: Float
-            ) {
-
-                // ========================= SHOW ONLY IF NEEDED =========================
-
-                val shouldShow =
-                    !SyncedConfig.useDefaultOutput ||
-                            !SyncedConfig.outputDialogue ||
-                            !SyncedConfig.outputActions ||
-                            !SyncedConfig.outputFriendship ||
-                            !SyncedConfig.outputQuests ||
-                            !SyncedConfig.outputGuaranteedCatch ||
-                            SyncedConfig.outputApril1 ||
-                            SyncedConfig.outputPokemonLanguage ||
-                            SyncedConfig.outputMemories ||
-                            clientConfig.maxInteractionSaves != 3 ||
-                            clientConfig.instruct != CobblebrainClientConfig.DEFAULT_INSTRUCT
-
-                button.visible = shouldShow
-
-                if (!shouldShow) return
-
-                button.x = x + (listWidth / 2) - 130
-                button.y = y
-
-                button.render(guiGraphics, mouseX, mouseY, delta)
-            }
-
-            override fun getItemHeight(): Int {
-                return if (button.visible) 24 else 0
-            }
-        }
 
         val personalityEditorButton = object : AbstractConfigListEntry<Unit>(
             Component.literal("Open Personality Editor"),
@@ -1600,7 +1728,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val decreaseFriendshipEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Decrease Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.translatable("cobblebrain.config.decrease_friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.decreaseFriendship
         ).setDefaultValue(false)
             .setSaveConsumer { value -> config.decreaseFriendship = value }
@@ -1608,7 +1736,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val increaseFriendshipEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Increase Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.translatable("cobblebrain.config.increase_friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.increaseFriendship
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.increaseFriendship = value }
@@ -1616,7 +1744,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val showFriendshipEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Show Friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.translatable("cobblebrain.config.show_friendship").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.showFriendship
         ).setDefaultValue(true)
             .setSaveConsumer { value -> config.showFriendship = value }
@@ -1661,8 +1789,11 @@ object CobblebrainConfigScreen {
             }
         }
 
+        val isPromptCustomizationAllowed = getConfigValue(SyncedConfig.allowCustomClientPrompt, config.allowCustomClientPrompt)
+        val promptItemColor = if (isPromptCustomizationAllowed) 0xFFFFFF else 0xFF5555
+
         val instructEntry = entryBuilder.startStrList(
-            Component.literal("Instruct").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Instruct").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(promptItemColor))),
             clientConfig.instruct
         ).setDefaultValue(listOf(
             "[CREATIVEPROMPT]",
@@ -1686,7 +1817,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val playerAboutEntry = entryBuilder.startStrList(
-            Component.translatable("cobblebrain.config.player_about").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.translatable("cobblebrain.config.player_about").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(promptItemColor))),
             clientConfig.playerAbout
         ).setDefaultValue(CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT)
             .setSaveConsumer { value -> clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(value) }
@@ -1694,7 +1825,7 @@ object CobblebrainConfigScreen {
             .build()
 
         val outputFormatEntry = object : AbstractConfigListEntry<Unit>(
-            Component.literal("Custom Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            Component.literal("Custom Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(promptItemColor))),
             false
         ) {
             override fun getValue(): Unit? = null
@@ -1715,7 +1846,7 @@ object CobblebrainConfigScreen {
                 delta: Float
             ) {
                 val font = Minecraft.getInstance().font
-                guiGraphics.drawString(font, fieldName, x, y, 0xFFFFFF, true)
+                guiGraphics.drawString(font, fieldName, x, y, promptItemColor, true)
                 guiGraphics.drawString(
                     font,
                     "Only editable via config/cobblebrain.json5",
@@ -1869,129 +2000,567 @@ object CobblebrainConfigScreen {
             Minecraft.getInstance().setScreen(screen)
         }
 
-        category.entries.add(recommendedPromptButton)
+        fun preserveCurrentInputValues() {
+            apiKeyEntry.value?.let { clientConfig.apiKey = it }
+            aiModelEntry.value?.let { clientConfig.aiModel = it }
+            apiBaseUrlEntry.value?.let { clientConfig.apiBaseUrl = it }
+            customApiProviderEntry.value?.let { clientConfig.customApiProvider = it }
+            preferredNameEntry.value?.let { clientConfig.preferredName = it }
+            selectedLanguageEntry.value?.let { clientConfig.selectedLanguage = it }
+            playerAboutEntry.value?.let { clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(it) }
+            instructEntry.value?.let { clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(it) }
+            debugLoggingEntry.value?.let { clientConfig.debugLogging = it }
+            maxInteractionSavesEntry.value?.let { clientConfig.maxInteractionSaves = it }
+            manualActionNavEntry.value?.let { clientConfig.manualActionNav = it }
+            psychicTranslationEntry.value?.let { clientConfig.psychicTranslation = it }
+            showHungerEntry.value?.let { clientConfig.showHunger = it }
+            temperatureEntry.value?.let { clientConfig.temperature = it / 100.0 }
+            aiProviderEntry.value?.let { clientConfig.aiProvider = it }
+            reasoningEffortEntry.value?.let { clientConfig.reasoningEffort = it }
+            requestTimeoutEntry.value?.let { clientConfig.requestTimeoutSeconds = it }
+            keyRotationEntry.value?.let { clientConfig.keyRotation = it }
+            keyRotationTriggerEntry.value?.let { clientConfig.keyRotationTrigger = it }
+            modelRotationEntry.value?.let { clientConfig.modelRotation = it }
+            modelRotationTriggerEntry.value?.let { clientConfig.modelRotationTrigger = it }
+            outputPokemonLanguageEntry.value?.let { outputPokemonLanguage = it; config.outputPokemonLanguage = it }
+        }
+
+        fun reloadScreen(preserveScroll: Boolean = true) {
+            isReloading = true
+            val currentScreen = Minecraft.getInstance().screen
+            val savedScroll = if (preserveScroll) {
+                (currentScreen as? me.shedaniel.clothconfig2.gui.ClothConfigScreen)?.listWidget?.getScroll() ?: 0.0
+            } else 0.0
+            Minecraft.getInstance().tell {
+                try {
+                    me.shedaniel.clothconfig2.api.ScissorsHandler.INSTANCE.clearScissors()
+                    val newScreen = create(parent)
+                    activeSessionScreen = newScreen
+                    Minecraft.getInstance().setScreen(newScreen)
+                    if (savedScroll > 0.0) {
+                        (newScreen as? me.shedaniel.clothconfig2.gui.ClothConfigScreen)?.listWidget?.let { lw ->
+                            lw.capYPosition(savedScroll)
+                            lw.scrollTo(savedScroll, false)
+                        }
+                    }
+                } finally {
+                    isReloading = false
+                }
+            }
+        }
+
+        val isOffline = clientConfig.presetMode.equals("Offline", ignoreCase = true)
+        val isFullCustom = clientConfig.presetMode.equals("Custom", ignoreCase = true)
+        val showAdvancedAi = isFullCustom || (!isOffline && clientConfig.showAdvancedAiOptions)
+
+        val presetSelectorEntry = object : AbstractConfigListEntry<Unit>(
+            Component.translatable("cobblebrain.config.preset.title"),
+            false
+        ) {
+            private val smartButton: net.minecraft.client.gui.components.Button
+            private val normalButton: net.minecraft.client.gui.components.Button
+            private val lightButton: net.minecraft.client.gui.components.Button
+            private val offlineButton: net.minecraft.client.gui.components.Button
+            private val customButton: net.minecraft.client.gui.components.Button
+
+            init {
+                fun makeModeLabel(mode: String, key: String): Component {
+                    val isCurrent = clientConfig.presetMode.equals(mode, ignoreCase = true)
+                    val base = Component.translatable(key).string
+                    val label = if (isCurrent) "✔ $base" else base
+                    val color = if (isCurrent) 0x55FF55 else 0xFFFFFF
+                    return Component.literal(label).withStyle(Style.EMPTY.withColor(TextColor.fromRgb(color)))
+                }
+
+                fun onModeClick(targetMode: String) {
+                    Minecraft.getInstance().player?.playSound(
+                        SoundEvents.UI_BUTTON_CLICK.value(),
+                        1.0f,
+                        1.0f
+                    )
+                    preserveCurrentInputValues()
+                    applyPreset(targetMode)
+                    reloadScreen(preserveScroll = true)
+                }
+
+                smartButton = net.minecraft.client.gui.components.Button.builder(
+                    makeModeLabel("Smart", "cobblebrain.config.preset.smart")
+                ) { onModeClick("Smart") }
+                    .tooltip(Tooltip.create(Component.translatable("cobblebrain.config.preset.desc.smart")))
+                    .bounds(0, 0, 84, 20).build()
+
+                normalButton = net.minecraft.client.gui.components.Button.builder(
+                    makeModeLabel("Normal", "cobblebrain.config.preset.normal")
+                ) { onModeClick("Normal") }
+                    .tooltip(Tooltip.create(Component.translatable("cobblebrain.config.preset.desc.normal")))
+                    .bounds(0, 0, 84, 20).build()
+
+                lightButton = net.minecraft.client.gui.components.Button.builder(
+                    makeModeLabel("Light", "cobblebrain.config.preset.light")
+                ) { onModeClick("Light") }
+                    .tooltip(Tooltip.create(Component.translatable("cobblebrain.config.preset.desc.light")))
+                    .bounds(0, 0, 84, 20).build()
+
+                offlineButton = net.minecraft.client.gui.components.Button.builder(
+                    makeModeLabel("Offline", "cobblebrain.config.preset.offline")
+                ) { onModeClick("Offline") }
+                    .tooltip(Tooltip.create(Component.translatable("cobblebrain.config.preset.desc.offline")))
+                    .bounds(0, 0, 80, 20).build()
+
+                customButton = net.minecraft.client.gui.components.Button.builder(
+                    makeModeLabel("Custom", "cobblebrain.config.preset.custom")
+                ) { onModeClick("Custom") }
+                    .tooltip(Tooltip.create(Component.translatable("cobblebrain.config.preset.desc.custom")))
+                    .bounds(0, 0, 176, 20).build()
+            }
+
+            override fun getValue(): Unit? = null
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+            override fun isEdited(): Boolean = isSessionModified()
+            override fun children(): MutableList<GuiEventListener> =
+                mutableListOf(smartButton, normalButton, lightButton, offlineButton, customButton)
+            override fun narratables(): MutableList<NarratableEntry> =
+                mutableListOf(smartButton, normalButton, lightButton, offlineButton, customButton)
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+                val startX = x + (listWidth / 2) - 130
+
+                smartButton.x = startX
+                smartButton.y = y
+                smartButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                normalButton.x = startX + 88
+                normalButton.y = y
+                normalButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                lightButton.x = startX + 176
+                lightButton.y = y
+                lightButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                offlineButton.x = startX
+                offlineButton.y = y + 24
+                offlineButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                customButton.x = startX + 84
+                customButton.y = y + 24
+                customButton.render(guiGraphics, mouseX, mouseY, delta)
+            }
+
+            override fun getItemHeight(): Int = 48
+        }
+
+        val currentModeKey = when (clientConfig.presetMode) {
+            "Smart" -> "cobblebrain.config.preset.smart"
+            "Light" -> "cobblebrain.config.preset.light"
+            "Offline" -> "cobblebrain.config.preset.offline"
+            "Custom" -> "cobblebrain.config.preset.custom"
+            else -> "cobblebrain.config.preset.normal"
+        }
+        val currentModeName = Component.translatable(currentModeKey).string
+        val statusSuffix = if (clientConfig.isCustomizedFromPreset && !isFullCustom) {
+            Component.translatable("cobblebrain.config.preset.customized_suffix").string
+        } else ""
+        val activeStatusText = Component.translatable("cobblebrain.config.preset.active_status", "$currentModeName$statusSuffix").string
+
+        val presetStatusEntry = makeSubtitleEntry(activeStatusText, 0x55FF55, bold = true)
+
+        val presetDescText = if (clientConfig.isCustomizedFromPreset && !isFullCustom) {
+            Component.translatable("cobblebrain.config.preset.customized_hint", currentModeName).string
+        } else {
+            val descKey = when (clientConfig.presetMode) {
+                "Smart" -> "cobblebrain.config.preset.desc.smart"
+                "Light" -> "cobblebrain.config.preset.desc.light"
+                "Offline" -> "cobblebrain.config.preset.desc.offline"
+                "Custom" -> "cobblebrain.config.preset.desc.custom"
+                else -> "cobblebrain.config.preset.desc.normal"
+            }
+            Component.translatable(descKey).string
+        }
+
+        fun addWrappedDescription(text: String, color: Int = 0xAAAAAA) {
+            val words = text.split(" ")
+            val lines = mutableListOf<String>()
+            var currentLine = ""
+            for (word in words) {
+                if (currentLine.length + word.length < 65) {
+                    currentLine += "$word "
+                } else {
+                    lines.add(currentLine.trim())
+                    currentLine = "$word "
+                }
+            }
+            if (currentLine.isNotBlank()) lines.add(currentLine.trim())
+            for (l in lines) {
+                category.addEntry(makeDescriptionEntry(l, color, 14))
+            }
+        }
+
+        fun addServerSubtitle(title: String, defaultColor: Int = 0xFFFF00) {
+            val color = if (isNonPrivilegedClientOnServer) 0xFFA500 else defaultColor
+            category.entries.add(makeSubtitleEntry(title, color))
+            if (isNonPrivilegedClientOnServer) {
+                category.entries.add(makeSpacer(2))
+                addWrappedDescription(
+                    Component.translatable("cobblebrain.config.server_settings_restricted").string,
+                    0xFFA500
+                )
+                category.entries.add(makeSpacer(6))
+            }
+        }
+
+        val advancedAiToggleButton = object : AbstractConfigListEntry<Unit>(
+            Component.translatable(if (clientConfig.showAdvancedAiOptions) "cobblebrain.config.preset.hide_advanced_ai" else "cobblebrain.config.preset.show_advanced_ai"),
+            false
+        ) {
+            private val button: net.minecraft.client.gui.components.Button =
+                net.minecraft.client.gui.components.Button.builder(
+                    Component.translatable(
+                        if (clientConfig.showAdvancedAiOptions) "cobblebrain.config.preset.hide_advanced_ai"
+                        else "cobblebrain.config.preset.show_advanced_ai"
+                    ).withStyle(
+                        Style.EMPTY.withColor(
+                            TextColor.fromRgb(if (clientConfig.showAdvancedAiOptions) 0xAAAAAA else 0x55FFFF)
+                        )
+                    )
+                ) {
+                    Minecraft.getInstance().player?.playSound(
+                        SoundEvents.UI_BUTTON_CLICK.value(),
+                        1.0f,
+                        1.0f
+                    )
+                    preserveCurrentInputValues()
+                    clientConfig.showAdvancedAiOptions = !clientConfig.showAdvancedAiOptions
+                    reloadScreen(preserveScroll = true)
+                }.bounds(0, 0, 260, 20).build()
+
+            override fun getValue(): Unit? = null
+            override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+            override fun isEdited(): Boolean = isSessionModified()
+            override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+            override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+            override fun render(
+                guiGraphics: GuiGraphics,
+                index: Int,
+                y: Int,
+                x: Int,
+                listWidth: Int,
+                itemHeight: Int,
+                mouseX: Int,
+                mouseY: Int,
+                isSelected: Boolean,
+                delta: Float
+            ) {
+                button.x = x + (listWidth / 2) - 130
+                button.y = y
+                button.render(guiGraphics, mouseX, mouseY, delta)
+            }
+
+            override fun getItemHeight(): Int = 24
+        }
+
+        category.entries.add(makeSubtitleEntry(Component.translatable("cobblebrain.config.preset.title").string, 0xFFFF00))
+        category.entries.add(presetSelectorEntry)
+        category.entries.add(presetStatusEntry)
+        addWrappedDescription(presetDescText, 0xAAAAAA)
+        category.entries.add(makeSpacer(6))
+
         category.entries.add(personalityEditorButton)
         category.entries.add(storyActionsButton)
         category.entries.add(reportBugsButton)
-        category.entries.add(makeSubtitleEntry("AI CONFIGURATION & GAMEPLAY (CLIENT)", 0xFFFF00))
-        category.entries.add(apiBaseUrlEntry)
-        category.entries.add(useChatEndpointEntry)
-        category.entries.add(customApiProviderEntry)
-        category.entries.add(temperatureEntry)
-        category.entries.add(aiProviderEntry)
-        category.entries.add(reasoningEffortEntry)
-        category.entries.add(requestTimeoutEntry)
-        category.entries.add(debugLoggingEntry)
-        category.entries.add(apiKeyEntry)
-        category.entries.add(keyRotationTriggerEntry)
-        category.entries.add(aiModelEntry)
-        category.entries.add(modelRotationTriggerEntry)
-        category.entries.add(keyRotationEntry)
-        category.entries.add(modelRotationEntry)
-        category.entries.add(selectedLanguageEntry)
-        category.entries.add(maxInteractionSavesEntry)
-        category.entries.add(preferredNameEntry)
-        category.entries.add(offlineModeEntry)
-        category.entries.add(offlineTalkModeEntry)
-        category.entries.add(optimizedModeEntry)
-        category.entries.add(psychicTranslationEntry)
-        category.entries.add(sttEntry)
-        category.entries.add(hidePersonalityCreationEntry)
-        category.entries.add(manualActionNavEntry)
-        category.entries.add(makeSubtitleEntry("GAME AND INTERACTIONS (SERVER)", 0xFFFF00))
-        category.entries.add(needsPokemonTranslatorEntry)
-        category.entries.add(listenToChatEntry)
-        category.entries.add(dialogueInChatEntry)
-        category.entries.add(chatbubblesEntry)
-        category.entries.add(spontaneousDialogueChanceEntry)
-        category.entries.add(wildPokemonTalkChanceEntry)
-        category.entries.add(wildQuestChanceEntry)
-        category.entries.add(lowTokenModeEntry)
-        category.entries.add(scheduleRaidEntry)
-        category.entries.add(forceOfflineModeEntry)
-        category.entries.add(disableWelcomeMessageEntry)
-        category.entries.add(allowClientPersonalityEditingEntry)
-        category.entries.add(allowPokemonPVPEntry)
-        category.entries.add(allowPokemonPVEEntry)
-        category.entries.add(enableKarmaEntry)
-        category.entries.add(dialogueOnDamageEntry)
-        category.entries.add(dialogueOnBattleEntry)
-        category.entries.add(decreaseFriendshipEntry)
-        category.entries.add(increaseFriendshipEntry)
-        category.entries.add(showFriendshipEntry)
-        category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT (CLIENT)", 0xFFFF00))
-        category.entries.add(showHungerEntry)
-        category.entries.add(instructEntry)
-        category.entries.add(makeSpacer(6))
-        category.entries.add(playerAboutEntry)
         category.entries.add(makeSpacer(10))
-        category.entries.add(outputFormatEntry)
-        category.entries.add(makeSpacer(15))
-        category.entries.add(makeSubtitleEntry("ACTIONS MANAGER (SERVER)", 0xFFFF00))
-        category.entries.add(actionManagerButton)
-        category.entries.add(makeSpacer(15))
-        category.entries.add(makeSubtitleEntry("AI CAPABILITIES (SERVER)", 0xFFFF00))
-        category.entries.add(makeDescriptionEntry("Controls if the AI is allowed to trigger/use these systems.", 0xFFFF00, 10))
-        category.entries.add(makeDescriptionEntry("Some of them can be active without AI.", 0xFFFF00, 10))
-        category.entries.add(makeSpacer(8))
-        category.entries.add(useDefaultOutputEntry)
-        category.entries.add(outputDialogueEntry)
-        category.entries.add(outputActionsEntry)
-        category.entries.add(outputFriendshipEntry)
-        category.entries.add(outputWorldContextEntry)
-        category.entries.add(outputGuaranteedCatchEntry)
-        category.entries.add(outputMobsContextEntry)
-        category.entries.add(outputQuestsEntry)
-        category.entries.add(enableTraitsEntry)
-        category.entries.add(makeSubtitleEntry("POKÉMON MEMORIES (SERVER)", 0xFFFF00))
-        category.entries.add(outputMemoriesEntry)
-        category.entries.add(maxStoredMemoriesEntry)
-        category.entries.add(makeSpacer(6))
-        category.entries.add(makeSubtitleEntry("Local Retrieval", 0x55FFFF, bold = false, alignLeft = false))
-        category.entries.add(maxRelevantMemoriesEntry)
-        category.entries.add(favoriteMemorySlotsEntry)
-        category.entries.add(makeSpacer(6))
-        category.entries.add(makeSubtitleEntry("AI-Driven Retrieval", 0x55FFFF, bold = false, alignLeft = false))
-        category.entries.add(enableAiMemoryRetrievalEntry)
-        category.entries.add(baseCandidateMemoriesEntry)
-        category.entries.add(makeSpacer(8))
-        category.entries.add(makeSubtitleEntry("EXPERIMENTAL (SERVER)", 0xFFA500))
-        category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
-        category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
-        category.entries.add(makeSpacer(8))
-        category.entries.add(characteristicsEntry)
-        category.entries.add(allowCustomClientPromptEntry)
-        category.entries.add(wildPokemonCanBeHostileEntry)
-        category.entries.add(hostileDamageMultiplierEntry)
-        category.entries.add(outputApril1Entry)
-        category.entries.add(outputPokemonLanguageEntry)
-        category.entries.add(onlyNearbyChatEntry)
+
+        if (isOffline) {
+            category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
+            category.entries.add(manualActionNavEntry)
+            category.entries.add(sttEntry)
+            category.entries.add(hidePersonalityCreationEntry)
+            category.entries.add(offlineModeEntry)
+            category.entries.add(offlineTalkModeEntry)
+
+            addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
+            category.entries.add(needsPokemonTranslatorEntry)
+            category.entries.add(dialogueInChatEntry)
+            category.entries.add(chatbubblesEntry)
+            category.entries.add(showHungerEntry)
+            category.entries.add(spontaneousDialogueChanceEntry)
+            category.entries.add(wildPokemonTalkChanceEntry)
+            category.entries.add(wildQuestChanceEntry)
+            category.entries.add(scheduleRaidEntry)
+            category.entries.add(forceOfflineModeEntry)
+            category.entries.add(disableWelcomeMessageEntry)
+            category.entries.add(allowClientPersonalityEditingEntry)
+            category.entries.add(allowPokemonPVPEntry)
+            category.entries.add(allowPokemonPVEEntry)
+            category.entries.add(enableKarmaEntry)
+            category.entries.add(dialogueOnDamageEntry)
+            category.entries.add(dialogueOnBattleEntry)
+            category.entries.add(decreaseFriendshipEntry)
+            category.entries.add(increaseFriendshipEntry)
+            category.entries.add(showFriendshipEntry)
+
+            addServerSubtitle("ACTIONS MANAGER (SERVER)")
+            category.entries.add(actionManagerButton)
+            category.entries.add(makeSpacer(24))
+        } else if (!isFullCustom) {
+            category.entries.add(makeSubtitleEntry("AI CONFIGURATION", 0xFFFF00))
+            category.entries.add(apiKeyEntry)
+            category.entries.add(aiModelEntry)
+            category.entries.add(apiBaseUrlEntry)
+            category.entries.add(useChatEndpointEntry)
+            category.entries.add(customApiProviderEntry)
+            category.entries.add(debugLoggingEntry)
+            category.entries.add(maxInteractionSavesEntry)
+
+            category.entries.add(makeSpacer(6))
+            category.entries.add(advancedAiToggleButton)
+
+            if (showAdvancedAi) {
+                category.entries.add(makeSpacer(6))
+                category.entries.add(makeSubtitleEntry("ADVANCED AI SETTINGS", 0x55FFFF, bold = false))
+                category.entries.add(temperatureEntry)
+                category.entries.add(aiProviderEntry)
+                category.entries.add(reasoningEffortEntry)
+                category.entries.add(requestTimeoutEntry)
+                category.entries.add(keyRotationEntry)
+                category.entries.add(keyRotationTriggerEntry)
+                category.entries.add(modelRotationEntry)
+                category.entries.add(modelRotationTriggerEntry)
+            }
+
+            category.entries.add(makeSpacer(10))
+            category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
+            category.entries.add(preferredNameEntry)
+            category.entries.add(selectedLanguageEntry)
+            category.entries.add(manualActionNavEntry)
+            category.entries.add(psychicTranslationEntry)
+            category.entries.add(sttEntry)
+            category.entries.add(hidePersonalityCreationEntry)
+
+            val promptSectionColor = if (isPromptCustomizationAllowed) 0xFFFF00 else 0xFFA500
+            category.entries.add(makeSpacer(10))
+            category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT", promptSectionColor))
+            if (!isPromptCustomizationAllowed) {
+                addWrappedDescription(
+                    Component.translatable("cobblebrain.config.prompt_customization_blocked").string,
+                    0xFFA500
+                )
+                category.entries.add(makeSpacer(6))
+            }
+            category.entries.add(instructEntry)
+            category.entries.add(playerAboutEntry)
+            category.entries.add(outputPokemonLanguageEntry)
+            category.entries.add(allowClientPersonalityEditingEntry)
+            category.entries.add(allowCustomClientPromptEntry)
+            category.entries.add(makeSpacer(15))
+
+            addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
+            category.entries.add(needsPokemonTranslatorEntry)
+            category.entries.add(listenToChatEntry)
+            category.entries.add(dialogueInChatEntry)
+            category.entries.add(chatbubblesEntry)
+            category.entries.add(showHungerEntry)
+            category.entries.add(spontaneousDialogueChanceEntry)
+            category.entries.add(wildPokemonTalkChanceEntry)
+            category.entries.add(wildQuestChanceEntry)
+            category.entries.add(scheduleRaidEntry)
+            category.entries.add(forceOfflineModeEntry)
+            category.entries.add(disableWelcomeMessageEntry)
+            category.entries.add(allowPokemonPVPEntry)
+            category.entries.add(allowPokemonPVEEntry)
+            category.entries.add(enableKarmaEntry)
+            category.entries.add(dialogueOnDamageEntry)
+            category.entries.add(dialogueOnBattleEntry)
+            category.entries.add(decreaseFriendshipEntry)
+            category.entries.add(increaseFriendshipEntry)
+            category.entries.add(showFriendshipEntry)
+
+            addServerSubtitle("ACTIONS MANAGER (SERVER)")
+            category.entries.add(actionManagerButton)
+            category.entries.add(makeSpacer(24))
+        } else {
+            category.entries.add(makeSubtitleEntry("AI CONFIGURATION", 0xFFFF00))
+            category.entries.add(apiKeyEntry)
+            category.entries.add(aiModelEntry)
+            category.entries.add(apiBaseUrlEntry)
+            category.entries.add(useChatEndpointEntry)
+            category.entries.add(customApiProviderEntry)
+            category.entries.add(temperatureEntry)
+            category.entries.add(aiProviderEntry)
+            category.entries.add(reasoningEffortEntry)
+            category.entries.add(requestTimeoutEntry)
+            category.entries.add(debugLoggingEntry)
+            category.entries.add(keyRotationEntry)
+            category.entries.add(keyRotationTriggerEntry)
+            category.entries.add(modelRotationEntry)
+            category.entries.add(modelRotationTriggerEntry)
+            category.entries.add(maxInteractionSavesEntry)
+            category.entries.add(offlineModeEntry)
+            category.entries.add(offlineTalkModeEntry)
+            category.entries.add(optimizedModeEntry)
+
+            category.entries.add(makeSpacer(10))
+            category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
+            category.entries.add(preferredNameEntry)
+            category.entries.add(selectedLanguageEntry)
+            category.entries.add(psychicTranslationEntry)
+            category.entries.add(sttEntry)
+            category.entries.add(hidePersonalityCreationEntry)
+            category.entries.add(manualActionNavEntry)
+
+            val promptSectionColor = if (isPromptCustomizationAllowed) 0xFFFF00 else 0xFFA500
+            category.entries.add(makeSpacer(10))
+            category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT", promptSectionColor))
+            if (!isPromptCustomizationAllowed) {
+                addWrappedDescription(
+                    Component.translatable("cobblebrain.config.prompt_customization_blocked").string,
+                    0xFFA500
+                )
+                category.entries.add(makeSpacer(6))
+            }
+            category.entries.add(instructEntry)
+            category.entries.add(playerAboutEntry)
+            category.entries.add(outputPokemonLanguageEntry)
+            category.entries.add(allowClientPersonalityEditingEntry)
+            category.entries.add(allowCustomClientPromptEntry)
+            category.entries.add(makeSpacer(6))
+            category.entries.add(outputFormatEntry)
+            category.entries.add(makeSpacer(15))
+
+            addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
+            category.entries.add(needsPokemonTranslatorEntry)
+            category.entries.add(listenToChatEntry)
+            category.entries.add(dialogueInChatEntry)
+            category.entries.add(chatbubblesEntry)
+            category.entries.add(showHungerEntry)
+            category.entries.add(spontaneousDialogueChanceEntry)
+            category.entries.add(wildPokemonTalkChanceEntry)
+            category.entries.add(wildQuestChanceEntry)
+            category.entries.add(lowTokenModeEntry)
+            category.entries.add(scheduleRaidEntry)
+            category.entries.add(forceOfflineModeEntry)
+            category.entries.add(disableWelcomeMessageEntry)
+            category.entries.add(allowPokemonPVPEntry)
+            category.entries.add(allowPokemonPVEEntry)
+            category.entries.add(enableKarmaEntry)
+            category.entries.add(dialogueOnDamageEntry)
+            category.entries.add(dialogueOnBattleEntry)
+            category.entries.add(decreaseFriendshipEntry)
+            category.entries.add(increaseFriendshipEntry)
+            category.entries.add(showFriendshipEntry)
+
+            addServerSubtitle("ACTIONS MANAGER (SERVER)")
+            category.entries.add(actionManagerButton)
+            category.entries.add(makeSpacer(15))
+
+            addServerSubtitle("AI CAPABILITIES (SERVER)")
+            category.entries.add(makeDescriptionEntry("Controls if the AI is allowed to trigger/use these systems.", 0xFFFF00, 10))
+            category.entries.add(makeDescriptionEntry("Some of them can be active without AI.", 0xFFFF00, 10))
+            category.entries.add(makeSpacer(8))
+            category.entries.add(useDefaultOutputEntry)
+            category.entries.add(outputDialogueEntry)
+            category.entries.add(outputActionsEntry)
+            category.entries.add(outputFriendshipEntry)
+            category.entries.add(outputWorldContextEntry)
+            category.entries.add(outputGuaranteedCatchEntry)
+            category.entries.add(outputMobsContextEntry)
+            category.entries.add(outputQuestsEntry)
+            category.entries.add(enableTraitsEntry)
+
+            addServerSubtitle("POKÉMON MEMORIES (SERVER)")
+            category.entries.add(outputMemoriesEntry)
+            category.entries.add(maxStoredMemoriesEntry)
+            category.entries.add(makeSpacer(6))
+            category.entries.add(makeSubtitleEntry("Local Retrieval", 0x55FFFF, bold = false, alignLeft = false))
+            category.entries.add(maxRelevantMemoriesEntry)
+            category.entries.add(favoriteMemorySlotsEntry)
+            category.entries.add(makeSpacer(6))
+            category.entries.add(makeSubtitleEntry("AI-Driven Retrieval", 0x55FFFF, bold = false, alignLeft = false))
+            category.entries.add(enableAiMemoryRetrievalEntry)
+            category.entries.add(baseCandidateMemoriesEntry)
+            category.entries.add(makeSpacer(8))
+
+            addServerSubtitle("EXPERIMENTAL (SERVER)", 0xFFA500)
+            category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
+            category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
+            category.entries.add(makeSpacer(8))
+            category.entries.add(characteristicsEntry)
+            category.entries.add(wildPokemonCanBeHostileEntry)
+            category.entries.add(hostileDamageMultiplierEntry)
+            category.entries.add(outputApril1Entry)
+            category.entries.add(onlyNearbyChatEntry)
+            category.entries.add(makeSpacer(24))
+        }
+
         val initialForceOfflineMode = config.forceOfflineMode
         builder.setSavingRunnable {
+            isSaved = true
             val forceOfflineChanged = config.forceOfflineMode != initialForceOfflineMode
-            ConfigHandler.save()
+            val mc = Minecraft.getInstance()
+            val isRemoteServer = mc.player != null && !mc.isLocalServer
+
+            if (!isRemoteServer) {
+                config.useDefaultOutput = useDefaultOutput
+                config.outputDialogue = outputDialogue
+                config.outputActions = outputActions
+                config.outputFriendship = outputFriendship
+                config.outputMemories = outputMemories
+                config.outputApril1 = outputApril1
+                config.outputQuests = outputQuests
+                config.outputPokemonLanguage = outputPokemonLanguage
+                config.needsPokemonTranslator = needsPokemonTranslator
+                config.outputGuaranteedCatch = outputGuaranteedCatch
+                config.enableKarma = enableKarma
+                config.maxStoredMemories = maxStoredMemories
+                config.maxRelevantMemories = maxRelevantMemories
+                config.favoriteMemorySlots = favoriteMemorySlots
+                config.baseCandidateMemories = baseCandidateMemories
+                config.enableAiMemoryRetrieval = enableAiMemoryRetrieval
+                config.optimizedMode = clientConfig.optimizedMode
+            }
+
+            if (clientConfig.presetMode != "Custom") {
+                clientConfig.isCustomizedFromPreset = isPresetModified(clientConfig.presetMode)
+            }
+
+            if (!isRemoteServer) {
+                ConfigHandler.save()
+            }
             ClientConfigHandler.save()
-            SyncedConfig.updateLocal(
-                useDefaultOutput,
-                outputDialogue,
-                outputActions,
-                outputFriendship,
-                outputMemories,
-                outputApril1,
-                outputQuests,
-                outputPokemonLanguage,
-                needsPokemonTranslator,
-                outputGuaranteedCatch,
-                enableKarma,
-                maxStoredMemories,
-                maxRelevantMemories,
-                favoriteMemorySlots,
-                baseCandidateMemories,
-                config.allowClientPersonalityEditing,
-                enableAiMemoryRetrieval,
-                optimizedMode,
-                config.allowCustomClientPrompt
-            )
+            if (!isRemoteServer) {
+                SyncedConfig.updateLocal(
+                    useDefaultOutput,
+                    outputDialogue,
+                    outputActions,
+                    outputFriendship,
+                    outputMemories,
+                    outputApril1,
+                    outputQuests,
+                    outputPokemonLanguage,
+                    needsPokemonTranslator,
+                    outputGuaranteedCatch,
+                    enableKarma,
+                    maxStoredMemories,
+                    maxRelevantMemories,
+                    favoriteMemorySlots,
+                    baseCandidateMemories,
+                    config.allowClientPersonalityEditing,
+                    enableAiMemoryRetrieval,
+                    clientConfig.optimizedMode,
+                    config.allowCustomClientPrompt
+                )
+            }
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }
             CobblebrainClientCommon.sendNicknameToServer?.invoke(syncName)
             CobblebrainClientCommon.sendOfflineSettingsToServer?.invoke(
@@ -1999,12 +2568,20 @@ object CobblebrainConfigScreen {
                 clientConfig.offlineTalkMode
             )
 
+            activeSessionScreen = null
+            backupConfigJson = null
+            backupClientConfigJson = null
+
             if (forceOfflineChanged) {
                 val currentScreen = Minecraft.getInstance().screen
                 Minecraft.getInstance().setScreen(vito.cobblebrain.client.ForceOfflineNoticeScreen(currentScreen))
             }
         }
 
-        return builder.build()
+        val builtScreen = builder.build()
+        if (!isReloading) {
+            activeSessionScreen = builtScreen
+        }
+        return builtScreen
     }
 }
