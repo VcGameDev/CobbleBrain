@@ -312,6 +312,11 @@ Example: *Squirtle, defend me!* / *Bulbasaur, want to eat some berries I dropped
     Pokémon cancels all active commands and returns to its normal behavior.
   </details>
 
+  <details>
+    <summary>Music (Sing)</summary>
+    Pokémon plays and sings a multi-instrument melody using pitch-adjusted cries and Note Block sounds with synchronized lyrics.
+  </details>
+
 </details>
 
 ---

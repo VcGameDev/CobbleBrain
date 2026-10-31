@@ -116,6 +116,8 @@ fun parseCommand(line: String): PokemonCommand? {
         "ex" -> "excavate"
         "bu" -> "build"
         "dm" -> "excavate"
+        "m", "music", "sing" -> "music"
+        "so", "song" -> "song"
         else -> action
     }
     
@@ -760,6 +762,10 @@ object CommandTickHandler {
                 )
             }
 
+            if (action != "music" && action != "song") {
+                vito.cobblebrain.social.MusicManager.stopPerformanceFor(pokemonId)
+            }
+
             if (action != "rest" && action != "sit") {
                 if (sleepingState.containsKey(pokemonId) || pokemon.pose == Pose.SLEEPING || activeCarpets.containsKey(
                         pokemonId
@@ -788,6 +794,14 @@ object CommandTickHandler {
                     if (!GatheringActions.isGathering(pokemon.uuid)) {
                         GatheringActions.startGatheringAction(pokemon, GatheringType.BUILD, owner)
                     }
+                }
+
+                "music" -> {
+                    vito.cobblebrain.social.MusicManager.startMusicAction(pokemon, owner)
+                }
+
+                "song" -> {
+                    vito.cobblebrain.social.MusicManager.startSongAction(pokemon, owner)
                 }
 
                 "demolish" -> {
@@ -2373,6 +2387,7 @@ object CommandTickHandler {
                         ChatFormatting.LIGHT_PURPLE
                     )
                 }
+
 
                 // APRIL FOOLS ACTIONS
 

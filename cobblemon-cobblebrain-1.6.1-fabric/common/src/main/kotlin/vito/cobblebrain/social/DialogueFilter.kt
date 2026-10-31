@@ -18,6 +18,8 @@ object DialogueFilter {
     val TRAIT_REGEX = Regex("""(?:^|[\s|;])&TRAIT:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val QUIRK_REGEX = Regex("""(?:^|[\s|;])&QUIRK:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val CATCH_REGEX = Regex("""(?:^|[\n|;])\s*(?:[-*•+]|\d+\.)?\s*!(?!RESUME\b|Error\b|Erro\b)(?:CATCH[:\s-]*)?([A-Za-z0-9_.'♀♂#-]+)?""", RegexOption.IGNORE_CASE)
+    val MUSIC_HEADER_REGEX = Regex("""~MUSIC:[^\n|]+""", RegexOption.IGNORE_CASE)
+    val MUSIC_NOTE_REGEX = Regex("""-[VI]:[^\n|]+""", RegexOption.IGNORE_CASE)
 
     val MULTI_SPACE_REGEX = Regex("""[ \t]+""")
     val PUNCTUATION_SPACING_REGEX = Regex("""\s+([,.:!?])""")
@@ -123,6 +125,8 @@ object DialogueFilter {
             .replace(REPLACE_QUIRK_REGEX, "")
             .replace(MEMORY_REGEX, "")
             .replace(CATCH_REGEX, "")
+            .replace(MUSIC_HEADER_REGEX, "")
+            .replace(MUSIC_NOTE_REGEX, "")
             .replace(MULTI_SPACE_REGEX, " ")
             .replace(PUNCTUATION_SPACING_REGEX, "$1")
             .trim()
@@ -140,7 +144,10 @@ object DialogueFilter {
             normalized.startsWith("flag:") ||
             normalized.startsWith("!resume") ||
             normalized.startsWith("##") ||
-            normalized.startsWith("==")
+            normalized.startsWith("==") ||
+            normalized.startsWith("~music") ||
+            normalized.startsWith("-v:") ||
+            normalized.startsWith("-i:")
         ) {
             return true
         }

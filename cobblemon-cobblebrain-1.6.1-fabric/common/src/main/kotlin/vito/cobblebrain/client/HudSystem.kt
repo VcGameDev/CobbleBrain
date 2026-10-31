@@ -20,7 +20,7 @@ import com.mojang.blaze3d.systems.RenderSystem
 object HudSystem {
 
     private val ACTION_SCROLL_TIP_TEXTURE = ResourceLocation.fromNamespaceAndPath("cobblebrain", "textures/gui/action_scroll_tip.png")
-    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "EXCAVATE", "BUILD", "REST")
+    private val commands = listOf("IDLE", "ATTACK", "PROTECT", "BUFF", "DEBUFF ENEMY", "EAT", "COOK", "GROW", "REPAIR", "SHIFT", "FISH", "NIGHTMARE", "LIGHT", "SCOUT", "TELEPORT", "EXCAVATE", "BUILD", "REST", "MUSIC", "SONG")
     private var selectedActionIndex = 0
     private var isVisible = true
     var isSoloMode: Boolean = false
@@ -831,6 +831,8 @@ object HudSystem {
             "REPAIR" -> 300000L // 5:00 (300s)
             "SHIFT" -> 240000L // 4:00 (240s)
             "DEBUFF", "DEBUFF ENEMY" -> 60000L // 1:00 (60s)
+            "MUSIC" -> 10000L
+            "SONG" -> 60000L
             "TELEPORT" -> {
                 val cdSec = try {
                     val mc = Minecraft.getInstance()

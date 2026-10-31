@@ -481,6 +481,52 @@ data class BuildActionConfig(
     }
 }
 
+data class MusicActionConfig(
+    var enabledForPlayer: Boolean = false,
+    var enabledForAI: Boolean = true,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
+
+data class SongActionConfig(
+    var enabledForPlayer: Boolean = false,
+    var enabledForAI: Boolean = true,
+    @com.google.gson.annotations.SerializedName("active")
+    var legacyActive: Boolean? = null
+) {
+    var active: Boolean
+        get() = legacyActive ?: (enabledForPlayer || enabledForAI)
+        set(value) {
+            enabledForPlayer = value
+            enabledForAI = value
+            legacyActive = null
+        }
+
+    fun migrateLegacy() {
+        legacyActive?.let {
+            enabledForPlayer = it
+            enabledForAI = it
+            legacyActive = null
+        }
+    }
+}
+
 data class ActionSettings(
     var cook: CookActionConfig = CookActionConfig(),
     var grow: GrowActionConfig = GrowActionConfig(),
@@ -500,7 +546,9 @@ data class ActionSettings(
     var demolish: ExcavateActionConfig = excavate,
     var build: BuildActionConfig = BuildActionConfig(),
     var rest: RestActionConfig = RestActionConfig(),
-    var idle: BaseActionConfig = BaseActionConfig()
+    var idle: BaseActionConfig = BaseActionConfig(),
+    var music: MusicActionConfig = MusicActionConfig(),
+    var song: SongActionConfig = SongActionConfig()
 ) {
     var sit: RestActionConfig
         get() = rest
@@ -527,6 +575,8 @@ data class ActionSettings(
             "build" -> build.enabledForPlayer
             "rest", "sit" -> rest.enabledForPlayer
             "idle" -> idle.enabledForPlayer
+            "music", "sing" -> music.enabledForPlayer
+            "song" -> song.enabledForPlayer
             else -> true
         }
     }
@@ -553,6 +603,8 @@ data class ActionSettings(
             "build" -> build.enabledForAI
             "rest", "sit" -> rest.enabledForAI
             "idle" -> idle.enabledForAI
+            "music", "sing" -> music.enabledForAI
+            "song" -> song.enabledForAI
             else -> true
         }
     }
@@ -581,5 +633,7 @@ data class ActionSettings(
         build.migrateLegacy()
         rest.migrateLegacy()
         idle.migrateLegacy()
+        music.migrateLegacy()
+        song.migrateLegacy()
     }
 }

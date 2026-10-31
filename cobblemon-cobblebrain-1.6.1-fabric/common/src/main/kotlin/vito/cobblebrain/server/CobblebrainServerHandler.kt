@@ -31,7 +31,13 @@ object CobblebrainServerHandler {
             val ativos: List<Pokemon> = PokemonQuery.findActivePokemon(player)
             
             if (command.pokemonName.equals("ALL", ignoreCase = true)) {
-                ativos.forEach { poke ->
+                if (command.action.equals("music", ignoreCase = true) || command.action.equals("song", ignoreCase = true)) {
+                    val performer = ativos.firstOrNull { it.entity != null && it.entity!!.isAlive }
+                    performer?.entity?.let { entity ->
+                        RecentEventsSystem.commandSources[entity.uuid] = RecentEventsSystem.CommandSource.HUD
+                        CommandState.activeCommands[entity.uuid] = command.action
+                    }
+                } else ativos.forEach { poke ->
                     poke.entity?.let { entity ->
                         RecentEventsSystem.commandSources[entity.uuid] = RecentEventsSystem.CommandSource.HUD
                         CommandState.activeCommands[entity.uuid] = command.action
@@ -68,6 +74,7 @@ object CobblebrainServerHandler {
                     "LIGHT" -> net.minecraft.ChatFormatting.YELLOW
                     "SCOUT" -> net.minecraft.ChatFormatting.AQUA
                     "TELEPORT" -> net.minecraft.ChatFormatting.LIGHT_PURPLE
+                    "MUSIC" -> net.minecraft.ChatFormatting.LIGHT_PURPLE
                     else -> net.minecraft.ChatFormatting.WHITE
                 }
 

@@ -243,7 +243,7 @@ object CobblebrainConfigScreen {
         val category = builder.getOrCreateCategory(Component.literal("Actions"))
         val actionKeys = listOf(
             "cook", "grow", "repair", "shift", "fish", "nightmare", "light", "scout",
-            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "build", "rest", "idle"
+            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "build", "rest", "idle", "music", "song"
         )
 
         val mcPlayer = Minecraft.getInstance().player
@@ -314,6 +314,8 @@ object CobblebrainConfigScreen {
             "build" -> actionSettings.build.enabledForPlayer
             "rest", "sit" -> actionSettings.rest.enabledForPlayer
             "idle" -> actionSettings.idle.enabledForPlayer
+            "music", "sing" -> actionSettings.music.enabledForPlayer
+            "song" -> actionSettings.song.enabledForPlayer
             else -> true
         }
 
@@ -336,6 +338,8 @@ object CobblebrainConfigScreen {
             "build" -> actionSettings.build.enabledForAI
             "rest", "sit" -> actionSettings.rest.enabledForAI
             "idle" -> actionSettings.idle.enabledForAI
+            "music", "sing" -> actionSettings.music.enabledForAI
+            "song" -> actionSettings.song.enabledForAI
             else -> true
         }
 
@@ -381,10 +385,16 @@ object CobblebrainConfigScreen {
         var debuffDurationVal = actionSettings.debuffEnemy.durationSeconds
         var debuffEffectLevelVal = actionSettings.debuffEnemy.effectLevel
 
+        val defaultPlayerEnabled = when (actionKey) {
+            "music", "song" -> false
+            else -> true
+        }
+
         val enabledForPlayerEntry = entryBuilder.startBooleanToggle(
             Component.translatable("cobblebrain.config.action.enabled_for_player"),
             enabledForPlayerVal
         ).setDefaultValue(true)
+            .setDefaultValue(defaultPlayerEnabled)
             .setSaveConsumer { value -> enabledForPlayerVal = value }
             .setTooltip(Component.translatable("cobblebrain.config.action.enabled_for_player.tooltip"))
             .build()
@@ -745,6 +755,14 @@ object CobblebrainConfigScreen {
                     cfg.actionSettings.rest.enabledForAI = enabledForAiVal
                     cfg.actionSettings.rest.spawnCarpet = spawnCarpetVal
                     cfg.actionSettings.rest.healAmount = restHealAmountVal
+                }
+                "song" -> {
+                    cfg.actionSettings.song.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.song.enabledForAI = enabledForAiVal
+                }
+                "music", "sing" -> {
+                    cfg.actionSettings.music.enabledForPlayer = enabledForPlayerVal
+                    cfg.actionSettings.music.enabledForAI = enabledForAiVal
                 }
                 "idle" -> {
                     cfg.actionSettings.idle.enabledForPlayer = enabledForPlayerVal

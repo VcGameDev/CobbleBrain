@@ -769,10 +769,11 @@ class AIHandler {
         }
 
         val sanitizedRaw = DialogueFilter.sanitizeRawResponse(responseText)
+        val isMusic = prompt.contains("~MUSIC") || prompt.contains("[POKEMON MUSIC GENERATION]")
 
         val formatted = sanitizedRaw
             .replace("\\n", "\n")
-            .replace("\n", "|")
+            .let { if (isMusic) it else it.replace("\n", "|") }
             .replace("\\", "")
 
         historico.add(Mensagem("user", cleanPrompt))
@@ -879,7 +880,12 @@ class AIHandler {
     }
 
     fun generateBackgroundState(prompt: String): String {
-        val systemOverride = "You are the background state analysis engine for CobbleBrain. Analyze the conversation and player input, and output state updates for remaining systems (traits, quirks, memory diary, quest scoring, friendship, guaranteed catch) following the specified format strictly. Do NOT output dialogue or greeting text."
+        val isMusic = prompt.contains("[POKEMON MUSIC GENERATION]")
+        val systemOverride = if (isMusic) {
+            "You are a music composition engine for Pokémon. Output strictly the requested music notation without dialogue or commentary."
+        } else {
+            "You are the background state analysis engine for CobbleBrain. Analyze the conversation and player input, and output state updates for remaining systems (traits, quirks, memory diary, quest scoring, friendship, guaranteed catch) following the specified format strictly. Do NOT output dialogue or greeting text."
+        }
 
         val responseText = try {
             when {
@@ -906,7 +912,7 @@ class AIHandler {
 
         val formatted = responseText
             .replace("\\n", "\n")
-            .replace("\n", "|")
+            .let { if (isMusic) it else it.replace("\n", "|") }
             .replace("\\", "")
 
         return formatted

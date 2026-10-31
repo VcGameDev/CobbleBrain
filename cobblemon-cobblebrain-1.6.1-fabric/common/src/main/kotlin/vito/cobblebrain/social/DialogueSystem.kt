@@ -211,6 +211,7 @@ object DialogueSystem {
 
     fun onChat(sender: ServerPlayer, rawContent: String) {
         lastPlayerMessage[sender.uuid] = rawContent
+        MusicManager.recordPlayerChatMessage(sender.uuid, rawContent)
         if (!config.listenToChat) return
 
         if (config.onlyNearbyChat) {
@@ -387,6 +388,7 @@ object DialogueSystem {
         tickSecondaryBubbles(currentServer!!)
         StoryTimerSystem.tick(server)
         AmbientReactionManager.tick(server)
+        MusicManager.tick(server)
 
         maintainLookAt(server)
 
@@ -2704,6 +2706,8 @@ object DialogueSystem {
                 if (config.actionSettings.rest.enabledForAI) universalActions += "S (sit/rest - makes Pokémon sleep at night)"
                 if (config.actionSettings.protect.enabledForAI) universalActions += "P (protect)"
                 if (config.actionSettings.idle.enabledForAI) universalActions += "I (idle)"
+                if (config.actionSettings.music.enabledForAI) universalActions += "M (music - play quick melody)"
+                if (config.actionSettings.song.enabledForAI) universalActions += "SO (song - perform full 1-minute song with multi-track accompaniment and singing)"
 
                 if (config.actionSettings.cook.enabledForAI && "fire" in presentTypes) typeActions += "Fire: C (cook/smelt)"
                 if (config.actionSettings.repair.enabledForAI && "steel" in presentTypes) typeActions += "Steel: R (repair)"
@@ -3772,6 +3776,11 @@ object DialogueSystem {
             !it.contains(":")
         }
 
+        if (content.contains("~MUSIC:", ignoreCase = true) || content.contains("-V:", ignoreCase = true)) {
+            println("[CobbleBrain Music] Foreground received music chunk for ${player.name.string}")
+            MusicManager.handleMusicResponse(server, player, content)
+        }
+
         // 1. Immediate Execution of In-Game Actions (# tags)
         if (config.outputActions) {
             val context = collectWorldContext(player)
@@ -3959,6 +3968,11 @@ object DialogueSystem {
                             }
                             RecentEventsSystem.commandSources[pokemon.uuid] = RecentEventsSystem.CommandSource.AI
                             CommandState.activeCommands[pokemon.uuid] = cmd.action
+                            if (cmd.action == "music") {
+                                MusicManager.startMusicAction(pokemon, player)
+                            } else if (cmd.action == "song") {
+                                MusicManager.startSongAction(pokemon, player)
+                            }
                         }
                     }
                 }
@@ -4122,7 +4136,15 @@ object DialogueSystem {
             }
 
             try {
-                applyBackgroundStateUpdates(server, player, content, isCall2 = true)
+                if (content.contains("~MUSIC:", ignoreCase = true) || content.contains("-V:", ignoreCase = true) ||
+                    content.contains("[SONG_INFO]", ignoreCase = true) || content.contains("[TIMELINE]", ignoreCase = true) ||
+                    content.contains("[DRUM_PATTERNS]", ignoreCase = true)
+                ) {
+                    println("[CobbleBrain Music] Background received music chunk for ${player.name.string}")
+                    MusicManager.handleMusicResponse(server, player, content)
+                    return@execute
+                }
+            applyBackgroundStateUpdates(server, player, content, isCall2 = true)
                 vito.cobblebrain.engine.StoryDebugger.recordLog(
                     storyId = "system",
                     blockId = "stage2_background",
