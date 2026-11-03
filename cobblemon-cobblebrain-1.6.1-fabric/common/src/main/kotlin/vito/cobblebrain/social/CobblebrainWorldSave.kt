@@ -263,6 +263,28 @@ object CobblebrainWorldSave {
         return data.getAsJsonArray("received_guide").any { it.asString == player.uuid.toString() }
     }
 
+    private fun ensureTraditionalChineseNoticeArray() {
+        if (!data.has("seen_chinese_trad_notice")) {
+            data.add("seen_chinese_trad_notice", JsonArray())
+        }
+    }
+
+    fun hasSeenTraditionalChineseNotice(playerUuid: String): Boolean {
+        if (!::saveFile.isInitialized) return false
+        ensureTraditionalChineseNoticeArray()
+        return data.getAsJsonArray("seen_chinese_trad_notice").any { it.asString == playerUuid }
+    }
+
+    fun markTraditionalChineseNoticeSeen(playerUuid: String) {
+        if (!::saveFile.isInitialized) return
+        ensureTraditionalChineseNoticeArray()
+        val array = data.getAsJsonArray("seen_chinese_trad_notice")
+        if (array.none { it.asString == playerUuid }) {
+            array.add(playerUuid)
+            save()
+        }
+    }
+
     fun markGuideReceived(player: ServerPlayer) {
         ensureGuideArray()
         val array = data.getAsJsonArray("received_guide")

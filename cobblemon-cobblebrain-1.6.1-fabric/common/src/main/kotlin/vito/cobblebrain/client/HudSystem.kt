@@ -341,8 +341,14 @@ object HudSystem {
         val endVisible = minOf(startVisible + maxVisible, totalCount)
         val visibleCount = endVisible - startVisible
         val totalHeight = visibleCount * itemHeight
-        val x = screenWidth - menuWidth - 8
-        val y = (screenHeight - totalHeight) / 2
+        val anchor = try { ClientConfigHandler.clientConfig.actionHudAnchor } catch (_: Throwable) { "RIGHT_CENTER" }
+        val offsetX = try { ClientConfigHandler.clientConfig.actionHudOffsetX } catch (_: Throwable) { 0 }
+        val offsetY = try { ClientConfigHandler.clientConfig.actionHudOffsetY } catch (_: Throwable) { 0 }
+        val margin = 8
+        val baseX = when (anchor.uppercase()) { "LEFT_TOP", "LEFT_CENTER", "LEFT_BOTTOM" -> margin; "BOTTOM_CENTER" -> (screenWidth - menuWidth) / 2; else -> screenWidth - menuWidth - margin }
+        val baseY = when (anchor.uppercase()) { "LEFT_TOP", "RIGHT_TOP" -> 30; "LEFT_BOTTOM", "RIGHT_BOTTOM" -> screenHeight - totalHeight - 16; "BOTTOM_CENTER" -> screenHeight - totalHeight - 48; else -> (screenHeight - totalHeight) / 2 }
+        val x = (baseX + offsetX).coerceIn(4, maxOf(4, screenWidth - menuWidth - 4))
+        val y = (baseY + offsetY).coerceIn(26, maxOf(26, screenHeight - totalHeight - 6))
         val isManual = try { ClientConfigHandler.clientConfig.manualActionNav } catch (_: Throwable) { false }
 
         if (isScrollActive) {
@@ -374,7 +380,7 @@ object HudSystem {
             val line2W = (client.font.width(line2Text) * textScale).toInt()
             val maxTextW = maxOf(scaledSize.toInt(), line1W, line2W)
 
-            val tipCenterX = x - (maxTextW / 2f) - 6f
+            val tipCenterX = if (x < (screenWidth / 2)) (x + menuWidth + (maxTextW / 2f) + 8f) else (x - (maxTextW / 2f) - 6f)
             val spriteX = tipCenterX - (scaledSize / 2f)
             val lineHeightScaled = client.font.lineHeight * textScale
             val totalWidgetHeight = scaledSize + 3f + (2 * lineHeightScaled) + 2f

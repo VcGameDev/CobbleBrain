@@ -72,6 +72,7 @@ class PersonalityEditScreen(
     private val addAreaH = 28
     private val bottomBarH = 45
     private val complexityBarY = 28
+    private val maxItemTextW = 88
 
     private fun visibleRows(): Int {
         val listAreaH = height - listAreaTop - addAreaH - bottomBarH
@@ -143,90 +144,80 @@ class PersonalityEditScreen(
         addRenderableWidget(
             Button.builder(Component.translatable("cobblebrain.tab.memory_diary")) {
                 saveCurrentAbout()
-                savePendingInput()
                 currentTab = 3
                 refreshWidgets()
             }.bounds(startTabX + (tabW + gap) * 3, 45, tabW, 20).build()
         )
 
-        val saveText = if (isReadOnly) "cobblebrain.button.close" else "cobblebrain.button.save"
-        val saveBtn = Button.builder(Component.translatable(saveText)) {
-            if (!isReadOnly) {
-                if (isMemoriesLoading) {
-                    minecraft?.player?.displayClientMessage(
-                        Component.translatable("cobblebrain.screen.personality_edit.saving_disabled_loading"),
-                        true
-                    )
-                    return@builder
-                }
+        // Bottom action buttons: Save & Cancel
+        val btnW = 90
+        val bottomY = height - 28
+        val startBtnX = sw / 2 - btnW - 4
+
+        if (!isReadOnly) {
+            val saveBtn = Button.builder(Component.translatable("cobblebrain.button.save")) {
                 saveCurrentAbout()
                 savePendingInput()
-                val complexityScore = getComplexityScore()
-                if (complexityScore >= 300.0) {
-                    minecraft?.setScreen(
-                        ConfirmPersonalityComplexityScreen(
-                            this,
-                            displayName,
-                            complexityScore,
-                        ) {
-                            persistPersonality()
-                        }
-                    )
+                val score = calculateTotalComplexity()
+                if (score >= 300.0) {
+                    val currentScreen = this
+                    val compName = getComplexityLevel(score).first.string
+                    minecraft?.setScreen(ConfirmPersonalityComplexityScreen(currentScreen, displayName, score) {
+                        persistPersonality()
+                    })
                 } else {
                     persistPersonality()
                 }
-            } else {
-                minecraft?.setScreen(parentScreen)
-            }
-        }.bounds(sw / 2 - 105, height - 35, 100, 20).build()
-        if (!isReadOnly && isMemoriesLoading) {
-            saveBtn.active = false
+            }.bounds(startBtnX, bottomY, btnW, 20).build()
+            
+            saveBtn.active = !isMemoriesLoading
+            saveButton = saveBtn
+            addRenderableWidget(saveBtn)
         }
-        saveButton = saveBtn
-        addRenderableWidget(saveBtn)
+
+        val cancelText = if (isReadOnly) Component.translatable("cobblebrain.button.close") else Component.translatable("cobblebrain.button.cancel")
+        val cancelX = if (isReadOnly) sw / 2 - btnW / 2 else startBtnX + btnW + 8
         addRenderableWidget(
-            Button.builder(Component.translatable("cobblebrain.button.cancel")) {
+            Button.builder(cancelText) {
                 minecraft?.setScreen(parentScreen)
-            }.bounds(sw / 2 + 5, height - 35, 100, 20).build()
+            }.bounds(cancelX, bottomY, btnW, 20).build()
         )
 
         refreshWidgets()
     }
 
     private fun saveCurrentAbout() {
-        aboutEdit?.let { personality = personality.copy(about = it.value) }
+        aboutEdit?.let {
+            personality = personality.copy(about = it.value.trim())
+        }
     }
 
     private fun savePendingInput() {
-        pendingInputText = addInputEdit?.value ?: pendingInputText
-        memoryAddInputBox?.let { pendingMemoryText = it.value }
+        addInputEdit?.let {
+            pendingInputText = it.value
+        }
+        memoryAddInputBox?.let {
+            pendingMemoryText = it.value
+        }
     }
 
-    private fun getLiveAboutText(): String {
-        return aboutEdit?.value ?: personality.about
-    }
+    private fun calculateTotalComplexity(): Double {
+        var score = 0.0
+        val currentAbout = aboutEdit?.value?.trim() ?: personality.about
+        score += currentAbout.length * 0.25
 
-    private fun countWords(text: String): Int {
-        return text.trim()
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
-            .size
-    }
+        personality.traits.forEach { score += it.length * 0.5 + 4.0 }
+        personality.quirks.forEach { score += it.length * 0.5 + 4.0 }
+        personality.likes.forEach { score += it.length * 0.4 + 3.0 }
+        personality.dislikes.forEach { score += it.length * 0.4 + 3.0 }
 
-    private fun countLetters(text: String): Int {
-        return text.count { it.isLetter() }
-    }
+        val activeCount = maxOf(personality.traits.size, 1) +
+                          maxOf(personality.quirks.size, 1) +
+                          maxOf(personality.likes.size, 1) +
+                          maxOf(personality.dislikes.size, 1)
 
-    private fun sectionScore(text: String): Double {
-        return countWords(text) + (countLetters(text) / 25.0)
-    }
-
-    private fun getComplexityScore(): Double {
-        return sectionScore(getLiveAboutText()) +
-            sectionScore(personality.traits.joinToString(" ")) +
-            sectionScore(personality.quirks.joinToString(" ")) +
-            sectionScore(personality.likes.joinToString(" ")) +
-            sectionScore(personality.dislikes.joinToString(" "))
+        val diversityMultiplier = 1.0 + (activeCount * 0.05)
+        return score * diversityMultiplier
     }
 
     private fun getComplexityLevel(score: Double): Pair<Component, Int> {
@@ -273,32 +264,32 @@ class PersonalityEditScreen(
         memoryKeywordsEditBox?.let { removeWidget(it) }
         memoryAddInputBox?.let { removeWidget(it) }
 
-        children()
-            .filter { w -> w is Button && w.y >= listAreaTop - 25 && w.y < height - bottomBarH + 10 }
-            .toList()
-            .forEach { removeWidget(it) }
-
-        aboutEdit = null
-        addInputEdit = null
-        searchMemoryEditBox = null
-        memoryEditBox = null
-        memoryKeywordsEditBox = null
-        memoryAddInputBox = null
+        val buttonsToRemove = children().filterIsInstance<Button>().filter { btn ->
+            val isTopTab = btn.y == 45
+            val isBottomBar = btn.y == height - 28
+            !isTopTab && !isBottomBar
+        }
+        buttonsToRemove.forEach { removeWidget(it) }
 
         if (currentTab == 0) {
-            val wBox = 260
-            val editBox = EditBox(font, sw / 2 - wBox / 2, listAreaTop + 5, wBox, 20, Component.translatable("cobblebrain.screen.personality_edit.about_desc"))
-            editBox.setMaxLength(9999)
-            editBox.value = personality.about
-            editBox.setEditable(!isReadOnly)
-            editBox.setHint(Component.translatable("cobblebrain.placeholder.write_here").withStyle { it.withColor(0xFF555555.toInt()) })
-            aboutEdit = editBox
-            addRenderableWidget(editBox)
+            // ================= GENERAL TAB =================
+            val editW = 260
+            val editH = 20
+            val startX = sw / 2 - editW / 2
+            val startY = listAreaTop + 5
 
+            val box = EditBox(font, startX, startY, editW, editH, Component.translatable("cobblebrain.screen.personality_edit.about_desc"))
+            box.setMaxLength(300)
+            box.value = personality.about
+            box.setEditable(!isReadOnly)
+            aboutEdit = box
+            addRenderableWidget(box)
+
+            // Behavior Toggles: Dialogue, Actions, Personality Evolution
             if (!isReadOnly) {
                 val btnW = 84
                 val btnGap = 4
-                val startX = sw / 2 - 130
+                val toggleStartX = sw / 2 - 130
                 val btnY = listAreaTop + 35
 
                 val talkKey = if (personality.effectiveCanTalk) "cobblebrain.button.toggle_dialogue.on" else "cobblebrain.button.toggle_dialogue.off"
@@ -309,7 +300,7 @@ class PersonalityEditScreen(
                         personality = personality.copy(canTalk = next)
                         refreshWidgets()
                     }.tooltip(Tooltip.create(Component.translatable("cobblebrain.button.toggle_dialogue.tooltip")))
-                     .bounds(startX, btnY, btnW, 20).build()
+                     .bounds(toggleStartX, btnY, btnW, 20).build()
                 )
 
                 val actKey = if (personality.effectiveCanAct) "cobblebrain.button.toggle_action.on" else "cobblebrain.button.toggle_action.off"
@@ -320,7 +311,7 @@ class PersonalityEditScreen(
                         personality = personality.copy(canAct = next)
                         refreshWidgets()
                     }.tooltip(Tooltip.create(Component.translatable("cobblebrain.button.toggle_action.tooltip")))
-                     .bounds(startX + btnW + btnGap, btnY, btnW, 20).build()
+                     .bounds(toggleStartX + btnW + btnGap, btnY, btnW, 20).build()
                 )
 
                 val charKey = if (personality.effectiveCanUpdatePersonality) "cobblebrain.button.toggle_personality.on" else "cobblebrain.button.toggle_personality.off"
@@ -331,7 +322,7 @@ class PersonalityEditScreen(
                         personality = personality.copy(canUpdatePersonality = next)
                         refreshWidgets()
                     }.tooltip(Tooltip.create(Component.translatable("cobblebrain.button.toggle_personality.tooltip")))
-                     .bounds(startX + (btnW + btnGap) * 2, btnY, btnW, 20).build()
+                     .bounds(toggleStartX + (btnW + btnGap) * 2, btnY, btnW, 20).build()
                 )
             }
         } else if (currentTab == 3) {
@@ -370,32 +361,30 @@ class PersonalityEditScreen(
             val filteredMemories = getFilteredAndSortedMemories()
 
             val editIdx = editingMemoryIndex
-            if (editIdx != null && editIdx in memories.indices) {
-                // Editing mode for specific memory with explicit labels (Memory + Keywords)
+            if (editIdx != null && editIdx in memories.indices && !isReadOnly) {
+                // Editing Single Memory View
                 val targetMemory = memories[editIdx]
-                val boxW = 260
-                val boxX = sw / 2 - boxW / 2
+                val editW = 260
+                val startX = sw / 2 - editW / 2
+                val startY = listAreaTop + 15
 
-                val editBox = EditBox(font, boxX, listAreaTop + 14, boxW, 18, Component.translatable("cobblebrain.screen.personality_edit.memory_label"))
-                editBox.setMaxLength(500)
-                editBox.value = targetMemory.memory
-                editBox.setEditable(!isReadOnly)
-                editBox.setCursorPosition(0) // Guarantee cursor is at the start!
-                memoryEditBox = editBox
-                addRenderableWidget(editBox)
+                val memBox = EditBox(font, startX, startY, editW, 18, Component.translatable("cobblebrain.screen.personality_edit.memory_label"))
+                memBox.setMaxLength(300)
+                memBox.value = targetMemory.memory
+                memoryEditBox = memBox
+                addRenderableWidget(memBox)
 
-                val kwBox = EditBox(font, boxX, listAreaTop + 48, boxW, 18, Component.translatable("cobblebrain.screen.personality_edit.keywords_label"))
+                val kwBox = EditBox(font, startX, startY + 30, editW, 18, Component.translatable("cobblebrain.screen.personality_edit.keywords_label"))
                 kwBox.setMaxLength(200)
                 kwBox.value = targetMemory.keywords.joinToString(", ")
-                kwBox.setEditable(!isReadOnly)
-                kwBox.setCursorPosition(0)
+                kwBox.setHint(Component.translatable("cobblebrain.screen.personality_edit.keywords").withStyle { it.withColor(0xFF888888.toInt()) })
                 memoryKeywordsEditBox = kwBox
                 addRenderableWidget(kwBox)
 
-                val btnY = listAreaTop + 74
+                val btnY = startY + 60
                 addRenderableWidget(
                     Button.builder(Component.translatable("cobblebrain.button.save")) {
-                        val newText = editBox.value.trim()
+                        val newText = memBox.value.trim()
                         val newKw = kwBox.value.split(",")
                             .map { it.trim().lowercase() }
                             .filter { it.isNotBlank() }
@@ -460,9 +449,9 @@ class PersonalityEditScreen(
                 if (!isReadOnly) {
                     val addY = height - bottomBarH - addAreaH + 4
                     val inputW = 190
-                    val btnW = 75
-                    val gap = 4
-                    val totalW = inputW + gap + btnW
+                    val btnWAdd = 75
+                    val gapAdd = 4
+                    val totalW = inputW + gapAdd + btnWAdd
                     val startX = sw / 2 - totalW / 2
 
                     val memInputEdit = EditBox(font, startX, addY, inputW, 18, Component.translatable("cobblebrain.screen.personality_edit.memory_label"))
@@ -496,7 +485,7 @@ class PersonalityEditScreen(
                                 clampScroll()
                                 refreshWidgets()
                             }
-                        }.bounds(startX + inputW + gap, addY, btnW, 18).build()
+                        }.bounds(startX + inputW + gapAdd, addY, btnWAdd, 18).build()
                     )
                 }
             }
@@ -506,6 +495,8 @@ class PersonalityEditScreen(
             val topIdx = topIndex()
             val listLeft  = if (currentTab == 1) personality.traits  else personality.likes
             val listRight = if (currentTab == 1) personality.quirks  else personality.dislikes
+            val listLockedLeft  = if (currentTab == 1) personality.effectiveLockedTraits  else personality.effectiveLockedLikes
+            val listLockedRight = if (currentTab == 1) personality.effectiveLockedQuirks else personality.effectiveLockedDislikes
             val labelLeft  = if (currentTab == 1) Component.translatable("cobblebrain.column.traits") else Component.translatable("cobblebrain.column.likes")
             val labelRight = if (currentTab == 1) Component.translatable("cobblebrain.column.quirks") else Component.translatable("cobblebrain.column.dislikes")
 
@@ -513,34 +504,76 @@ class PersonalityEditScreen(
             val rightX = sw / 2 + 10
             val vis = visibleRows()
 
-            // Left delete buttons
+            // Left lock and delete buttons
             for (rowIdx in 0 until vis) {
                 val dataIdx = topIdx + rowIdx
                 if (dataIdx >= listLeft.size) break
                 if (!isReadOnly) {
                     val capturedIdx = dataIdx
+                    val itemText = listLeft[capturedIdx]
+                    val isLocked = listLockedLeft.any { it.equals(itemText, ignoreCase = true) }
+                    val lockLabel = if (isLocked) "§6🔒" else "§7🔓"
+                    val lockTooltip = if (isLocked) "cobblebrain.button.lock.locked.tooltip" else "cobblebrain.button.lock.unlocked.tooltip"
+
+                    addRenderableWidget(
+                        Button.builder(Component.literal(lockLabel)) {
+                            val existingIdx = listLockedLeft.indexOfFirst { it.equals(itemText, ignoreCase = true) }
+                            if (existingIdx != -1) {
+                                listLockedLeft.removeAt(existingIdx)
+                            } else {
+                                listLockedLeft.add(itemText)
+                            }
+                            refreshWidgets()
+                        }.bounds(leftX + 92, listAreaTop + rowIdx * rowH, 20, 18)
+                        .tooltip(Tooltip.create(Component.translatable(lockTooltip)))
+                        .build()
+                    )
+
                     addRenderableWidget(
                         Button.builder(Component.literal("X")) {
+                            val existingIdx = listLockedLeft.indexOfFirst { it.equals(itemText, ignoreCase = true) }
+                            if (existingIdx != -1) listLockedLeft.removeAt(existingIdx)
                             listLeft.removeAt(capturedIdx)
                             clampScroll()
                             refreshWidgets()
-                        }.bounds(leftX + 113, listAreaTop + rowIdx * rowH, 20, 18).build()
+                        }.bounds(leftX + 114, listAreaTop + rowIdx * rowH, 20, 18).build()
                     )
                 }
             }
 
-            // Right delete buttons
+            // Right lock and delete buttons
             for (rowIdx in 0 until vis) {
                 val dataIdx = topIdx + rowIdx
                 if (dataIdx >= listRight.size) break
                 if (!isReadOnly) {
                     val capturedIdx = dataIdx
+                    val itemText = listRight[capturedIdx]
+                    val isLocked = listLockedRight.any { it.equals(itemText, ignoreCase = true) }
+                    val lockLabel = if (isLocked) "§6🔒" else "§7🔓"
+                    val lockTooltip = if (isLocked) "cobblebrain.button.lock.locked.tooltip" else "cobblebrain.button.lock.unlocked.tooltip"
+
+                    addRenderableWidget(
+                        Button.builder(Component.literal(lockLabel)) {
+                            val existingIdx = listLockedRight.indexOfFirst { it.equals(itemText, ignoreCase = true) }
+                            if (existingIdx != -1) {
+                                listLockedRight.removeAt(existingIdx)
+                            } else {
+                                listLockedRight.add(itemText)
+                            }
+                            refreshWidgets()
+                        }.bounds(rightX + 92, listAreaTop + rowIdx * rowH, 20, 18)
+                        .tooltip(Tooltip.create(Component.translatable(lockTooltip)))
+                        .build()
+                    )
+
                     addRenderableWidget(
                         Button.builder(Component.literal("X")) {
+                            val existingIdx = listLockedRight.indexOfFirst { it.equals(itemText, ignoreCase = true) }
+                            if (existingIdx != -1) listLockedRight.removeAt(existingIdx)
                             listRight.removeAt(capturedIdx)
                             clampScroll()
                             refreshWidgets()
-                        }.bounds(rightX + 113, listAreaTop + rowIdx * rowH, 20, 18).build()
+                        }.bounds(rightX + 114, listAreaTop + rowIdx * rowH, 20, 18).build()
                     )
                 }
             }
@@ -599,51 +632,58 @@ class PersonalityEditScreen(
         val sw = width
         guiGraphics.drawCenteredString(font, "$displayName ($species)", sw / 2, 15, 0xFFFFA500.toInt())
 
-        val complexityScore = getComplexityScore()
-        val (complexityLabel, complexityColor) = getComplexityLevel(complexityScore)
-        val complexityText = Component.literal(
-            "${Component.translatable("cobblebrain.screen.personality_edit.complexity").string}: ${complexityLabel.string}  ${String.format("%.1f", complexityScore)}"
-        )
-        guiGraphics.drawCenteredString(font, complexityText, sw / 2, complexityBarY, complexityColor)
-
+        // Tab indicator underlines
         val tabW = 75
         val gap = 4
         val startTabX = sw / 2 - ((4 * tabW + 3 * gap) / 2)
-        val tabX = startTabX + currentTab * (tabW + gap)
-        guiGraphics.fill(tabX, 43, tabX + tabW, 45, 0xFFFFA500.toInt())
+        val selectedX = startTabX + currentTab * (tabW + gap)
+        guiGraphics.fill(selectedX, 66, selectedX + tabW, 68, 0xFFFFA500.toInt())
+
+        // Complexity score calculation
+        val complexityScore = calculateTotalComplexity()
+        val (compName, compColor) = getComplexityLevel(complexityScore)
+
+        val complexityPrefix = Component.translatable("cobblebrain.screen.personality_edit.complexity").string
+        val complexityText = "$complexityPrefix: ${compName.string} (${complexityScore.toInt()})"
+        guiGraphics.drawCenteredString(font, complexityText, sw / 2, complexityBarY, compColor)
+
+        val barW = 200
+        val barH = 4
+        val barX = sw / 2 - barW / 2
+        val barY = complexityBarY + 10
+        guiGraphics.fill(barX, barY, barX + barW, barY + barH, 0x55000000)
+
+        val maxSafeScore = 300.0
+        val fillW = (barW * (complexityScore / maxSafeScore).coerceIn(0.0, 1.0)).toInt()
+        guiGraphics.fill(barX, barY, barX + fillW, barY + barH, compColor)
 
         if (currentTab == 0) {
-            guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.personality_edit.about_desc"), sw / 2 - 130, listAreaTop - 10, 0xFFAAAAAA.toInt())
+            val editW = 260
+            val startX = sw / 2 - editW / 2
+            guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.personality_edit.about_desc"), startX, listAreaTop - 7, 0xFFFFA500.toInt())
         } else if (currentTab == 3) {
-            if (isMemoriesLoading) {
-                guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.personality_edit.loading_memories"), sw / 2, height / 2 - 10, 0xFFFFA500.toInt())
-                return
-            }
             val leftX = sw / 2 - 145
             val vis = visibleRows()
             val topIdx = topIndex()
             val filteredMemories = getFilteredAndSortedMemories()
-            val favCount = memories.count { it.isFavorite }
 
-            // Memories Counter Text on top right
-            val headerText = Component.translatable("cobblebrain.screen.personality_edit.memories_count", filteredMemories.size, favCount)
-            guiGraphics.drawString(font, headerText, sw / 2 + 5, listAreaTop - 17, 0xFFFFA500.toInt())
+            if (isMemoriesLoading) {
+                guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.personality_edit.loading_memories").string, sw / 2, height / 2 - 10, 0xFFFFA500.toInt())
+                return
+            }
 
             val editIdx = editingMemoryIndex
             if (editIdx != null && editIdx in memories.indices) {
-                // Draw explicit labels in editing mode
-                val boxW = 260
-                val boxX = sw / 2 - boxW / 2
-
-                val memLabel = Component.translatable("cobblebrain.screen.personality_edit.memory_label")
-                val kwLabel = Component.translatable("cobblebrain.screen.personality_edit.keywords_label")
-
-                guiGraphics.drawString(font, memLabel, boxX, listAreaTop + 3, 0xFFFFA500.toInt())
-                guiGraphics.drawString(font, kwLabel, boxX, listAreaTop + 37, 0xFFFFA500.toInt())
+                val startX = sw / 2 - 130
+                val startY = listAreaTop + 15
+                guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.personality_edit.memory_label"), startX, startY - 10, 0xFFFFA500.toInt())
+                guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.personality_edit.keywords_label"), startX, startY + 20, 0xFFFFA500.toInt())
             } else {
-                val maxTextW = 195
+                val favoritesCount = memories.count { it.isFavorite }
+                val labelMemories = Component.translatable("cobblebrain.screen.personality_edit.memories_count", memories.size, favoritesCount).string
+                guiGraphics.drawString(font, labelMemories, leftX + 150, listAreaTop - 16, 0xFFFFA500.toInt())
 
-                // Render memory rows with horizontal scroll and scissor
+                val maxTextW = 195
                 for (rowIdx in 0 until vis) {
                     val dataIdx = topIdx + rowIdx
                     if (dataIdx >= filteredMemories.size) break
@@ -666,13 +706,13 @@ class PersonalityEditScreen(
                         guiGraphics.drawString(font, fullText, leftX + 24 - shift, itemY, textColor)
 
                         // Miniature horizontal scrollbar for memory row
-                        val barY = itemY + font.lineHeight + 1
-                        val barH = 1
-                        guiGraphics.fill(leftX + 24, barY, leftX + 24 + maxTextW, barY + barH, 0x22FFFFFF)
+                        val barScrollY = itemY + font.lineHeight + 1
+                        val barScrollH = 1
+                        guiGraphics.fill(leftX + 24, barScrollY, leftX + 24 + maxTextW, barScrollY + barScrollH, 0x22FFFFFF)
                         val thumbW = maxOf(4, (maxTextW.toFloat() * maxTextW.toFloat() / textWidth.toFloat()).toInt())
                         val scrollPercent = shift.toFloat() / maxShift.toFloat()
                         val thumbX = leftX + 24 + ((maxTextW - thumbW) * scrollPercent).toInt()
-                        guiGraphics.fill(thumbX, barY, thumbX + thumbW, barY + barH, 0x99FFA500.toInt())
+                        guiGraphics.fill(thumbX, barScrollY, thumbX + thumbW, barScrollY + barScrollH, 0x99FFA500.toInt())
 
                         guiGraphics.disableScissor()
                     }
@@ -703,7 +743,6 @@ class PersonalityEditScreen(
 
             val leftX  = sw / 2 - 145
             val rightX = sw / 2 + 10
-            val maxTextW = 108
 
             guiGraphics.drawString(font, labelLeft,  leftX,  listAreaTop - 12, 0xFFFFA500.toInt())
             guiGraphics.drawString(font, labelRight, rightX, listAreaTop - 12, 0xFFFFA500.toInt())
@@ -720,23 +759,23 @@ class PersonalityEditScreen(
                 val fullText = "- $originalText"
                 val textWidth = font.width(fullText)
 
-                if (textWidth <= maxTextW) {
+                if (textWidth <= maxItemTextW) {
                     guiGraphics.drawString(font, fullText, leftX, itemY, 0xFFFFFFFF.toInt())
                 } else {
-                    val maxShift = textWidth - maxTextW
+                    val maxShift = textWidth - maxItemTextW
                     val shift = (scrollLeftOffsets[originalText] ?: 0).coerceIn(0, maxShift)
                     
-                    guiGraphics.enableScissor(leftX, itemY, leftX + maxTextW, itemY + font.lineHeight + 3)
+                    guiGraphics.enableScissor(leftX, itemY, leftX + maxItemTextW, itemY + font.lineHeight + 3)
                     guiGraphics.drawString(font, fullText, leftX - shift, itemY, 0xFFFFFFFF.toInt())
                     
                     // Miniature horizontal scrollbar
-                    val barY = itemY + font.lineHeight + 1
-                    val barH = 1
-                    guiGraphics.fill(leftX, barY, leftX + maxTextW, barY + barH, 0x22FFFFFF)
-                    val thumbW = maxOf(4, (maxTextW.toFloat() * maxTextW.toFloat() / textWidth.toFloat()).toInt())
+                    val barScrollY = itemY + font.lineHeight + 1
+                    val barScrollH = 1
+                    guiGraphics.fill(leftX, barScrollY, leftX + maxItemTextW, barScrollY + barScrollH, 0x22FFFFFF)
+                    val thumbW = maxOf(4, (maxItemTextW.toFloat() * maxItemTextW.toFloat() / textWidth.toFloat()).toInt())
                     val scrollPercent = shift.toFloat() / maxShift.toFloat()
-                    val thumbX = leftX + ((maxTextW - thumbW) * scrollPercent).toInt()
-                    guiGraphics.fill(thumbX, barY, thumbX + thumbW, barY + barH, 0x99FFA500.toInt())
+                    val thumbX = leftX + ((maxItemTextW - thumbW) * scrollPercent).toInt()
+                    guiGraphics.fill(thumbX, barScrollY, thumbX + thumbW, barScrollY + barScrollH, 0x99FFA500.toInt())
 
                     guiGraphics.disableScissor()
                 }
@@ -751,28 +790,29 @@ class PersonalityEditScreen(
                 val fullText = "- $originalText"
                 val textWidth = font.width(fullText)
 
-                if (textWidth <= maxTextW) {
+                if (textWidth <= maxItemTextW) {
                     guiGraphics.drawString(font, fullText, rightX, itemY, 0xFFFFFFFF.toInt())
                 } else {
-                    val maxShift = textWidth - maxTextW
+                    val maxShift = textWidth - maxItemTextW
                     val shift = (scrollRightOffsets[originalText] ?: 0).coerceIn(0, maxShift)
                     
-                    guiGraphics.enableScissor(rightX, itemY, rightX + maxTextW, itemY + font.lineHeight + 3)
+                    guiGraphics.enableScissor(rightX, itemY, rightX + maxItemTextW, itemY + font.lineHeight + 3)
                     guiGraphics.drawString(font, fullText, rightX - shift, itemY, 0xFFFFFFFF.toInt())
-
+                    
                     // Miniature horizontal scrollbar
-                    val barY = itemY + font.lineHeight + 1
-                    val barH = 1
-                    guiGraphics.fill(rightX, barY, rightX + maxTextW, barY + barH, 0x22FFFFFF)
-                    val thumbW = maxOf(4, (maxTextW.toFloat() * maxTextW.toFloat() / textWidth.toFloat()).toInt())
+                    val barScrollY = itemY + font.lineHeight + 1
+                    val barScrollH = 1
+                    guiGraphics.fill(rightX, barScrollY, rightX + maxItemTextW, barScrollY + barScrollH, 0x22FFFFFF)
+                    val thumbW = maxOf(4, (maxItemTextW.toFloat() * maxItemTextW.toFloat() / textWidth.toFloat()).toInt())
                     val scrollPercent = shift.toFloat() / maxShift.toFloat()
-                    val thumbX = rightX + ((maxTextW - thumbW) * scrollPercent).toInt()
-                    guiGraphics.fill(thumbX, barY, thumbX + thumbW, barY + barH, 0x99FFA500.toInt())
+                    val thumbX = rightX + ((maxItemTextW - thumbW) * scrollPercent).toInt()
+                    guiGraphics.fill(thumbX, barScrollY, thumbX + thumbW, barScrollY + barScrollH, 0x99FFA500.toInt())
 
                     guiGraphics.disableScissor()
                 }
             }
 
+            // Vertical scrollbar for traits/likes list
             val maxItems = maxOf(listLeft.size, listRight.size)
             if (maxItems > vis) {
                 val scrollbarX = sw / 2 + 151
@@ -793,15 +833,14 @@ class PersonalityEditScreen(
     }
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
-        if (currentTab == 3 && editingMemoryIndex == null) {
-            val sw = width
-            val leftX = sw / 2 - 145
+        val vis = visibleRows()
+        val topIdx = topIndex()
+
+        if (currentTab == 3) {
+            val leftX = width / 2 - 145
             val maxTextW = 195
-            val topIdx = topIndex()
-            val vis = visibleRows()
             val filteredMemories = getFilteredAndSortedMemories()
 
-            // Check hover over memory row for horizontal text scrolling
             for (rowIdx in 0 until vis) {
                 val dataIdx = topIdx + rowIdx
                 if (dataIdx >= filteredMemories.size) break
@@ -809,8 +848,7 @@ class PersonalityEditScreen(
                 if (mouseX >= leftX + 24 && mouseX <= leftX + 24 + maxTextW && mouseY >= itemY && mouseY < itemY + rowH) {
                     val (_, m) = filteredMemories[dataIdx]
                     val starPrefix = if (m.isFavorite) "★ " else ""
-                    val fullText = "$starPrefix${m.memory}"
-                    val textWidth = font.width(fullText)
+                    val textWidth = font.width("$starPrefix${m.memory}")
                     if (textWidth > maxTextW) {
                         val maxShift = textWidth - maxTextW
                         val currentShift = scrollMemoryOffsets[m.memory] ?: 0
@@ -820,21 +858,12 @@ class PersonalityEditScreen(
                     }
                 }
             }
-
-            // Fallback: Vertical scroll for memory list
-            val delta = if (scrollY > 0) -1 else 1
-            scrollTop[3] = (scrollTop[3] + delta).coerceIn(0, maxOf(0, filteredMemories.size - visibleRows()))
-            refreshWidgets()
-            return true
         }
 
         if (currentTab != 0 && currentTab != 3) {
             val sw = width
             val leftX  = sw / 2 - 145
             val rightX = sw / 2 + 10
-            val maxTextW = 108
-            val topIdx = topIndex()
-            val vis = visibleRows()
 
             val listLeft  = if (currentTab == 1) personality.traits  else personality.likes
             val listRight = if (currentTab == 1) personality.quirks  else personality.dislikes
@@ -844,12 +873,12 @@ class PersonalityEditScreen(
                 val dataIdx = topIdx + rowIdx
                 if (dataIdx >= listLeft.size) break
                 val itemY = listAreaTop + rowIdx * rowH
-                if (mouseX >= leftX && mouseX <= leftX + maxTextW && mouseY >= itemY && mouseY < itemY + rowH) {
+                if (mouseX >= leftX && mouseX <= leftX + maxItemTextW && mouseY >= itemY && mouseY < itemY + rowH) {
                     val originalText = listLeft[dataIdx]
                     val fullText = "- $originalText"
                     val textWidth = font.width(fullText)
-                    if (textWidth > maxTextW) {
-                        val maxShift = textWidth - maxTextW
+                    if (textWidth > maxItemTextW) {
+                        val maxShift = textWidth - maxItemTextW
                         val currentShift = scrollLeftOffsets[originalText] ?: 0
                         val delta = if (scrollY > 0) -8 else 8
                         scrollLeftOffsets[originalText] = (currentShift + delta).coerceIn(0, maxShift)
@@ -863,12 +892,12 @@ class PersonalityEditScreen(
                 val dataIdx = topIdx + rowIdx
                 if (dataIdx >= listRight.size) break
                 val itemY = listAreaTop + rowIdx * rowH
-                if (mouseX >= rightX && mouseX <= rightX + maxTextW && mouseY >= itemY && mouseY < itemY + rowH) {
+                if (mouseX >= rightX && mouseX <= rightX + maxItemTextW && mouseY >= itemY && mouseY < itemY + rowH) {
                     val originalText = listRight[dataIdx]
                     val fullText = "- $originalText"
                     val textWidth = font.width(fullText)
-                    if (textWidth > maxTextW) {
-                        val maxShift = textWidth - maxTextW
+                    if (textWidth > maxItemTextW) {
+                        val maxShift = textWidth - maxItemTextW
                         val currentShift = scrollRightOffsets[originalText] ?: 0
                         val delta = if (scrollY > 0) -8 else 8
                         scrollRightOffsets[originalText] = (currentShift + delta).coerceIn(0, maxShift)
@@ -876,27 +905,33 @@ class PersonalityEditScreen(
                     }
                 }
             }
+        }
 
-            // Fallback: Vertical scroll for the entire list
-            val delta = if (scrollY > 0) -1 else 1
-            val maxItems = maxOf(listLeft.size, listRight.size)
-            scrollTop[currentTab] = (scrollTop[currentTab] + delta).coerceIn(0, maxOf(0, maxItems - visibleRows()))
-            refreshWidgets()
-            return true
+        if (scrollY != 0.0) {
+            val maxItems = when (currentTab) {
+                1 -> maxOf(personality.traits.size, personality.quirks.size)
+                2 -> maxOf(personality.likes.size, personality.dislikes.size)
+                3 -> getFilteredAndSortedMemories().size
+                else -> 0
+            }
+            if (maxItems > vis) {
+                val delta = if (scrollY > 0) -1 else 1
+                scrollTop[currentTab] = (scrollTop[currentTab] + delta).coerceIn(0, maxItems - vis)
+                refreshWidgets()
+                return true
+            }
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
     }
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (currentTab != 0 && button == 0) {
+        if (button == 0 && currentTab != 0) {
             val sw = width
             val vis = visibleRows()
+            val topIdx = topIndex()
 
             if (currentTab == 3) {
                 val filteredMemories = getFilteredAndSortedMemories()
-                val leftX = sw / 2 - 145
-                val maxTextW = 195
-                val topIdx = topIndex()
 
                 // Check vertical scrollbar click
                 if (filteredMemories.size > vis) {
@@ -912,22 +947,21 @@ class PersonalityEditScreen(
                     }
                 }
 
-                // Check memory row horizontal scrollbar click
+                // Check memory horizontal scrollbar clicks
+                val leftX = sw / 2 - 145 + 24
+                val maxTextW = 195
                 for (rowIdx in 0 until vis) {
                     val dataIdx = topIdx + rowIdx
                     if (dataIdx >= filteredMemories.size) break
                     val itemY = listAreaTop + rowIdx * rowH + 4
                     val (_, m) = filteredMemories[dataIdx]
-                    val starPrefix = if (m.isFavorite) "★ " else ""
-                    val fullText = "$starPrefix${m.memory}"
-                    val textWidth = font.width(fullText)
-
+                    val textWidth = font.width("★ ${m.memory}")
                     if (textWidth > maxTextW) {
                         val barY = itemY + font.lineHeight + 1
-                        if (mouseX >= leftX + 24 && mouseX <= leftX + 24 + maxTextW && mouseY >= barY - 1 && mouseY <= barY + 2) {
+                        if (mouseX >= leftX && mouseX <= leftX + maxTextW && mouseY >= barY - 1 && mouseY <= barY + 2) {
                             isDraggingHorizontalMemory = true
                             draggedItemKey = m.memory
-                            updateMemoryHorizontalScrollFromMouse(mouseX, leftX + 24, maxTextW, textWidth)
+                            updateMemoryHorizontalScrollFromMouse(mouseX, leftX, maxTextW, textWidth)
                             return true
                         }
                     }
@@ -935,8 +969,6 @@ class PersonalityEditScreen(
             } else {
                 val leftX = sw / 2 - 145
                 val rightX = sw / 2 + 10
-                val maxTextW = 108
-                val topIdx = topIndex()
 
                 val listLeft  = if (currentTab == 1) personality.traits  else personality.likes
                 val listRight = if (currentTab == 1) personality.quirks  else personality.dislikes
@@ -963,12 +995,12 @@ class PersonalityEditScreen(
                     val itemY = listAreaTop + rowIdx * rowH + 4
                     val originalText = listLeft[dataIdx]
                     val textWidth = font.width("- $originalText")
-                    if (textWidth > maxTextW) {
+                    if (textWidth > maxItemTextW) {
                         val barY = itemY + font.lineHeight + 1
-                        if (mouseX >= leftX && mouseX <= leftX + maxTextW && mouseY >= barY - 1 && mouseY <= barY + 2) {
+                        if (mouseX >= leftX && mouseX <= leftX + maxItemTextW && mouseY >= barY - 1 && mouseY <= barY + 2) {
                             isDraggingHorizontalLeft = true
                             draggedItemKey = originalText
-                            updateHorizontalScrollFromMouse(mouseX, leftX, maxTextW, textWidth, true)
+                            updateHorizontalScrollFromMouse(mouseX, leftX, maxItemTextW, textWidth, true)
                             return true
                         }
                     }
@@ -981,12 +1013,12 @@ class PersonalityEditScreen(
                     val itemY = listAreaTop + rowIdx * rowH + 4
                     val originalText = listRight[dataIdx]
                     val textWidth = font.width("- $originalText")
-                    if (textWidth > maxTextW) {
+                    if (textWidth > maxItemTextW) {
                         val barY = itemY + font.lineHeight + 1
-                        if (mouseX >= rightX && mouseX <= rightX + maxTextW && mouseY >= barY - 1 && mouseY <= barY + 2) {
+                        if (mouseX >= rightX && mouseX <= rightX + maxItemTextW && mouseY >= barY - 1 && mouseY <= barY + 2) {
                             isDraggingHorizontalRight = true
                             draggedItemKey = originalText
-                            updateHorizontalScrollFromMouse(mouseX, rightX, maxTextW, textWidth, false)
+                            updateHorizontalScrollFromMouse(mouseX, rightX, maxItemTextW, textWidth, false)
                             return true
                         }
                     }
@@ -997,7 +1029,7 @@ class PersonalityEditScreen(
     }
 
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
-        if (button == 0) {
+        if (button == 0 && currentTab != 0) {
             val sw = width
             val vis = visibleRows()
             val maxItems = if (currentTab == 3) getFilteredAndSortedMemories().size else {
@@ -1024,17 +1056,15 @@ class PersonalityEditScreen(
 
             if (isDraggingHorizontalLeft && key != null) {
                 val leftX = sw / 2 - 145
-                val maxTextW = 108
                 val textWidth = font.width("- $key")
-                updateHorizontalScrollFromMouse(mouseX, leftX, maxTextW, textWidth, true)
+                updateHorizontalScrollFromMouse(mouseX, leftX, maxItemTextW, textWidth, true)
                 return true
             }
 
             if (isDraggingHorizontalRight && key != null) {
                 val rightX = sw / 2 + 10
-                val maxTextW = 108
                 val textWidth = font.width("- $key")
-                updateHorizontalScrollFromMouse(mouseX, rightX, maxTextW, textWidth, false)
+                updateHorizontalScrollFromMouse(mouseX, rightX, maxItemTextW, textWidth, false)
                 return true
             }
         }

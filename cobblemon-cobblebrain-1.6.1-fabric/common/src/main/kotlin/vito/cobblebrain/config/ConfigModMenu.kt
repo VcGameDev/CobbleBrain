@@ -1334,6 +1334,50 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.manual_action_nav.tooltip"))
             .build()
 
+        val anchorOptions = arrayOf(
+            "RIGHT_CENTER",
+            "RIGHT_TOP",
+            "RIGHT_BOTTOM",
+            "LEFT_CENTER",
+            "LEFT_TOP",
+            "LEFT_BOTTOM",
+            "BOTTOM_CENTER"
+        )
+
+        val actionHudAnchorEntry = entryBuilder.startSelector(
+            Component.translatable("cobblebrain.config.action_hud_anchor").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            anchorOptions,
+            clientConfig.actionHudAnchor
+        ).setDefaultValue("RIGHT_CENTER")
+            .setNameProvider { anchor ->
+                Component.translatable("cobblebrain.config.action_hud_anchor." + anchor.lowercase())
+            }
+            .setSaveConsumer { value -> clientConfig.actionHudAnchor = value }
+            .setTooltip(Component.translatable("cobblebrain.config.action_hud_anchor.tooltip"))
+            .build()
+
+        val actionHudOffsetXEntry = entryBuilder.startIntSlider(
+            Component.translatable("cobblebrain.config.action_hud_offset_x").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.actionHudOffsetX,
+            -300,
+            300
+        ).setDefaultValue(0)
+            .setTextGetter { value -> Component.literal("${value}px") }
+            .setSaveConsumer { value -> clientConfig.actionHudOffsetX = value }
+            .setTooltip(Component.translatable("cobblebrain.config.action_hud_offset_x.tooltip"))
+            .build()
+
+        val actionHudOffsetYEntry = entryBuilder.startIntSlider(
+            Component.translatable("cobblebrain.config.action_hud_offset_y").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.actionHudOffsetY,
+            -300,
+            300
+        ).setDefaultValue(0)
+            .setTextGetter { value -> Component.literal("${value}px") }
+            .setSaveConsumer { value -> clientConfig.actionHudOffsetY = value }
+            .setTooltip(Component.translatable("cobblebrain.config.action_hud_offset_y.tooltip"))
+            .build()
+
         val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
             Component.literal("[Recommended] Use Default Output").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             SyncedConfig.useDefaultOutput
@@ -2030,6 +2074,9 @@ object CobblebrainConfigScreen {
             debugLoggingEntry.value?.let { clientConfig.debugLogging = it }
             maxInteractionSavesEntry.value?.let { clientConfig.maxInteractionSaves = it }
             manualActionNavEntry.value?.let { clientConfig.manualActionNav = it }
+            actionHudAnchorEntry.value?.let { clientConfig.actionHudAnchor = it }
+            actionHudOffsetXEntry.value?.let { clientConfig.actionHudOffsetX = it }
+            actionHudOffsetYEntry.value?.let { clientConfig.actionHudOffsetY = it }
             psychicTranslationEntry.value?.let { clientConfig.psychicTranslation = it }
             showHungerEntry.value?.let { clientConfig.showHunger = it }
             temperatureEntry.value?.let { clientConfig.temperature = it / 100.0 }
@@ -2302,6 +2349,9 @@ object CobblebrainConfigScreen {
         if (isOffline) {
             category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
             category.entries.add(manualActionNavEntry)
+            category.entries.add(actionHudAnchorEntry)
+            category.entries.add(actionHudOffsetXEntry)
+            category.entries.add(actionHudOffsetYEntry)
             category.entries.add(sttEntry)
             category.entries.add(hidePersonalityCreationEntry)
             category.entries.add(offlineModeEntry)
@@ -2362,6 +2412,9 @@ object CobblebrainConfigScreen {
             category.entries.add(preferredNameEntry)
             category.entries.add(selectedLanguageEntry)
             category.entries.add(manualActionNavEntry)
+            category.entries.add(actionHudAnchorEntry)
+            category.entries.add(actionHudOffsetXEntry)
+            category.entries.add(actionHudOffsetYEntry)
             category.entries.add(psychicTranslationEntry)
             category.entries.add(sttEntry)
             category.entries.add(hidePersonalityCreationEntry)
@@ -2436,6 +2489,9 @@ object CobblebrainConfigScreen {
             category.entries.add(sttEntry)
             category.entries.add(hidePersonalityCreationEntry)
             category.entries.add(manualActionNavEntry)
+            category.entries.add(actionHudAnchorEntry)
+            category.entries.add(actionHudOffsetXEntry)
+            category.entries.add(actionHudOffsetYEntry)
 
             val promptSectionColor = if (isPromptCustomizationAllowed) 0xFFFF00 else 0xFFA500
             category.entries.add(makeSpacer(10))

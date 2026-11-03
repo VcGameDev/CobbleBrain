@@ -20,6 +20,7 @@ object DialogueFilter {
     val CATCH_REGEX = Regex("""(?:^|[\n|;])\s*(?:[-*•+]|\d+\.)?\s*!(?!RESUME\b|Error\b|Erro\b)(?:CATCH[:\s-]*)?([A-Za-z0-9_.'♀♂#-]+)?""", RegexOption.IGNORE_CASE)
     val MUSIC_HEADER_REGEX = Regex("""~MUSIC:[^\n|]+""", RegexOption.IGNORE_CASE)
     val MUSIC_NOTE_REGEX = Regex("""-[VI]:[^\n|]+""", RegexOption.IGNORE_CASE)
+    val TARGET_TAG_REGEX = Regex("""\s*>([A-Za-z0-9_.'♀♂#-]+)""")
 
     val MULTI_SPACE_REGEX = Regex("""[ \t]+""")
     val PUNCTUATION_SPACING_REGEX = Regex("""\s+([,.:!?])""")
@@ -127,9 +128,14 @@ object DialogueFilter {
             .replace(CATCH_REGEX, "")
             .replace(MUSIC_HEADER_REGEX, "")
             .replace(MUSIC_NOTE_REGEX, "")
+            .replace(TARGET_TAG_REGEX, "")
             .replace(MULTI_SPACE_REGEX, " ")
             .replace(PUNCTUATION_SPACING_REGEX, "$1")
             .trim()
+    }
+
+    fun extractTarget(line: String): String? {
+        return TARGET_TAG_REGEX.find(line)?.groupValues?.get(1)?.trim()
     }
 
     fun isPromptArtifact(line: String): Boolean {

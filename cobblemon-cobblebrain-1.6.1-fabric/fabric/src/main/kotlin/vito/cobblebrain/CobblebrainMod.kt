@@ -285,11 +285,14 @@ object CobblebrainMod : ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             vito.cobblebrain.social.OfflinePlayers.removePlayer(handler.player.uuid)
             vito.cobblebrain.server.CobblebrainServerHandler.clearPendingRequests(handler.player.uuid)
+            vito.cobblebrain.social.DialogueSystem.clearPlayerState(handler.player.uuid)
         }
 
         ServerLifecycleEvents.SERVER_STOPPED.register {
             currentServer = null
             vito.cobblebrain.social.DiskWriteExecutor.shutdown()
+            vito.cobblebrain.social.MemorySystem.clearCache()
+            vito.cobblebrain.social.DialogueSystem.clearAll()
         }
     }
 }

@@ -99,7 +99,8 @@ object DialogueSystem {
         val text: String,
         val sendAtTick: Long,
         val speaker: Pokemon? = null,
-        val pitchMod: Float = 0f
+        val pitchMod: Float = 0f,
+        val targetName: String? = null
     )
 
     data class TemporaryFeedback(
@@ -123,6 +124,7 @@ object DialogueSystem {
 
     // Social gaze tracking state
     private var currentSpeaker: Pokemon? = null
+    private var currentSpeakerTarget: LivingEntity? = null
     private var speakerUntilTick: Long = 0L
     private val currentViewers = mutableListOf<Pokemon>()
     private val playerSleepingState = mutableMapOf<UUID, Boolean>()
@@ -207,6 +209,50 @@ object DialogueSystem {
         }
 
         player.sendSystemMessage(welcomeMsg)
+    }
+
+    fun clearPlayerState(playerUuid: UUID) {
+        justSentMessage.remove(playerUuid)
+        lastPlayerMessage.remove(playerUuid)
+        lastResponseContent.remove(playerUuid)
+        pendingQuestNote.remove(playerUuid)
+        isWaitingForQuestResponse.remove(playerUuid)
+        pendingInterruption.remove(playerUuid)
+        questResponseTimeout.remove(playerUuid)
+        serverLastInteractions.remove(playerUuid)
+        lastPromptContext.remove(playerUuid)
+        scheduledMessages.remove(playerUuid)
+        pokemonAliasMap.remove(playerUuid)
+        reversePokemonAliasMap.remove(playerUuid)
+        temporaryFeedback.remove(playerUuid)
+        playerSleepingState.remove(playerUuid)
+        lastPrompt.remove(playerUuid)
+    }
+
+    fun clearAll() {
+        justSentMessage.clear()
+        lastPlayerMessage.clear()
+        lastResponseContent.clear()
+        pendingBarrelRemovals.clear()
+        pendingQuestNote.clear()
+        isWaitingForQuestResponse.clear()
+        pendingInterruption.clear()
+        questResponseTimeout.clear()
+        serverLastInteractions.clear()
+        lastPromptContext.clear()
+        scheduledMessages.clear()
+        pokemonAliasMap.clear()
+        reversePokemonAliasMap.clear()
+        temporaryFeedback.clear()
+        playerSleepingState.clear()
+        lastPrompt.clear()
+        pokemonPitchMap.clear()
+        bubbleProgress.clear()
+        bubbleText.clear()
+        bubbleSpeed.clear()
+        bubbleLevelMap.clear()
+        currentSpeaker = null
+        currentViewers.clear()
     }
 
     fun onChat(sender: ServerPlayer, rawContent: String) {
@@ -391,6 +437,7 @@ object DialogueSystem {
         MusicManager.tick(server)
 
         maintainLookAt(server)
+        tickWildAttention(server)
 
         if (server.tickCount % 240 == 0) {
             for (player in server.playerList.players) {
@@ -837,6 +884,11 @@ object DialogueSystem {
 
         scheduledMessages[player.uuid]?.clear()
         justSentMessage[player.uuid] = true
+        player.server?.tickCount?.let { tickCount ->
+            activeWildAttentions.values.filter { it.playerUuid == player.uuid }.forEach {
+                it.expireTick = tickCount.toLong() + 600L
+            }
+        }
         val ativos = PokemonQuery.findActivePokemon(player)
 
         val formattedText = if (isStt) {
@@ -1078,6 +1130,10 @@ object DialogueSystem {
 
                     speaker?.let { pokemon ->
                         val entity = pokemon.entity ?: wildEntities.firstOrNull { it.pokemon == pokemon || it.pokemon.uuid == pokemon.uuid }
+                        val resolvedTargetEntity = resolveTargetEntity(msg.player, msg.targetName, ativos, wildEntities)
+                        if (pokemon.getOwnerUUID() == null && entity != null) {
+                            activateWildAttention(entity, msg.player, currentTick, resolvedTargetEntity)
+                        }
                         val basePitch = entity?.uuid?.let { pokemonPitchMap[it] } ?: 1.0f
                         expressPokemon(pokemon, basePitch + msg.pitchMod)
 
@@ -1088,6 +1144,11 @@ object DialogueSystem {
 
                         // Set social focus and spectators
                         currentSpeaker = pokemon
+                        currentSpeakerTarget = resolvedTargetEntity
+                        if (resolvedTargetEntity != null && entity != null) {
+                            entity.lookControl.setLookAt(resolvedTargetEntity, 30f, 30f)
+                            entity.lookAt(resolvedTargetEntity, 30f, 30f)
+                        }
                         speakerUntilTick = server.tickCount.toLong() + 100 // ~5s
                         currentViewers.clear()
 
@@ -1341,7 +1402,11 @@ object DialogueSystem {
 
     fun onPokemonCaptured(pokemon: Pokemon) {
         discardSecondaryBubble(pokemon.uuid)
-        pokemon.entity?.uuid?.let { discardSecondaryBubble(it) }
+        pokemon.entity?.uuid?.let {
+            discardSecondaryBubble(it)
+            clearWildAttention(it)
+        }
+        clearWildAttention(pokemon.uuid)
     }
 
     fun tickSecondaryBubbles(server: MinecraftServer) {
@@ -2066,6 +2131,228 @@ object DialogueSystem {
         syncQuests?.invoke(player)
     }
 
+    fun resolveTargetEntity(
+        player: ServerPlayer,
+        targetName: String?,
+        activePokemons: List<Pokemon>,
+        nearbyWildEntities: List<PokemonEntity>
+    ): LivingEntity? {
+        if (targetName.isNullOrBlank()) return player
+
+        val clean = targetName.trim().removePrefix(">").removePrefix("@").trim()
+        val pName = player.name.string
+        val preferredName = PlayerNicknameManager.get(player.uuid, pName)
+
+        if (clean.equals("player", ignoreCase = true) ||
+            clean.equals("trainer", ignoreCase = true) ||
+            clean.equals("treinador", ignoreCase = true) ||
+            clean.equals(pName, ignoreCase = true) ||
+            clean.equals(preferredName, ignoreCase = true)
+        ) {
+            return player
+        }
+
+        val otherPlayer = player.server.playerList.players.firstOrNull {
+            it.name.string.equals(clean, ignoreCase = true) ||
+            PlayerNicknameManager.get(it.uuid, it.name.string).equals(clean, ignoreCase = true)
+        }
+        if (otherPlayer != null) return otherPlayer
+
+        val targetPartyPoke = extractSpeakerPokemon(player, clean, activePokemons, nearbyWildEntities)
+        if (targetPartyPoke?.entity != null) return targetPartyPoke.entity
+
+        val wildMatch = nearbyWildEntities.firstOrNull { entity ->
+            val p = entity.pokemon
+            val eU4 = entity.uuid.toString().substring(0, 4)
+            val pU4 = p.uuid.toString().substring(0, 4)
+            val sName = p.species.name
+            val sPath = p.species.resourceIdentifier.path
+            val nName = p.nickname?.string
+            clean.equals(eU4, ignoreCase = true) ||
+            clean.equals(pU4, ignoreCase = true) ||
+            clean.equals(sName, ignoreCase = true) ||
+            clean.equals(sPath, ignoreCase = true) ||
+            "${sName}_$eU4".equals(clean, ignoreCase = true) ||
+            "${sPath}_$eU4".equals(clean, ignoreCase = true) ||
+            "${sName}_$pU4".equals(clean, ignoreCase = true) ||
+            (nName != null && (nName.equals(clean, ignoreCase = true) || "${nName}_$eU4".equals(clean, ignoreCase = true)))
+        }
+        if (wildMatch != null) return wildMatch
+
+        return player
+    }
+
+    data class WildAttentionData(
+        val entityUuid: UUID,
+        val playerUuid: UUID,
+        val targetEntityUuid: UUID? = null,
+        var expireTick: Long
+    )
+
+    val activeWildAttentions = ConcurrentHashMap<UUID, WildAttentionData>()
+
+    fun activateWildAttention(entity: PokemonEntity, player: ServerPlayer, currentTick: Long, targetEntity: LivingEntity? = null) {
+        if (entity.pokemon.getOwnerUUID() != null) return
+        if (!canApplyWildAttention(entity, player)) {
+            activeWildAttentions.remove(entity.uuid)
+            return
+        }
+        activeWildAttentions[entity.uuid] = WildAttentionData(
+            entityUuid = entity.uuid,
+            playerUuid = player.uuid,
+            targetEntityUuid = if (targetEntity != null && targetEntity != player) targetEntity.uuid else null,
+            expireTick = currentTick + 600L
+        )
+    }
+
+    fun canApplyWildAttention(entity: PokemonEntity, player: ServerPlayer? = null): Boolean {
+        if (!entity.isAlive || entity.isRemoved) return false
+
+        // 1. Quests followers have higher priority
+        if (CobblebrainWorldSave.followers.containsKey(entity.uuid.toString())) {
+            return false
+        }
+
+        // 2. Battle and busy state have higher priority
+        if (player != null && BattleRegistry.getBattleByParticipatingPlayerId(player.uuid) != null) {
+            return false
+        }
+        if (entity.isBusy) {
+            return false
+        }
+
+        // 3. Hostile / attacking / irritated state has higher priority
+        if (entity.target != null || entity.isAggressive) {
+            return false
+        }
+        if (CommandState.activeCommands[entity.uuid] == "hostile") {
+            return false
+        }
+        if (CommandState.isWildIrritated(entity.uuid)) {
+            return false
+        }
+
+        return true
+    }
+
+    fun clearWildAttention(entityUuid: UUID) {
+        activeWildAttentions.remove(entityUuid)
+    }
+
+    fun tickWildAttention(server: MinecraftServer) {
+        if (activeWildAttentions.isEmpty()) return
+        val currentTick = server.tickCount.toLong()
+
+        val iterator = activeWildAttentions.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val data = entry.value
+
+            // 1. Timeout expired (30 seconds)
+            if (currentTick >= data.expireTick) {
+                val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(data.entityUuid) as? PokemonEntity }
+                entity?.navigation?.stop()
+                iterator.remove()
+                continue
+            }
+
+            // 2. Online player check
+            val player = server.playerList.getPlayer(data.playerUuid)
+            if (player == null || !player.isAlive || player.isRemoved) {
+                val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(data.entityUuid) as? PokemonEntity }
+                entity?.navigation?.stop()
+                iterator.remove()
+                continue
+            }
+
+            // 3. Entity check
+            val entity = player.serverLevel().getEntity(data.entityUuid) as? PokemonEntity
+                ?: server.allLevels.firstNotNullOfOrNull { it.getEntity(data.entityUuid) as? PokemonEntity }
+
+            if (entity == null || !entity.isAlive || entity.isRemoved) {
+                iterator.remove()
+                continue
+            }
+
+            if (entity.level() != player.level()) {
+                entity.navigation.stop()
+                iterator.remove()
+                continue
+            }
+
+            // 4. Priority behavior check (battle, quest follower, hostility)
+            if (!canApplyWildAttention(entity, player)) {
+                entity.navigation.stop()
+                iterator.remove()
+                continue
+            }
+
+            // 5. Distance check: if player naturally walks away (> 16 blocks), end attention
+            val targetEntity = if (data.targetEntityUuid != null) {
+                player.serverLevel().getEntity(data.targetEntityUuid) as? LivingEntity
+                    ?: server.allLevels.firstNotNullOfOrNull { it.getEntity(data.targetEntityUuid) as? LivingEntity }
+            } else null
+
+            if (data.targetEntityUuid != null && (targetEntity == null || !targetEntity.isAlive || targetEntity.isRemoved)) {
+                entity.navigation.stop()
+                iterator.remove()
+                continue
+            }
+
+            val focusTarget: LivingEntity = targetEntity ?: player
+            val dist = entity.distanceTo(focusTarget)
+            if (dist > 16.0f) {
+                entity.navigation.stop()
+                iterator.remove()
+                continue
+            }
+
+            // 6. Movement / Look behavior
+            if (targetEntity != null) {
+                if (dist > 3.5f) {
+                    if (entity.navigation.isDone || server.tickCount % 10 == 0) {
+                        entity.navigation.moveTo(targetEntity, 0.85)
+                    }
+                } else {
+                    if (!entity.navigation.isDone) {
+                        entity.navigation.stop()
+                    }
+                }
+                entity.lookControl.setLookAt(targetEntity, 30f, 30f)
+                entity.lookAt(targetEntity, 30f, 30f)
+
+                val dx = targetEntity.x - entity.x
+                val dz = targetEntity.z - entity.z
+                val angle = (toDegrees(atan2(dz, dx)) - 90.0).toFloat()
+                entity.yHeadRot = angle
+                entity.yHeadRotO = angle
+                entity.yBodyRot = angle
+                entity.yRot = angle
+            } else if (dist > 4.0f) {
+                // Far from player: walk closer
+                if (entity.navigation.isDone || server.tickCount % 10 == 0) {
+                    entity.navigation.moveTo(player, 0.85)
+                }
+                entity.lookControl.setLookAt(player, 30f, 30f)
+            } else {
+                // Near player: stop and face the player
+                if (!entity.navigation.isDone) {
+                    entity.navigation.stop()
+                }
+                entity.lookControl.setLookAt(player, 30f, 30f)
+                entity.lookAt(player, 30f, 30f)
+
+                val dx = player.x - entity.x
+                val dz = player.z - entity.z
+                val angle = (toDegrees(atan2(dz, dx)) - 90.0).toFloat()
+                entity.yHeadRot = angle
+                entity.yHeadRotO = angle
+                entity.yBodyRot = angle
+                entity.yRot = angle
+            }
+        }
+    }
+
     // Reapplies gaze every tick while focus lasts
     private fun maintainLookAt(server: MinecraftServer) {
         val now = server.tickCount.toLong()
@@ -2073,8 +2360,18 @@ object DialogueSystem {
         if (speakerEntity == null || now > speakerUntilTick) {
             // End focus
             currentSpeaker = null
+            currentSpeakerTarget = null
             currentViewers.clear()
             return
+        }
+
+        val target = currentSpeakerTarget
+        if (target != null && target.isAlive) {
+            val dx = target.x - speakerEntity.x
+            val dz = target.z - speakerEntity.z
+            val angle = (toDegrees(atan2(dz, dx)) - 90).toFloat()
+            speakerEntity.yHeadRot = angle
+            speakerEntity.yHeadRotO = angle
         }
 
         currentViewers.forEach { viewer ->
@@ -2681,11 +2978,11 @@ object DialogueSystem {
             appendLine("##STAGE 1 FOREGROUND INSTRUCTIONS##")
             if (config.outputActions) {
                 appendLine("Deliver immediate spoken dialogue and action commands ONLY.")
-                appendLine("- Spoken dialogue format: <PokemonName>: <message>")
+                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >Player, >Pikachu, >Pidgey_e1a4)")
                 appendLine("- Action command format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
             } else {
                 appendLine("Deliver immediate spoken dialogue ONLY. Do NOT generate action commands.")
-                appendLine("- Spoken dialogue format: <PokemonName>: <message>")
+                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >Player, >Pikachu, >Pidgey_e1a4)")
             }
             appendLine("- Strictly respect individual Pokémon restrictions: if marked with 'Cannot talk', do NOT generate speech lines for it. If marked with 'Cannot execute actions', do NOT generate # action commands for it.")
 
@@ -2814,14 +3111,33 @@ object DialogueSystem {
                     val quirkStatus = if (freeQuirks) "open (${personality.quirks.size}/2)" else "full (2/2)"
 
                     appendLine("- $displayName | Traits: $traitStatus | Quirks: $quirkStatus")
-                    if (personality.traits.isNotEmpty()) appendLine("  Current traits: ${personality.traits.joinToString(", ")}")
-                    if (personality.quirks.isNotEmpty()) appendLine("  Current quirks: ${personality.quirks.joinToString(", ")}")
+                    if (personality.traits.isNotEmpty()) {
+                        val traitDesc = personality.traits.joinToString(", ") { trait ->
+                            if (personality.effectiveLockedTraits.any { it.equals(trait, ignoreCase = true) }) {
+                                "$trait (LOCKED - permanent, do not replace)"
+                            } else {
+                                trait
+                            }
+                        }
+                        appendLine("  Current traits: $traitDesc")
+                    }
+                    if (personality.quirks.isNotEmpty()) {
+                        val quirkDesc = personality.quirks.joinToString(", ") { quirk ->
+                            if (personality.effectiveLockedQuirks.any { it.equals(quirk, ignoreCase = true) }) {
+                                "$quirk (LOCKED - permanent, do not replace)"
+                            } else {
+                                quirk
+                            }
+                        }
+                        appendLine("  Current quirks: $quirkDesc")
+                    }
                 }
                 appendLine()
                 appendLine("Rules:")
                 appendLine("- Only generate updates if a major narrative turning point or profound character arc occurred.")
                 appendLine("- If slots are open (< 2/2), you may add a new trait/quirk using &TRAIT: or &QUIRK:.")
                 appendLine("- If slots are full (2/2) or an existing trait/quirk evolved/changed, replace it using &REPLACE_TRAIT: or &REPLACE_QUIRK:.")
+                appendLine("- NEVER replace, evolve, or change any trait or quirk labeled with (LOCKED - permanent, do not replace).")
                 appendLine("- Must be a single word or short phrase (maximum 2-3 words, e.g. \"Analytical\", \"Loves sweet berries\"). Never write full sentences or explanations.")
                 appendLine("- Traits and quirks must be discoverable through dialogue, opinions, reactions, or behavioral habits.")
                 appendLine("- NEVER use visual-only, sound-only, or animation-only traits/quirks.")
@@ -3996,6 +4312,7 @@ object DialogueSystem {
         val activePokemons = PokemonQuery.findActivePokemon(player)
         val worldContext = collectWorldContext(player)
         val nearbyWildEntities = worldContext.nearbyPokemonEntities
+        var speechLineIndex = -1
 
         falas.forEachIndexed { i, line ->
             val rawSpeakerName = line.substringBefore(":").trim()
@@ -4003,10 +4320,25 @@ object DialogueSystem {
             val cleanSpeakerName = cleanSpeakerDisplayName(rawSpeakerName)
             val cosmeticLine = if (line.contains(":")) "$cleanSpeakerName: $messageBody" else line
 
+            speechLineIndex = allLines.indexOfFirst { raw ->
+                val cleanRaw = DialogueFilter.cleanSpeechText(raw)
+                cleanRaw == line || raw.contains(line) || line.contains(raw.substringBefore("#").trim())
+            }
+            val originalLine = if (speechLineIndex != -1) allLines[speechLineIndex] else line
+            val targetName = DialogueFilter.extractTarget(originalLine)
+            val targetLivingEntity = resolveTargetEntity(player, targetName, activePokemons, nearbyWildEntities)
+
             val speaker = extractSpeakerPokemon(player, rawSpeakerName, activePokemons, nearbyWildEntities)
+            if (speaker != null && speaker.getOwnerUUID() == null) {
+                val wildEntity = nearbyWildEntities.firstOrNull { it.pokemon == speaker || it.pokemon.uuid == speaker.uuid }
+                if (wildEntity != null) {
+                    activateWildAttention(wildEntity, player, startTick, targetLivingEntity)
+                }
+            }
             if (speaker != null) {
                 val speakerDisplayName = speaker.nickname?.string?.takeIf { it.isNotBlank() } ?: speaker.species.name
                 if (!MemorySystem.loadPersonality(speaker.uuid.toString(), speakerDisplayName).effectiveCanTalk) {
+                    println("[CobbleBrain] Speech skipped for active $speakerDisplayName: effectiveCanTalk is false")
                     return@forEachIndexed
                 }
             } else {
@@ -4024,18 +4356,19 @@ object DialogueSystem {
                 if (targetPoke != null) {
                     val pokeDisplayName = targetPoke.nickname?.string?.takeIf { it.isNotBlank() } ?: targetPoke.species.name
                     if (!MemorySystem.loadPersonality(targetPoke.uuid.toString(), pokeDisplayName).effectiveCanTalk) {
+                        println("[CobbleBrain] Speech skipped for party $pokeDisplayName: effectiveCanTalk is false")
                         return@forEachIndexed
                     }
                 }
             }
 
             var mod = 0f
-            val lineIndexInAll = allLines.indexOfFirst { raw ->
+            speechLineIndex = allLines.indexOfFirst { raw ->
                 val cleanRaw = DialogueFilter.cleanSpeechText(raw)
                 cleanRaw == line || raw.contains(line) || line.contains(raw.substringBefore("#").trim())
             }
-            if (lineIndexInAll != -1 && lineIndexInAll + 1 < allLines.size) {
-                val nextLine = allLines[lineIndexInAll + 1]
+            if (speechLineIndex != -1 && speechLineIndex + 1 < allLines.size) {
+                val nextLine = allLines[speechLineIndex + 1]
                 var match = Regex("""friendship\s+([\w\s.'♀♂-]+):\s*([\d.,]+)\s*([+-])\s*(-?\d+)""", RegexOption.IGNORE_CASE).find(nextLine)
                 var isNewFormat = false
                 if (match == null) {
@@ -4043,8 +4376,8 @@ object DialogueSystem {
                     isNewFormat = true
                 }
                 if (match != null) {
-                    val targetName = match.groupValues[1].trim()
-                    if (targetName.equals(rawSpeakerName, ignoreCase = true) || targetName.equals(cleanSpeakerName, ignoreCase = true)) {
+                    val friendshipTargetName = match.groupValues[1].trim()
+                    if (friendshipTargetName.equals(rawSpeakerName, ignoreCase = true) || friendshipTargetName.equals(cleanSpeakerName, ignoreCase = true)) {
                         val sinal = if (isNewFormat) match.groupValues[2] else match.groupValues[3]
                         val valor = (if (isNewFormat) match.groupValues[3] else match.groupValues[4]).toFloat()
                         mod = (if (sinal == "-") -valor else valor) * 0.03f
@@ -4058,7 +4391,8 @@ object DialogueSystem {
                 text = cosmeticLine,
                 sendAtTick = if (i == 0) startTick else startTick + (i * 100),
                 speaker = speaker,
-                pitchMod = mod
+                pitchMod = mod,
+                targetName = targetName
             ))
         }
 
@@ -4135,6 +4469,7 @@ object DialogueSystem {
                 return@execute
             }
 
+    
             try {
                 if (content.contains("~MUSIC:", ignoreCase = true) || content.contains("-V:", ignoreCase = true) ||
                     content.contains("[SONG_INFO]", ignoreCase = true) || content.contains("[TIMELINE]", ignoreCase = true) ||
@@ -4268,6 +4603,7 @@ object DialogueSystem {
                 }
                 if (oldIndex != -1) {
                     val previous = personality.traits[oldIndex]
+                    if (personality.effectiveLockedTraits.any { it.equals(previous, ignoreCase = true) }) return@forEach
                     personality.traits[oldIndex] = rawNew
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
                     vito.cobblebrain.engine.StoryDebugger.recordLog(
@@ -4312,6 +4648,7 @@ object DialogueSystem {
                 }
                 if (oldIndex != -1) {
                     val previous = personality.quirks[oldIndex]
+                    if (personality.effectiveLockedQuirks.any { it.equals(previous, ignoreCase = true) }) return@forEach
                     personality.quirks[oldIndex] = rawNew
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
                     vito.cobblebrain.engine.StoryDebugger.recordLog(

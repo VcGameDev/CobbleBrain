@@ -35,7 +35,11 @@ data class PokemonPersonality(
     val dislikes: MutableList<String> = mutableListOf(),
     val canTalk: Boolean? = true,
     val canAct: Boolean? = true,
-    val canUpdatePersonality: Boolean? = true
+    val canUpdatePersonality: Boolean? = true,
+    val lockedTraits: MutableList<String>? = mutableListOf(),
+    val lockedQuirks: MutableList<String>? = mutableListOf(),
+    val lockedLikes: MutableList<String>? = mutableListOf(),
+    val lockedDislikes: MutableList<String>? = mutableListOf()
 ) {
     val effectiveCanTalk: Boolean
         get() = canTalk ?: true
@@ -48,6 +52,18 @@ data class PokemonPersonality(
 
     val isMuted: Boolean
         get() = !effectiveCanTalk
+
+    val effectiveLockedTraits: MutableList<String>
+        get() = lockedTraits ?: mutableListOf()
+
+    val effectiveLockedQuirks: MutableList<String>
+        get() = lockedQuirks ?: mutableListOf()
+
+    val effectiveLockedLikes: MutableList<String>
+        get() = lockedLikes ?: mutableListOf()
+
+    val effectiveLockedDislikes: MutableList<String>
+        get() = lockedDislikes ?: mutableListOf()
 }
 
 object MemorySystem {
@@ -63,6 +79,11 @@ object MemorySystem {
 
     private val gson: Gson = GsonBuilder().create()
     private val personalityCache = java.util.concurrent.ConcurrentHashMap<String, PokemonPersonality>()
+
+    fun clearCache() {
+        personalityCache.clear()
+        println("[CobbleBrain] Personality cache cleared.")
+    }
 
     fun invalidatePersonalityCache(pokemonUuid: String) {
         personalityCache.remove(pokemonUuid)
@@ -236,14 +257,18 @@ object MemorySystem {
             try {
                 record.getAsJsonArray("memories")?.forEach { el ->
                     if (el.isJsonObject) {
-                        val obj = el.asJsonObject
-                        val participants = obj.getAsJsonArray("participants")?.map { it.asString } ?: emptyList()
-                        val memory = obj.get("memory")?.asString ?: ""
-                        val keywords = obj.getAsJsonArray("keywords")?.map { it.asString } ?: emptyList()
-                        val createdTick = obj.get("createdTick")?.asLong ?: 0L
-                        val playerMessage = obj.get("playerMessage")?.asString ?: ""
-                        val isFavorite = obj.get("isFavorite")?.asBoolean ?: obj.get("favorite")?.asBoolean ?: false
-                        memories.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
+                        try {
+                            val obj = el.asJsonObject
+                            val participants = obj.getAsJsonArray("participants")?.map { it.asString } ?: emptyList()
+                            val memory = obj.get("memory")?.asString ?: ""
+                            val keywords = obj.getAsJsonArray("keywords")?.map { it.asString } ?: emptyList()
+                            val createdTick = obj.get("createdTick")?.asLong ?: 0L
+                            val playerMessage = obj.get("playerMessage")?.asString ?: ""
+                            val isFavorite = obj.get("isFavorite")?.asBoolean ?: obj.get("favorite")?.asBoolean ?: false
+                            memories.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
+                        } catch (lineEx: Exception) {
+                            println("[CobbleBrain] Skipping corrupted memory line for $pokemonUuid: ${lineEx.message}")
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -258,14 +283,18 @@ object MemorySystem {
         try {
             file.forEachLine { line ->
                 if (line.isNotBlank()) {
-                    val obj = JsonParser.parseString(line).asJsonObject
-                    val participants = obj.getAsJsonArray("participants").map { it.asString }
-                    val memory = obj.get("memory").asString
-                    val keywords = obj.getAsJsonArray("keywords").map { it.asString }
-                    val createdTick = obj.get("createdTick").asLong
-                    val playerMessage = obj.get("playerMessage")?.asString ?: ""
-                    val isFavorite = obj.get("isFavorite")?.asBoolean ?: obj.get("favorite")?.asBoolean ?: false
-                    memories.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
+                    try {
+                        val obj = JsonParser.parseString(line).asJsonObject
+                        val participants = obj.getAsJsonArray("participants")?.map { it.asString } ?: emptyList()
+                        val memory = obj.get("memory")?.asString ?: ""
+                        val keywords = obj.getAsJsonArray("keywords")?.map { it.asString } ?: emptyList()
+                        val createdTick = obj.get("createdTick")?.asLong ?: 0L
+                        val playerMessage = obj.get("playerMessage")?.asString ?: ""
+                        val isFavorite = obj.get("isFavorite")?.asBoolean ?: obj.get("favorite")?.asBoolean ?: false
+                        memories.add(Memory(participants, memory, keywords, createdTick, playerMessage, isFavorite))
+                    } catch (lineEx: Exception) {
+                        println("[CobbleBrain] Skipping corrupted memory line for $pokemonUuid: ${lineEx.message}")
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -299,23 +328,7 @@ object MemorySystem {
                 val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
 
                 file.parentFile?.mkdirs()
-                PrintWriter(FileWriter(file, false)).use { writer ->
-                    toSave.forEach { m ->
-                        val obj = JsonObject().apply {
-                            val partsArr = com.google.gson.JsonArray()
-                            m.participants.forEach { partsArr.add(it) }
-                            add("participants", partsArr)
-                            addProperty("memory", m.memory)
-                            val kwArr = com.google.gson.JsonArray()
-                            m.keywords.forEach { kwArr.add(it.lowercase()) }
-                            add("keywords", kwArr)
-                            addProperty("createdTick", m.createdTick)
-                            addProperty("playerMessage", m.playerMessage)
-                            addProperty("isFavorite", m.isFavorite)
-                        }
-                        writer.println(gson.toJson(obj))
-                    }
-                }
+                writeMemoriesToFileAtomically(file, toSave)
             } catch (e: Exception) {
                 println("Error saving memory for $pokemonUuid: ${e.message}")
             }
@@ -362,26 +375,46 @@ object MemorySystem {
                 val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
 
                 file.parentFile?.mkdirs()
-                PrintWriter(FileWriter(file, false)).use { writer ->
-                    toSave.forEach { m ->
-                        val obj = JsonObject().apply {
-                            val partsArr = com.google.gson.JsonArray()
-                            m.participants.forEach { partsArr.add(it) }
-                            add("participants", partsArr)
-                            addProperty("memory", m.memory)
-                            val kwArr = com.google.gson.JsonArray()
-                            m.keywords.forEach { kwArr.add(it.lowercase()) }
-                            add("keywords", kwArr)
-                            addProperty("createdTick", m.createdTick)
-                            addProperty("playerMessage", m.playerMessage)
-                            addProperty("isFavorite", m.isFavorite)
-                        }
-                        writer.println(gson.toJson(obj))
-                    }
-                }
+                writeMemoriesToFileAtomically(file, toSave)
             } catch (e: Exception) {
                 println("Error saving memories for $pokemonUuid: ${e.message}")
             }
+        }
+    }
+
+    private fun writeMemoriesToFileAtomically(file: File, toSave: List<Memory>) {
+        file.parentFile?.mkdirs()
+        val tempFile = File(file.parentFile, "${file.name}.${System.currentTimeMillis()}.tmp")
+        PrintWriter(FileWriter(tempFile, false)).use { writer ->
+            toSave.forEach { m ->
+                val obj = JsonObject().apply {
+                    val partsArr = com.google.gson.JsonArray()
+                    m.participants.forEach { partsArr.add(it) }
+                    add("participants", partsArr)
+                    addProperty("memory", m.memory)
+                    val kwArr = com.google.gson.JsonArray()
+                    m.keywords.forEach { kwArr.add(it.lowercase()) }
+                    add("keywords", kwArr)
+                    addProperty("createdTick", m.createdTick)
+                    addProperty("playerMessage", m.playerMessage)
+                    addProperty("isFavorite", m.isFavorite)
+                }
+                writer.println(gson.toJson(obj))
+            }
+        }
+        try {
+            java.nio.file.Files.move(
+                tempFile.toPath(),
+                file.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE
+            )
+        } catch (_: Exception) {
+            java.nio.file.Files.move(
+                tempFile.toPath(),
+                file.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            )
         }
     }
 
@@ -433,7 +466,7 @@ object MemorySystem {
         val suffixMatches = worldDir.listFiles()
             ?.filter { it.isFile && it.name.endsWith("-${uuidSuffix(pokemonUuid)}${type.suffix}") }
             .orEmpty()
-        if (suffixMatches.size == 1) return suffixMatches.first()
+        if (suffixMatches.isNotEmpty()) return suffixMatches.maxByOrNull { it.lastModified() }
 
         val modernLegacy = File(getModernBaseDirectory(), legacyFileName(pokemonUuid, type))
         if (modernLegacy.exists()) return modernLegacy
@@ -467,7 +500,7 @@ object MemorySystem {
                     val entitySuffixMatches = worldDir.listFiles()
                         ?.filter { it.isFile && it.name.endsWith("-${uuidSuffix(entityUuidStr)}${type.suffix}") }
                         .orEmpty()
-                    if (entitySuffixMatches.size == 1) return entitySuffixMatches.first()
+                    if (entitySuffixMatches.isNotEmpty()) return entitySuffixMatches.maxByOrNull { it.lastModified() }
                 }
             }
         }

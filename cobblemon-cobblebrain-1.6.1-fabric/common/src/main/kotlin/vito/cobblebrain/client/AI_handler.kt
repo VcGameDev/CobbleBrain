@@ -135,7 +135,8 @@ class AIHandler {
         DIALOGUE FORMAT
         Pokémon and player fully understand each other
         Pokémon can speak normally and express complex thoughts
-        format=name: text
+        format=name: text >target
+        target=Player or the pokemon name/id being addressed (e.g. >Player, >Pikachu, >Pidgey_12ab)
         separator=|
         short dialogue only
         wild pokemon allowed
@@ -147,7 +148,8 @@ class AIHandler {
         DIALOGUE FORMAT
         the player cannot understand Pokémon language
         communication is limited to vocalizations and emotion
-        format=name: sound(emotion/intent)
+        format=name: sound(emotion/intent) >target
+        target=Player or the pokemon name/id being addressed (e.g. >Player, >Pikachu, >Pidgey_12ab)
         response language=$USER_LANGUAGE
         separator=|
         short creature sounds only
