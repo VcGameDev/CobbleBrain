@@ -94,6 +94,23 @@ object CobblebrainConfigScreen {
         return if (mc.isLocalServer) config.forceOfflineMode else SyncedConfig.forceOfflineMode
     }
 
+    fun renderWithListScissor(
+        guiGraphics: GuiGraphics,
+        y: Int,
+        itemHeight: Int,
+        renderAction: () -> Unit
+    ) {
+        val mc = Minecraft.getInstance()
+        val screenH = mc.screen?.height ?: mc.window.guiScaledHeight
+        val top = 30
+        val bottom = screenH - 32
+        if (y + itemHeight <= top || y >= bottom) {
+            return
+        }
+        renderAction()
+        guiGraphics.flush()
+    }
+
     fun makeSubtitleEntry(text: String, color: Int = 0xFFFF00, bold: Boolean = true, alignLeft: Boolean = false): AbstractConfigListEntry<Unit> {
         return object : AbstractConfigListEntry<Unit>(
             Component.literal(text).withStyle(
@@ -119,8 +136,16 @@ object CobblebrainConfigScreen {
                 delta: Float
             ) {
                 val font = Minecraft.getInstance().font
-                val drawX = if (alignLeft) x else (x + (listWidth / 2) - (font.width(fieldName) / 2))
-                guiGraphics.drawString(font, fieldName, drawX, y + (itemHeight / 2 - font.lineHeight / 2), color, true)
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    val font = Minecraft.getInstance().font
+                    val drawX = if (alignLeft) x else (x + (listWidth / 2) - (font.width(fieldName) / 2))
+                    guiGraphics.drawString(font, fieldName, drawX, y + (itemHeight / 2 - font.lineHeight / 2), color, true)
+    
+    
+                }
+
+
+
             }
         }
     }
@@ -150,9 +175,16 @@ object CobblebrainConfigScreen {
                 delta: Float
             ) {
                 val font = Minecraft.getInstance().font
-                val textWidth = font.width(fieldName)
-                val centerX = x + (listWidth / 2) - (textWidth / 2)
-                guiGraphics.drawString(font, fieldName, centerX, y + (itemHeight / 2 - font.lineHeight / 2), color, false)
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    val font = Minecraft.getInstance().font
+                    val textWidth = font.width(fieldName)
+                    val centerX = x + (listWidth / 2) - (textWidth / 2)
+                    guiGraphics.drawString(font, fieldName, centerX, y + (itemHeight / 2 - font.lineHeight / 2), color, false)
+
+                }
+
+
+
             }
 
             override fun getItemHeight(): Int = height
@@ -214,7 +246,9 @@ object CobblebrainConfigScreen {
             ) {
                 button.x = x + (listWidth / 2) - 130
                 button.y = y
-                button.render(guiGraphics, mouseX, mouseY, delta)
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
             }
 
             override fun getItemHeight(): Int = 24
@@ -785,7 +819,7 @@ object CobblebrainConfigScreen {
         return if (isRemoteServer && SyncedConfig.isServerControlled) synced else local
     }
 
-    private fun applyPreset(mode: String) {
+    fun applyPreset(mode: String) {
         clientConfig.presetMode = mode
         clientConfig.isCustomizedFromPreset = false
         clientConfig.optimizedMode = true
@@ -861,7 +895,7 @@ object CobblebrainConfigScreen {
         }
     }
 
-    private fun isPresetModified(mode: String): Boolean {
+    fun isPresetModified(mode: String): Boolean {
         return when (mode) {
             "Smart" -> {
                 config.maxStoredMemories != 90 ||
@@ -977,13 +1011,61 @@ object CobblebrainConfigScreen {
 
         val entryBuilder = builder.entryBuilder()
 
+        /*
+            return object : AbstractConfigListEntry<Unit>(
+                Component.literal("Customize AI & Profiles"),
+                false
+            ) {
+                private var button: net.minecraft.client.gui.components.Button =
+                    net.minecraft.client.gui.components.Button.builder(
+                        Component.translatable("cobblebrain.button.ai_customization")
+                    ) {
+                        Minecraft.getInstance().player?.playSound(
+                            SoundEvents.UI_BUTTON_CLICK.value(),
+                            1.0f,
+                            1.0f
+                        )
+                        preserveCurrentInputValues()
+                        val parentScreen = Minecraft.getInstance().screen
+                        Minecraft.getInstance().setScreen(vito.cobblebrain.client.gui.AiCustomizationScreen(parentScreen))
+                    }.bounds(0, 0, 260, 20).build()
+
+                override fun getValue(): Unit? = null
+                override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+                override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+                override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+                override fun render(
+                    guiGraphics: GuiGraphics,
+                    index: Int,
+                    y: Int,
+                    x: Int,
+                    listWidth: Int,
+                    itemHeight: Int,
+                    mouseX: Int,
+                    mouseY: Int,
+                    isSelected: Boolean,
+                    delta: Float
+                ) {
+                    button.x = x + (listWidth / 2) - 130
+                    button.y = y
+                    renderWithListScissor(guiGraphics, y, itemHeight) {
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
+                }
+
+                override fun getItemHeight(): Int = 24
+            }
+        }
+
+        */
         val personalityEditorButton = object : AbstractConfigListEntry<Unit>(
             Component.literal("Open Personality Editor"),
             false
         ) {
             private var button: net.minecraft.client.gui.components.Button =
                 net.minecraft.client.gui.components.Button.builder(
-                    Component.literal("Open Personality Editor")
+                    Component.translatable("cobblebrain.button.open_personality_editor")
                 ) {
                     Minecraft.getInstance().player?.playSound(
                         SoundEvents.UI_BUTTON_CLICK.value(),
@@ -1013,7 +1095,9 @@ object CobblebrainConfigScreen {
             ) {
                 button.x = x + (listWidth / 2) - 130
                 button.y = y
-                button.render(guiGraphics, mouseX, mouseY, delta)
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
             }
 
             override fun getItemHeight(): Int = 24
@@ -1066,7 +1150,23 @@ object CobblebrainConfigScreen {
                 isSelected: Boolean,
                 delta: Float
             ) {
-                val hasActiveWorld = Minecraft.getInstance().level != null
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    val hasActiveWorld = Minecraft.getInstance().level != null
+                    playButton.active = hasActiveWorld
+                    playButton.tooltip = if (!hasActiveWorld) {
+                        net.minecraft.client.gui.components.Tooltip.create(Component.literal("You must be in an active world to play stories."))
+                    } else null
+
+                    val startX = x + (listWidth / 2) - 130
+                    playButton.x = startX
+                    playButton.y = y
+                    playButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                    editorButton.x = startX + 132
+                    editorButton.y = y
+                    editorButton.render(guiGraphics, mouseX, mouseY, delta)
+                }
+                /* val hasActiveWorld = Minecraft.getInstance().level != null
                 playButton.active = hasActiveWorld
                 playButton.tooltip = if (!hasActiveWorld) {
                     net.minecraft.client.gui.components.Tooltip.create(Component.literal("You must be in an active world to play stories."))
@@ -1079,7 +1179,7 @@ object CobblebrainConfigScreen {
 
                 editorButton.x = startX + 132
                 editorButton.y = y
-                editorButton.render(guiGraphics, mouseX, mouseY, delta)
+                editorButton.render(guiGraphics, mouseX, mouseY, delta) */
             }
 
             override fun getItemHeight(): Int = 24
@@ -1120,7 +1220,9 @@ object CobblebrainConfigScreen {
             ) {
                 button.x = x + (listWidth / 2) - 130
                 button.y = y
-                button.render(guiGraphics, mouseX, mouseY, delta)
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
             }
 
             override fun getItemHeight(): Int = 24
@@ -1141,7 +1243,7 @@ object CobblebrainConfigScreen {
         "Tip: Too many words. 7.8/10",
         "Tip: Did someone say something about an insect collection?",
         "Tip: Clodsire is just a big happy potato, treat him with respect!",
-        "Tip: If the AI takes too long to respond, consider deactivating some systems in 'AI CAPABILITIES'.",
+        "Tip: If the AI takes too long to respond, consider deactivating some systems in 'Customize AI & Profiles'.",
         "Tip: If the AI takes too long to respond, consider reducing 'Recent Memories Limit'.",
         "Tip: If you want to change how Pokémon speak/behave, go to 'Instruct' and add your custom instructions.",
         "Tip: If you turn 'Listen To Chat' ON, the AI will respond to every message you send in chat.",
@@ -1375,7 +1477,14 @@ object CobblebrainConfigScreen {
         ).setDefaultValue(0)
             .setTextGetter { value -> Component.literal("${value}px") }
             .setSaveConsumer { value -> clientConfig.actionHudOffsetY = value }
-            .setTooltip(Component.translatable("cobblebrain.config.action_hud_offset_y.tooltip"))
+            .setTooltip(Component.translatable("cobblebrain.config.action_hud_offset_y.tooltip")).build()
+
+        val showActionHudControlsEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.show_action_hud_controls").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            clientConfig.showActionHudControls
+        ).setDefaultValue(true)
+            .setSaveConsumer { value -> clientConfig.showActionHudControls = value }
+            .setTooltip(Component.translatable("cobblebrain.config.show_action_hud_controls.tooltip"))
             .build()
 
         val useDefaultOutputEntry = entryBuilder.startBooleanToggle(
@@ -1443,7 +1552,9 @@ object CobblebrainConfigScreen {
                     guiGraphics.drawString(Minecraft.getInstance().font, labelText, x, y + 6, 0xFFFF00)
                     button.x = x + listWidth - 150
                     button.y = y
+                    renderWithListScissor(guiGraphics, y, itemHeight) {
                     button.render(guiGraphics, mouseX, mouseY, delta)
+                }
                 }
 
                 fun getTooltip(): Optional<Array<Component>> {
@@ -1512,7 +1623,9 @@ object CobblebrainConfigScreen {
                     guiGraphics.drawString(Minecraft.getInstance().font, labelText, x, y + 6, 0xFFFF00)
                     button.x = x + listWidth - 150
                     button.y = y
+                    renderWithListScissor(guiGraphics, y, itemHeight) {
                     button.render(guiGraphics, mouseX, mouseY, delta)
+                }
                 }
 
                 fun getTooltip(): Optional<Array<Component>> {
@@ -1635,6 +1748,32 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("If enabled, the AI will automatically generate and evolve Traits and Quirks for your Pokémon."))
             .build()
 
+        val maxAiLikesEntry = entryBuilder.startIntField(
+            Component.translatable("cobblebrain.config.max_ai_likes").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.maxAiLikes
+        ).setDefaultValue(5).setMin(0).setMax(20)
+            .setSaveConsumer { value -> config.maxAiLikes = value }
+            .setTooltip(Component.translatable("cobblebrain.config.max_ai_likes.tooltip"))
+            .build()
+
+        val maxAiDislikesEntry = entryBuilder.startIntField(
+            Component.translatable("cobblebrain.config.max_ai_dislikes").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.maxAiDislikes
+        ).setDefaultValue(5).setMin(0).setMax(20)
+            .setSaveConsumer { value -> config.maxAiDislikes = value }
+            .setTooltip(Component.translatable("cobblebrain.config.max_ai_dislikes.tooltip"))
+            .build()
+
+        val maxNotableBlocksEntry = entryBuilder.startIntSlider(
+            Component.translatable("cobblebrain.config.max_notable_blocks").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            config.maxNotableBlocks,
+            0,
+            20
+        ).setDefaultValue(10)
+            .setSaveConsumer { value -> config.maxNotableBlocks = value }
+            .setTooltip(Component.translatable("cobblebrain.config.max_notable_blocks.tooltip"))
+            .build()
+
         val allowClientPersonalityEditingEntry = entryBuilder.startBooleanToggle(
             Component.literal("Allow Client Personality Editing").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             getConfigValue(SyncedConfig.allowClientPersonalityEditing, config.allowClientPersonalityEditing)
@@ -1737,7 +1876,7 @@ object CobblebrainConfigScreen {
                 SyncedConfig.maxStoredMemories,
                 config.maxStoredMemories
             )
-        ).setDefaultValue(100)
+        ).setDefaultValue(90)
             .setSaveConsumer { value -> maxStoredMemories = value }
             .setTooltip(Component.translatable("cobblebrain.config.max_stored_memories.tooltip"))
             .build()
@@ -2077,6 +2216,7 @@ object CobblebrainConfigScreen {
             actionHudAnchorEntry.value?.let { clientConfig.actionHudAnchor = it }
             actionHudOffsetXEntry.value?.let { clientConfig.actionHudOffsetX = it }
             actionHudOffsetYEntry.value?.let { clientConfig.actionHudOffsetY = it }
+            showActionHudControlsEntry.value?.let { clientConfig.showActionHudControls = it }
             psychicTranslationEntry.value?.let { clientConfig.psychicTranslation = it }
             showHungerEntry.value?.let { clientConfig.showHunger = it }
             temperatureEntry.value?.let { clientConfig.temperature = it / 100.0 }
@@ -2201,7 +2341,30 @@ object CobblebrainConfigScreen {
             ) {
                 val startX = x + (listWidth / 2) - 130
 
-                smartButton.x = startX
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    val startX = x + (listWidth / 2) - 130
+
+                    smartButton.x = startX
+                    smartButton.y = y
+                    smartButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                    normalButton.x = startX + 88
+                    normalButton.y = y
+                    normalButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                    lightButton.x = startX + 176
+                    lightButton.y = y
+                    lightButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                    offlineButton.x = startX
+                    offlineButton.y = y + 24
+                    offlineButton.render(guiGraphics, mouseX, mouseY, delta)
+
+                    customButton.x = startX + 84
+                    customButton.y = y + 24
+                    customButton.render(guiGraphics, mouseX, mouseY, delta)
+                }
+            } /* smartButton.x = startX
                 smartButton.y = y
                 smartButton.render(guiGraphics, mouseX, mouseY, delta)
 
@@ -2222,7 +2385,7 @@ object CobblebrainConfigScreen {
                 customButton.render(guiGraphics, mouseX, mouseY, delta)
             }
 
-            override fun getItemHeight(): Int = 48
+            */ override fun getItemHeight(): Int = 48
         }
 
         val currentModeKey = when (clientConfig.presetMode) {
@@ -2329,10 +2492,59 @@ object CobblebrainConfigScreen {
             ) {
                 button.x = x + (listWidth / 2) - 130
                 button.y = y
-                button.render(guiGraphics, mouseX, mouseY, delta)
+                renderWithListScissor(guiGraphics, y, itemHeight) {
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
             }
 
             override fun getItemHeight(): Int = 24
+        }
+
+        fun makeCustomizeAiButton(): AbstractConfigListEntry<Unit> {
+            return object : AbstractConfigListEntry<Unit>(
+                Component.literal("Customize AI & Profiles"),
+                false
+            ) {
+                private var button: net.minecraft.client.gui.components.Button =
+                    net.minecraft.client.gui.components.Button.builder(
+                        Component.translatable("cobblebrain.button.ai_customization")
+                    ) {
+                        Minecraft.getInstance().player?.playSound(
+                            SoundEvents.UI_BUTTON_CLICK.value(),
+                            1.0f,
+                            1.0f
+                        )
+                        preserveCurrentInputValues()
+                        val parentScreen = Minecraft.getInstance().screen
+                        Minecraft.getInstance().setScreen(vito.cobblebrain.client.gui.AiCustomizationScreen(parentScreen))
+                    }.bounds(0, 0, 260, 20).build()
+
+                override fun getValue(): Unit? = null
+                override fun getDefaultValue(): Optional<Unit> = Optional.empty()
+                override fun children(): MutableList<GuiEventListener> = mutableListOf(button)
+                override fun narratables(): MutableList<NarratableEntry> = mutableListOf(button)
+
+                override fun render(
+                    guiGraphics: GuiGraphics,
+                    index: Int,
+                    y: Int,
+                    x: Int,
+                    listWidth: Int,
+                    itemHeight: Int,
+                    mouseX: Int,
+                    mouseY: Int,
+                    isSelected: Boolean,
+                    delta: Float
+                ) {
+                    button.x = x + (listWidth / 2) - 130
+                    button.y = y
+                    renderWithListScissor(guiGraphics, y, itemHeight) {
+                    button.render(guiGraphics, mouseX, mouseY, delta)
+                }
+                }
+
+                override fun getItemHeight(): Int = 24
+            }
         }
 
         category.entries.add(makeSubtitleEntry(Component.translatable("cobblebrain.config.preset.title").string, 0xFFFF00))
@@ -2341,9 +2553,10 @@ object CobblebrainConfigScreen {
         addWrappedDescription(presetDescText, 0xAAAAAA)
         category.entries.add(makeSpacer(6))
 
+        category.entries.add(makeCustomizeAiButton())
         category.entries.add(personalityEditorButton)
         category.entries.add(storyActionsButton)
-        category.entries.add(reportBugsButton)
+
         category.entries.add(makeSpacer(10))
 
         if (isOffline) {
@@ -2352,12 +2565,24 @@ object CobblebrainConfigScreen {
             category.entries.add(actionHudAnchorEntry)
             category.entries.add(actionHudOffsetXEntry)
             category.entries.add(actionHudOffsetYEntry)
+            category.entries.add(showActionHudControlsEntry)
+            category.entries.add(sttEntry)
+            category.entries.add(hidePersonalityCreationEntry)
+            category.entries.add(offlineModeEntry)
+            category.entries.add(offlineTalkModeEntry)
+            /*
+            category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
+            category.entries.add(manualActionNavEntry)
+            category.entries.add(actionHudAnchorEntry)
+            category.entries.add(actionHudOffsetXEntry)
+            category.entries.add(actionHudOffsetYEntry)
+            category.entries.add(showActionHudControlsEntry)
             category.entries.add(sttEntry)
             category.entries.add(hidePersonalityCreationEntry)
             category.entries.add(offlineModeEntry)
             category.entries.add(offlineTalkModeEntry)
 
-            addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
+            */ addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
             category.entries.add(needsPokemonTranslatorEntry)
             category.entries.add(dialogueInChatEntry)
             category.entries.add(chatbubblesEntry)
@@ -2369,6 +2594,7 @@ object CobblebrainConfigScreen {
             category.entries.add(forceOfflineModeEntry)
             category.entries.add(disableWelcomeMessageEntry)
             category.entries.add(allowClientPersonalityEditingEntry)
+            category.entries.add(allowCustomClientPromptEntry)
             category.entries.add(allowPokemonPVPEntry)
             category.entries.add(allowPokemonPVEEntry)
             category.entries.add(enableKarmaEntry)
@@ -2377,6 +2603,11 @@ object CobblebrainConfigScreen {
             category.entries.add(decreaseFriendshipEntry)
             category.entries.add(increaseFriendshipEntry)
             category.entries.add(showFriendshipEntry)
+            /*
+            category.entries.add(maxAiLikesEntry)
+            category.entries.add(maxAiDislikesEntry)
+            */
+            category.entries.add(maxNotableBlocksEntry)
 
             addServerSubtitle("ACTIONS MANAGER (SERVER)")
             category.entries.add(actionManagerButton)
@@ -2390,6 +2621,8 @@ object CobblebrainConfigScreen {
             category.entries.add(customApiProviderEntry)
             category.entries.add(debugLoggingEntry)
             category.entries.add(maxInteractionSavesEntry)
+            category.entries.add(maxAiLikesEntry)
+            category.entries.add(maxAiDislikesEntry)
 
             category.entries.add(makeSpacer(6))
             category.entries.add(advancedAiToggleButton)
@@ -2415,11 +2648,12 @@ object CobblebrainConfigScreen {
             category.entries.add(actionHudAnchorEntry)
             category.entries.add(actionHudOffsetXEntry)
             category.entries.add(actionHudOffsetYEntry)
+            category.entries.add(showActionHudControlsEntry)
             category.entries.add(psychicTranslationEntry)
             category.entries.add(sttEntry)
             category.entries.add(hidePersonalityCreationEntry)
 
-            val promptSectionColor = if (isPromptCustomizationAllowed) 0xFFFF00 else 0xFFA500
+            /* PROMPT AND OUTPUT removed
             category.entries.add(makeSpacer(10))
             category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT", promptSectionColor))
             if (!isPromptCustomizationAllowed) {
@@ -2429,15 +2663,18 @@ object CobblebrainConfigScreen {
                 )
                 category.entries.add(makeSpacer(6))
             }
-            category.entries.add(instructEntry)
-            category.entries.add(playerAboutEntry)
+            category.entries.add(makeCustomizeAiButton())
+
             category.entries.add(outputPokemonLanguageEntry)
             category.entries.add(allowClientPersonalityEditingEntry)
             category.entries.add(allowCustomClientPromptEntry)
+            category.entries.add(allowCustomClientPromptEntry)
             category.entries.add(makeSpacer(15))
 
-            addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
+            */ addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
             category.entries.add(needsPokemonTranslatorEntry)
+            category.entries.add(allowClientPersonalityEditingEntry)
+            category.entries.add(allowCustomClientPromptEntry)
             category.entries.add(listenToChatEntry)
             category.entries.add(dialogueInChatEntry)
             category.entries.add(chatbubblesEntry)
@@ -2456,6 +2693,11 @@ object CobblebrainConfigScreen {
             category.entries.add(decreaseFriendshipEntry)
             category.entries.add(increaseFriendshipEntry)
             category.entries.add(showFriendshipEntry)
+            /*
+            category.entries.add(maxAiLikesEntry)
+            category.entries.add(maxAiDislikesEntry)
+            */
+            category.entries.add(maxNotableBlocksEntry)
 
             addServerSubtitle("ACTIONS MANAGER (SERVER)")
             category.entries.add(actionManagerButton)
@@ -2477,6 +2719,8 @@ object CobblebrainConfigScreen {
             category.entries.add(modelRotationEntry)
             category.entries.add(modelRotationTriggerEntry)
             category.entries.add(maxInteractionSavesEntry)
+            category.entries.add(maxAiLikesEntry)
+            category.entries.add(maxAiDislikesEntry)
             category.entries.add(offlineModeEntry)
             category.entries.add(offlineTalkModeEntry)
             category.entries.add(optimizedModeEntry)
@@ -2492,8 +2736,9 @@ object CobblebrainConfigScreen {
             category.entries.add(actionHudAnchorEntry)
             category.entries.add(actionHudOffsetXEntry)
             category.entries.add(actionHudOffsetYEntry)
+            category.entries.add(showActionHudControlsEntry)
 
-            val promptSectionColor = if (isPromptCustomizationAllowed) 0xFFFF00 else 0xFFA500
+            /* PROMPT AND OUTPUT removed
             category.entries.add(makeSpacer(10))
             category.entries.add(makeSubtitleEntry("PROMPT AND OUTPUT", promptSectionColor))
             if (!isPromptCustomizationAllowed) {
@@ -2503,17 +2748,20 @@ object CobblebrainConfigScreen {
                 )
                 category.entries.add(makeSpacer(6))
             }
-            category.entries.add(instructEntry)
-            category.entries.add(playerAboutEntry)
+            category.entries.add(makeCustomizeAiButton())
+
             category.entries.add(outputPokemonLanguageEntry)
             category.entries.add(allowClientPersonalityEditingEntry)
             category.entries.add(allowCustomClientPromptEntry)
+            category.entries.add(allowCustomClientPromptEntry)
             category.entries.add(makeSpacer(6))
-            category.entries.add(outputFormatEntry)
+
             category.entries.add(makeSpacer(15))
 
-            addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
+            */ addServerSubtitle("GAME AND INTERACTIONS (SERVER)")
             category.entries.add(needsPokemonTranslatorEntry)
+            category.entries.add(allowClientPersonalityEditingEntry)
+            category.entries.add(allowCustomClientPromptEntry)
             category.entries.add(listenToChatEntry)
             category.entries.add(dialogueInChatEntry)
             category.entries.add(chatbubblesEntry)
@@ -2533,12 +2781,17 @@ object CobblebrainConfigScreen {
             category.entries.add(decreaseFriendshipEntry)
             category.entries.add(increaseFriendshipEntry)
             category.entries.add(showFriendshipEntry)
+            /*
+            category.entries.add(maxAiLikesEntry)
+            category.entries.add(maxAiDislikesEntry)
+            */
+            category.entries.add(maxNotableBlocksEntry)
 
             addServerSubtitle("ACTIONS MANAGER (SERVER)")
             category.entries.add(actionManagerButton)
             category.entries.add(makeSpacer(15))
 
-            addServerSubtitle("AI CAPABILITIES (SERVER)")
+            /* AI CAPABILITIES removed - handled in AiCustomizationScreen
             category.entries.add(makeDescriptionEntry("Controls if the AI is allowed to trigger/use these systems.", 0xFFFF00, 10))
             category.entries.add(makeDescriptionEntry("Some of them can be active without AI.", 0xFFFF00, 10))
             category.entries.add(makeSpacer(8))
@@ -2551,6 +2804,8 @@ object CobblebrainConfigScreen {
             category.entries.add(outputMobsContextEntry)
             category.entries.add(outputQuestsEntry)
             category.entries.add(enableTraitsEntry)
+            category.entries.add(maxAiLikesEntry)
+            */
 
             addServerSubtitle("POKÉMON MEMORIES (SERVER)")
             category.entries.add(outputMemoriesEntry)
@@ -2577,6 +2832,10 @@ object CobblebrainConfigScreen {
             category.entries.add(makeSpacer(24))
         }
 
+        category.entries.add(makeSpacer(10))
+        category.entries.add(reportBugsButton)
+        category.entries.add(makeSpacer(20))
+
         val initialForceOfflineMode = config.forceOfflineMode
         builder.setSavingRunnable {
             isSaved = true
@@ -2585,16 +2844,16 @@ object CobblebrainConfigScreen {
             val isRemoteServer = mc.player != null && !mc.isLocalServer
 
             if (!isRemoteServer) {
-                config.useDefaultOutput = useDefaultOutput
-                config.outputDialogue = outputDialogue
-                config.outputActions = outputActions
-                config.outputFriendship = outputFriendship
+                // AI capabilities are managed per-profile in AiCustomizationScreen
+
+
+
                 config.outputMemories = outputMemories
                 config.outputApril1 = outputApril1
-                config.outputQuests = outputQuests
+
                 config.outputPokemonLanguage = outputPokemonLanguage
                 config.needsPokemonTranslator = needsPokemonTranslator
-                config.outputGuaranteedCatch = outputGuaranteedCatch
+
                 config.enableKarma = enableKarma
                 config.maxStoredMemories = maxStoredMemories
                 config.maxRelevantMemories = maxRelevantMemories
@@ -2614,16 +2873,16 @@ object CobblebrainConfigScreen {
             ClientConfigHandler.save()
             if (!isRemoteServer) {
                 SyncedConfig.updateLocal(
-                    useDefaultOutput,
-                    outputDialogue,
-                    outputActions,
-                    outputFriendship,
+                    config.useDefaultOutput,
+                    config.outputDialogue,
+                    config.outputActions,
+                    config.outputFriendship,
                     outputMemories,
                     outputApril1,
-                    outputQuests,
+                    config.outputQuests,
                     outputPokemonLanguage,
                     needsPokemonTranslator,
-                    outputGuaranteedCatch,
+                    config.outputGuaranteedCatch,
                     enableKarma,
                     maxStoredMemories,
                     maxRelevantMemories,

@@ -541,6 +541,12 @@ object HudSystem {
         }
 
         // Keybind hints
+        val showControls = try {
+            ClientConfigHandler.clientConfig.showActionHudControls
+        } catch (_: Throwable) {
+            true
+        }
+        if (!showControls) return
         val scrollKey = CobblebrainClientCommon.keyScroll?.translatedKeyMessage?.string ?: "Z"
         val upKey = CobblebrainClientCommon.keyUp?.translatedKeyMessage?.string ?: "B"
         val downKey = CobblebrainClientCommon.keyDown?.translatedKeyMessage?.string ?: "V"

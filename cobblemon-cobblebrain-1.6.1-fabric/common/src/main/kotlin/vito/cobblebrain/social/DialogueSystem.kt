@@ -902,7 +902,67 @@ object DialogueSystem {
         if (!config.optimizedMode && config.enableAiMemoryRetrieval) {
             lastPromptContext[player.uuid] = Pair(ativos, "\n\n$formattedText")
         }
-        val prompt = buildPrompt(player, ativos, "\n\n$formattedText")
+        // Automatic wild quest roll when player speaks
+        var questPromptDirective: String? = null
+        if (config.outputQuests) {
+            val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
+            val hasActiveQuest = activeQuests.any { it.get("status")?.asString == "IN_PROGRESS" }
+            if (!hasActiveQuest) {
+                val worldCtx = collectWorldContext(player)
+                if (worldCtx.nearbyPokemonEntities.isNotEmpty() && Random.nextDouble() <= config.wildQuestChance) {
+                    val giverEntity = worldCtx.nearbyPokemonEntities.random()
+                    val giverName = giverEntity.pokemon.nickname?.string ?: giverEntity.pokemon.species.name
+                    val roll = Random.nextInt(4) // 0 = Advice, 1 = Item, 2 = Battle, 3 = Treasure
+                    when (roll) {
+                        0 -> {
+                            CobblebrainWorldSave.createAdviceQuest(player, giverEntity)
+                            val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
+                            val issue = q?.get("issue")?.asString ?: "personal problem"
+                            player.sendSystemMessage(
+                                Component.translatable("cobblebrain.quest.started.advice", giverName, issue)
+                                    .withStyle(ChatFormatting.YELLOW)
+                            )
+                            questPromptDirective = "\n\nIMPORTANT: $giverName has just started an ADVICE quest about '$issue'! It wants advice or guidance from ${player.name.string}. Express this concern and ask for advice naturally in dialogue!"
+                        }
+                        1 -> {
+                            CobblebrainWorldSave.createItemQuest(player, giverEntity)
+                            val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
+                            val targetItem = q?.get("target")?.asString ?: "items"
+                            val amount = q?.get("amount")?.asInt ?: 3
+                            player.sendSystemMessage(
+                                Component.translatable("cobblebrain.quest.started.item", giverName)
+                                    .withStyle(ChatFormatting.YELLOW)
+                            )
+                            questPromptDirective = "\n\nIMPORTANT: $giverName has just started an ITEM quest! It urgently needs ${player.name.string} to gather x$amount $targetItem! Ask the player for this help naturally in dialogue!"
+                        }
+                        2 -> {
+                            CobblebrainWorldSave.createBattleQuest(player, giverEntity)
+                            val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
+                            val targetSpecies = q?.get("targetSpecies")?.asString ?: "foe"
+                            player.sendSystemMessage(
+                                Component.translatable("cobblebrain.quest.started.battle", giverName)
+                                    .withStyle(ChatFormatting.YELLOW)
+                            )
+                            questPromptDirective = "\n\nIMPORTANT: $giverName has just started a BATTLE quest! It wants ${player.name.string} to defeat a wild $targetSpecies in a Pokémon battle! Explain why and challenge/ask the player naturally in dialogue!"
+                        }
+                        3 -> {
+                            CobblebrainWorldSave.createTreasureQuest(player, giverEntity)
+                            val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
+                            val tx = q?.get("targetX")?.asInt ?: player.blockX
+                            val tz = q?.get("targetZ")?.asInt ?: player.blockZ
+                            player.sendSystemMessage(
+                                Component.translatable("cobblebrain.quest.started.treasure", giverName)
+                                    .withStyle(ChatFormatting.YELLOW)
+                            )
+                            questPromptDirective = "\n\nIMPORTANT: $giverName has just started a TREASURE quest! A lost item storage is hidden near ($tx, $tz)! Ask ${player.name.string} for help finding it naturally in dialogue!"
+                        }
+                    }
+                }
+            }
+        }
+
+        val fullText = formattedText + (questPromptDirective ?: "")
+        val prompt = buildPrompt(player, ativos, "\n\n$fullText")
 
         // Send prompt to client for processing
         sendToPlayer?.invoke(player, prompt)
@@ -2439,8 +2499,24 @@ object DialogueSystem {
         // 3. Environment & Physical Needs (Grouped)
         val envItems = mutableListOf<String>()
         when (context.weather) {
-            "rain" -> envItems += "the heavy rain falling and wet atmosphere"
-            "thunderstorm" -> envItems += "the intense thunderstorm, loud thunder, and lightning flashes"
+            "rain" -> {
+                val sensory = context.sensoryData
+                if (sensory.isDirectlyRainingOnPlayer) {
+                    envItems += "the heavy rain falling directly on you and getting wet"
+                } else if (sensory.isSheltered) {
+                    envItems += "the comforting shelter protecting everyone while listening to the rain pouring outside"
+                }
+            }
+            "thunderstorm" -> {
+                val sensory = context.sensoryData
+                if (sensory.isDirectlyRainingOnPlayer) {
+                    envItems += "the intense thunderstorm, rain soaking you, loud thunder, and lightning flashes"
+                } else if (sensory.isSheltered) {
+                    envItems += "the safe shelter protecting everyone from the heavy storm raging outside"
+                } else {
+                    envItems += "the distant thunder rumbling and lightning flashes"
+                }
+            }
         }
         when (context.timeLabel) {
             "night", "before dawn" -> envItems += "the late night hours and darkness settling in"
@@ -2452,7 +2528,12 @@ object DialogueSystem {
             "Nether" -> envItems += "the intense heat, vast lava oceans, and Nether atmosphere"
             "The End" -> envItems += "the floating endstone islands, the void, and strange atmosphere of The End"
             else -> {
+                val sensory = context.sensoryData
+                if (sensory.structureName != null) {
+                    envItems += "being inside ${sensory.structureName} and exploring the area"
+                }
                 when (context.terrainHint) {
+                    "inside a house" -> envItems += "the cozy interior of the room and feeling safely indoors"
                     "inside a cave" -> envItems += "the dark cavern, damp stone echoes, and underground surroundings"
                     "on a mountain" -> envItems += "the high mountain altitude, winds, and panoramic views"
                 }
@@ -2465,6 +2546,12 @@ object DialogueSystem {
                     b.contains("ocean") || b.contains("beach") -> envItems += "the open ocean waters, coastal shoreline, and salty sea breeze"
                 }
             }
+        }
+        context.sensoryData.notableBlocks.firstOrNull { it.contains("dragon_egg") }?.let {
+            envItems += "the mysterious and powerful aura from the Dragon Egg nearby"
+        }
+        context.sensoryData.notableBlocks.firstOrNull { it.contains("diamond_ore") }?.let {
+            envItems += "the exciting discovery of diamond ore nearby"
         }
         if (context.hostileMobs || context.nearbyMobs.isNotBlank()) {
             envItems += "noticing wild hostile monsters and danger lurking nearby"
@@ -2787,6 +2874,24 @@ object DialogueSystem {
             }
             appendLine()
 
+            temporaryFeedback[player.uuid]
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { feedbacks ->
+                    appendLine("[RECENT FEEDBACK]")
+                    feedbacks.forEach {
+                        appendLine("- ${it.text}")
+                    }
+                    appendLine()
+                }
+
+            // Inject last session summary if present
+            val sessionSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
+            if (sessionSummary != null) {
+                appendLine("[LAST SESSION RECAP]")
+                appendLine(sessionSummary)
+                appendLine()
+            }
+
             // Player Message / Spontaneous Conversation Section
             if (recommendedTopics != null) {
                 appendLine("[SPONTANEOUS POKÉMON CONVERSATION]")
@@ -2816,6 +2921,16 @@ object DialogueSystem {
                     appendLine()
                 }
 
+                // Injeta nota pendente (ex: abandono de quest) se houver
+                if (config.outputQuests) {
+                    val questNote = pendingQuestNote.remove(player.uuid)
+                    if (questNote != null) {
+                        appendLine("[IMPORTANT NOTE]")
+                        appendLine(questNote)
+                        appendLine()
+                    }
+                }
+
                 // Relevant Memories (only in normal player conversation)
                 if (!forcedRelevantMemory.isNullOrBlank()) {
                     appendLine("[RELEVANT MEMORIES]")
@@ -2823,6 +2938,36 @@ object DialogueSystem {
                     appendLine(formattedMem.trim())
                     appendLine()
                 }
+            }
+
+            val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
+            if (activeQuests.isNotEmpty() && config.outputQuests) {
+                appendLine("[ACTIVE QUESTS]")
+                activeQuests.forEach { q ->
+                    val type = q.get("type").asString
+                    val summary = q.get("questSummary")?.asString ?: "No summary"
+                    val storyId = q.get("storyId")?.asString ?: "generic"
+                    val slot = if (storyId != "generic") "STORY" else "SECONDARY"
+
+                    val goalInfo = when (type) {
+                        "BATTLE" -> "Goal: Defeat ${q.get("targetSpecies").asString}"
+                        "ITEM" -> "Goal: Collect ${q.get("amount").asInt}x ${q.get("target").asString}"
+                        "ADVICE" -> {
+                            val points = q.get("points")?.asInt ?: 0
+                            val issue = q.get("issue")?.asString ?: "their problem"
+                            "Goal: Help with advice about '$issue' | Progress: $points/5"
+                        }
+                        "LOCATION", "TREASURE" -> {
+                            val tx = q.get("targetX").asInt
+                            val ty = q.get("targetY").asInt
+                            val tz = q.get("targetZ").asInt
+                            "Goal: Go to ($tx, $ty, $tz)"
+                        }
+                        else -> ""
+                    }
+                    appendLine("- Type: $type | Slot: $slot | $goalInfo | Summary: $summary")
+                }
+                appendLine()
             }
 
             // Active Pokemon Summary
@@ -2879,12 +3024,43 @@ object DialogueSystem {
 
                     appendLine(parts.joinToString(" | "))
 
+                    // Karma
+                    if (config.enableKarma) {
+                        val speciesName = p.species.name
+                        val playerUUID = player.stringUUID
+                        if (playerUUID != null) {
+                            val karmaRoot = CobblebrainWorldSave.data.getAsJsonObject("karma")
+                            if (karmaRoot.has(playerUUID)) {
+                                val playerKarma = karmaRoot.getAsJsonObject(playerUUID)
+                                if (playerKarma.has(speciesName)) {
+                                    val karmaValue = playerKarma.get(speciesName).asInt
+                                    appendLine("Karma: $karmaValue")
+                                }
+                            }
+                            val killRoot = CobblebrainWorldSave.data.getAsJsonObject("kill_count")
+                            if (killRoot.has(player.stringUUID)) {
+                                val playerKills = killRoot.getAsJsonObject(player.stringUUID)
+                                playerKills.entrySet().forEach { entry ->
+                                    val species = entry.key
+                                    val killValue = entry.value.asInt
+                                    appendLine("The player killed x$killValue $species")
+                                }
+                                killRoot.add(player.stringUUID, JsonObject())
+                                CobblebrainWorldSave.save()
+                            }
+                        }
+                    }
+
                     // Load personality core summary (without background slot generation prompts)
                     val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
                     val personalityParts = mutableListOf<String>()
                     if (personality.about.isNotBlank()) personalityParts += "About: ${personality.about}"
                     if (personality.traits.isNotEmpty()) personalityParts += "Traits: ${personality.traits.joinToString(", ")}"
                     if (personality.quirks.isNotEmpty()) personalityParts += "Quirks: ${personality.quirks.joinToString(", ")}"
+                    if (personality.likes.isNotEmpty()) personalityParts += "Likes: ${personality.likes.joinToString(", ")}"
+                    if (personality.dislikes.isNotEmpty()) personalityParts += "Dislikes: ${personality.dislikes.joinToString(", ")}"
+
+
                     if (personalityParts.isNotEmpty()) {
                         appendLine(personalityParts.joinToString(" | "))
                     }
@@ -2927,6 +3103,61 @@ object DialogueSystem {
                     appendLine("World: ${worldParts.joinToString(" | ")}")
                     if (!config.lowTokenMode) {
                         appendLine("Ground: ${compactId(context.blockUnder)}")
+                    }
+                    val sensoryPrompt = context.sensoryData.toPromptString(config.lowTokenMode)
+                    if (sensoryPrompt.isNotBlank()) {
+                        appendLine(sensoryPrompt)
+                    }
+                }
+
+                if (!config.lowTokenMode && config.outputWorldContext) {
+                    context.specialBlocks.takeIfUseful()?.let {
+                        appendLine("Special blocks: $it")
+                    }
+                }
+
+                if (!config.lowTokenMode && config.outputMobsContext) {
+                    context.nearbyMobs.takeIfUseful()?.let {
+                        appendLine("Nearby mobs: $it")
+                    }
+                }
+
+                if (!config.lowTokenMode && config.outputWorldContext) {
+                    context.nearbyItems.takeIfUseful()?.let { items ->
+                        val compacted = items
+                            .split(",")
+                            .map { compactId(it.trim()) }
+                        appendLine("Ground items: ${compacted.joinToString(", ")}")
+                    }
+                }
+
+                if (config.outputWorldContext) {
+                    val playerParts = mutableListOf<String>()
+                    playerParts += "HP ${context.health}/${context.maxHealth}"
+                    context.mainHand.takeIfUseful()?.let {
+                        playerParts += "Main hand: ${compactId(it)}"
+                    }
+                    appendLine("Player: ${playerParts.joinToString(" | ")}")
+                }
+                appendLine()
+            }
+
+            if (false)
+            if (recommendedTopics == null) {
+                appendLine("[WORLD CONTEXT]")
+                if (config.outputWorldContext) {
+                    val worldParts = mutableListOf<String>()
+                    worldParts += compactId(context.biome)
+                    context.weather.let { worldParts += it }
+                    context.dimension.let { worldParts += it }
+                    context.timeLabel.let { worldParts += it }
+                    appendLine("World: ${worldParts.joinToString(" | ")}")
+                    if (!config.lowTokenMode) {
+                        appendLine("Ground: ${compactId(context.blockUnder)}")
+                    }
+                    val sensoryPrompt = context.sensoryData.toPromptString(config.lowTokenMode)
+                    if (sensoryPrompt.isNotBlank()) {
+                        appendLine(sensoryPrompt)
                     }
                 }
 
@@ -3063,7 +3294,13 @@ object DialogueSystem {
             appendLine(stage1Response.trim().ifBlank { "..." })
             appendLine()
 
-            // Active Quests & Scoring: Only append if [FLAG: QUEST] is present AND an active quest exists
+            // Active Quests & Scoring: Only append if [FLAG: QUEST] is present
+            if (CobblebrainWorldSave.getActiveQuests(player).isEmpty() && config.outputQuests && ("QUEST" in flags || flags.isEmpty())) {
+                appendLine("[QUEST SYSTEM]")
+                appendLine("If the dialogue naturally formed a quest or request for help:")
+                appendLine("Format: &START_QUEST:<PokemonName>:<TYPE> (types: ITEM, BATTLE, TREASURE, ADVICE)")
+                appendLine()
+            }
             val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
             if (activeQuests.isNotEmpty() && config.outputQuests && ("QUEST" in flags || flags.isEmpty())) {
                 appendLine("[ACTIVE QUESTS]")
@@ -3131,6 +3368,28 @@ object DialogueSystem {
                         }
                         appendLine("  Current quirks: $quirkDesc")
                     }
+                    if (personality.likes.isNotEmpty()) {
+                        val likesDesc = personality.likes.joinToString(", ") { like ->
+                            if (personality.effectiveLockedLikes.any { it.equals(like, ignoreCase = true) }) {
+                                "$like (LOCKED - permanent)"
+                            } else {
+                                like
+                            }
+                        }
+                        val likesLimit = if (config.maxAiLikes > 0) " (${personality.likes.size}/${config.maxAiLikes})" else ""
+                        appendLine("  Current likes: $likesDesc$likesLimit")
+                    }
+                    if (personality.dislikes.isNotEmpty()) {
+                        val dislikesDesc = personality.dislikes.joinToString(", ") { dislike ->
+                            if (personality.effectiveLockedDislikes.any { it.equals(dislike, ignoreCase = true) }) {
+                                "$dislike (LOCKED - permanent)"
+                            } else {
+                                dislike
+                            }
+                        }
+                        val dislikesLimit = if (config.maxAiDislikes > 0) " (${personality.dislikes.size}/${config.maxAiDislikes})" else ""
+                        appendLine("  Current dislikes: $dislikesDesc$dislikesLimit")
+                    }
                 }
                 appendLine()
                 appendLine("Rules:")
@@ -3141,12 +3400,17 @@ object DialogueSystem {
                 appendLine("- Must be a single word or short phrase (maximum 2-3 words, e.g. \"Analytical\", \"Loves sweet berries\"). Never write full sentences or explanations.")
                 appendLine("- Traits and quirks must be discoverable through dialogue, opinions, reactions, or behavioral habits.")
                 appendLine("- NEVER use visual-only, sound-only, or animation-only traits/quirks.")
+                if (config.maxAiLikes > 0 || config.maxAiDislikes > 0) {
+                    appendLine("- If a Pokémon clearly reveals a genuine like or dislike in dialogue, you may record it with &LIKE: (max ${config.maxAiLikes}) or &DISLIKE: (max ${config.maxAiDislikes}) (never add if locked, full, or duplicate).")
+                }
                 appendLine()
                 appendLine("Format:")
                 appendLine("  Adding new: &TRAIT:<PokemonName>:<NewTrait>")
                 appendLine("  Adding new: &QUIRK:<PokemonName>:<NewQuirk>")
                 appendLine("  Evolving/Replacing: &REPLACE_TRAIT:<PokemonName>:<OldTrait>-><NewTrait>")
                 appendLine("  Evolving/Replacing: &REPLACE_QUIRK:<PokemonName>:<OldQuirk>-><NewQuirk>")
+                if (config.maxAiLikes > 0) appendLine("  Adding like: &LIKE:<PokemonName>:<item or activity>")
+                if (config.maxAiDislikes > 0) appendLine("  Adding dislike: &DISLIKE:<PokemonName>:<item or activity>")
                 appendLine()
             }
 
@@ -3180,7 +3444,7 @@ object DialogueSystem {
             }
 
             appendLine("##OUTPUT RULES##")
-            appendLine("- Output ONLY state update tags (&TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, #SCORE:, %friendship, !catch, =resume).")
+            appendLine("- Output ONLY state update tags (&TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, !catch, =resume).")
             appendLine("- Output exactly ONE tag per line per Pokémon. NEVER combine multiple Pokémon on the same line with semicolons or commas.")
             appendLine("  Example correct format:")
             appendLine("  &TRAIT:Squirtle:Energetic")
@@ -3701,6 +3965,10 @@ object DialogueSystem {
                     if (personality.quirks.isNotEmpty()) personalityParts += "Quirks: ${personality.quirks.joinToString(", ")}"
                     if (personality.likes.isNotEmpty()) personalityParts += "Likes: ${personality.likes.joinToString(", ")}"
                     if (personality.dislikes.isNotEmpty()) personalityParts += "Dislikes: ${personality.dislikes.joinToString(", ")}"
+
+
+
+
                     if (personalityParts.isNotEmpty()) {
                         appendLine(personalityParts.joinToString(" | "))
                     }
@@ -3869,6 +4137,10 @@ object DialogueSystem {
                     appendLine("World: ${worldParts.joinToString(" | ")}")
                     if (!config.lowTokenMode) {
                         appendLine("Ground: ${compactId(context.blockUnder)}")
+                    }
+                    val sensoryPrompt = context.sensoryData.toPromptString(config.lowTokenMode)
+                    if (sensoryPrompt.isNotBlank()) {
+                        appendLine(sensoryPrompt)
                     }
                 }
 
@@ -4050,6 +4322,8 @@ object DialogueSystem {
                 .replace(DialogueFilter.MEMORY_REGEX, "")
                 .replace(DialogueFilter.TRAIT_REGEX, "")
                 .replace(DialogueFilter.QUIRK_REGEX, "")
+                .replace(DialogueFilter.LIKE_REGEX, "")
+                .replace(DialogueFilter.DISLIKE_REGEX, "")
         }
 
         val allLines = cleanedContent.split(Regex("[|\n]"))
@@ -4399,11 +4673,17 @@ object DialogueSystem {
         // Replace any previous dialogue with this new set
         scheduledMessages[player.uuid] = novasMensagens.toMutableList()
 
+        // Process &START_QUEST tag if generated in foreground
+        if (contentWithoutFlags.contains("&START_QUEST", ignoreCase = true)) {
+            processStartQuestTag(server, player, contentWithoutFlags)
+        }
+
         // 3. Pipeline Branching: Optimized Mode vs Legacy Flow
         if (config.optimizedMode) {
             val playerMsg = lastPlayerMessage[player.uuid] ?: ""
 
-            val hasRelevantFlags = parsedFlags.any { it in setOf("FRIENDSHIP", "QUEST", "MEMORY", "TRAIT", "QUIRK", "CATCH") }
+            val hasRelevantFlags = parsedFlags.any { it in setOf("FRIENDSHIP", "QUEST", "MEMORY", "TRAIT", "QUIRK", "CATCH") } ||
+                    contentWithoutFlags.contains("&START_QUEST", ignoreCase = true)
 
             if (hasRelevantFlags) {
                 val bgPrompt = buildBackgroundResolutionPrompt(player, activePokemons, playerMsg, contentWithoutFlags, parsedFlags)
@@ -4502,6 +4782,109 @@ object DialogueSystem {
                 )
             }
         }
+    }
+
+    fun processStartQuestTag(server: MinecraftServer, player: ServerPlayer, text: String) {
+        if (!config.outputQuests) return
+        val match = DialogueFilter.START_QUEST_REGEX.find(text) ?: return
+
+        val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
+        val hasActiveQuest = activeQuests.any { it.get("status")?.asString == "IN_PROGRESS" }
+        if (hasActiveQuest) return
+
+        val rawPokeName = match.groupValues[1].trim()
+        val rawType = match.groupValues[2].trim().uppercase()
+        val extraArg = match.groupValues.getOrNull(3)?.trim()?.takeIf { it.isNotEmpty() }
+
+        val level = player.serverLevel()
+        val worldCtx = collectWorldContext(player)
+        val nearbyWild = worldCtx.nearbyPokemonEntities
+
+        val targetUuid = pokemonAliasMap[player.uuid]?.get(rawPokeName)
+        val cleanName = rawPokeName.substringBefore("#").substringBefore("_").trim()
+
+        val giverEntity: PokemonEntity? = nearbyWild.firstOrNull { entity ->
+            (targetUuid != null && (entity.uuid == targetUuid || entity.pokemon.uuid == targetUuid)) ||
+            entity.pokemon.species.name.equals(cleanName, ignoreCase = true) ||
+            entity.pokemon.species.resourceIdentifier.path.equals(cleanName, ignoreCase = true) ||
+            entity.pokemon.nickname?.string?.equals(cleanName, ignoreCase = true) == true ||
+            entity.displayName?.string?.contains(cleanName, ignoreCase = true) == true
+        } ?: nearbyWild.minByOrNull { it.distanceTo(player) }
+          ?: level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(32.0)) {
+              it.pokemon.getOwnerUUID() == null
+          }.minByOrNull { it.distanceTo(player) }
+
+        if (giverEntity == null) {
+            println("[CobbleBrain Quests] Could not start quest: no wild Pokémon nearby to be giver.")
+            return
+        }
+
+        val giverName = giverEntity.pokemon.nickname?.string?.takeIf { it.isNotBlank() } ?: giverEntity.pokemon.species.name
+
+        when (rawType) {
+            "ITEM" -> {
+                CobblebrainWorldSave.createItemQuest(player, giverEntity)
+                if (extraArg != null) {
+                    val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
+                    if (q != null && extraArg.isNotBlank()) {
+                        q.addProperty("target", extraArg.lowercase().replace(" ", "_"))
+                        CobblebrainWorldSave.save()
+                    }
+                }
+                player.sendSystemMessage(
+                    Component.translatable("cobblebrain.quest.started.item", giverName)
+                        .withStyle(ChatFormatting.YELLOW)
+                )
+            }
+            "BATTLE" -> {
+                CobblebrainWorldSave.createBattleQuest(player, giverEntity)
+                if (extraArg != null) {
+                    val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
+                    if (q != null && extraArg.isNotBlank()) {
+                        q.addProperty("targetSpecies", extraArg)
+                        CobblebrainWorldSave.save()
+                    }
+                }
+                player.sendSystemMessage(
+                    Component.translatable("cobblebrain.quest.started.battle", giverName)
+                        .withStyle(ChatFormatting.YELLOW)
+                )
+            }
+            "TREASURE" -> {
+                CobblebrainWorldSave.createTreasureQuest(player, giverEntity)
+                player.sendSystemMessage(
+                    Component.translatable("cobblebrain.quest.started.treasure", giverName)
+                        .withStyle(ChatFormatting.YELLOW)
+                )
+            }
+            "ADVICE" -> {
+                CobblebrainWorldSave.createAdviceQuest(player, giverEntity)
+                val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
+                if (extraArg != null && q != null) {
+                    q.addProperty("issue", extraArg)
+                    q.addProperty("questSummary", "Wants advice about $extraArg")
+                    CobblebrainWorldSave.save()
+                }
+                val issue = q?.get("issue")?.asString ?: extraArg ?: "personal problem"
+                player.sendSystemMessage(
+                    Component.translatable("cobblebrain.quest.started.advice", giverName, issue)
+                        .withStyle(ChatFormatting.YELLOW)
+                )
+            }
+            else -> {
+                println("[CobbleBrain Quests] Unknown quest type: $rawType")
+            }
+        }
+
+        vito.cobblebrain.engine.StoryDebugger.recordLog(
+            storyId = "system",
+            blockId = "start_quest_tag",
+            blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
+            status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
+            level = "INFO",
+            message = "Quest started via &START_QUEST: Type=$rawType, Giver=$giverName",
+            server = server
+        )
     }
 
     private fun applyBackgroundStateUpdates(server: MinecraftServer, player: ServerPlayer, content: String, isCall2: Boolean) {
@@ -4761,6 +5144,98 @@ object DialogueSystem {
             }
         }
 
+        // 4b. Process Likes (&LIKE:<PokemonName>:<like>) with Semicolon Fail-Safe
+        fun applySingleLike(targetName: String, likeText: String) {
+            val cleanLike = DialogueFilter.stripListPrefix(likeText).trim()
+            if (cleanLike.isBlank()) return
+            if (config.maxAiLikes <= 0) return
+            val target = resolveTargetPokemon(targetName) ?: return
+            val uuid = target.uuid
+            val displayName = target.cleanDisplayName
+            val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
+            if (!personality.effectiveCanUpdatePersonality) return
+            if (personality.likes.size < config.maxAiLikes) {
+                val isDup = personality.likes.any { existing ->
+                    existing.equals(cleanLike, ignoreCase = true) ||
+                    existing.lowercase().contains(cleanLike.lowercase()) ||
+                    cleanLike.lowercase().contains(existing.lowercase())
+                }
+                val isLocked = personality.effectiveLockedLikes.any { it.equals(cleanLike, ignoreCase = true) }
+                if (!isDup && !isLocked) {
+                    personality.likes.add(cleanLike)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
+                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add("Likes $cleanLike")
+                }
+            }
+        }
+
+        DialogueFilter.LIKE_REGEX.findAll(sanitized).forEach { match ->
+            if (!config.enableTraits) return@forEach
+            val pokemonName = match.groupValues[1].trim()
+            val fullValue = match.groupValues[2].trim()
+
+            if (fullValue.contains(";")) {
+                val parts = fullValue.split(";").map { it.trim() }.filter { it.isNotBlank() }
+                parts.forEach { part ->
+                    if (part.contains(":") && !part.startsWith("&")) {
+                        val subName = part.substringBefore(":").trim()
+                        val subLike = part.substringAfter(":").trim()
+                        applySingleLike(subName, subLike)
+                    } else {
+                        applySingleLike(pokemonName, part.removePrefix("&LIKE:").removePrefix("&like:").trim())
+                    }
+                }
+            } else {
+                applySingleLike(pokemonName, fullValue)
+            }
+        }
+
+        // 4c. Process Dislikes (&DISLIKE:<PokemonName>:<dislike>) with Semicolon Fail-Safe
+        fun applySingleDislike(targetName: String, dislikeText: String) {
+            val cleanDislike = DialogueFilter.stripListPrefix(dislikeText).trim()
+            if (cleanDislike.isBlank()) return
+            if (config.maxAiDislikes <= 0) return
+            val target = resolveTargetPokemon(targetName) ?: return
+            val uuid = target.uuid
+            val displayName = target.cleanDisplayName
+            val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
+            if (!personality.effectiveCanUpdatePersonality) return
+            if (personality.dislikes.size < config.maxAiDislikes) {
+                val isDup = personality.dislikes.any { existing ->
+                    existing.equals(cleanDislike, ignoreCase = true) ||
+                    existing.lowercase().contains(cleanDislike.lowercase()) ||
+                    cleanDislike.lowercase().contains(existing.lowercase())
+                }
+                val isLocked = personality.effectiveLockedDislikes.any { it.equals(cleanDislike, ignoreCase = true) }
+                if (!isDup && !isLocked) {
+                    personality.dislikes.add(cleanDislike)
+                    MemorySystem.savePersonality(uuid.toString(), personality, displayName)
+                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add("Dislikes $cleanDislike")
+                }
+            }
+        }
+
+        DialogueFilter.DISLIKE_REGEX.findAll(sanitized).forEach { match ->
+            if (!config.enableTraits) return@forEach
+            val pokemonName = match.groupValues[1].trim()
+            val fullValue = match.groupValues[2].trim()
+
+            if (fullValue.contains(";")) {
+                val parts = fullValue.split(";").map { it.trim() }.filter { it.isNotBlank() }
+                parts.forEach { part ->
+                    if (part.contains(":") && !part.startsWith("&")) {
+                        val subName = part.substringBefore(":").trim()
+                        val subDislike = part.substringAfter(":").trim()
+                        applySingleDislike(subName, subDislike)
+                    } else {
+                        applySingleDislike(pokemonName, part.removePrefix("&DISLIKE:").removePrefix("&dislike:").trim())
+                    }
+                }
+            } else {
+                applySingleDislike(pokemonName, fullValue)
+            }
+        }
+
         if (!config.hidePersonalityCreation && newlyIdentified.isNotEmpty()) {
             newlyIdentified.forEach { (pokeName, traitsOrQuirks) ->
                 val traitsList = traitsOrQuirks.joinToString(", ")
@@ -4829,7 +5304,10 @@ object DialogueSystem {
             !it.startsWith("&QUIRK:", ignoreCase = true) && 
             !it.startsWith("&REPLACE_TRAIT:", ignoreCase = true) && 
             !it.startsWith("&REPLACE_QUIRK:", ignoreCase = true) && 
-            !it.startsWith("&MEMORY:", ignoreCase = true) 
+            !it.startsWith("&LIKE:", ignoreCase = true) &&
+            !it.startsWith("&DISLIKE:", ignoreCase = true) &&
+            !it.startsWith("&MEMORY:", ignoreCase = true) &&
+            !it.startsWith("&START_QUEST:", ignoreCase = true) 
         }
         summaryLines.forEach { line ->
             val summaryText = line.substringAfter("&").removePrefix(":").trim()
@@ -4842,6 +5320,9 @@ object DialogueSystem {
                 }
             }
         }
+
+        // 5b. Process Dynamic Quest Start (&START_QUEST:<PokemonName>:<TYPE>)
+        processStartQuestTag(server, player, content)
 
         // 6. Process Guaranteed Catch (!CATCH or !<Pokemon>)
         if (config.outputGuaranteedCatch) {

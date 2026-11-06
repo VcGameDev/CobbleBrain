@@ -7,6 +7,9 @@ data class CobblebrainConfig(
     var maxFriendship: Int = 255,
     var showFriendship: Boolean = true,
     var hidePersonalityCreation: Boolean = false,
+    var maxAiLikes: Int = 5,
+    var maxAiDislikes: Int = 5,
+    var maxNotableBlocks: Int = 10,
 
     // ================= DIALOGUE & UI SETTINGS =================
     var allowPokemonPVP: Boolean = false,
@@ -43,7 +46,7 @@ data class CobblebrainConfig(
     var outputMobsContext: Boolean = true,
     val outputLastContext: Boolean = true,
     val outputBlockSensors: Boolean = true,
-    var outputMemories: Boolean = false,
+    var outputMemories: Boolean = true,
     var outputApril1: Boolean = false,
     var outputPokemonLanguage: Boolean = false,
     var needsPokemonTranslator: Boolean = false,

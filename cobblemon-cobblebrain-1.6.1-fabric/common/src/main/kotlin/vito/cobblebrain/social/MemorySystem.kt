@@ -303,6 +303,32 @@ object MemorySystem {
         return memories
     }
 
+    fun pruneMemories(memories: List<Memory>, limit: Int): List<Memory> {
+        if (memories.size <= limit) return memories
+        if (limit <= 0) return emptyList()
+
+        var excess = memories.size - limit
+        val result = memories.toMutableList()
+
+        // 1. First pass: discard non-favorite memories from oldest to newest
+        val it = result.iterator()
+        while (it.hasNext() && excess > 0) {
+            val m = it.next()
+            if (!m.isFavorite) {
+                it.remove()
+                excess--
+            }
+        }
+
+        // 2. Second pass: if excess still remains (all remaining are favorites), discard oldest favorites
+        while (excess > 0 && result.isNotEmpty()) {
+            result.removeAt(0)
+            excess--
+        }
+
+        return result
+    }
+
     @Suppress("unused")
     fun saveMemory(pokemonUuid: String, memory: Memory) {
         saveMemory(pokemonUuid, memory, null)
@@ -312,8 +338,7 @@ object MemorySystem {
         if (isWild(pokemonUuid)) {
             val memories = loadMemories(pokemonUuid, displayName).toMutableList()
             memories.add(memory)
-            val limit = config.maxStoredMemories
-            val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+            val toSave = pruneMemories(memories, config.maxStoredMemories)
             saveMemories(pokemonUuid, toSave, displayName)
             return
         }
@@ -324,8 +349,7 @@ object MemorySystem {
                 val memories = loadMemories(pokemonUuid, displayName).toMutableList()
                 memories.add(memory)
 
-                val limit = config.maxStoredMemories
-                val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+                val toSave = pruneMemories(memories, config.maxStoredMemories)
 
                 file.parentFile?.mkdirs()
                 writeMemoriesToFileAtomically(file, toSave)
@@ -345,8 +369,7 @@ object MemorySystem {
             val wildObj = CobblebrainWorldSave.data.getAsJsonObject("wild_pokemon_personalities")
                 ?: JsonObject().also { CobblebrainWorldSave.data.add("wild_pokemon_personalities", it) }
             val record = wildObj.getAsJsonObject(pokemonUuid) ?: JsonObject().also { wildObj.add(pokemonUuid, it) }
-            val limit = config.maxStoredMemories
-            val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+            val toSave = pruneMemories(memories, config.maxStoredMemories)
             val memArr = com.google.gson.JsonArray()
             toSave.forEach { m ->
                 val obj = JsonObject().apply {
@@ -371,8 +394,7 @@ object MemorySystem {
         DiskWriteExecutor.submit {
             try {
                 val file = resolveMemoryFile(pokemonUuid, displayName)
-                val limit = config.maxStoredMemories
-                val toSave = if (memories.size > limit) memories.takeLast(limit) else memories
+                val toSave = pruneMemories(memories, config.maxStoredMemories)
 
                 file.parentFile?.mkdirs()
                 writeMemoriesToFileAtomically(file, toSave)

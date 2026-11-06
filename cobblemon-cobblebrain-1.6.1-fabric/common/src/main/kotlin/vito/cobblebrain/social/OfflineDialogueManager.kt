@@ -219,15 +219,15 @@ object OfflineDialogueManager {
                     context.nearbyItems.lowercase() != "none" ->
                 FeelingContext.ITEMS
 
-            weather.contains("storm") ||
-                    weather.contains("thunder") ->
+            (weather.contains("storm") ||
+                    weather.contains("thunder")) && context.sensoryData.isDirectlyRainingOnPlayer ->
                 FeelingContext.THUNDERSTORM
 
             weather.contains("snow") ||
                     weather.contains("blizzard") ->
                 FeelingContext.SNOW
 
-            weather.contains("rain") ->
+            weather.contains("rain") && context.sensoryData.isDirectlyRainingOnPlayer ->
                 FeelingContext.RAIN
 
             context.timeLabel.lowercase().contains("night") ->

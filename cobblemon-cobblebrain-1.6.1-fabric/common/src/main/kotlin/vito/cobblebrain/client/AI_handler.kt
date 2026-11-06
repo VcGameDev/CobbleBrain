@@ -263,6 +263,7 @@ class AIHandler {
         QUEST SYSTEM
         types=STORY/SECONDARY/ADVICE
         quests start via natural pokemon dialogue
+        to trigger a new quest in dialogue: &START_QUEST:<PokemonName>:<TYPE> (types: ITEM, BATTLE, TREASURE, ADVICE)
         ADVICE quests:
         #SCORE:-3~3
         score reflects player help quality
@@ -293,7 +294,8 @@ class AIHandler {
             appendLine("- no self-talk unless the [CREATIVEPROMPT] tells the opposite")
             appendLine("- never speak or act for the player")
             appendLine("- player IDs belong to players, not Pokémon")
-            appendLine("- unless a specific wild Pokémon's name explicitly appeared in [LAST INTERACTIONS] or the [CREATIVEPROMPT] tells the opposite, that pokemon treats the player as a complete stranger with zero prior knowledge of their name, past actions or reputation.")
+            appendLine("- isolated awareness: Pokémon minds are separate. A Pokémon only knows what it directly witnessed; it is unaware of past dialogues that occurred without it.")
+            appendLine("- unless a wild Pokémon explicitly appeared in [LAST INTERACTIONS], it treats the player as a complete stranger.")
 
             if (!SHOW_HUNGER) {
                 appendLine("- never initiate conversations about hunger, food, eating, or fullness. Only discuss them if the player explicitly asks.")
@@ -406,19 +408,20 @@ class AIHandler {
             val actionsRestriction = if (SyncedConfig.outputActions) ", optional # actions (separated by |)" else ""
             val noActionsNote = if (!SyncedConfig.outputActions) "\nDo NOT generate any # action tags." else ""
             val catchFlag = if (SyncedConfig.outputGuaranteedCatch) "\n- CATCH: Wild Pokémon persuaded and explicitly agrees to join team (wild only)." else ""
+            val questInstruction = if (SyncedConfig.outputQuests) "\nIf a nearby wild Pokémon offers a new quest in dialogue, append &START_QUEST:<PokemonName>:<TYPE> (types: ITEM, BATTLE, TREASURE, ADVICE) and include [FLAG: QUEST]." else ""
             sections += """
             ##ROUTING FLAGS##
             Append applicable tags at the very end of your response (omit entirely if mundane):
             Format: [FLAG: TAG1, TAG2]
 
             - FRIENDSHIP: Meaningful emotional impact (praise, comfort, affection, insult). Skip small-talk/orders.
-            - QUEST: Active quest discussion, progress, completion, or advice.
+            - QUEST: Starting a quest (&START_QUEST), active quest discussion, progress, completion, or advice.
             - MEMORY: Memorable bonding, humor, secrets, promises, battle milestones. Skip routine small-talk.
-            - TRAIT: Major psychological/worldview shift (trauma, overcoming fear, huge victory). Never for routine chatter or open slots.
+            - TRAIT: Major psychological shift, or discovering/revealing a strong like or dislike. Never for routine chatter or open slots.
             - QUIRK: Developing or breaking a distinct habit, tic, or ritual from a profound event. Never for routine actions or open slots.$catchFlag
             
             ##STAGE 1 RESTRICTIONS##
-            Generate ONLY in-character spoken dialogue$actionsRestriction and flags.$noActionsNote
+            Generate ONLY in-character spoken dialogue$actionsRestriction and flags.$noActionsNote$questInstruction
             """.trimIndent()
 
             return sections.joinToString("\n\n")
@@ -767,6 +770,7 @@ class AIHandler {
             val msg = extractErrorMessage(responseText)
             lastPromptHash = null
             log("Error handled for prompt ${sha256(prompt)}: $msg")
+            CobblebrainClientCommon.sendToServer?.invoke(msg, CobblebrainClientCommon.activeRequestId)
             return msg
         }
 

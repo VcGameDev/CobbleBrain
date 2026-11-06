@@ -17,10 +17,13 @@ object DialogueFilter {
     val REPLACE_QUIRK_REGEX = Regex("""(?:^|[\s|;])&REPLACE_QUIRK:([^:\n|]+):([^->\n;|]+)->([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val TRAIT_REGEX = Regex("""(?:^|[\s|;])&TRAIT:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val QUIRK_REGEX = Regex("""(?:^|[\s|;])&QUIRK:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
+    val LIKE_REGEX = Regex("""(?:^|[\s|;])&LIKE:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
+    val DISLIKE_REGEX = Regex("""(?:^|[\s|;])&DISLIKE:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val CATCH_REGEX = Regex("""(?:^|[\n|;])\s*(?:[-*•+]|\d+\.)?\s*!(?!RESUME\b|Error\b|Erro\b)(?:CATCH[:\s-]*)?([A-Za-z0-9_.'♀♂#-]+)?""", RegexOption.IGNORE_CASE)
     val MUSIC_HEADER_REGEX = Regex("""~MUSIC:[^\n|]+""", RegexOption.IGNORE_CASE)
     val MUSIC_NOTE_REGEX = Regex("""-[VI]:[^\n|]+""", RegexOption.IGNORE_CASE)
     val TARGET_TAG_REGEX = Regex("""\s*>([A-Za-z0-9_.'♀♂#-]+)""")
+    val START_QUEST_REGEX = Regex("""(?:^|[\s|;])&START_QUEST:([^:\n|]+):([A-Za-z]+)(?::([^|\n;&%#!=]+))?""", RegexOption.IGNORE_CASE)
 
     val MULTI_SPACE_REGEX = Regex("""[ \t]+""")
     val PUNCTUATION_SPACING_REGEX = Regex("""\s+([,.:!?])""")
@@ -60,7 +63,11 @@ object DialogueFilter {
         "traits and quirks",
         "traits and quirks format",
         "trait",
-        "quirk"
+        "quirk",
+        "like",
+        "dislike",
+        "likes",
+        "dislikes"
     )
 
     fun isErrorResponse(text: String): Boolean {
@@ -122,10 +129,13 @@ object DialogueFilter {
             .replace(FLAG_REGEX, "")
             .replace(TRAIT_REGEX, "")
             .replace(QUIRK_REGEX, "")
+            .replace(LIKE_REGEX, "")
+            .replace(DISLIKE_REGEX, "")
             .replace(REPLACE_TRAIT_REGEX, "")
             .replace(REPLACE_QUIRK_REGEX, "")
             .replace(MEMORY_REGEX, "")
             .replace(CATCH_REGEX, "")
+            .replace(START_QUEST_REGEX, "")
             .replace(MUSIC_HEADER_REGEX, "")
             .replace(MUSIC_NOTE_REGEX, "")
             .replace(TARGET_TAG_REGEX, "")
@@ -149,6 +159,9 @@ object DialogueFilter {
             normalized.startsWith("[flag") ||
             normalized.startsWith("flag:") ||
             normalized.startsWith("!resume") ||
+            normalized.startsWith("&start_quest") ||
+            normalized.startsWith("&like") ||
+            normalized.startsWith("&dislike") ||
             normalized.startsWith("##") ||
             normalized.startsWith("==") ||
             normalized.startsWith("~music") ||

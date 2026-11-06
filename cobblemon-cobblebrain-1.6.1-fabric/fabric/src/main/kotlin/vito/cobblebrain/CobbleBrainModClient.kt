@@ -25,6 +25,7 @@ object CobbleBrainModClient : ClientModInitializer {
     override fun onInitializeClient() {
         ClientConfigHandler.load()
         SyncedConfig.resetToLocal()
+        vito.cobblebrain.config.AiProfileManager.load()
         registerReceivers()
         println("Cobblebrain loaded on the client (Fabric)")
 

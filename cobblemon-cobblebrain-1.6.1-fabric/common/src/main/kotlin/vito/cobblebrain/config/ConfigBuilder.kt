@@ -146,6 +146,8 @@ class ConfigBuilder<T> private constructor(
             "\"outputApril1\"" to "\n// Activates special April Fools actions. Only enable this if you want chaos!",
             "\"allowClientPersonalityEditing\"" to "\n// Allows clients to edit Pokémon personality characteristics.",
             "\"hidePersonalityCreation\"" to "\n// Hides notifications in chat when personality traits and quirks are created or evolved.",
+            "\"maxAiLikes\"" to "\n// Maximum number of likes the AI can dynamically discover and add to a Pokémon through dialogue (0 to disable).",
+            "\"maxAiDislikes\"" to "\n// Maximum number of dislikes the AI can dynamically discover and add to a Pokémon through dialogue (0 to disable).",
             "\"allowCustomClientPrompt\"" to "\n// Allows clients to use their own custom instruct and player description on the server.",
             "\"enableTraits\"" to "\n// Enables Pokémon personality traits and behavioral characteristics.",
             "\"wildPokemonCanBeHostile\"" to "\n// Allows wild Pokémon to use the hostile action (H) to target and attack players.",
@@ -219,6 +221,7 @@ object ClientConfigHandler {
         clientConfig.instruct = ensureCreativePrompt(clientConfig.instruct)
         clientConfig.playerAbout = ensurePlayerAboutHeader(clientConfig.playerAbout)
 
+        AiProfileManager.load()
         if (existedBefore && !hadPresetKey) {
             clientConfig.presetMode = "Custom"
             clientConfig.isCustomizedFromPreset = false
