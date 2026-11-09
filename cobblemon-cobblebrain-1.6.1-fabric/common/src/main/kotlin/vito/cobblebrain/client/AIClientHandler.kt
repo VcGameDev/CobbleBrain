@@ -50,5 +50,16 @@ object AIClientHandler {
             }
         }
     }
+
+    fun sendStandalonePrompt(prompt: String, systemOverride: String): CompletableFuture<String> {
+        return CompletableFuture.supplyAsync {
+            try {
+                val handler = createHandler()
+                handler.generateStandaloneText(prompt, systemOverride)
+            } catch (e: Exception) {
+                "!Error! ${e.message}"
+            }
+        }
+    }
 }
 

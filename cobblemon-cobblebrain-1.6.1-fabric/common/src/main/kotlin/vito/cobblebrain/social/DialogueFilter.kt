@@ -6,7 +6,7 @@ object DialogueFilter {
     val LIST_BULLET_REGEX = Regex("""^\s*(?:[-*•+]|\d+\.)\s*""")
     val ACTION_TAG_REGEX = Regex("""#([A-Za-z0-9_.'♀♂ -]+?):([A-Za-z0-9+-]+)(?::([A-Za-z0-9_.'♀♂-]+))?""")
     val SCORE_TAG_REGEX = Regex("""\s*#SCORE:\s*[+-]?\d+""", RegexOption.IGNORE_CASE)
-    val FLAG_REGEX = Regex("""\[FLAG:\s*([A-Z_,\s]+)\]""", RegexOption.IGNORE_CASE)
+    val FLAG_REGEX = Regex("""(?:\s*\|\s*|\s*[\r\n]+\s*|\s*)\[FLAG:\s*([A-Z_,\s]+)\]""", RegexOption.IGNORE_CASE)
     val HEADER_CLEANUP_REGEX = Regex(
         """^\s*\[?\s*(DIALOGUE FORMAT|CANON DIALOGUE FORMAT|FRIENDSHIP FORMAT|MEMORY FORMAT|ACTION FORMAT|GUARANTEED CATCH FORMAT|RESUME FORMAT|QUEST SYSTEM|QUEST COMPLETED|GENERAL RULES|TRAITS AND QUIRKS FORMAT|TRAIT FORMAT|QUIRK FORMAT|STAGE 1 FOREGROUND INSTRUCTIONS|STAGE 2 BACKGROUND STATE RESOLUTION|OUTPUT RULES|OUTPUT FORMAT)\s*]?\s*:?\s*""",
         RegexOption.IGNORE_CASE

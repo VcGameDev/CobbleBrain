@@ -925,6 +925,28 @@ class AIHandler {
     }
 
 
+    fun generateStandaloneText(prompt: String, systemOverride: String): String {
+        val responseText = try {
+            when {
+                apiBase.contains("generativelanguage.googleapis.com") -> {
+                    callGoogleGemma(prompt, systemOverride)
+                }
+                else -> {
+                    callOpenAISchema(prompt, systemOverride)
+                }
+            }
+        } catch (e: Exception) {
+            return "!Error! ${e.message}"
+        }
+
+        if (responseText.isBlank() || responseText.startsWith("!Error") || responseText.startsWith("Error")) {
+            return extractErrorMessage(responseText).let { if (it.startsWith("!Error")) it else "!Error! $it" }
+        }
+
+        return DialogueFilter.sanitizeRawResponse(responseText)
+            .replace("\\n", "\n")
+    }
+
     private fun callOpenAISchema(prompt: String, systemOverride: String? = null): String {
         log("===== OPENAI REQUEST =====")
         log("Custom Provider: ${clientConfig.customApiProvider}")

@@ -509,5 +509,7 @@
   "cobblebrain.cap.pokemon_language": "Pokémon Language",
   "cobblebrain.cap.pokemon_language.desc": "When enabled, Pokémon speak in their own species language (saying their names) instead of human speech.",
   "cobblebrain.config.max_notable_blocks": "Max Notable Blocks & Items",
-  "cobblebrain.config.max_notable_blocks.tooltip": "Limits the number of highest-scoring notable blocks and dropped items sent in the sensory prompt (0 = disabled, max 20)."
+  "cobblebrain.config.max_notable_blocks.tooltip": "Limits the number of highest-scoring notable blocks and dropped items sent in the sensory prompt (0 = disabled, max 20).",
+  "cobblebrain.button.campaigns_experimental": "⚔ Story Campaigns (Experimental)",
+  "cobblebrain.campaign.screen_title": "Story Campaigns (Experimental)"
 }

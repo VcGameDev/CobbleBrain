@@ -2207,6 +2207,7 @@ object DialogueSystem {
             clean.equals("trainer", ignoreCase = true) ||
             clean.equals("treinador", ignoreCase = true) ||
             clean.equals(pName, ignoreCase = true) ||
+            clean.equals(player.scoreboardName, ignoreCase = true) ||
             clean.equals(preferredName, ignoreCase = true)
         ) {
             return player
@@ -2214,6 +2215,7 @@ object DialogueSystem {
 
         val otherPlayer = player.server.playerList.players.firstOrNull {
             it.name.string.equals(clean, ignoreCase = true) ||
+            it.scoreboardName.equals(clean, ignoreCase = true) ||
             PlayerNicknameManager.get(it.uuid, it.name.string).equals(clean, ignoreCase = true)
         }
         if (otherPlayer != null) return otherPlayer
@@ -2856,7 +2858,7 @@ object DialogueSystem {
         fun String?.takeIfUseful(): String? {
             val cleaned = this?.trim() ?: return null
             return when (cleaned.lowercase()) {
-                "", "null", "nenhum", "vazio", "false" -> null
+                "", "null", "nenhum", "vazio", "false", "none" -> null
                 else -> cleaned
             }
         }
@@ -3124,10 +3126,10 @@ object DialogueSystem {
 
                 if (!config.lowTokenMode && config.outputWorldContext) {
                     context.nearbyItems.takeIfUseful()?.let { items ->
-                        val compacted = items
-                            .split(",")
-                            .map { compactId(it.trim()) }
-                        appendLine("Ground items: ${compacted.joinToString(", ")}")
+                        appendLine("Ground items: $items")
+
+
+
                     }
                 }
 
@@ -3209,11 +3211,11 @@ object DialogueSystem {
             appendLine("##STAGE 1 FOREGROUND INSTRUCTIONS##")
             if (config.outputActions) {
                 appendLine("Deliver immediate spoken dialogue and action commands ONLY.")
-                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >Player, >Pikachu, >Pidgey_e1a4)")
+                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >${player.name.string}, >Pikachu, >Pidgey_e1a4)")
                 appendLine("- Action command format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
             } else {
                 appendLine("Deliver immediate spoken dialogue ONLY. Do NOT generate action commands.")
-                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >Player, >Pikachu, >Pidgey_e1a4)")
+                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >${player.name.string}, >Pikachu, >Pidgey_e1a4)")
             }
             appendLine("- Strictly respect individual Pokémon restrictions: if marked with 'Cannot talk', do NOT generate speech lines for it. If marked with 'Cannot execute actions', do NOT generate # action commands for it.")
 
@@ -3765,7 +3767,7 @@ object DialogueSystem {
                 val cleaned = this?.trim() ?: return null
 
                 return when (cleaned.lowercase()) {
-                    "", "null", "nenhum", "vazio", "false" -> null
+                    "", "null", "nenhum", "vazio", "false", "none" -> null
                     else -> cleaned
                 }
             }
@@ -4158,10 +4160,10 @@ object DialogueSystem {
 
                 if (!config.lowTokenMode && config.outputWorldContext) {
                     context.nearbyItems.takeIfUseful()?.let { items ->
-                        val compacted = items
-                            .split(",")
-                            .map { compactId(it.trim()) }
-                        appendLine("Ground items: ${compacted.joinToString(", ")}")
+                        appendLine("Ground items: $items")
+
+
+
                     }
                 }
 
@@ -4313,7 +4315,7 @@ object DialogueSystem {
                 .filter { it.isNotBlank() }
             parsedFlags.addAll(tokens)
         }
-        val contentWithoutFlags = sanitized.replace(DialogueFilter.FLAG_REGEX, "").trim()
+        val contentWithoutFlags = sanitized.replace(DialogueFilter.FLAG_REGEX, "").trim().trimEnd('|', ' ', '\t', '\r', '\n')
 
         var cleanedContent = contentWithoutFlags
         if (!config.optimizedMode) {

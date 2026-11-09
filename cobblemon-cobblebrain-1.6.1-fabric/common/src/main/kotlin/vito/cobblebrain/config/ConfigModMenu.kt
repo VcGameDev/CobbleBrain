@@ -2201,6 +2201,7 @@ object CobblebrainConfigScreen {
             Minecraft.getInstance().setScreen(screen)
         }
 
+
         fun preserveCurrentInputValues() {
             apiKeyEntry.value?.let { clientConfig.apiKey = it }
             aiModelEntry.value?.let { clientConfig.aiModel = it }

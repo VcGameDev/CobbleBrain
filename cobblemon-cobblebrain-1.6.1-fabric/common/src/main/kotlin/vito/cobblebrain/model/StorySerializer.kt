@@ -46,6 +46,27 @@ data class StoryGlobalSceneFile(
     val globalNodes: MutableList<NodeData> = mutableListOf()
 )
 
+data class SceneNodesFile(
+    val id: String = "",
+    val title: String = "",
+    val description: String = "",
+    val isStartScene: Boolean = false,
+    val isEndScene: Boolean = false,
+    val x: Double = 0.0,
+    val y: Double = 0.0,
+    val width: Double = 500.0,
+    val height: Double = 350.0,
+    val inPort: PortData = PortData(name = "In", type = PortType.INPUT),
+    val outPort: PortData = PortData(name = "Out", type = PortType.OUTPUT),
+    val nodes: MutableList<NodeData> = mutableListOf()
+)
+
+data class SceneConnectionsFile(
+    val sceneId: String = "",
+    val sceneTitle: String = "",
+    val connections: MutableList<ConnectionData> = mutableListOf()
+)
+
 object StorySerializer {
     val gson: Gson = GsonBuilder()
         .setPrettyPrinting()
@@ -63,6 +84,73 @@ object StorySerializer {
             }
             return dir
         }
+
+    fun deepCopyProject(project: StoryProject): StoryProject {
+        val json = gson.toJson(project)
+        val copy = gson.fromJson(json, StoryProject::class.java)
+        copy.isFolderPack = project.isFolderPack
+        copy.packDirectory = project.packDirectory
+        copy.isReadOnly = project.isReadOnly
+        copy.sourceZipFile = project.sourceZipFile
+        copy.scenes.forEach { it.isLoaded = true }
+        return copy
+    }
+
+    fun loadSceneWithSplitSupport(sceneFile: File): SceneData? {
+        return try {
+            val baseScene = if (sceneFile.exists()) {
+                gson.fromJson(sceneFile.readText(), SceneData::class.java)
+            } else null
+
+            val parent = sceneFile.parentFile
+            val baseName = sceneFile.name.removeSuffix(".json")
+            val nodesFile = if (parent != null) File(parent, "${baseName}_nodes.json") else null
+            val connsFile = if (parent != null) File(parent, "${baseName}_connections.json") else null
+
+            val nodesDto = if (nodesFile?.exists() == true) {
+                runCatching { gson.fromJson(nodesFile.readText(), SceneNodesFile::class.java) }.getOrNull()
+            } else null
+            val connsDto = if (connsFile?.exists() == true) {
+                runCatching { gson.fromJson(connsFile.readText(), SceneConnectionsFile::class.java) }.getOrNull()
+            } else null
+
+            when {
+                baseScene != null -> {
+                    if (nodesDto != null && nodesFile!!.lastModified() >= sceneFile.lastModified()) {
+                        baseScene.nodes.clear()
+                        baseScene.nodes.addAll(nodesDto.nodes)
+                    }
+                    if (connsDto != null && connsFile!!.lastModified() >= sceneFile.lastModified()) {
+                        baseScene.connections.clear()
+                        baseScene.connections.addAll(connsDto.connections)
+                    }
+                    baseScene
+                }
+                nodesDto != null -> {
+                    SceneData(
+                        id = nodesDto.id,
+                        title = nodesDto.title,
+                        description = nodesDto.description,
+                        isStartScene = nodesDto.isStartScene,
+                        isEndScene = nodesDto.isEndScene,
+                        x = nodesDto.x,
+                        y = nodesDto.y,
+                        width = nodesDto.width,
+                        height = nodesDto.height,
+                        inPort = nodesDto.inPort,
+                        outPort = nodesDto.outPort,
+                        nodes = nodesDto.nodes,
+                        connections = connsDto?.connections ?: mutableListOf(),
+                        isLoaded = true
+                    )
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 
     /**
      * Atomically writes string content to a destination file using a temporary sibling file.
@@ -178,6 +266,35 @@ object StorySerializer {
                     val sceneFile = File(scenesDir, sceneFileName)
                     val sceneJson = gson.toJson(scene)
                     writeTextAtomic(sceneFile, sceneJson)
+
+                    // Also save separated 2-file format: <scene>_nodes.json (blocks only) & <scene>_connections.json (connections only)
+                    val baseName = sceneFileName.removeSuffix(".json")
+                    val nodesFileName = "${baseName}_nodes.json"
+                    val connsFileName = "${baseName}_connections.json"
+                    writtenSceneFileNames.add(nodesFileName)
+                    writtenSceneFileNames.add(connsFileName)
+
+                    val nodesDto = SceneNodesFile(
+                        id = scene.id,
+                        title = scene.title,
+                        description = scene.description,
+                        isStartScene = scene.isStartScene,
+                        isEndScene = scene.isEndScene,
+                        x = scene.x,
+                        y = scene.y,
+                        width = scene.width,
+                        height = scene.height,
+                        inPort = scene.inPort,
+                        outPort = scene.outPort,
+                        nodes = scene.nodes
+                    )
+                    val connsDto = SceneConnectionsFile(
+                        sceneId = scene.id,
+                        sceneTitle = scene.title,
+                        connections = scene.connections
+                    )
+                    writeTextAtomic(File(scenesDir, nodesFileName), gson.toJson(nodesDto))
+                    writeTextAtomic(File(scenesDir, connsFileName), gson.toJson(connsDto))
                 }
 
                 sceneHeaders.add(
@@ -333,8 +450,8 @@ object StorySerializer {
         if (metadata.sceneHeaders.isNotEmpty()) {
             for (header in metadata.sceneHeaders) {
                 val sceneFile = if (effectiveScenesDir != null) File(effectiveScenesDir, header.fileName) else null
-                if (!lazy && sceneFile != null && sceneFile.exists()) {
-                    val loadedScene = gson.fromJson(sceneFile.readText(), SceneData::class.java)
+                if (!lazy && sceneFile != null) {
+                    val loadedScene = loadSceneWithSplitSupport(sceneFile)
                     if (loadedScene != null) {
                         loadedScene.isLoaded = true
                         loadedScene.sourceFileName = header.fileName
@@ -362,10 +479,14 @@ object StorySerializer {
                 project.scenes.add(lazyScene)
             }
         } else if (effectiveScenesDir != null) {
-            // Fallback: discover scene files directly from scenes/ directory
-            effectiveScenesDir.listFiles { _, n -> n.endsWith(".json", ignoreCase = true) }?.forEach { sf ->
+            // Fallback: discover scene files directly from scenes/ directory (skipping _nodes.json and _connections.json sidecars)
+            effectiveScenesDir.listFiles { _, n ->
+                n.endsWith(".json", ignoreCase = true) &&
+                    !n.endsWith("_nodes.json", ignoreCase = true) &&
+                    !n.endsWith("_connections.json", ignoreCase = true)
+            }?.forEach { sf ->
                 if (!lazy) {
-                    val loadedScene = gson.fromJson(sf.readText(), SceneData::class.java)
+                    val loadedScene = loadSceneWithSplitSupport(sf)
                     if (loadedScene != null) {
                         loadedScene.isLoaded = true
                         loadedScene.sourceFileName = sf.name
@@ -431,7 +552,7 @@ object StorySerializer {
         for (file in candidates) {
             if (file.exists() && file.isFile) {
                 try {
-                    val loaded = gson.fromJson(file.readText(), SceneData::class.java)
+                    val loaded = loadSceneWithSplitSupport(file)
                     if (loaded != null) {
                         val detached = loaded.nodes.filter { it.parentSceneId.isNullOrBlank() }
                         if (detached.isNotEmpty()) {
@@ -456,10 +577,14 @@ object StorySerializer {
             }
         }
 
-        // Broad scan fallback
-        effectiveScenesDir.listFiles { _, n -> n.endsWith(".json", ignoreCase = true) }?.forEach { file ->
+        // Broad scan fallback (skipping _nodes.json and _connections.json sidecars)
+        effectiveScenesDir.listFiles { _, n ->
+            n.endsWith(".json", ignoreCase = true) &&
+                !n.endsWith("_nodes.json", ignoreCase = true) &&
+                !n.endsWith("_connections.json", ignoreCase = true)
+        }?.forEach { file ->
             try {
-                val loaded = gson.fromJson(file.readText(), SceneData::class.java)
+                val loaded = loadSceneWithSplitSupport(file)
                 if (loaded != null && (loaded.id == scene.id || loaded.title.equals(scene.title, ignoreCase = true))) {
                     val detached = loaded.nodes.filter { it.parentSceneId.isNullOrBlank() }
                     if (detached.isNotEmpty()) {

@@ -103,9 +103,21 @@ class StoryEditorScreen(
     private val isInWorld: Boolean
         get() = minecraft?.level != null && minecraft?.player != null
 
-    // Lateral Inspectors
+    // Lateral Inspectors & AI Assistant
     var activeInspector: NodeInspectorWidget? = null
     var activeSceneInspector: SceneInspectorWidget? = null
+    var isAiAssistantOpen: Boolean = false
+    private var aiAssistantWidget: StoryEditorAIAssistantWidget? = null
+
+    fun toggleAiAssistant(open: Boolean) {
+        isAiAssistantOpen = open
+        init()
+        if (activeInspector != null) {
+            openInspectorForNode(activeInspector!!.node)
+        } else if (activeSceneInspector != null) {
+            openSceneInspector(activeSceneInspector!!.scene)
+        }
+    }
 
     // Dedicated Modals
     private var activeMetadataModal: StoryMetadataModalWidget? = null
@@ -257,7 +269,8 @@ class StoryEditorScreen(
         return project.getActiveScene()?.connections ?: mutableListOf()
     }
 
-    private fun rebuildNodeWidgets() {
+    fun rebuildNodeWidgets() {
+        project.scenes.forEach { openSceneIds.add(it.id) }
         val prevSelectedIds = selectedWidgets.map { it.node.id }.toSet()
         nodeWidgets.clear()
         selectedWidgets.clear()
@@ -371,6 +384,23 @@ class StoryEditorScreen(
         )
         currentX += sysW + spacing
 
+        // 4. Button [🤖 AI Assistant]
+        val aiLabel = if (isAiAssistantOpen) "🤖 AI Assistant ▾" else "🤖 AI Assistant"
+        val aiW = getBtnWidth(aiLabel)
+        addRenderableWidget(
+            Button.builder(Component.literal(aiLabel)) {
+                closeAllTopMenus()
+                isTestMenuOpen = false
+                toggleAiAssistant(!isAiAssistantOpen)
+            }.bounds(currentX, row2Y, aiW, btnH).build()
+        )
+        currentX += aiW + spacing
+
+        if (aiAssistantWidget == null) {
+            aiAssistantWidget = StoryEditorAIAssistantWidget(this, font)
+        }
+        aiAssistantWidget?.updateLayout(width, height, toolbarHeight)
+
         if (editingConstructionNode != null) {
             val backLabel = "← Back to Studio"
             val backW = getBtnWidth(backLabel)
@@ -394,7 +424,8 @@ class StoryEditorScreen(
         val testLabel = if (isStoryPaused) "⏸ Test (Paused) ▾" else if (isStoryActive) "⚡ Testing... ▾" else "▶ Test ▾"
         val testW = getBtnWidth(testLabel).coerceAtLeast(60)
         val testH = 16
-        val testX = width - testW - 10
+        val aiRightOffset = if (isAiAssistantOpen) (width / 4).coerceAtLeast(170) else 0
+        val testX = width - aiRightOffset - testW - 10
         val testY = height - testH - 8
         testBtnX = testX
         testBtnY = testY
@@ -820,7 +851,8 @@ class StoryEditorScreen(
 
     private fun openInspectorForNode(node: NodeData) {
         val inspectorW = 140
-        val inspectorX = width - inspectorW
+        val aiRightOffset = if (isAiAssistantOpen) (width / 4).coerceAtLeast(170) else 0
+        val inspectorX = width - aiRightOffset - inspectorW
         val inspectorY = 0
         val inspectorH = height
 
@@ -1166,7 +1198,8 @@ class StoryEditorScreen(
 
     private fun openSceneInspector(scene: SceneData) {
         val inspectorW = 140
-        val inspectorX = width - inspectorW
+        val aiRightOffset = if (isAiAssistantOpen) (width / 4).coerceAtLeast(170) else 0
+        val inspectorX = width - aiRightOffset - inspectorW
         val inspectorY = 0
         val inspectorH = height
 
@@ -1273,10 +1306,15 @@ class StoryEditorScreen(
 
         val overlayRects = mutableListOf<ScreenRect>()
 
+        val aiRightOffset = if (isAiAssistantOpen) (width / 4).coerceAtLeast(170).toDouble() else 0.0
+        if (isAiAssistantOpen) {
+            overlayRects.add(ScreenRect(width - aiRightOffset, toolbarHeight.toDouble(), aiRightOffset, (height - toolbarHeight).toDouble()))
+        }
+
         if (activeInspector != null || activeSceneInspector != null) {
             val inspW = 140.0
             val topOffset = 0.0
-            overlayRects.add(ScreenRect(width - inspW, topOffset, inspW, height.toDouble()))
+            overlayRects.add(ScreenRect(width - aiRightOffset - inspW, topOffset, inspW, height.toDouble()))
         }
 
         val dropY = (toolbarHeight + sceneBarHeight + 2).toDouble()
@@ -1401,6 +1439,9 @@ class StoryEditorScreen(
 
         activeInspector?.render(guiGraphics, mX, mY, partialTick)
         activeSceneInspector?.render(guiGraphics, mX, mY, partialTick)
+        if (isAiAssistantOpen) {
+            aiAssistantWidget?.render(guiGraphics, mX, mY, partialTick)
+        }
 
         renderCategoryMenusDropdowns(guiGraphics, mX, mY)
         if (isBlockPaletteOpen) renderBlockPalette(guiGraphics, mX, mY)
@@ -2494,6 +2535,7 @@ class StoryEditorScreen(
             }
         }
 
+        if (isAiAssistantOpen && aiAssistantWidget?.mouseClicked(mouseX, mouseY, button) == true) return true
         if (activeInspector?.mouseClicked(mouseX, mouseY, button) == true) return true
         if (activeSceneInspector?.mouseClicked(mouseX, mouseY, button) == true) return true
 
@@ -3078,6 +3120,26 @@ class StoryEditorScreen(
                 if (removed || removedGlobal) markDirty()
                 showStatus(if (removed || removedGlobal) "Ports disconnected!" else "No connections found.")
             }
+            ContextMenuAction.TOGGLE_AI_FOCUS -> {
+                StoryEditorAIAssistantWidget.focusOnSelectionEnabled = true
+                val targetIds = if (selectedWidgets.size > 1 && selectedWidgets.any { it.node.id == node.id }) {
+                    selectedWidgets.map { it.node.id }
+                } else {
+                    listOf(node.id)
+                }
+                val allAlreadyPinned = targetIds.all { StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(it) }
+                if (allAlreadyPinned) {
+                    StoryEditorAIAssistantWidget.pinnedFocusNodeIds.removeAll(targetIds.toSet())
+                    showStatus("🎯 Foco IA removido de ${targetIds.size} bloco(s).")
+                } else {
+                    targetIds.forEach { id ->
+                        if (!StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(id)) {
+                            StoryEditorAIAssistantWidget.pinnedFocusNodeIds.add(id)
+                        }
+                    }
+                    showStatus("🎯 ${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size} bloco(s) marcados para Foco da IA!")
+                }
+            }
             ContextMenuAction.PASTE_NODES -> {
                 pasteCopiedNodesAt(currentMouseWorldX, currentMouseWorldY)
             }
@@ -3093,6 +3155,17 @@ class StoryEditorScreen(
 
     private fun handleContextMenuSceneAction(scene: SceneData, action: ContextMenuAction) {
         when (action) {
+            ContextMenuAction.TOGGLE_AI_FOCUS -> {
+                StoryEditorAIAssistantWidget.focusOnSelectionEnabled = true
+                if (StoryEditorAIAssistantWidget.pinnedFocusSceneIds.contains(scene.id)) {
+                    StoryEditorAIAssistantWidget.pinnedFocusSceneIds.remove(scene.id)
+                    showStatus("🎯 Foco IA removido da cena '${scene.title}'.")
+                } else {
+                    StoryEditorAIAssistantWidget.pinnedFocusSceneIds.clear()
+                    StoryEditorAIAssistantWidget.pinnedFocusSceneIds.add(scene.id)
+                    showStatus("🎯 Cena '${scene.title}' marcada como Foco da IA!")
+                }
+            }
             ContextMenuAction.DELETE -> {
                 if (project.scenes.size > 1) {
                     project.scenes.remove(scene)
@@ -3203,6 +3276,7 @@ class StoryEditorScreen(
             }
         }
 
+        if (isAiAssistantOpen && aiAssistantWidget?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
         if (activeInspector?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
         if (activeSceneInspector?.mouseDragged(mouseX, mouseY, button, dragX, dragY) == true) return true
 
@@ -3325,6 +3399,7 @@ class StoryEditorScreen(
         activeVarSelectorModal?.mouseReleased(mouseX, mouseY, button)
         activeActionTriggerPickerModal?.mouseReleased(mouseX, mouseY, button)
         activeMetadataModal?.mouseReleased(mouseX, mouseY, button)
+        if (isAiAssistantOpen) aiAssistantWidget?.mouseReleased(mouseX, mouseY, button)
         activeInspector?.mouseReleased(mouseX, mouseY, button)
         activeSceneInspector?.mouseReleased(mouseX, mouseY, button)
 
@@ -3620,6 +3695,7 @@ class StoryEditorScreen(
         if (activeVariableModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeVarSelectorModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeActionTriggerPickerModal?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
+        if (isAiAssistantOpen && aiAssistantWidget?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeInspector?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
         if (activeSceneInspector?.mouseScrolled(mouseX, mouseY, scrollY) == true) return true
 
@@ -3688,6 +3764,7 @@ class StoryEditorScreen(
         if (activeSaveProfileModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeAIDialogueModal?.charTyped(codePoint, modifiers) == true) return true
         if (activeCoordinateModal?.charTyped(codePoint, modifiers) == true) return true
+        if (isAiAssistantOpen && aiAssistantWidget?.charTyped(codePoint, modifiers) == true) return true
         if (activeInspector?.charTyped(codePoint, modifiers) == true) return true
         if (activeSceneInspector?.charTyped(codePoint, modifiers) == true) return true
         return super.charTyped(codePoint, modifiers)
@@ -3783,6 +3860,7 @@ class StoryEditorScreen(
             return true
         }
 
+        if (isAiAssistantOpen && aiAssistantWidget?.keyPressed(keyCode, scanCode, modifiers) == true) return true
         if (activeInspector?.keyPressed(keyCode, scanCode, modifiers) == true) return true
         if (activeSceneInspector?.keyPressed(keyCode, scanCode, modifiers) == true) return true
 

@@ -233,11 +233,15 @@ class NodeWidget(val node: NodeData) {
             guiGraphics.fill(x - 3, y - 3, x + w + 3, y + h + 3, 0xFF38BDF8.toInt())
         }
 
+        val isAiFocused = StoryEditorAIAssistantWidget.focusOnSelectionEnabled &&
+            StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(node.id)
+
         val borderColor = when {
             isExecutingLive -> 0xFF38BDF8.toInt()
             debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED -> 0xFFFF3333.toInt()
             debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FALLBACK_TRIGGERED -> 0xFFF59E0B.toInt()
             isSelected -> 0xFFFFD700.toInt()
+            isAiFocused -> 0xFF14B8A6.toInt()
             isStartTestNode -> 0xFF00FFCC.toInt()
             isEndTestNode -> 0xFFFF5555.toInt()
             isStoryActive && debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS -> 0xFF225533.toInt() // Dim muted green indicating past execution during active test
@@ -251,6 +255,17 @@ class NodeWidget(val node: NodeData) {
         guiGraphics.fill(x - borderThickness, y - borderThickness, x + w + borderThickness, y + h + borderThickness, borderColor)
         guiGraphics.fill(x, y, x + w, y + h, 0xFF1E1E24.toInt())
         guiGraphics.fill(x, y, x + w, y + headerHeight, headerColor)
+
+        // AI Focus Pinned Badge on Top-Left
+        if (isAiFocused && !shouldHideText) {
+            val aiBadgeText = "🎯 IA"
+            val aiBadgeW = font.width(aiBadgeText) + 6
+            val aiBadgeX = x
+            val aiBadgeY = y - 11
+            guiGraphics.fill(aiBadgeX, aiBadgeY, aiBadgeX + aiBadgeW, aiBadgeY + 11, 0xFF0F766E.toInt())
+            guiGraphics.fill(aiBadgeX, aiBadgeY, aiBadgeX + aiBadgeW, aiBadgeY + 1, 0xFF2DD4BF.toInt())
+            guiGraphics.drawString(font, aiBadgeText, aiBadgeX + 3, aiBadgeY + 2, 0xFFFFFFFF.toInt(), false)
+        }
 
         // Diagnostic Top-Right Badges
         if (debugStatus == vito.cobblebrain.engine.NodeExecutionStatus.FAILED) {

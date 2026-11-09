@@ -13,6 +13,7 @@ enum class ContextMenuAction {
     PASTE_DATA,
     RESET_PROPERTIES,
     DISCONNECT_PORTS,
+    TOGGLE_AI_FOCUS,
     PASTE_NODES,
     SAVE_STORY,
     ADD_NODE
@@ -46,6 +47,8 @@ class ContextMenuWidget(
     private fun buildMenuItems() {
         menuItems.clear()
         if (targetNode != null) {
+            val isPinned = StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(targetNode.id)
+            menuItems.add(MenuItem(if (isPinned) "🎯 Remover Foco IA" else "🎯 Marcar Foco IA", ContextMenuAction.TOGGLE_AI_FOCUS))
             menuItems.add(MenuItem("🗑️ Delete Block", ContextMenuAction.DELETE))
             menuItems.add(MenuItem("📋 Duplicate Block", ContextMenuAction.DUPLICATE))
             menuItems.add(MenuItem("⛓️ Detach from Scene", ContextMenuAction.DETACH_FROM_SCENE))
@@ -56,6 +59,8 @@ class ContextMenuWidget(
             menuItems.add(MenuItem("🔄 Reset Properties", ContextMenuAction.RESET_PROPERTIES))
             menuItems.add(MenuItem("🔌 Disconnect Ports", ContextMenuAction.DISCONNECT_PORTS))
         } else if (targetScene != null) {
+            val isPinnedScene = StoryEditorAIAssistantWidget.pinnedFocusSceneIds.contains(targetScene.id)
+            menuItems.add(MenuItem(if (isPinnedScene) "🎯 Remover Foco IA" else "🎯 Marcar Cena p/ IA", ContextMenuAction.TOGGLE_AI_FOCUS))
             menuItems.add(MenuItem("🗑️ Delete Scene", ContextMenuAction.DELETE))
             menuItems.add(MenuItem("📋 Duplicate Scene", ContextMenuAction.DUPLICATE))
             menuItems.add(MenuItem("🔄 Reset Scene", ContextMenuAction.RESET_PROPERTIES))

@@ -1,0 +1,809 @@
+# ==============================================================================
+# COBBLEBRAIN STORY EDITOR — GUIA COMPLETO DE BLOCOS, ESTRUTURA DE CENA E OPÇÕES
+# ==============================================================================
+# Este arquivo contém a documentação completa de todos os nós (NodeType) do
+# Story Editor, a estrutura de cenas e variáveis, e TODAS as escolhas/opções
+# disponíveis dentro de cada bloco (como tipos de missão no QUEST, modos de
+# falante no DIALOGUE, subtipos de ACTION e subtipos de TRIGGER).
+# ==============================================================================
+
+=== [NODE: SCENE_STRUCTURE] ===
+NOME: Estrutura de Cena, Variáveis e Propriedades Universais dos Nós
+EXPLICAÇÃO COMPLETA:
+Um projeto do Story Editor (StoryProject) é composto por Cenas (SceneData), Variáveis (StoryVariable), Nós (NodeData) e Conexões (Connection).
+1. CENAS (SceneData):
+   - Cada cena funciona como um container visual no canvas (x, y, width, height) que agrupa seus próprios nós e conexões.
+   - Toda cena começa sua execução pelo nó interno `BEGIN_SCENE` e termina quando o fluxo atinge o nó interno `END_SCENE`.
+   - Cenas podem ser conectadas umas às outras no nível macro: quando `END_SCENE` é acionado na Cena A, a porta de saída `Out` da Cena A dispara a porta de entrada `In` da próxima Cena B conectada.
+2. VARIÁVEIS DO PROJETO (StoryVariable):
+   - `id` / `name`: Identificador único da variável (sem espaços, ex: `moedas`, `falou_com_oak`).
+   - `type` (Escolhas disponíveis):
+     * `"BOOLEAN"` -> Valores `"true"` ou `"false"`.
+     * `"NUMBER"`  -> Valores numéricos inteiros ou decimais (ex: `"0"`, `"10"`, `"2.5"`).
+     * `"STRING"`  -> Texto livre.
+     * `"LIST"`    -> Lista de textos separados por vírgula (ex: `"Pikachu,Charmander,Bulbasaur"`).
+   - `scope` (Escolhas disponíveis):
+     * `"GLOBAL"`      -> Persistente durante toda a história e compartilhada entre todas as cenas.
+     * `"SCENE_LOCAL"` -> Exclusiva de uma cena; é resetada quando a cena termina.
+   - Interpolação de variáveis em textos e comandos:
+     * `<var:id_da_variavel>` ou `{id_da_variavel}` -> Substituído pelo valor atual da variável em tempo de execução.
+     * Placeholders automáticos do jogador: `{player}` (nome do jogador), `{player_x}`, `{player_y}`, `{player_z}` (coordenadas atuais).
+3. PROPRIEDADES UNIVERSAIS DE TODOS OS NÓS (NodeData):
+   - `id`: UUID ou identificador único do nó.
+   - `parentSceneId`: ID da cena à qual o nó pertence.
+   - `title`: Título exibido no cabeçalho do bloco.
+   - `nodeType`: Tipo principal do bloco (um dos 24 valores de `NodeType`).
+   - `content`: Texto principal do bloco (usado em `DIALOGUE`, `COMMAND_NODE`, `COMMENT`, etc.).
+   - `preDelayTicks`: Inteiro (20 ticks = 1 segundo). Pausa ANTES de o nó executar sua lógica após receber sinal na porta `In`.
+   - `postDelayTicks`: Inteiro (20 ticks = 1 segundo). Pausa DEPOIS que o nó executa sua lógica, antes de disparar o sinal na porta `Out`.
+4. SAÍDA CONDICIONAL UNIVERSAL (`OUT_COND` nos `params` de qualquer nó exceto `COMMENT` e `END_SCENE`):
+   - `condOutEnabled`: `"true"` ou `"false"` (ativa uma porta extra `If (Cond)` com `id="OUT_COND"` no bloco).
+   - `condOutMode` (Escolhas disponíveis):
+     * `"INSTANT"`  -> Testa a variável imediatamente ao terminar o bloco.
+     * `"LISTENER"` -> Fica aguardando em segundo plano até a condição da variável se tornar verdadeira.
+   - `includeMainOut`: `"true"` (dispara a saída normal `Out` E a condicional) ou `"false"` (se a condição for verdadeira, desvia apenas para `OUT_COND`).
+   - `condVarKey`: ID da variável a ser testada.
+   - `condOp` (Escolhas disponíveis): `"=="`, `"!="`, `">"`, `"<"`, `">="`, `"<="`, `"CONTAINS"`, `"NOT_CONTAINS"`, `"SIZE"`, `"IS_EMPTY"`, `"NOT_EMPTY"`, `"STARTS_WITH"`, `"ENDS_WITH"`.
+   - `condVarValue`: Valor esperado na comparação.
+=== [/NODE: SCENE_STRUCTURE] ===
+
+=== [NODE: BEGIN_SCENE] ===
+NOME: BEGIN_SCENE (Início de Cena)
+CATEGORIA: Fluxo e Estrutura
+PORTAS:
+- Entradas: Nenhuma
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS: Nenhum parâmetro obrigatório (suporta `postDelayTicks`).
+EXPLICAÇÃO COMPLETA:
+Ponto de entrada obrigatório de uma cena. Assim que a cena é iniciada (seja por ser a cena inicial do projeto ou por ter sido chamada por outra cena), o `BEGIN_SCENE` emite automaticamente um pulso na sua porta `Out` para iniciar todos os blocos conectados a ele.
+=== [/NODE: BEGIN_SCENE] ===
+
+=== [NODE: END_SCENE] ===
+NOME: END_SCENE (Fim de Cena)
+CATEGORIA: Fluxo e Estrutura
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: Nenhuma (aciona a saída `Out` da própria Cena no nível macro)
+ARGUMENTOS / PARÂMETROS: Nenhum parâmetro obrigatório (suporta `preDelayTicks`).
+EXPLICAÇÃO COMPLETA:
+Encerra imediatamente a execução da cena atual, limpa listeners locais e variáveis `SCENE_LOCAL`, e dispara a porta de saída `Out` do container da Cena para iniciar a próxima cena conectada no projeto.
+=== [/NODE: END_SCENE] ===
+
+=== [NODE: QUEST] ===
+NOME: QUEST (Bloco de Missão / Objetivo)
+CATEGORIA: Fluxo e Missões
+PORTAS:
+- Entradas: `In` (id=`"IN"`, Tipo: SIGNAL)
+- Saídas:
+  * `Success` (id=`"SUCCESS_OUT"`, Tipo: SIGNAL) -> Disparada quando o jogador cumpre toda a meta da missão (`currentProgress >= targetCount`).
+  * `Fail` (id=`"FAIL_OUT"`, Tipo: SIGNAL) -> Disparada se o tempo limite (`timeLimitSec`) acabar ou se o jogador morrer com `failOnDeath="true"`.
+  * `Progress` (id=`"PROGRESS_OUT"`, Tipo: SIGNAL) -> Disparada a cada avanço incremental antes de atingir a meta final (ex: capturou 1/3 Pokémon).
+ARGUMENTOS / PARÂMETROS (`params`):
+- `questTitle`: Título da missão mostrado na HUD do jogador (ex: `"Capture 3 Pikachu"`).
+- `questTrigger`: Tipo de objetivo da missão (veja TODAS AS ESCOLHAS abaixo).
+- `targetCount`: Quantidade necessária de repetições/itens para completar a missão (padrão: `"1"`).
+- `timeLimitSec`: Tempo máximo em segundos (`"0"` = sem limite de tempo).
+- `failOnDeath`: `"true"` (falha a missão se o jogador morrer) ou `"false"` (padrão).
+- `showHud`: `"true"` (exibe a missão no rastreador de missões na tela) ou `"false"`.
+- Parâmetros específicos do objetivo escolhido: `targetSpecies`, `requiredStoryTag`, `targetItem`, `requiredItem`, `minLevel`, `minFriendship`, `targetX`, `targetY`, `targetZ`, `radius`, `biomeId`, `weatherType`, `blockId`, `variableName`, `expectedValue`, `evaluationPrompt`, etc.
+
+TODAS AS ESCOLHAS DISPONÍVEIS PARA `questTrigger` NO BLOCO `QUEST`:
+1. Categoria Pokémon / Cobblemon:
+   - `"POKEMON_CATCH"`: Capturar um Pokémon.
+     * Opções extras: `targetSpecies` (ex: `"Pikachu"` ou `"ANY"` para qualquer espécie), `targetCount` (quantidade a capturar).
+   - `"BATTLE_VICTORY"`: Vencer uma batalha Pokémon.
+     * Opções extras: `targetSpecies` (espécie derrotada ou `"ANY"`), `requiredStoryTag` (tag da entidade, opcional), `targetCount`.
+   - `"BATTLE_START"`: Iniciar uma batalha Pokémon.
+     * Opções extras: `targetSpecies` (ou `"ANY"`).
+   - `"BATTLE_DEFEAT"`: Ser derrotado em uma batalha Pokémon.
+     * Opções extras: `targetSpecies` (ou `"ANY"`).
+   - `"TALK_TO_POKEMON"`: Conversar com um Pokémon pelo chat de IA.
+     * Opções extras: `targetSpecies` (espécie ou `"ANY"`), `requiredStoryTag` (tag opcional da entidade).
+   - `"INTERACT_POKEMON"`: Clicar com botão direito / interagir com um Pokémon ou NPC.
+     * Opções extras: `targetSpecies` (espécie ou `"ANY"`), `requiredStoryTag` (tag de história da entidade, ex: `"guarda_entrada"`).
+   - `"SPECIFIC_POKEMON_IN_PARTY"`: Ter uma espécie específica na equipe (party) do jogador.
+     * Opções extras: `targetSpecies` (ex: `"Charmander"`).
+   - `"HIGHEST_POKEMON_LEVEL"`: Ter na equipe um Pokémon com nível igual ou superior a um valor.
+     * Opções extras: `minLevel` (ex: `"15"`).
+   - `"POKEMON_FRIENDSHIP"`: Ter um Pokémon na equipe com amizade igual ou superior a um valor.
+     * Opções extras: `targetSpecies` (ou `"ANY"`), `minFriendship` (0 a 255, ex: `"200"`).
+2. Categoria Mundo e Entidades:
+   - `"PLAYER_COORDINATES"`: Chegar próximo a uma coordenada específica do mundo.
+     * Opções extras: `targetX`, `targetY`, `targetZ`, `radius` (raio de distância em blocos, ex: `"5.0"`).
+   - `"ENTER_STRUCTURE_OR_ZONE"`: Entrar em uma caixa delimitadora (zona 3D).
+     * Opções extras: `minX`, `minY`, `minZ`, `maxX`, `maxY`, `maxZ`.
+   - `"PLAYER_BIOME"`: Entrar em um bioma específico.
+     * Opções extras: `biomeId` (ex: `"minecraft:forest"`, `"minecraft:plains"`).
+   - `"BLOCK_INTERACTED"`: Clicar com botão direito em um tipo de bloco.
+     * Opções extras: `blockId` (ex: `"minecraft:lever"`, `"minecraft:chest"`), `targetX`, `targetY`, `targetZ` (opcionais).
+   - `"BLOCK_PLACED"`: Colocar um bloco no mundo.
+     * Opções extras: `blockId` (ex: `"minecraft:torch"`), `targetCount`.
+   - `"ENTITY_DIED"`: Matar/derrotar uma entidade do mundo.
+     * Opções extras: `entityType` (ex: `"minecraft:zombie"`), `requiredStoryTag` (opcional), `targetCount`.
+   - `"ENTITY_DAMAGED"`: Causar dano a uma entidade.
+     * Opções extras: `entityType`, `requiredStoryTag`.
+   - `"ENTITY_SPAWNED"`: Quando uma entidade específica surge no mundo.
+     * Opções extras: `entityType`.
+   - `"WEATHER_CHECK"`: Quando o clima do mundo corresponder ao escolhido.
+     * Opções extras: `weatherType` (`"CLEAR"`, `"RAIN"`, `"THUNDER"`).
+3. Categoria Jogador e Inventário:
+   - `"PLAYER_HELD_ITEM"`: Segurar um item específico na mão principal.
+     * Opções extras: `targetItem` / `requiredItem` (ex: `"cobblemon:poke_ball"`, `"minecraft:diamond"`).
+   - `"PLAYER_INVENTORY_HAS_ITEM"`: Ter um item no inventário.
+     * Opções extras: `targetItem` / `requiredItem` (ID do item), `minCount` / `targetCount` (quantidade mínima).
+   - `"PLAYER_INVENTORY_ITEM_REMOVED"`: Consumir/remover um item do inventário.
+     * Opções extras: `targetItem` / `requiredItem`.
+   - `"PLAYER_ITEM_COUNT"`: Verificar quantidade exata/mínima de um item com operador.
+     * Opções extras: `targetItem`, `operator` (`">="`, `"=="`, `"<="`), `targetCount`.
+   - `"PLAYER_LEVEL"`: Atingir nível de XP do Minecraft.
+     * Opções extras: `minXpLevel` (ex: `"10"`).
+4. Categoria Tempo, Variáveis e IA:
+   - `"TIME_ELAPSED"`: Sobreviver/aguardar um número de segundos.
+     * Opções extras: `seconds` (ex: `"30"`).
+   - `"DAY_NIGHT_CHECK"`: Aguardar ficar dia ou noite.
+     * Opções extras: `period` (`"DAY"` ou `"NIGHT"`).
+   - `"VARIABLE_VALUE_CHECK"`: Aguardar uma variável da história atingir um valor.
+     * Opções extras: `variableName`, `operator` (`"=="`, `"!="`, `">="`, `"<="`, `">"` , `"<"`), `expectedValue`.
+   - `"AI_EVALUATION"`: Avaliação livre por IA.
+     * Opções extras: `evaluationPrompt` (descrição da condição que a IA deve julgar).
+=== [/NODE: QUEST] ===
+
+=== [NODE: DIALOGUE] ===
+NOME: DIALOGUE (Bloco de Diálogo Fixo ou Gerado por IA)
+CATEGORIA: Diálogo e Narrativa
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas:
+  * `Out` (Tipo: SIGNAL) -> Disparada após o diálogo ser exibido (e após `postDelayTicks`).
+  * `Fallback` (id=`"OUT_FALLBACK"`, Tipo: SIGNAL) -> Presente quando `useAi="true"`; disparada se a API de IA falhar/der timeout.
+CAMPO `content`:
+- Se `useAi="false"`: O texto exato que o personagem/narrador vai falar (suporta `{player}` e `<var:nome_variavel>`).
+- Se `useAi="true"`: O prompt de instrução para a IA gerar a fala dinamicamente em tempo real.
+
+ARGUMENTOS / PARÂMETROS E TODAS AS ESCOLHAS DISPONÍVEIS (`params`):
+1. Modo de Geração (`useAi`):
+   - `"false"` (Padrão - Texto Fixo): Exibe o texto escrito em `content`.
+   - `"true"` (Gerado por IA): Envia `content` como instrução para o LLM gerar o diálogo.
+     * Opções extras quando `useAi="true"`:
+       - `fallbackText`: Texto de segurança exibido caso a IA esteja offline.
+       - `displayMode` (Escolhas disponíveis):
+         * `"HUD_AND_BUBBLE"` -> Mostra na caixa de diálogo/chat e também em balão 3D acima da cabeça.
+         * `"HUD_ONLY"`       -> Mostra apenas no chat/HUD.
+         * `"BUBBLE_ONLY"`    -> Mostra apenas no balão 3D acima da entidade.
+       - `allowActions`: `"true"` (permite que a IA execute tags de ação/emoção) ou `"false"`.
+       - `saveOutputVariable`: ID de uma variável onde a resposta gerada pela IA será salva (opcional).
+       - `freezePlayer`: `"true"` (congela o movimento do jogador durante a fala) ou `"false"`.
+       - `bubbleDurationTicks`: Duração do balão em ticks (20 ticks = 1s, padrão `"100"`).
+
+2. Modo de Falante (`speakerMode`):
+   - ESCOLHA A: `"STANDARD"` (Mensagem estilo Minecraft Vanilla)
+     * `messageType` (Escolhas disponíveis):
+       - `"CHAT"`       -> Mensagem no chat padrão.
+       - `"TITLE"`      -> Título grande no centro da tela.
+         * Opções extras de TITLE:
+           - `subTitle`: Texto do subtítulo menor.
+           - `titleColor` (Escolhas: `"WHITE"`, `"YELLOW"`, `"GOLD"`, `"RED"`, `"AQUA"`, `"GREEN"`, `"LIGHT_PURPLE"`, `"GRAY"`).
+           - `fadeIn`: Ticks de entrada (padrão `"10"`).
+           - `stay`: Ticks permanecendo na tela (padrão `"70"`).
+           - `fadeOut`: Ticks de saída (padrão `"20"`).
+       - `"ACTION_BAR"` -> Texto acima da hotbar do jogador.
+
+   - ESCOLHA B: `"COBBLEBRAIN"` (Falante Pokémon / NPC imersivo do CobbleBrain)
+     * `speakerType` (Escolhas disponíveis para quem está falando):
+       - `"PARTY_FIRST"`  -> O primeiro Pokémon vivo da equipe do jogador fala.
+       - `"PARTY_SLOT"`   -> O Pokémon em um slot específico da equipe fala.
+         * Opção extra: `partySlot` (Escolhas: `"1"`, `"2"`, `"3"`, `"4"`, `"5"`, `"6"`).
+       - `"PARTY_RANDOM"` -> Um Pokémon aleatório da equipe do jogador fala.
+       - `"NEAREST_WILD"` -> O Pokémon selvagem mais próximo do jogador fala.
+       - `"BY_SPECIES"`   -> Procura no mundo (ou na party) um Pokémon da espécie indicada para falar.
+         * Opção extra: `targetSpecies` (ex: `"Pikachu"`, `"Charizard"`, `"Chatot"`).
+       - `"NPC"`          -> Uma entidade/NPC marcada com tag de história fala.
+         * Opções extras: `entityStoryTag` (tag da entidade no mundo, ex: `"prof_oak"`), `customSpeakerName` (nome exibido no chat, ex: `"Prof. Carvalho"`).
+       - `"CUSTOM_NAME"`  -> Fala apenas com um nome customizado no chat sem exigir entidade 3D.
+         * Opção extra: `customSpeakerName` (ex: `"Voz Misteriosa"`).
+     * `nameFormat` (Escolhas disponíveis):
+       - `"PREFIX"`    -> Exibe `[Nome]: Fala` (padrão).
+       - `"NO_PREFIX"` -> Exibe apenas o texto da fala sem prefixo de nome.
+     * `emotionPitch` (Escolhas disponíveis para o tom do grito/cry do Pokémon):
+       - `"NEUTRAL"` -> Tom normal (`1.0`).
+       - `"HAPPY"`   -> Tom alegre/agudo (`1.25`).
+       - `"SAD"`     -> Tom triste/grave (`0.75`).
+       - `"EXCITED"` -> Tom muito empolgado (`1.45`).
+       - `"CUSTOM"`  -> Tom personalizado definido em `customPitch` (ex: `"0.9"`).
+     * Efeitos Visuais e Sonoros do Falante (`"true"` ou `"false"`):
+       - `enableChatBubble`: `"true"` (mostra balão de fala 3D acima do Pokémon/NPC) ou `"false"`.
+       - `bubbleDuration`: Duração do balão em ticks (padrão `"100"` = 5 segundos).
+       - `playCry`: `"true"` (toca o som/cry oficial da espécie Pokémon ao falar) ou `"false"`.
+       - `socialLook`: `"true"` (faz o Pokémon virar a cabeça e olhar para o jogador ao falar) ou `"false"`.
+       - `jumpEffect`: `"true"` (faz o Pokémon dar um pulinho de animação ao começar a falar) ou `"false"`.
+       - `sendToChat`: `"true"` (também envia a fala no histórico do chat) ou `"false"`.
+=== [/NODE: DIALOGUE] ===
+
+=== [NODE: ACTION] ===
+NOME: ACTION (Bloco de Ação de Mundo, Pokémon, Entidade, Jogador ou Efeitos)
+CATEGORIA: Ações de Jogo
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS:
+- `actionSubtype`: Define qual das 38 ações disponíveis este bloco executa.
+- Além de `actionSubtype`, passe no objeto `params` os argumentos específicos do subtipo escolhido (listados abaixo).
+
+TODAS AS ESCOLHAS DISPONÍVEIS PARA `actionSubtype` NO BLOCO `ACTION`:
+
+--- 1. Categoria WORLD (Mundo e Clima) ---
+=== [ACTION: SPAWN_STRUCTURE] ===
+* `actionSubtype`: `"SPAWN_STRUCTURE"` (Gerar estrutura ou schematic no mundo)
+  - Parâmetros: `structureId` (ID da estrutura, ex: `"minecraft:village_plains"`), `x`, `y`, `z` (coordenadas, ex: `"0"`, `"64"`, `"0"`), `rotation` (Escolhas: `"NONE"`, `"CLOCKWISE_90"`, `"CLOCKWISE_180"`, `"COUNTERCLOCKWISE_90"`).
+=== [/ACTION: SPAWN_STRUCTURE] ===
+=== [ACTION: TELEPORT] ===
+* `actionSubtype`: `"TELEPORT"` (Teletransportar jogador ou entidade)
+  - Parâmetros: `target` (Escolhas: `"PLAYER"`, `"PARTY_POKEMON"`, `"TAGGED_ENTITY"`), `entityTag` (se `TAGGED_ENTITY`), `x`, `y`, `z`, `yaw` (rotação horizontal, ex: `"0.0"`), `pitch` (rotação vertical, ex: `"0.0"`).
+=== [/ACTION: TELEPORT] ===
+=== [ACTION: CHANGE_WEATHER] ===
+* `actionSubtype`: `"CHANGE_WEATHER"` (Mudar o clima do mundo)
+  - Parâmetros: `weatherType` (Escolhas disponíveis: `"CLEAR"`, `"RAIN"`, `"THUNDER"`), `durationSeconds` (duração em segundos, ex: `"300"`).
+=== [/ACTION: CHANGE_WEATHER] ===
+=== [ACTION: SET_TIME_OF_DAY] ===
+* `actionSubtype`: `"SET_TIME_OF_DAY"` (Definir horário do dia no mundo)
+  - Parâmetros: `timePreset` (Escolhas disponíveis: `"DAY"`, `"NOON"`, `"SUNSET"`, `"NIGHT"`, `"MIDNIGHT"`, `"CUSTOM"`), `customTicks` (usado se `CUSTOM`, ex: `"6000"`).
+=== [/ACTION: SET_TIME_OF_DAY] ===
+
+--- 2. Categoria BLOCK (Blocos do Mundo) ---
+=== [ACTION: SPAWN_BLOCK] ===
+* `actionSubtype`: `"SPAWN_BLOCK"` (Colocar um bloco em uma coordenada)
+  - Parâmetros: `blockId` (ex: `"minecraft:stone"`, `"minecraft:redstone_block"`), `x`, `y`, `z`, `replaceExisting` (`"true"` ou `"false"`).
+=== [/ACTION: SPAWN_BLOCK] ===
+=== [ACTION: MODIFY_BLOCK_PROPERTY] ===
+* `actionSubtype`: `"MODIFY_BLOCK_PROPERTY"` (Alterar propriedade de estado de um bloco, ex: abrir porta/ativar alavanca)
+  - Parâmetros: `x`, `y`, `z`, `propertyName` (ex: `"open"`, `"powered"`, `"lit"`), `propertyValue` (ex: `"true"`, `"false"`).
+=== [/ACTION: MODIFY_BLOCK_PROPERTY] ===
+=== [ACTION: TAG_BLOCK] ===
+* `actionSubtype`: `"TAG_BLOCK"` (Associar uma tag de história a uma posição de bloco)
+  - Parâmetros: `x`, `y`, `z`, `storyTag` (ex: `"altar_misterioso"`).
+=== [/ACTION: TAG_BLOCK] ===
+
+--- 3. Categoria ENTITY (Entidades e NPCs) ---
+=== [ACTION: SPAWN_ENTITY] ===
+* `actionSubtype`: `"SPAWN_ENTITY"` (Spawnar uma entidade do Minecraft)
+  - Parâmetros: `entityType` (ex: `"minecraft:villager"`, `"minecraft:zombie"`, `"minecraft:iron_golem"`), `x`, `y`, `z`, `customName` (nome visível opcional), `storyTag` (tag para referenciar depois em missões/ações/diálogos), `invulnerable` (`"true"` ou `"false"`), `noAi` (`"true"` para deixar parado como NPC ou `"false"`).
+=== [/ACTION: SPAWN_ENTITY] ===
+=== [ACTION: KILL_ENTITY] ===
+* `actionSubtype`: `"KILL_ENTITY"` (Remover ou matar entidade com tag de história)
+  - Parâmetros: `storyTag` (tag da entidade alvo), `radius` (raio máximo de busca, ex: `"64.0"`).
+=== [/ACTION: KILL_ENTITY] ===
+=== [ACTION: MODIFY_ENTITY_PROPERTIES] ===
+* `actionSubtype`: `"MODIFY_ENTITY_PROPERTIES"` (Alterar vida, nome, IA ou invulnerabilidade de entidade com tag)
+  - Parâmetros: `storyTag`, `customName` (opcional), `health` (ex: `"20.0"`), `invulnerable` (`"true"`/`"false"`), `noAi` (`"true"`/`"false"`), `glowing` (`"true"`/`"false"`).
+=== [/ACTION: MODIFY_ENTITY_PROPERTIES] ===
+=== [ACTION: ADD_ENTITY_EFFECT] ===
+* `actionSubtype`: `"ADD_ENTITY_EFFECT"` (Aplicar efeito de poção em entidade com tag)
+  - Parâmetros: `storyTag`, `effectId` (ex: `"minecraft:speed"`, `"minecraft:glowing"`, `"minecraft:regeneration"`), `durationSeconds` (ex: `"10"`), `amplifier` (nível do efeito começando em `"0"`).
+=== [/ACTION: ADD_ENTITY_EFFECT] ===
+=== [ACTION: ADD_AREA_EFFECT] ===
+* `actionSubtype`: `"ADD_AREA_EFFECT"` (Aplicar efeito de poção em todas as entidades em uma área)
+  - Parâmetros: `x`, `y`, `z`, `radius` (ex: `"8.0"`), `effectId` (ex: `"minecraft:slowness"`), `durationSeconds` (ex: `"10"`), `amplifier` (`"0"`), `affectPlayers` (`"true"` ou `"false"`).
+=== [/ACTION: ADD_AREA_EFFECT] ===
+=== [ACTION: LOOK_AT] ===
+* `actionSubtype`: `"LOOK_AT"` (Fazer uma entidade ou jogador olhar para um alvo ou coordenada)
+  - Parâmetros: `actorTag` (`"PLAYER"` ou a `storyTag` da entidade que vai olhar), `targetMode` (Escolhas: `"PLAYER"`, `"COORDS"`, `"TAGGED_ENTITY"`), `targetTag` (se `TAGGED_ENTITY`), `targetX`, `targetY`, `targetZ` (se `COORDS`).
+=== [/ACTION: LOOK_AT] ===
+=== [ACTION: MOVE_TO_BLOCK] ===
+* `actionSubtype`: `"MOVE_TO_BLOCK"` (Fazer uma entidade/Pokémon caminhar usando pathfinding até uma coordenada)
+  - Parâmetros: `storyTag` (tag da entidade ou espécie Pokémon), `targetX`, `targetY`, `targetZ`, `speed` (velocidade de caminhada, ex: `"1.0"`).
+=== [/ACTION: MOVE_TO_BLOCK] ===
+=== [ACTION: ANIMATION] ===
+* `actionSubtype`: `"ANIMATION"` (Executar animação em entidade/Pokémon)
+  - Parâmetros: `storyTag`, `animationType` (Escolhas: `"SWING_ARM"`, `"HURT"`, `"JUMP"`, `"CRY"`, `"HAPPY_PARTICLES"`, `"ANGRY_PARTICLES"`).
+=== [/ACTION: ANIMATION] ===
+=== [ACTION: SET_ENTITY_TEXTURE] ===
+* `actionSubtype`: `"SET_ENTITY_TEXTURE"` (Alterar textura/aspecto visual de entidade com tag)
+  - Parâmetros: `storyTag`, `texturePath` (caminho ou aspect identifier).
+=== [/ACTION: SET_ENTITY_TEXTURE] ===
+
+--- 4. Categoria POKEMON (Cobblemon) ---
+=== [ACTION: SPAWN_COBBLEMON] ===
+* `actionSubtype`: `"SPAWN_COBBLEMON"` (Spawnar um Pokémon selvagem ou NPC no mundo)
+  - Parâmetros:
+    * `species`: Nome da espécie (ex: `"Pikachu"`, `"Charizard"`, `"Eevee"`, `"Gengar"`).
+    * `level`: Nível do Pokémon (ex: `"15"`).
+    * `shiny`: `"true"` ou `"false"`.
+    * `x`, `y`, `z`: Coordenadas de spawn (ou deixe `"~"` / coordenadas relativas se desejar perto do jogador).
+    * `storyTag`: Tag de história para identificar este Pokémon depois em missões, ações ou diálogos (ex: `"pikachu_amigo"`).
+    * `customName`: Apelido visível acima do Pokémon (opcional, ex: `"Sparky"`).
+    * `aiLock`: `"true"` (congela a IA de caminhada para ele ficar parado no lugar como NPC) ou `"false"`.
+    * `uncatchable`: `"true"` (impede que jogadores capturem com Pokébola) ou `"false"`.
+    * `invulnerable`: `"true"` (imune a dano físico no mundo) ou `"false"`.
+=== [/ACTION: SPAWN_COBBLEMON] ===
+=== [ACTION: GIVE_POKEMON] ===
+* `actionSubtype`: `"GIVE_POKEMON"` (Entregar um Pokémon diretamente para a equipe/PC do jogador)
+  - Parâmetros: `species` (ex: `"Squirtle"`), `level` (ex: `"5"`), `shiny` (`"true"` ou `"false"`), `nickname` (apelido opcional), `pokeball` (ex: `"cobblemon:poke_ball"`, `"cobblemon:great_ball"`, `"cobblemon:cherish_ball"`).
+=== [/ACTION: GIVE_POKEMON] ===
+=== [ACTION: MODIFY_POKEMON_PROPERTIES] ===
+* `actionSubtype`: `"MODIFY_POKEMON_PROPERTIES"` (Alterar nível, amizade, vida ou shiny de um Pokémon)
+  - Parâmetros: `targetMode` (Escolhas: `"PARTY_SLOT"`, `"BY_SPECIES"`, `"STORY_TAG"`), `partySlot` (`"1"` a `"6"`), `species`, `storyTag`, `newLevel` (opcional), `friendship` (0..255, opcional), `healFull` (`"true"` para curar totalmente ou `"false"`), `shiny` (`"true"`/`"false"`).
+=== [/ACTION: MODIFY_POKEMON_PROPERTIES] ===
+=== [ACTION: CHANGE_POKEMON_PERSONALITY] ===
+* `actionSubtype`: `"CHANGE_POKEMON_PERSONALITY"` (Definir traços de personalidade/memória de IA para um Pokémon no CobbleBrain)
+  - Parâmetros: `targetSpecies` (ex: `"Pikachu"`), `storyTag` (opcional), `personalityPrompt` (descrição da personalidade, ex: `"Corajoso, sarcástico e obcecado por frutas vermelhas"`).
+=== [/ACTION: CHANGE_POKEMON_PERSONALITY] ===
+=== [ACTION: ADD_POKEMON_PARTY_EFFECT] ===
+* `actionSubtype`: `"ADD_POKEMON_PARTY_EFFECT"` (Curar ou aplicar efeito nos Pokémon da equipe do jogador)
+  - Parâmetros: `slot` (`"ALL"` ou `"1"`..`"6"`), `action` (Escolhas: `"HEAL"`, `"FAINT"`, `"ADD_STATUS"`), `statusId` (ex: `"par"`, `"brn"`, `"psn"`, `"slp"`).
+=== [/ACTION: ADD_POKEMON_PARTY_EFFECT] ===
+
+--- 5. Categoria PLAYER (Jogador e Inventário) ---
+=== [ACTION: GIVE_ITEM] ===
+* `actionSubtype`: `"GIVE_ITEM"` (Dar item ao jogador)
+  - Parâmetros: `itemId` (ex: `"cobblemon:poke_ball"`, `"minecraft:bread"`, `"minecraft:diamond"`), `count` (quantidade, ex: `"5"`), `customName` (nome customizado opcional do item).
+=== [/ACTION: GIVE_ITEM] ===
+=== [ACTION: REMOVE_ITEM] ===
+* `actionSubtype`: `"REMOVE_ITEM"` (Remover item do inventário do jogador)
+  - Parâmetros: `itemId` (ex: `"minecraft:emerald"`), `count` (ex: `"1"`).
+=== [/ACTION: REMOVE_ITEM] ===
+=== [ACTION: SPAWN_ITEM] ===
+* `actionSubtype`: `"SPAWN_ITEM"` (Dropar um item físico no chão em uma coordenada)
+  - Parâmetros: `itemId` (ex: `"cobblemon:rare_candy"`), `count` (ex: `"1"`), `x`, `y`, `z`.
+=== [/ACTION: SPAWN_ITEM] ===
+=== [ACTION: ADD_PLAYER_EFFECT] ===
+* `actionSubtype`: `"ADD_PLAYER_EFFECT"` (Aplicar efeito de poção no jogador)
+  - Parâmetros: `effectId` (ex: `"minecraft:speed"`, `"minecraft:blindness"`, `"minecraft:night_vision"`, `"minecraft:Jump_boost"`), `durationSeconds` (ex: `"15"`), `amplifier` (`"0"`, `"1"`, etc.), `hideParticles` (`"true"` ou `"false"`).
+=== [/ACTION: ADD_PLAYER_EFFECT] ===
+=== [ACTION: DAMAGE_PLAYER] ===
+* `actionSubtype`: `"DAMAGE_PLAYER"` (Causar dano ao jogador)
+  - Parâmetros: `amount` (meios-corações de dano, ex: `"4.0"` = 2 corações).
+=== [/ACTION: DAMAGE_PLAYER] ===
+=== [ACTION: KILL_PLAYER] ===
+* `actionSubtype`: `"KILL_PLAYER"` (Matar o jogador instantaneamente)
+  - Parâmetros: `customDeathMessage` (mensagem opcional).
+=== [/ACTION: KILL_PLAYER] ===
+
+--- 6. Categoria TIMELINE & SCENE (Controle de Fluxo de História) ---
+=== [ACTION: JUMP_TO_STORY_POINT] ===
+* `actionSubtype`: `"JUMP_TO_STORY_POINT"` (Pular a execução para outra cena ou ponto da história)
+  - Parâmetros: `targetSceneId` (ID ou título da cena de destino).
+=== [/ACTION: JUMP_TO_STORY_POINT] ===
+=== [ACTION: REWIND_TO_STORY_POINT] ===
+* `actionSubtype`: `"REWIND_TO_STORY_POINT"` (Rebobinar estado e voltar para uma cena/ponto anterior)
+  - Parâmetros: `targetSceneId` (ID da cena), `restoreCheckpointId` (ID opcional do save state).
+=== [/ACTION: REWIND_TO_STORY_POINT] ===
+
+--- 7. Categoria CONSTRUCTION (Construção Automatizada) ---
+=== [ACTION: BEGIN_CONSTRUCTION] ===
+* `actionSubtype`: `"BEGIN_CONSTRUCTION"` (Iniciar uma construção por blocos)
+  - Parâmetros: `schematicName`, `originX`, `originY`, `originZ`, `blocksPerTick` (velocidade, ex: `"5"`).
+=== [/ACTION: BEGIN_CONSTRUCTION] ===
+=== [ACTION: END_CONSTRUCTION] ===
+* `actionSubtype`: `"END_CONSTRUCTION"` (Finalizar/parar uma construção em andamento)
+  - Parâmetros: `schematicName`, `instantFinish` (`"true"` ou `"false"`).
+=== [/ACTION: END_CONSTRUCTION] ===
+
+--- 8. Categoria VISUAL & AUDIO (Efeitos Visuais, Tela e Som) ---
+=== [ACTION: SEND_CHAT_MESSAGE] ===
+* `actionSubtype`: `"SEND_CHAT_MESSAGE"` (Enviar mensagem rápida formatada no chat)
+  - Parâmetros: `message` (texto com suporte a códigos `§` e `{player}`), `color` (ex: `"YELLOW"`, `"AQUA"`, `"GREEN"`, `"WHITE"`).
+=== [/ACTION: SEND_CHAT_MESSAGE] ===
+=== [ACTION: SHOW_TITLE_SCREEN] ===
+* `actionSubtype`: `"SHOW_TITLE_SCREEN"` (Exibir título cinematográfico grande na tela)
+  - Parâmetros: `title` (título principal), `subtitle` (subtítulo menor), `fadeInTicks` (`"10"`), `stayTicks` (`"70"`), `fadeOutTicks` (`"20"`).
+=== [/ACTION: SHOW_TITLE_SCREEN] ===
+=== [ACTION: CHANGE_SCREEN_TINT] ===
+* `actionSubtype`: `"CHANGE_SCREEN_TINT"` (Aplicar vinheta/filtro de cor na tela do jogador)
+  - Parâmetros: `colorHex` (ex: `"#FF0000"` para vermelho, `"#000000"` para escuro), `opacity` (`"0.0"` a `"1.0"`), `durationTicks` (ex: `"60"`).
+=== [/ACTION: CHANGE_SCREEN_TINT] ===
+=== [ACTION: SPAWN_PARTICLES] ===
+* `actionSubtype`: `"SPAWN_PARTICLES"` (Gerar partículas no mundo ou ao redor do jogador)
+  - Parâmetros: `particleId` (ex: `"minecraft:heart"`, `"minecraft:flame"`, `"minecraft:happy_villager"`, `"minecraft:portal"`, `"minecraft:explosion"`), `x`, `y`, `z` (ou `"PLAYER"` para usar a posição do jogador), `count` (quantidade, ex: `"25"`), `spread` (espalhamento, ex: `"0.5"`), `speed` (`"0.05"`).
+=== [/ACTION: SPAWN_PARTICLES] ===
+=== [ACTION: PLAY_SOUND] ===
+* `actionSubtype`: `"PLAY_SOUND"` (Tocar efeito sonoro do Minecraft ou Cobblemon)
+  - Parâmetros: `soundId` (ex: `"minecraft:entity.player.levelup"`, `"minecraft:entity.ender_dragon.growl"`, `"minecraft:block.note_block.pling"`), `volume` (`"1.0"`), `pitch` (`"1.0"`).
+=== [/ACTION: PLAY_SOUND] ===
+=== [ACTION: PLAY_MUSIC] ===
+* `actionSubtype`: `"PLAY_MUSIC"` (Tocar música de fundo)
+  - Parâmetros: `musicId` (ID do som/música), `loop` (`"true"` ou `"false"`), `volume` (`"1.0"`).
+=== [/ACTION: PLAY_MUSIC] ===
+
+--- 9. Categoria LOGIC (Manipulação rápida de variável via Action) ---
+=== [ACTION: VAR_MODIFY] ===
+* `actionSubtype`: `"VAR_MODIFY"` (Modificar variável diretamente como ação)
+  - Parâmetros: `varKey` (ID da variável), `operation` (`"SET"`, `"ADD"`, `"SUB"`, `"TOGGLE"`), `value` (valor).
+=== [/ACTION: VAR_MODIFY] ===
+=== [/NODE: ACTION] ===
+
+=== [NODE: TRIGGER] ===
+NOME: TRIGGER (Gatilho de Eventos do Mundo, Batalha, Tempo ou Variáveis)
+CATEGORIA: Gatilhos e Eventos
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL) -> Usada quando `requireInputSignal="true"`.
+- Saídas: `Out` (Tipo: SIGNAL) -> Disparada assim que o evento do gatilho acontece.
+ARGUMENTOS / PARÂMETROS GERAIS (`params`):
+- `triggerType`: Define qual dos 31 gatilhos este bloco escuta (veja TODAS AS ESCOLHAS abaixo).
+- `requireInputSignal` (Escolhas disponíveis):
+  * `"true"`  -> Modo Sequencial: O gatilho só começa a escutar o evento DEPOIS que receber um sinal na porta `In`.
+  * `"false"` -> Modo Ouvinte Global Autônomo: O gatilho já começa ativo desde o início da cena sem precisar de fio na porta `In`.
+- `triggerCondition` (Escolhas disponíveis):
+  * `"IF"`     -> Dispara quando a condição for verdadeira (padrão).
+  * `"IF_NOT"` -> Dispara quando a condição NÃO for verdadeira (inversor).
+
+TODAS AS ESCOLHAS DISPONÍVEIS PARA `triggerType` NO BLOCO `TRIGGER`:
+1. Categoria Pokémon / Cobblemon:
+   === [TRIGGER: POKEMON_CATCH] ===
+   - `"POKEMON_CATCH"`: Jogador capturou um Pokémon. Params: `targetSpecies` (`"ANY"` ou nome da espécie ex: `"Pikachu"`), `minLevel` (`"1"`).
+   === [/TRIGGER: POKEMON_CATCH] ===
+   === [TRIGGER: BATTLE_START] ===
+   - `"BATTLE_START"`: Jogador iniciou uma batalha Pokémon. Params: `targetSpecies` (`"ANY"` ou espécie), `battleType` (`"ANY"`, `"WILD"`, `"TRAINER"`).
+   === [/TRIGGER: BATTLE_START] ===
+   === [TRIGGER: BATTLE_VICTORY] ===
+   - `"BATTLE_VICTORY"`: Jogador venceu uma batalha Pokémon. Params: `targetSpecies` (`"ANY"` ou espécie), `requiredStoryTag` (opcional).
+   === [/TRIGGER: BATTLE_VICTORY] ===
+   === [TRIGGER: BATTLE_DEFEAT] ===
+   - `"BATTLE_DEFEAT"`: Jogador perdeu uma batalha Pokémon. Params: `targetSpecies` (`"ANY"` ou espécie).
+   === [/TRIGGER: BATTLE_DEFEAT] ===
+   === [TRIGGER: TALK_TO_POKEMON] ===
+   - `"TALK_TO_POKEMON"`: Jogador enviou mensagem de chat IA para um Pokémon. Params: `targetSpecies` (`"ANY"` ou espécie), `keyword` (palavra-chave opcional que o jogador deve dizer).
+   === [/TRIGGER: TALK_TO_POKEMON] ===
+   === [TRIGGER: INTERACT_POKEMON] ===
+   - `"INTERACT_POKEMON"`: Jogador clicou com botão direito em um Pokémon ou NPC com tag. Params: `targetSpecies` (`"ANY"` ou espécie), `requiredStoryTag` (tag da entidade, ex: `"guardiao"`).
+   === [/TRIGGER: INTERACT_POKEMON] ===
+   === [TRIGGER: SPECIFIC_POKEMON_IN_PARTY] ===
+   - `"SPECIFIC_POKEMON_IN_PARTY"`: Jogador possui determinada espécie na equipe. Params: `targetSpecies` (ex: `"Eevee"`).
+   === [/TRIGGER: SPECIFIC_POKEMON_IN_PARTY] ===
+   === [TRIGGER: HIGHEST_POKEMON_LEVEL] ===
+   - `"HIGHEST_POKEMON_LEVEL"`: Maior nível na equipe do jogador atingiu um valor. Params: `minLevel` (ex: `"20"`).
+   === [/TRIGGER: HIGHEST_POKEMON_LEVEL] ===
+   === [TRIGGER: POKEMON_FRIENDSHIP] ===
+   - `"POKEMON_FRIENDSHIP"`: Amizade de um Pokémon da equipe atingiu um valor. Params: `targetSpecies` (`"ANY"` ou espécie), `minFriendship` (`"200"`).
+   === [/TRIGGER: POKEMON_FRIENDSHIP] ===
+
+2. Categoria Entidades, Mundo e Coordenadas:
+   === [TRIGGER: PLAYER_COORDINATES] ===
+   - `"PLAYER_COORDINATES"`: Jogador chegou perto de uma coordenada `(targetX, targetY, targetZ)` dentro de um raio `radius`. Params: `targetX`, `targetY`, `targetZ`, `radius` (ex: `"5.0"`).
+   === [/TRIGGER: PLAYER_COORDINATES] ===
+   === [TRIGGER: ENTER_STRUCTURE_OR_ZONE] ===
+   - `"ENTER_STRUCTURE_OR_ZONE"`: Jogador entrou na região entre `(minX, minY, minZ)` e `(maxX, maxY, maxZ)`. Params: `minX`, `minY`, `minZ`, `maxX`, `maxY`, `maxZ`.
+   === [/TRIGGER: ENTER_STRUCTURE_OR_ZONE] ===
+   === [TRIGGER: PLAYER_BIOME] ===
+   - `"PLAYER_BIOME"`: Jogador entrou em um bioma. Params: `biomeId` (ex: `"minecraft:desert"`).
+   === [/TRIGGER: PLAYER_BIOME] ===
+   === [TRIGGER: BLOCK_INTERACTED] ===
+   - `"BLOCK_INTERACTED"`: Jogador interagiu (botão direito) com um bloco. Params: `blockId` (ex: `"minecraft:Stone_button"`), `targetX`, `targetY`, `targetZ` (opcionais).
+   === [/TRIGGER: BLOCK_INTERACTED] ===
+   === [TRIGGER: BLOCK_PLACED] ===
+   - `"BLOCK_PLACED"`: Jogador colocou um bloco no mundo. Params: `blockId` (ex: `"minecraft:campfire"`).
+   === [/TRIGGER: BLOCK_PLACED] ===
+   === [TRIGGER: ENTITY_DIED] ===
+   - `"ENTITY_DIED"`: Uma entidade morreu. Params: `entityType` (ex: `"minecraft:skeleton"`), `requiredStoryTag` (opcional).
+   === [/TRIGGER: ENTITY_DIED] ===
+   === [TRIGGER: ENTITY_DAMAGED] ===
+   - `"ENTITY_DAMAGED"`: Uma entidade recebeu dano. Params: `entityType`, `requiredStoryTag`.
+   === [/TRIGGER: ENTITY_DAMAGED] ===
+   === [TRIGGER: ENTITY_SPAWNED] ===
+   - `"ENTITY_SPAWNED"`: Uma entidade surgiu no mundo. Params: `entityType`.
+   === [/TRIGGER: ENTITY_SPAWNED] ===
+   === [TRIGGER: WEATHER_CHECK] ===
+   - `"WEATHER_CHECK"`: Clima atual do mundo mudou para o especificado. Params: `weatherType` (Escolhas: `"CLEAR"`, `"RAIN"`, `"THUNDER"`).
+   === [/TRIGGER: WEATHER_CHECK] ===
+
+3. Categoria Jogador e Inventário:
+   === [TRIGGER: PLAYER_HELD_ITEM] ===
+   - `"PLAYER_HELD_ITEM"`: Jogador está segurando um item específico na mão. Params: `requiredItem` / `targetItem` (ex: `"minecraft:compass"`).
+   === [/TRIGGER: PLAYER_HELD_ITEM] ===
+   === [TRIGGER: PLAYER_INVENTORY_HAS_ITEM] ===
+   - `"PLAYER_INVENTORY_HAS_ITEM"`: Jogador possui o item no inventário. Params: `requiredItem` / `targetItem`, `minCount` (ex: `"1"`).
+   === [/TRIGGER: PLAYER_INVENTORY_HAS_ITEM] ===
+   === [TRIGGER: PLAYER_INVENTORY_ITEM_REMOVED] ===
+   - `"PLAYER_INVENTORY_ITEM_REMOVED"`: Item foi removido/consumido do inventário. Params: `requiredItem` / `targetItem`.
+   === [/TRIGGER: PLAYER_INVENTORY_ITEM_REMOVED] ===
+   === [TRIGGER: PLAYER_ITEM_COUNT] ===
+   - `"PLAYER_ITEM_COUNT"`: Quantidade de um item satisfaz operador. Params: `targetItem`, `operator` (`">="`, `"=="`, `"<="`), `targetCount`.
+   === [/TRIGGER: PLAYER_ITEM_COUNT] ===
+   === [TRIGGER: PLAYER_LEVEL] ===
+   - `"PLAYER_LEVEL"`: Nível de XP do jogador atingiu valor. Params: `minXpLevel` (ex: `"5"`).
+   === [/TRIGGER: PLAYER_LEVEL] ===
+
+4. Categoria Tempo, Lógica e IA:
+   === [TRIGGER: TIME_ELAPSED] ===
+   - `"TIME_ELAPSED"`: Tempo decorrido em segundos após ativação. Params: `seconds` (ex: `"10"`).
+   === [/TRIGGER: TIME_ELAPSED] ===
+   === [TRIGGER: TIME_OF_DAY] ===
+   - `"TIME_OF_DAY"`: Relógio do mundo atingiu um tick específico. Params: `minTicks`, `maxTicks` (ex: `"0"` a `"12000"`).
+   === [/TRIGGER: TIME_OF_DAY] ===
+   === [TRIGGER: DAYS_PASSED] ===
+   - `"DAYS_PASSED"`: Número de dias do Minecraft se passaram. Params: `days` (ex: `"1"`).
+   === [/TRIGGER: DAYS_PASSED] ===
+   === [TRIGGER: DAY_NIGHT_CHECK] ===
+   - `"DAY_NIGHT_CHECK"`: Verifica se está dia ou noite. Params: `period` (Escolhas: `"DAY"`, `"NIGHT"`).
+   === [/TRIGGER: DAY_NIGHT_CHECK] ===
+   === [TRIGGER: VARIABLE_VALUE_CHECK] ===
+   - `"VARIABLE_VALUE_CHECK"`: Dispara quando uma variável satisfaz uma condição. Params: `variableName`, `operator` (`"=="`, `"!="`, `">="`, `"<="`, `">"` , `"<"`), `expectedValue`.
+   === [/TRIGGER: VARIABLE_VALUE_CHECK] ===
+   === [TRIGGER: PREVIOUS_MISSION_COMPLETED] ===
+   - `"PREVIOUS_MISSION_COMPLETED"`: Dispara quando uma missão anterior foi concluída. Params: `missionId` / `questTitle`.
+   === [/TRIGGER: PREVIOUS_MISSION_COMPLETED] ===
+   === [TRIGGER: PREVIOUS_EVENT_EXECUTED] ===
+   - `"PREVIOUS_EVENT_EXECUTED"`: Dispara quando um nó/evento anterior já foi executado. Params: `eventNodeId`.
+   === [/TRIGGER: PREVIOUS_EVENT_EXECUTED] ===
+   === [TRIGGER: KARMA_CHECK] ===
+   - `"KARMA_CHECK"`: Verifica afinidade/karma acumulado do jogador. Params: `minKarma` (ex: `"10"`).
+   === [/TRIGGER: KARMA_CHECK] ===
+   === [TRIGGER: AI_EVALUATION] ===
+   - `"AI_EVALUATION"`: A IA avalia o contexto atual e decide se a condição foi cumprida. Params: `evaluationPrompt`.
+   === [/TRIGGER: AI_EVALUATION] ===
+=== [/NODE: TRIGGER] ===
+
+=== [NODE: CONDITION_NODE] ===
+NOME: CONDITION_NODE (Bloco Condicional IF / ELSE)
+CATEGORIA: Variáveis e Lógica
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL), `Val` (id=`"VAL_IN"`, Tipo: VALUE - opcional se usar `varKey`)
+- Saídas:
+  * `IF` (id=`"OUT_IF"`, Tipo: SIGNAL) -> Disparada se TODAS as condições configuradas forem verdadeiras.
+  * `ELSE` (id=`"OUT_ELSE"`, Tipo: SIGNAL) -> Disparada se qualquer condição for falsa (quando `hasElse="true"`).
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `condCount`: Quantidade de condições testadas em conjunto (padrão `"1"`).
+- `varKey` (e `varKey_0`, `varKey_1`...): ID da variável do projeto que será testada.
+- `varOp` (e `varOp_0`, `varOp_1`...) — TODAS AS ESCOLHAS DE OPERADOR:
+  * Para BOOLEAN: `"=="`, `"!="`
+  * Para NUMBER: `"=="`, `"!="`, `">"`, `"<"`, `">="`, `"<="`
+  * Para STRING: `"=="`, `"!="`, `"CONTAINS"`, `"NOT_CONTAINS"`, `"STARTS_WITH"`, `"ENDS_WITH"`, `"IS_EMPTY"`, `"NOT_EMPTY"`
+  * Para LIST: `"CONTAINS"`, `"NOT_CONTAINS"`, `"SIZE"`, `"IS_EMPTY"`, `"NOT_EMPTY"`
+- `varValue` (e `varValue_0`, `varValue_1`...): Valor esperado para comparar com a variável.
+- `hasElse`: `"true"` (habilita a porta `ELSE`) ou `"false"`.
+=== [/NODE: CONDITION_NODE] ===
+
+=== [NODE: VARIABLE_SET] ===
+NOME: VARIABLE_SET (Modificar / Definir Valor de Variável)
+CATEGORIA: Variáveis e Lógica
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `varKey`: ID da variável a ser alterada (deve existir na lista de variáveis do projeto).
+- `varOp` — TODAS AS ESCOLHAS DE OPERAÇÃO POR TIPO DE VARIÁVEL:
+  * Para BOOLEAN:
+    - `"="`   -> Define para `"true"` ou `"false"` (em `varValue`).
+    - `"NOT"` -> Inverte o valor booleano atual (toggle true <-> false).
+  * Para NUMBER:
+    - `"="` -> Define o número exato em `varValue`.
+    - `"+"` -> Soma `varValue` ao valor atual.
+    - `"-"` -> Subtrai `varValue` do valor atual.
+    - `"*"` -> Multiplica o valor atual por `varValue`.
+    - `"/"` -> Divide o valor atual por `varValue`.
+  * Para STRING:
+    - `"="`      -> Define o texto para `varValue`.
+    - `"APPEND"` -> Concatena `varValue` ao final do texto atual.
+    - `"CLEAR"`  -> Limpa o texto para vazio `""`.
+  * Para LIST:
+    - `"ADD"`    -> Adiciona o item `varValue` na lista.
+    - `"REMOVE"` -> Remove o item `varValue` da lista.
+    - `"CLEAR"`  -> Esvazia toda a lista.
+- `varValue`: Valor a ser atribuído/somado/adicionado.
+=== [/NODE: VARIABLE_SET] ===
+
+=== [NODE: VARIABLE_GET] ===
+NOME: VARIABLE_GET (Ler Valor de Variável)
+CATEGORIA: Variáveis e Lógica
+PORTAS:
+- Entradas: Nenhuma
+- Saídas: `Val` (id=`"VAL_OUT"`, Tipo: VALUE)
+ARGUMENTOS / PARÂMETROS (`params`):
+- `varKey`: ID da variável que será lida e fornecida pela porta `Val` (pode ser conectada na porta `Val` de um `CONDITION_NODE`).
+=== [/NODE: VARIABLE_GET] ===
+
+=== [NODE: TIMER] ===
+NOME: TIMER (Temporizador / Atraso em Segundos)
+CATEGORIA: Fluxo e Tempo
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS (`params`):
+- `timerSeconds`: Tempo de espera em segundos (aceita inteiros ou decimais, ex: `"3"`, `"1.5"`, `"10"`). Também pode ser colocado no campo `content`.
+EXPLICAÇÃO COMPLETA:
+Quando recebe sinal na porta `In`, aguarda `timerSeconds` segundos (convertidos em ticks do servidor, 1s = 20 ticks) e em seguida dispara o sinal na porta `Out`.
+=== [/NODE: TIMER] ===
+
+=== [NODE: LOOP] ===
+NOME: LOOP (Repetidor de Fluxo por Contagem ou Tempo)
+CATEGORIA: Fluxo e Controle
+PORTAS:
+- Entradas:
+  * `In` (id=`"IN"`, Tipo: SIGNAL) -> Inicia o loop.
+  * `Stop` (id=`"STOP_IN"`, Tipo: SIGNAL) -> Interrompe imediatamente o loop em andamento.
+- Saídas:
+  * `Cycle` (id=`"CYCLE_OUT"`, Tipo: SIGNAL) -> Disparada a cada repetição/ciclo do loop.
+  * `Done` (id=`"DONE_OUT"`, Tipo: SIGNAL) -> Disparada uma única vez quando todos os ciclos terminam (ou quando recebe sinal em `Stop`).
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `loopMode` (Escolhas disponíveis):
+  * `"COUNT"` -> Repete um número fixo de vezes (`loopCount`).
+  * `"TIME"`  -> Repete continuamente durante uma duração total em segundos (`loopDurationSec`).
+- `loopCount`: Número de repetições quando `loopMode="COUNT"` (ex: `"5"`).
+- `loopDurationSec`: Duração total em segundos quando `loopMode="TIME"` (ex: `"20"`).
+- `loopIntervalSec`: Intervalo em segundos entre cada disparo da porta `Cycle` (ex: `"1.0"`).
+=== [/NODE: LOOP] ===
+
+=== [NODE: GATE] ===
+NOME: GATE (Sincronizador Lógico AND de Duas Entradas)
+CATEGORIA: Fluxo e Sincronização
+PORTAS:
+- Entradas:
+  * `IN 1` (id=`"IN_1"`, Tipo: SIGNAL)
+  * `IN 2` (id=`"IN_2"`, Tipo: SIGNAL)
+- Saídas:
+  * `OUT` (id=`"OUT"`, Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS: Nenhum parâmetro adicional.
+EXPLICAÇÃO COMPLETA:
+Aguarda até que AMBAS as portas de entrada (`IN 1` e `IN 2`) tenham recebido um pulso de sinal (em qualquer ordem). Assim que a segunda porta for ativada, reseta seu estado interno e dispara um único sinal pela porta `OUT`. Ideal para juntar dois caminhos paralelos da história.
+=== [/NODE: GATE] ===
+
+=== [NODE: LINK_SEND] ===
+NOME: LINK_SEND (Transmissor Sem Fio de Sinal)
+CATEGORIA: Fluxo e Organização
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: Nenhuma (transmite sem fio para `LINK_RECEIVE`)
+ARGUMENTOS / PARÂMETROS (`params`):
+- `channelTag`: Nome do canal sem fio (ex: `"canal_vitoria"`, `"iniciar_cutscene_2"`).
+EXPLICAÇÃO COMPLETA:
+Ao receber sinal na porta `In`, transmite instantaneamente um pulso para todos os blocos `LINK_RECEIVE` na cena que possuam o mesmo `channelTag`, evitando fios cruzando o canvas inteiro.
+=== [/NODE: LINK_SEND] ===
+
+=== [NODE: LINK_RECEIVE] ===
+NOME: LINK_RECEIVE (Receptor Sem Fio de Sinal)
+CATEGORIA: Fluxo e Organização
+PORTAS:
+- Entradas: Nenhuma (recebe sem fio de `LINK_SEND`)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS (`params`):
+- `channelTag`: Nome do canal sem fio que este receptor escuta (ex: `"canal_vitoria"`).
+EXPLICAÇÃO COMPLETA:
+Dispara sua porta `Out` sempre que um bloco `LINK_SEND` com o mesmo `channelTag` for acionado.
+=== [/NODE: LINK_RECEIVE] ===
+
+=== [NODE: COMMAND_NODE] ===
+NOME: COMMAND_NODE (Executor de Comandos do Minecraft / Cobblemon)
+CATEGORIA: Mundo e Comandos
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+CAMPO `content` / `params["commands"]`:
+- Lista de comandos do console (um comando por linha, sem precisar da barra `/` inicial, embora funcione com ou sem `/`).
+- Suporta interpolação dinâmica:
+  * `{player}` -> Nome do jogador.
+  * `{player_x}`, `{player_y}`, `{player_z}` -> Coordenadas atuais do jogador.
+  * `{nome_da_variavel}` ou `<var:nome_da_variavel>` -> Valor de qualquer variável da história.
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `commands`: Comandos separados por quebra de linha `\n` (sincronizado com `content`).
+- `commandSource` (Escolhas disponíveis):
+  * `"SERVER"` -> Executa com permissão máxima de console/servidor (OP nível 4) — padrão recomendado.
+  * `"PLAYER"` -> Executa como se o próprio jogador tivesse digitado o comando.
+- `silent`: `"true"` (oculta mensagens de feedback técnico do comando no chat) ou `"false"`.
+=== [/NODE: COMMAND_NODE] ===
+
+=== [NODE: AUDIO] ===
+NOME: AUDIO (Controlador de Efeitos Sonoros e Música)
+CATEGORIA: Áudio e Atmosfera
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `audioMode` (Escolhas disponíveis):
+  * `"PLAY_SOUND_EFFECT"`     -> Toca um efeito sonoro pontual (`audioId`).
+  * `"PLAY_BACKGROUND_MUSIC"` -> Inicia uma música de fundo (`audioId`).
+  * `"STOP_ALL_MUSIC"`        -> Para imediatamente todas as músicas/sons ativos.
+- `audioId`: ResourceLocation do som (ex: `"minecraft:entity.player.levelup"`, `"minecraft:music_disc.otherside"`, `"minecraft:entity.lightning_bolt.thunder"`).
+- `audioVolume`: Volume de `"0.0"` a `"2.0"` (padrão `"1.0"`).
+- `audioPitch`: Tom/velocidade de `"0.5"` a `"2.0"` (padrão `"1.0"`).
+- `loopMusic`: `"true"` ou `"false"` (usado com `"PLAY_BACKGROUND_MUSIC"`).
+=== [/NODE: AUDIO] ===
+
+=== [NODE: KEY_INPUT] ===
+NOME: KEY_INPUT (Detector de Tecla / Quick Time Event - QTE)
+CATEGORIA: Interação do Jogador
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL) -> Usada quando `triggerMode="SEQUENTIAL"`.
+- Saídas: `Out` (Tipo: SIGNAL) -> Disparada quando o jogador completa a ação da tecla.
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `triggerMode` (Escolhas disponíveis):
+  * `"SEQUENTIAL"` -> Só começa a aguardar a tecla depois que receber sinal na porta `In` (padrão).
+  * `"STANDALONE"` -> Funciona como atalho global contínuo durante toda a cena sem precisar de entrada `In`.
+- `inputMode` (Escolhas disponíveis):
+  * `"PRESS"`         -> Pressionar a tecla uma única vez (ou `requiredPresses` vezes).
+  * `"HOLD_ONE_SHOT"` -> Segurar a tecla pressionada continuamente por `holdSeconds` segundos.
+  * `"MASH"`          -> Apertar repetidamente a tecla `requiredPresses` vezes antes do tempo acabar.
+- `targetKey` (Escolhas disponíveis de teclas):
+  * `"F"`, `"E"`, `"Q"`, `"R"`, `"G"`, `"Z"`, `"X"`, `"C"`, `"V"`, `"SPACE"`, `"SHIFT"`, `"ENTER"`, `"1"`, `"2"`, `"3"`, `"4"`, `"5"`.
+- `requiredPresses`: Quantidade de cliques exigidos no modo `"PRESS"` ou `"MASH"` (padrão `"1"`).
+- `holdSeconds`: Segundos segurando a tecla no modo `"HOLD_ONE_SHOT"` (padrão `"2.0"`).
+- `promptText`: Texto de dica mostrado na tela (ex: `"Pressione [F] para investigar!"`).
+=== [/NODE: KEY_INPUT] ===
+
+=== [NODE: TEXTURE] ===
+NOME: TEXTURE (Troca de Textura / Skin / Aspecto Visual)
+CATEGORIA: Visual e Customização
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `targetType` (Escolhas disponíveis):
+  * `"PLAYER_POKEMON"` -> Altera aspecto/textura de um Pokémon da equipe do jogador (`targetIdentifier` = espécie ou slot).
+  * `"NPC_TAG"`        -> Altera textura de um Pokémon/NPC no mundo identificado por `storyTag` (`targetIdentifier` = tag).
+- `targetIdentifier`: Nome da espécie (ex: `"Pikachu"`) ou `storyTag` da entidade no mundo.
+- `textureName`: Nome do aspecto/textura customizada a aplicar (ex: `"shiny"`, `"alolan"`, ou caminho de textura).
+=== [/NODE: TEXTURE] ===
+
+=== [NODE: SAVE_STATE_NODE] ===
+NOME: SAVE_STATE_NODE (Salvar Ponto de Controle / Checkpoint)
+CATEGORIA: Persistência e Checkpoints
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas:
+  * `Success` (id=`"OUT_SUCCESS"`, Tipo: SIGNAL) -> Disparada quando o estado é salvo com sucesso.
+  * `Error` (id=`"OUT_ERROR"`, Tipo: SIGNAL) -> Disparada se ocorrer falha ao salvar.
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `profileId`: Identificador do slot de salvamento (ex: `"checkpoint_floresta"`, `"auto_save_1"`).
+- `scope` (Escolhas disponíveis):
+  * `"PLAYER"` -> Salva o progresso individualmente para o jogador atual (posições, variáveis, inventário/party snapshot).
+  * `"GLOBAL"` -> Salva o estado globalmente para o mundo/servidor.
+- `savePosition`: `"true"` (salva coordenadas exatas do jogador) ou `"false"`.
+- `saveVariables`: `"true"` (salva todas as variáveis da história) ou `"false"`.
+=== [/NODE: SAVE_STATE_NODE] ===
+
+=== [NODE: LOAD_STATE_NODE] ===
+NOME: LOAD_STATE_NODE (Carregar Ponto de Controle / Checkpoint)
+CATEGORIA: Persistência e Checkpoints
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas:
+  * `Success` (id=`"OUT_SUCCESS"`, Tipo: SIGNAL) -> Disparada após restaurar o estado salvo.
+  * `Error` (id=`"OUT_ERROR"`, Tipo: SIGNAL) -> Disparada se o `profileId` ainda não existir.
+ARGUMENTOS / PARÂMETROS E ESCOLHAS DISPONÍVEIS (`params`):
+- `profileId`: Identificador do checkpoint salvo anteriormente por um `SAVE_STATE_NODE` (ex: `"checkpoint_floresta"`).
+- `scope` (Escolhas disponíveis): `"PLAYER"` ou `"GLOBAL"`.
+- `restorePosition`: `"true"` (teleporta o jogador de volta à posição salva) ou `"false"`.
+- `restoreVariables`: `"true"` (restaura os valores das variáveis salvas) ou `"false"`.
+=== [/NODE: LOAD_STATE_NODE] ===
+
+=== [NODE: CONSTRUCTION] ===
+NOME: CONSTRUCTION (Construtor de Estrutura / Schematic)
+CATEGORIA: Construção no Mundo
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS (`params`):
+- `schematicName`: Nome do arquivo/estrutura a construir.
+- `originX`, `originY`, `originZ`: Coordenadas onde a construção será posicionada.
+- `buildMode` (Escolhas disponíveis): `"INSTANT"` (coloca tudo de uma vez) ou `"ANIMATED"` (constrói bloco por bloco).
+- `blocksPerTick`: Velocidade de blocos por tick quando `"ANIMATED"` (ex: `"5"`).
+=== [/NODE: CONSTRUCTION] ===
+
+=== [NODE: BEGIN_CONSTRUCTION] ===
+NOME: BEGIN_CONSTRUCTION (Início de Modo Construção)
+CATEGORIA: Construção no Mundo
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS (`params`):
+- `schematicName`: Nome identificador da construção.
+- `originX`, `originY`, `originZ`: Posição inicial.
+=== [/NODE: BEGIN_CONSTRUCTION] ===
+
+=== [NODE: END_CONSTRUCTION] ===
+NOME: END_CONSTRUCTION (Fim de Modo Construção)
+CATEGORIA: Construção no Mundo
+PORTAS:
+- Entradas: `In` (Tipo: SIGNAL)
+- Saídas: `Out` (Tipo: SIGNAL)
+ARGUMENTOS / PARÂMETROS (`params`):
+- `schematicName`: Nome identificador da construção a encerrar.
+=== [/NODE: END_CONSTRUCTION] ===
+
+=== [NODE: COMMENT] ===
+NOME: COMMENT (Nota Adesiva / Comentário de Documentação)
+CATEGORIA: Organização Visual
+PORTAS: Nenhuma (não participa da execução; serve para documentar o fluxo no canvas).
+CAMPOS:
+- `title`: Título da nota (ex: `"TODO: Batalha contra o Rival"`).
+- `content`: Texto explicativo da nota.
+=== [/NODE: COMMENT] ===
+

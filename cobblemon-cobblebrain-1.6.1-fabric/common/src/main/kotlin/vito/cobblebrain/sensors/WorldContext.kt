@@ -155,7 +155,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
                 val stack = itemEntity.item
                 val displayName = stack.displayName.string
                 val id = BuiltInRegistries.ITEM.getKey(stack.item)
-                "$displayName (${id})"
+                BuiltInRegistries.ITEM.getKey(stack.item).path
             }
             .groupingBy { it }
             .eachCount()
@@ -178,7 +178,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
             specials.add(blockId.removePrefix("block.minecraft."))
         }
     }
-    val specialBlocks = if (specials.isEmpty()) "none" else specials.joinToString(", ")
+    val specialBlocks = if (specials.isEmpty()) "" else specials.joinToString(", ")
 
     val health = player.health
     val maxHealth = player.maxHealth
@@ -269,7 +269,7 @@ data class SensoryData(
 
         if (!lowTokenMode) {
             if (notableBlocks.isNotEmpty()) {
-                lines += "Notable Objects: ${notableBlocks.joinToString(", ")}"
+                lines += "Notable Blocks: ${notableBlocks.joinToString(", ")}"
             }
             if (dominantBlocks.isNotEmpty()) {
                 lines += "Dominant Blocks: ${dominantBlocks.joinToString(", ")}"
@@ -422,7 +422,7 @@ object SensoryScanner {
         val notableBlocks = if (maxNotable <= 0) emptyList() else blockCounts.filter { (k, _) -> getBlockWeight(k) >= 15 }
             .map { (k, count) -> Triple(k, count, getBlockWeight(k) * count) }
             .sortedByDescending { it.third }
-            .take(4)
+            .take(maxNotable.coerceIn(1, 10))
             .map { "${it.second}x ${it.first}" }
 
         // Dominant Blocks (weight <= 5, requires count >= 25)

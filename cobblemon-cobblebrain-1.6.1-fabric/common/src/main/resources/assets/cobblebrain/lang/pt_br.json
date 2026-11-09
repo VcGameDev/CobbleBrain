@@ -507,5 +507,7 @@
   "cobblebrain.cap.pokemon_language": "Linguagem Pokémon",
   "cobblebrain.cap.pokemon_language.desc": "Quando ativado, os Pokémon falam na própria língua da espécie (repetindo o nome) em vez de fala humana.",
   "cobblebrain.config.max_notable_blocks": "Máx. Blocos e Itens Notáveis",
-  "cobblebrain.config.max_notable_blocks.tooltip": "Limita o número de blocos e itens no chão com maior pontuação enviados no prompt sensorial (0 = desativado, máx 20)."
+  "cobblebrain.config.max_notable_blocks.tooltip": "Limita o número de blocos e itens no chão com maior pontuação enviados no prompt sensorial (0 = desativado, máx 20).",
+  "cobblebrain.button.campaigns_experimental": "⚔ Campanhas de História (Experimental)",
+  "cobblebrain.campaign.screen_title": "Campanhas de História (Experimental)"
 }
