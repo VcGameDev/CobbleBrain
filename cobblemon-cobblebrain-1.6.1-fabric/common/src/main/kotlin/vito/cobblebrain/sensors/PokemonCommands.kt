@@ -116,7 +116,6 @@ fun parseCommand(line: String): PokemonCommand? {
         "ex" -> "excavate"
         "bu" -> "build"
         "dm" -> "excavate"
-        "m", "music", "sing" -> "music"
         "so", "song" -> "song"
         else -> action
     }
@@ -762,7 +761,7 @@ object CommandTickHandler {
                 )
             }
 
-            if (action != "music" && action != "song") {
+            if (action != "song") {
                 vito.cobblebrain.social.MusicManager.stopPerformanceFor(pokemonId)
             }
 
@@ -794,10 +793,6 @@ object CommandTickHandler {
                     if (!GatheringActions.isGathering(pokemon.uuid)) {
                         GatheringActions.startGatheringAction(pokemon, GatheringType.BUILD, owner)
                     }
-                }
-
-                "music" -> {
-                    vito.cobblebrain.social.MusicManager.startMusicAction(pokemon, owner)
                 }
 
                 "song" -> {

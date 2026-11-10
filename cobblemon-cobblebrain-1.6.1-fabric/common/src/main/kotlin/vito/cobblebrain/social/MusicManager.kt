@@ -1082,7 +1082,7 @@ OUTPUT ONLY THE BLOCKS ABOVE. NO CHAT OR EXPLANATION.
                 isLongSong = false
             )
             activePerformances[player.uuid] = newPerf
-            CommandState.activeCommands[mob.uuid] = "music"
+            CommandState.activeCommands[mob.uuid] = "song"
             newPerf
         }
 
@@ -1209,9 +1209,7 @@ OUTPUT ONLY THE BLOCKS ABOVE. NO CHAT OR EXPLANATION.
 
                     if (!note.lyric.isNullOrBlank()) {
                         player.sendSystemMessage(Component.literal("§d♪ ${perf.pokemonName}: §f${note.lyric} §d♪"), true)
-                        if (ConfigHandler.config.dialogueInChat) {
-                            player.sendSystemMessage(Component.literal("§d♪ ${perf.pokemonName}: §f${note.lyric} §d♪"))
-                        }
+
                         if (ConfigHandler.config.chatbubbles) {
                             DialogueSystem.spawnEntitySpeechBubble(server, pokemon, note.lyric, note.durationTicks + 10)
                         }

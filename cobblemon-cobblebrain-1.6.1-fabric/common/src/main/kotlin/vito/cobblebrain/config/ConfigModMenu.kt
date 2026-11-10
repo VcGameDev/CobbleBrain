@@ -277,7 +277,7 @@ object CobblebrainConfigScreen {
         val category = builder.getOrCreateCategory(Component.literal("Actions"))
         val actionKeys = listOf(
             "cook", "grow", "repair", "shift", "fish", "nightmare", "light", "scout",
-            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "build", "rest", "idle", "music", "song"
+            "teleport", "attack", "protect", "eat", "buff", "debuff_enemy", "excavate", "build", "rest", "idle", "song"
         )
 
         val mcPlayer = Minecraft.getInstance().player
@@ -420,7 +420,7 @@ object CobblebrainConfigScreen {
         var debuffEffectLevelVal = actionSettings.debuffEnemy.effectLevel
 
         val defaultPlayerEnabled = when (actionKey) {
-            "music", "song" -> false
+            "song" -> false
             else -> true
         }
 
@@ -819,7 +819,19 @@ object CobblebrainConfigScreen {
         return if (isRemoteServer && SyncedConfig.isServerControlled) synced else local
     }
 
+    fun syncModDefaultOnPreset(mode: String) {
+        val modDefault = AiProfileManager.profiles.find { AiProfileManager.isModDefaultProfile(it) }
+        if (modDefault != null) {
+            AiProfileManager.syncModDefaultProfile(modDefault, mode)
+            AiProfileManager.save()
+            if (AiProfileManager.activeProfileId == modDefault.id) {
+                AiProfileManager.applyActiveProfileToClient()
+            }
+        }
+    }
+
     fun applyPreset(mode: String) {
+        syncModDefaultOnPreset(mode)
         clientConfig.presetMode = mode
         clientConfig.isCustomizedFromPreset = false
         clientConfig.optimizedMode = true
@@ -896,6 +908,8 @@ object CobblebrainConfigScreen {
     }
 
     fun isPresetModified(mode: String): Boolean {
+        val defP = AiProfileManager.profiles.find { AiProfileManager.isModDefaultProfile(it) }
+        if (defP != null && AiProfileManager.isProfileModifiedFromPreset(defP, mode)) return true
         return when (mode) {
             "Smart" -> {
                 config.maxStoredMemories != 90 ||
@@ -1748,21 +1762,6 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.literal("If enabled, the AI will automatically generate and evolve Traits and Quirks for your Pokémon."))
             .build()
 
-        val maxAiLikesEntry = entryBuilder.startIntField(
-            Component.translatable("cobblebrain.config.max_ai_likes").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            config.maxAiLikes
-        ).setDefaultValue(5).setMin(0).setMax(20)
-            .setSaveConsumer { value -> config.maxAiLikes = value }
-            .setTooltip(Component.translatable("cobblebrain.config.max_ai_likes.tooltip"))
-            .build()
-
-        val maxAiDislikesEntry = entryBuilder.startIntField(
-            Component.translatable("cobblebrain.config.max_ai_dislikes").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            config.maxAiDislikes
-        ).setDefaultValue(5).setMin(0).setMax(20)
-            .setSaveConsumer { value -> config.maxAiDislikes = value }
-            .setTooltip(Component.translatable("cobblebrain.config.max_ai_dislikes.tooltip"))
-            .build()
 
         val maxNotableBlocksEntry = entryBuilder.startIntSlider(
             Component.translatable("cobblebrain.config.max_notable_blocks").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
@@ -2207,7 +2206,7 @@ object CobblebrainConfigScreen {
             aiModelEntry.value?.let { clientConfig.aiModel = it }
             apiBaseUrlEntry.value?.let { clientConfig.apiBaseUrl = it }
             customApiProviderEntry.value?.let { clientConfig.customApiProvider = it }
-            preferredNameEntry.value?.let { clientConfig.preferredName = it }
+
             selectedLanguageEntry.value?.let { clientConfig.selectedLanguage = it }
             playerAboutEntry.value?.let { clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(it) }
             instructEntry.value?.let { clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(it) }
@@ -2604,10 +2603,6 @@ object CobblebrainConfigScreen {
             category.entries.add(decreaseFriendshipEntry)
             category.entries.add(increaseFriendshipEntry)
             category.entries.add(showFriendshipEntry)
-            /*
-            category.entries.add(maxAiLikesEntry)
-            category.entries.add(maxAiDislikesEntry)
-            */
             category.entries.add(maxNotableBlocksEntry)
 
             addServerSubtitle("ACTIONS MANAGER (SERVER)")
@@ -2622,8 +2617,8 @@ object CobblebrainConfigScreen {
             category.entries.add(customApiProviderEntry)
             category.entries.add(debugLoggingEntry)
             category.entries.add(maxInteractionSavesEntry)
-            category.entries.add(maxAiLikesEntry)
-            category.entries.add(maxAiDislikesEntry)
+
+
 
             category.entries.add(makeSpacer(6))
             category.entries.add(advancedAiToggleButton)
@@ -2643,7 +2638,7 @@ object CobblebrainConfigScreen {
 
             category.entries.add(makeSpacer(10))
             category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
-            category.entries.add(preferredNameEntry)
+
             category.entries.add(selectedLanguageEntry)
             category.entries.add(manualActionNavEntry)
             category.entries.add(actionHudAnchorEntry)
@@ -2694,10 +2689,6 @@ object CobblebrainConfigScreen {
             category.entries.add(decreaseFriendshipEntry)
             category.entries.add(increaseFriendshipEntry)
             category.entries.add(showFriendshipEntry)
-            /*
-            category.entries.add(maxAiLikesEntry)
-            category.entries.add(maxAiDislikesEntry)
-            */
             category.entries.add(maxNotableBlocksEntry)
 
             addServerSubtitle("ACTIONS MANAGER (SERVER)")
@@ -2720,15 +2711,15 @@ object CobblebrainConfigScreen {
             category.entries.add(modelRotationEntry)
             category.entries.add(modelRotationTriggerEntry)
             category.entries.add(maxInteractionSavesEntry)
-            category.entries.add(maxAiLikesEntry)
-            category.entries.add(maxAiDislikesEntry)
+
+
             category.entries.add(offlineModeEntry)
             category.entries.add(offlineTalkModeEntry)
             category.entries.add(optimizedModeEntry)
 
             category.entries.add(makeSpacer(10))
             category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
-            category.entries.add(preferredNameEntry)
+
             category.entries.add(selectedLanguageEntry)
             category.entries.add(psychicTranslationEntry)
             category.entries.add(sttEntry)
@@ -2782,10 +2773,6 @@ object CobblebrainConfigScreen {
             category.entries.add(decreaseFriendshipEntry)
             category.entries.add(increaseFriendshipEntry)
             category.entries.add(showFriendshipEntry)
-            /*
-            category.entries.add(maxAiLikesEntry)
-            category.entries.add(maxAiDislikesEntry)
-            */
             category.entries.add(maxNotableBlocksEntry)
 
             addServerSubtitle("ACTIONS MANAGER (SERVER)")
@@ -2805,7 +2792,7 @@ object CobblebrainConfigScreen {
             category.entries.add(outputMobsContextEntry)
             category.entries.add(outputQuestsEntry)
             category.entries.add(enableTraitsEntry)
-            category.entries.add(maxAiLikesEntry)
+
             */
 
             addServerSubtitle("POKÉMON MEMORIES (SERVER)")

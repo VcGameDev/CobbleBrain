@@ -193,13 +193,19 @@ object ClientConfigHandler {
     lateinit var clientConfig: CobblebrainClientConfig
 
     fun ensureCreativePrompt(list: List<String>): List<String> {
-        val clean = list.filter { it.isNotBlank() && !it.trim().equals("[CREATIVEPROMPT]", ignoreCase = true) }
+        val clean = list.filter { line ->
+            val norm = line.trim().replace(" ", "").uppercase()
+            line.isNotBlank() && norm != "[CREATIVEPROMPT]" && norm != "[CREATIVE_PROMPT]"
+        }
         return listOf("[CREATIVEPROMPT]") + clean
     }
 
     fun ensurePlayerAboutHeader(list: List<String>?): List<String> {
         val base = list ?: CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
-        val clean = base.filter { it.isNotBlank() && !it.trim().equals("[ABOUT THE PLAYER]", ignoreCase = true) }
+        val clean = base.filter { line ->
+            val norm = line.trim().replace(" ", "").uppercase()
+            line.isNotBlank() && norm != "[ABOUTTHEPLAYER]" && norm != "[ABOUT_THE_PLAYER]"
+        }
         return listOf("[ABOUT THE PLAYER]") + clean
     }
 

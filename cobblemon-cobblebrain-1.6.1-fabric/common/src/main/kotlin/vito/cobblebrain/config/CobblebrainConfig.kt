@@ -7,8 +7,10 @@ data class CobblebrainConfig(
     var maxFriendship: Int = 255,
     var showFriendship: Boolean = true,
     var hidePersonalityCreation: Boolean = false,
-    var maxAiLikes: Int = 5,
-    var maxAiDislikes: Int = 5,
+    @com.google.gson.annotations.SerializedName(value = "maxPokemonLikes", alternate = ["maxAiLikes"])
+    var maxPokemonLikes: Int = 5,
+    @com.google.gson.annotations.SerializedName(value = "maxPokemonDislikes", alternate = ["maxAiDislikes"])
+    var maxPokemonDislikes: Int = 5,
     var maxNotableBlocks: Int = 10,
 
     // ================= DIALOGUE & UI SETTINGS =================
@@ -57,7 +59,14 @@ data class CobblebrainConfig(
     var wildPokemonCanBeHostile: Boolean = false,
     var hostileDamageMultiplier: Float = 0.75f,
     var actionSettings: ActionSettings = ActionSettings()
-)
+) {
+    var maxAiLikes: Int
+        get() = maxPokemonLikes
+        set(v) { maxPokemonLikes = v }
+    var maxAiDislikes: Int
+        get() = maxPokemonDislikes
+        set(v) { maxPokemonDislikes = v }
+}
 
 data class BaseActionConfig(
     var enabledForPlayer: Boolean = true,

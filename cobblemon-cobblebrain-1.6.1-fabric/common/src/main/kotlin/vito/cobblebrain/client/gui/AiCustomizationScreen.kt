@@ -37,6 +37,10 @@ class AiCustomizationScreen(
     private var draggingHScrollCapIdx: Int = -1
     private var isDraggingCapVScroll: Boolean = false
     private var isDraggingSidebarVScroll: Boolean = false
+    private var tab0ScrollY: Int = 0
+    private var isDraggingTab0VScroll: Boolean = false
+    private var dragTab0StartMouseY: Double = 0.0
+    private var dragTab0StartScrollY: Int = 0
 
     // Collapsible boxes state (closed by default upon entering)
     private var playerAboutOpen: Boolean = false
@@ -71,9 +75,20 @@ class AiCustomizationScreen(
     private data class CapabilityItem(
         val titleKey: String,
         val descKey: String,
-        val getter: (AiProfile) -> Boolean,
-        val setter: (AiProfile, Boolean) -> Unit
+        val isNumeric: Boolean = false,
+        val minVal: Int = 0,
+        val maxVal: Int = 30,
+        val boolGetter: ((AiProfile) -> Boolean)? = null,
+        val boolSetter: ((AiProfile, Boolean) -> Unit)? = null,
+        val intGetter: ((AiProfile) -> Int)? = null,
+        val intSetter: ((AiProfile, Int) -> Unit)? = null
     ) {
+        constructor(titleKey: String, descKey: String, getter: (AiProfile) -> Boolean, setter: (AiProfile, Boolean) -> Unit) :
+            this(titleKey, descKey, false, 0, 30, getter, setter, null, null)
+
+        constructor(titleKey: String, descKey: String, minVal: Int, maxVal: Int, getter: (AiProfile) -> Int, setter: (AiProfile, Int) -> Unit) :
+            this(titleKey, descKey, true, minVal, maxVal, null, null, getter, setter)
+
         val title: String get() = Component.translatable(titleKey).string
         val description: String get() = Component.translatable(descKey).string
     }
@@ -95,6 +110,10 @@ class AiCustomizationScreen(
             { it.outputQuests }, { p, v -> p.outputQuests = v }),
         CapabilityItem("cobblebrain.cap.traits", "cobblebrain.cap.traits.desc",
             { it.enableTraits }, { p, v -> p.enableTraits = v }),
+        CapabilityItem("cobblebrain.cap.max_pokemon_likes", "cobblebrain.cap.max_pokemon_likes.desc", 0, 30,
+            { it.maxPokemonLikes }, { p, v -> p.maxPokemonLikes = v }),
+        CapabilityItem("cobblebrain.cap.max_pokemon_dislikes", "cobblebrain.cap.max_pokemon_dislikes.desc", 0, 30,
+            { it.maxPokemonDislikes }, { p, v -> p.maxPokemonDislikes = v }),
         CapabilityItem("cobblebrain.cap.guaranteed_catch", "cobblebrain.cap.guaranteed_catch.desc",
             { it.outputGuaranteedCatch }, { p, v -> p.outputGuaranteedCatch = v }),
         CapabilityItem("cobblebrain.cap.show_hunger", "cobblebrain.cap.show_hunger.desc",
@@ -117,10 +136,11 @@ class AiCustomizationScreen(
         AiProfileManager.profiles.forEach {
             workingProfiles.add(it.deepCopy())
         }
-        if (workingProfiles.isEmpty()) {
-            val defaultName = if (isPromptBlocked()) "Server 1" else "Default"
-            val defaultId = if (isPromptBlocked()) "server" else "default"
-            workingProfiles.add(AiProfile(id = defaultId, name = defaultName, useDefaultOutput = true))
+        if (workingProfiles.none { isModDefault(it) }) {
+            val defP = AiProfile(id = "default", name = "Mod Default")
+            val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+            AiProfileManager.syncModDefaultProfile(defP, currentPreset)
+            workingProfiles.add(0, defP)
         } else if (isPromptBlocked() && workingProfiles.none { isServerProfile(it) }) {
             val serverP = AiProfile(
                 id = "server",
@@ -185,6 +205,8 @@ class AiCustomizationScreen(
         // Reset collapsible boxes to closed when entering
         playerAboutOpen = false
         instructOpen = false
+        tab0ScrollY = 0
+        isDraggingTab0VScroll = false
         capabilitiesScrollOffset = 0
         draggingHScrollCapIdx = -1
         isDraggingCapVScroll = false
@@ -279,7 +301,7 @@ class AiCustomizationScreen(
         val trainerLabelX = profileNameEdit.x + halfInputW + 8
         preferredNameEdit = EditBox(font, trainerLabelX + 56, headerY + 1, halfInputW, 16, Component.translatable("cobblebrain.screen.ai_customization.trainer_name"))
         preferredNameEdit.setMaxLength(32)
-        preferredNameEdit.setHint(Component.translatable("cobblebrain.screen.ai_customization.trainer_name.hint"))
+        preferredNameEdit.setHint(Component.translatable("cobblebrain.screen.ai_customization.trainer_name.hint").withStyle(ChatFormatting.DARK_GRAY))
         preferredNameEdit.setTooltip(Tooltip.create(Component.translatable("cobblebrain.screen.ai_customization.trainer_name.tooltip")))
         preferredNameEdit.setResponder { text ->
             if (selectedProfileIndex in workingProfiles.indices) {
@@ -336,10 +358,9 @@ class AiCustomizationScreen(
             Component.translatable("cobblebrain.screen.ai_customization.instruct_placeholder"), Component.empty()
         )
 
-        addRenderableWidget(togglePlayerAboutBtn)
-        addRenderableWidget(playerAboutBox)
-        addRenderableWidget(toggleInstructBtn)
-        addRenderableWidget(instructBox)
+        // Tab 0 widgets are rendered inside scissor block in render()
+        addWidget(playerAboutBox)
+        addWidget(instructBox)
 
         // === TAB 1 WIDGETS ===
         outputStructureBtn = Button.builder(Component.empty()) {
@@ -349,6 +370,10 @@ class AiCustomizationScreen(
                 p.useDefaultOutput = !p.useDefaultOutput
                 if (p.useDefaultOutput) {
                     outputFormatBox.setValue(CobblebrainClientConfig.DEFAULT_OUTPUT_FORMAT)
+                }
+                if (isModDefault(p)) {
+                    val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+                    ClientConfigHandler.clientConfig.isCustomizedFromPreset = AiProfileManager.isProfileModifiedFromPreset(p, currentPreset)
                 }
                 updateTab1Widgets(p)
                 updateTabWidgetVisibility()
@@ -362,6 +387,10 @@ class AiCustomizationScreen(
                 val p = workingProfiles[selectedProfileIndex]
                 p.outputFormat = CobblebrainClientConfig.DEFAULT_OUTPUT_FORMAT
                 outputFormatBox.setValue(CobblebrainClientConfig.DEFAULT_OUTPUT_FORMAT)
+                if (isModDefault(p)) {
+                    val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+                    ClientConfigHandler.clientConfig.isCustomizedFromPreset = AiProfileManager.isProfileModifiedFromPreset(p, currentPreset)
+                }
                 playClickSound()
             }
         }.tooltip(Tooltip.create(Component.translatable("cobblebrain.screen.ai_customization.reset_output.tooltip"))).bounds(contentX + contentW - 110, contentY + 1, 110, 18).build()
@@ -432,6 +461,10 @@ class AiCustomizationScreen(
         return p.id == "server" || p.name.trim().startsWith("Server", ignoreCase = true)
     }
 
+    private fun isModDefault(p: AiProfile?): Boolean {
+        return AiProfileManager.isModDefaultProfile(p)
+    }
+
     private fun switchTab(tab: Int) {
         saveCurrentValuesToSelectedProfile()
         currentTab = tab
@@ -440,8 +473,41 @@ class AiCustomizationScreen(
         draggingHScrollCapIdx = -1
         isDraggingCapVScroll = false
         isDraggingSidebarVScroll = false
+        tab0ScrollY = 0
+        isDraggingTab0VScroll = false
         setFocused(null)
         updateTabWidgetVisibility()
+    }
+
+    private fun getTab0TotalContentH(): Int {
+        val p = workingProfiles.getOrNull(selectedProfileIndex)
+        val isDefault = isModDefault(p)
+        val hasBanner = isPromptBlocked() || isDefault
+        val bannerH = if (hasBanner) 24 else 0
+        val contentH = getContentH()
+
+        return when {
+            !playerAboutOpen && !instructOpen -> {
+                bannerH + 4 + 20 + 4 + 20 + 8
+            }
+            playerAboutOpen && !instructOpen -> {
+                val boxH = maxOf(100, contentH - bannerH - 52)
+                bannerH + 4 + 20 + 3 + boxH + 5 + 20 + 8
+            }
+            !playerAboutOpen && instructOpen -> {
+                val boxH = maxOf(150, contentH - bannerH - 52)
+                bannerH + 4 + 20 + 4 + 20 + 3 + boxH + 8
+            }
+            else -> {
+                val box1H = 85
+                val box2H = 140
+                bannerH + 4 + 20 + 3 + box1H + 5 + 20 + 3 + box2H + 8
+            }
+        }
+    }
+
+    private fun getTab0MaxScroll(): Int {
+        return (getTab0TotalContentH() - getContentH()).coerceAtLeast(0)
     }
 
     private fun updateTab0Layout() {
@@ -463,95 +529,64 @@ class AiCustomizationScreen(
             else "cobblebrain.screen.ai_customization.accordion_instruct_closed"
         ).withStyle(if (instructOpen) ChatFormatting.YELLOW else ChatFormatting.WHITE)
 
-        val mc = Minecraft.getInstance()
-        val isRemoteServer = mc.player != null && !mc.isLocalServer
-        val isPromptBlocked = isPromptBlocked(); val topOffset = if (isPromptBlocked) 24 else 0
+        val isPromptBlocked = isPromptBlocked()
+        val p = workingProfiles.getOrNull(selectedProfileIndex)
+        val isDefault = isModDefault(p)
+        val hasBanner = isPromptBlocked || isDefault
+        val bannerH = if (hasBanner) 24 else 0
 
-        when {
-            !playerAboutOpen && !instructOpen -> {
-                togglePlayerAboutBtn.x = contentX
-                togglePlayerAboutBtn.y = contentY + 4 + topOffset
-                togglePlayerAboutBtn.width = contentW
-                togglePlayerAboutBtn.height = 20
+        val maxScroll = getTab0MaxScroll()
+        tab0ScrollY = tab0ScrollY.coerceIn(0, maxScroll)
+        val hasScroll = maxScroll > 0
+        val widgetW = if (hasScroll) contentW - 14 else contentW
 
-                toggleInstructBtn.x = contentX
-                toggleInstructBtn.y = contentY + 28 + topOffset
-                toggleInstructBtn.width = contentW
-                toggleInstructBtn.height = 20
+        val scrollY = tab0ScrollY
+        var curY = contentY + 4 + bannerH - scrollY
 
-                playerAboutBox.visible = false
-                instructBox.visible = false
-            }
-            playerAboutOpen && !instructOpen -> {
-                togglePlayerAboutBtn.x = contentX
-                togglePlayerAboutBtn.y = contentY + 4 + topOffset
-                togglePlayerAboutBtn.width = contentW
-                togglePlayerAboutBtn.height = 20
+        togglePlayerAboutBtn.x = contentX
+        togglePlayerAboutBtn.y = curY
+        togglePlayerAboutBtn.width = widgetW
+        togglePlayerAboutBtn.height = 20
+        togglePlayerAboutBtn.active = (curY + 20 >= contentY && curY <= contentY + contentH)
+        curY += 20 + 3
 
-                toggleInstructBtn.x = contentX
-                toggleInstructBtn.y = contentY + contentH - 22
-                toggleInstructBtn.width = contentW
-                toggleInstructBtn.height = 20
+        if (playerAboutOpen) {
+            val boxH = if (!instructOpen) maxOf(100, contentH - bannerH - 52) else 85
+            playerAboutBox.setBounds(contentX, curY, widgetW, boxH)
+            playerAboutBox.visible = (currentTab == 0)
+            playerAboutBox.active = (currentTab == 0 && !isPromptBlocked)
+            playerAboutBox.clipTop = contentY
+            playerAboutBox.clipBottom = contentY + contentH
+            curY += boxH + 5
+        } else {
+            playerAboutBox.visible = false
+            curY += 1
+        }
 
-                val boxY = contentY + 26 + topOffset
-                val boxH = (toggleInstructBtn.y - 4 - boxY).coerceAtLeast(35)
-                playerAboutBox.setBounds(contentX, boxY, contentW, boxH)
-                playerAboutBox.visible = (currentTab == 0)
-                playerAboutBox.active = (currentTab == 0 && !isPromptBlocked)
+        toggleInstructBtn.x = contentX
+        toggleInstructBtn.y = curY
+        toggleInstructBtn.width = widgetW
+        toggleInstructBtn.height = 20
+        toggleInstructBtn.active = (curY + 20 >= contentY && curY <= contentY + contentH)
+        curY += 20 + 3
 
-                instructBox.visible = false
-            }
-            !playerAboutOpen && instructOpen -> {
-                togglePlayerAboutBtn.x = contentX
-                togglePlayerAboutBtn.y = contentY + 4 + topOffset
-                togglePlayerAboutBtn.width = contentW
-                togglePlayerAboutBtn.height = 20
-
-                playerAboutBox.visible = false
-
-                toggleInstructBtn.x = contentX
-                toggleInstructBtn.y = contentY + 28 + topOffset
-                toggleInstructBtn.width = contentW
-                toggleInstructBtn.height = 20
-
-                val boxY = contentY + 50 + topOffset
-                val boxH = (contentY + contentH - boxY).coerceAtLeast(35)
-                instructBox.setBounds(contentX, boxY, contentW, boxH)
-                instructBox.visible = (currentTab == 0)
-                instructBox.active = (currentTab == 0 && !isPromptBlocked)
-            }
-            playerAboutOpen && instructOpen -> {
-                togglePlayerAboutBtn.x = contentX
-                togglePlayerAboutBtn.y = contentY + 4 + topOffset
-                togglePlayerAboutBtn.width = contentW
-                togglePlayerAboutBtn.height = 20
-
-                val availableH = contentH - 52 - topOffset
-                val boxH = (availableH / 2).coerceAtLeast(30)
-
-                val box1Y = contentY + 26 + topOffset
-                playerAboutBox.setBounds(contentX, box1Y, contentW, boxH)
-                playerAboutBox.visible = (currentTab == 0)
-                playerAboutBox.active = (currentTab == 0 && !isPromptBlocked)
-
-                val btn2Y = box1Y + boxH + 4
-                toggleInstructBtn.x = contentX
-                toggleInstructBtn.y = btn2Y
-                toggleInstructBtn.width = contentW
-                toggleInstructBtn.height = 20
-
-                val box2Y = btn2Y + 22
-                val box2H = (contentY + contentH - box2Y).coerceAtLeast(30)
-                instructBox.setBounds(contentX, box2Y, contentW, box2H)
-                instructBox.visible = (currentTab == 0)
-                instructBox.active = (currentTab == 0 && !isPromptBlocked)
-            }
+        if (instructOpen) {
+            val boxH = if (!playerAboutOpen) maxOf(150, contentH - bannerH - 52) else 140
+            instructBox.setBounds(contentX, curY, widgetW, boxH)
+            instructBox.visible = (currentTab == 0)
+            instructBox.active = (currentTab == 0 && !isPromptBlocked)
+            instructBox.clipTop = contentY
+            instructBox.clipBottom = contentY + contentH
+        } else {
+            instructBox.visible = false
         }
     }
 
     private fun updateTabWidgetVisibility() {
         val p = workingProfiles.getOrNull(selectedProfileIndex)
         val isRecommended = p?.useDefaultOutput ?: true
+        val isDefault = isModDefault(p)
+        val isBlocked = isPromptBlocked()
 
         tabPromptLoreBtn.active = (currentTab != 0)
         tabCapabilitiesBtn.active = (currentTab != 1)
@@ -568,11 +603,11 @@ class AiCustomizationScreen(
 
         // Tab 1 Header
         outputStructureBtn.visible = (currentTab == 1)
-        outputStructureBtn.active = (currentTab == 1 && !isPromptBlocked())
+        outputStructureBtn.active = (currentTab == 1 && !isBlocked)
         resetOutputBtn.visible = (currentTab == 1 && !isRecommended)
-        resetOutputBtn.active = (currentTab == 1 && !isRecommended && !isPromptBlocked())
+        resetOutputBtn.active = (currentTab == 1 && !isRecommended && !isBlocked)
         outputFormatBox.visible = (currentTab == 1 && !isRecommended)
-        outputFormatBox.active = (currentTab == 1 && !isRecommended && !isPromptBlocked())
+        outputFormatBox.active = (currentTab == 1 && !isRecommended && !isBlocked)
 
         if (p != null) {
             updateTab1Widgets(p)
@@ -591,13 +626,13 @@ class AiCustomizationScreen(
             outputStructureBtn.width = contentW - 114
             resetOutputBtn.x = contentX + contentW - 110
         }
+
+        outputStructureBtn.tooltip = Tooltip.create(Component.translatable("cobblebrain.screen.ai_customization.output_structure.tooltip"))
     }
 
     private fun saveCurrentValuesToSelectedProfile() {
         if (selectedProfileIndex !in workingProfiles.indices) return
         val p = workingProfiles[selectedProfileIndex]
-        val fallback = Component.translatable("cobblebrain.screen.ai_customization.default_profile_name").string
-        p.name = profileNameEdit.value.trim().ifBlank { fallback }
         p.preferredName = preferredNameEdit.value.trim()
 
         val aboutLines = playerAboutBox.value.lines().map { it.trim() }.filter { it.isNotBlank() }
@@ -610,23 +645,48 @@ class AiCustomizationScreen(
         if (p.outputFormat.trim() != CobblebrainClientConfig.DEFAULT_OUTPUT_FORMAT.trim()) {
             p.useDefaultOutput = false
         }
+
+        if (isModDefault(p)) {
+            p.name = "Mod Default"
+            val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+            ClientConfigHandler.clientConfig.isCustomizedFromPreset = AiProfileManager.isProfileModifiedFromPreset(p, currentPreset)
+            return
+        }
+
+        val fallback = Component.translatable("cobblebrain.screen.ai_customization.default_profile_name").string
+        p.name = profileNameEdit.value.trim().ifBlank { fallback }
     }
 
     private fun loadSelectedProfileToWidgets() {
         if (selectedProfileIndex !in workingProfiles.indices) return
         val p = workingProfiles[selectedProfileIndex]
-        profileNameEdit.value = p.name
-        preferredNameEdit.value = p.preferredName
+        val isDefault = isModDefault(p)
+        val isServer = isPromptBlocked() && isServerProfile(p)
 
-        playerAboutBox.setValue(p.playerAbout.joinToString("\n"))
-        instructBox.setValue(p.instruct.joinToString("\n"))
+        profileNameEdit.value = p.name
+        profileNameEdit.setEditable(!isDefault && !isServer)
+
+        preferredNameEdit.value = p.preferredName
+        preferredNameEdit.setEditable(!isServer)
+
+        // Filter out hardcoded tags from the editable text box so user never sees or edits them
+        val filteredAbout = p.playerAbout.filter { line ->
+            val clean = line.trim().replace(" ", "").uppercase()
+            clean != "[ABOUTTHEPLAYER]" && clean != "[ABOUT_THE_PLAYER]"
+        }
+        playerAboutBox.setValue(filteredAbout.joinToString("\n"))
+
+        val filteredInstruct = p.instruct.filter { line ->
+            val clean = line.trim().replace(" ", "").uppercase()
+            clean != "[CREATIVEPROMPT]" && clean != "[CREATIVE_PROMPT]"
+        }
+        instructBox.setValue(filteredInstruct.joinToString("\n"))
         outputFormatBox.setValue(p.outputFormat)
 
         updateTab1Widgets(p)
         updateTabWidgetVisibility()
-        deleteProfileBtn.active = (workingProfiles.size > 1 && !(isPromptBlocked() && isServerProfile(p)))
+        deleteProfileBtn.active = (workingProfiles.size > 1 && !isDefault && !isServer)
 
-        val isServer = isPromptBlocked() && isServerProfile(p)
         if (isServer) {
             saveBtn.visible = false
             closeBtn.x = width / 2 - 47
@@ -781,15 +841,69 @@ class AiCustomizationScreen(
         // Tab contents notices
         when (currentTab) {
             0 -> {
-                val mc = Minecraft.getInstance()
-                val isRemoteServer = mc.player != null && !mc.isLocalServer
-                val isPromptBlocked = isPromptBlocked(); val topOffset = if (isPromptBlocked) 24 else 0
+                val isPromptBlocked = isPromptBlocked()
+                val p = workingProfiles.getOrNull(selectedProfileIndex)
+                val isDefault = isModDefault(p)
+                val hasBanner = isPromptBlocked || isDefault
+                val maxScroll = getTab0MaxScroll()
+                val hasScroll = maxScroll > 0
+                val widgetW = if (hasScroll) contentW - 14 else contentW
+
+                // Enable scissor clipping for all Tab 0 scrollable content
+                guiGraphics.enableScissor(contentX, contentY, contentX + contentW, contentY + contentH)
+
+                val bannerY = contentY + 3 - tab0ScrollY
+                val bannerH = 18
+
                 if (isPromptBlocked) {
-                    val bannerY = contentY + 3
-                    val bannerH = 18
-                    guiGraphics.fill(contentX, bannerY, contentX + contentW, bannerY + bannerH, 0x44AA2222.toInt())
-                    guiGraphics.renderOutline(contentX, bannerY, contentW, bannerH, 0xFFAA4444.toInt())
-                    guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.ai_customization.blocked_notice"), contentX + (contentW / 2), bannerY + 5, 0xFFA500)
+                    guiGraphics.fill(contentX, bannerY, contentX + widgetW, bannerY + bannerH, 0x44AA2222.toInt())
+                    guiGraphics.renderOutline(contentX, bannerY, widgetW, bannerH, 0xFFAA4444.toInt())
+                    guiGraphics.drawCenteredString(font, Component.translatable("cobblebrain.screen.ai_customization.blocked_notice"), contentX + (widgetW / 2), bannerY + 5, 0xFFA500)
+                } else if (isDefault) {
+                    guiGraphics.fill(contentX, bannerY, contentX + widgetW, bannerY + bannerH, 0x44553300.toInt())
+                    guiGraphics.renderOutline(contentX, bannerY, widgetW, bannerH, 0xFFAA6600.toInt())
+                    val noticeText = Component.translatable("cobblebrain.screen.ai_customization.mod_default_notice").string
+                    val textW = font.width(noticeText)
+                    val availableW = widgetW - 12
+                    val scale = if (textW > 0) minOf(0.85f, availableW.toFloat() / textW.toFloat()).coerceIn(0.5f, 0.85f) else 0.85f
+                    val scaledTextW = textW * scale
+                    val drawX = contentX + (widgetW - scaledTextW) / 2.0f
+                    val drawY = bannerY + 5.0f + (font.lineHeight * (1.0f - scale) / 2.0f)
+
+                    guiGraphics.pose().pushPose()
+                    guiGraphics.pose().translate(drawX, drawY, 0.0f)
+                    guiGraphics.pose().scale(scale, scale, 1.0f)
+                    guiGraphics.drawString(font, noticeText, 0, 0, 0xFFA500, false)
+                    guiGraphics.pose().popPose()
+                }
+
+                // Render Tab 0 Widgets inside scissor
+                val effMouseX = if (mouseY in contentY..(contentY + contentH)) mouseX else -999
+                val effMouseY = if (mouseY in contentY..(contentY + contentH)) mouseY else -999
+
+                if (togglePlayerAboutBtn.visible) togglePlayerAboutBtn.render(guiGraphics, effMouseX, effMouseY, partialTick)
+                if (playerAboutBox.visible) playerAboutBox.render(guiGraphics, effMouseX, effMouseY, partialTick)
+                if (toggleInstructBtn.visible) toggleInstructBtn.render(guiGraphics, effMouseX, effMouseY, partialTick)
+                if (instructBox.visible) instructBox.render(guiGraphics, effMouseX, effMouseY, partialTick)
+
+                guiGraphics.disableScissor()
+
+                // Render Tab 0 Scrollbar
+                if (hasScroll) {
+                    val totalH = getTab0TotalContentH()
+                    val scrollTrackH = contentH
+                    val thumbH = ((contentH.toFloat() / totalH) * scrollTrackH).toInt().coerceIn(14, scrollTrackH - 4)
+                    val thumbY = contentY + ((tab0ScrollY.toFloat() / maxScroll) * (scrollTrackH - thumbH)).toInt()
+                    val barX = contentX + contentW - 4
+                    val barW = 4
+
+                    val isThumbHovered = mouseX in (barX - 2)..(barX + barW + 2) && mouseY in thumbY..(thumbY + thumbH)
+                    val isBarDragging = isDraggingTab0VScroll
+                    val thumbBg = if (isBarDragging || isThumbHovered) 0xFF34D399.toInt() else 0xFF10B981.toInt()
+
+                    guiGraphics.fill(barX, contentY, barX + barW, contentY + contentH, 0xFF1E2638.toInt())
+                    guiGraphics.fill(barX, thumbY, barX + barW, thumbY + thumbH, thumbBg)
+                    guiGraphics.renderOutline(barX, thumbY, barW, thumbH, 0xFF6EE7B7.toInt())
                 }
             }
             1 -> {
@@ -824,7 +938,8 @@ class AiCustomizationScreen(
 
                         // Description (line 2) with horizontal scrolling
                         val clipMinX = contentX + 7
-                        val clipMaxX = contentX + cardW - 54
+                        val rightMargin = if (cap.isNumeric) 72 else 54
+                        val clipMaxX = contentX + cardW - rightMargin
                         val visibleW = clipMaxX - clipMinX
                         val textW = font.width(cap.description)
                         val extraPadding = (textW * 0.10f).toInt().coerceAtLeast(16)
@@ -885,25 +1000,59 @@ class AiCustomizationScreen(
                             guiGraphics.renderOutline(thumbX, trackY - 1, thumbW, trackH + 2, 0xFF6EE7B7.toInt())
                         }
 
-                        // Toggle Pill Button (Right side, styled like Image 2)
-                        val isOn = cap.getter(p)
-                        val pillW = 38
-                        val pillH = 19
-                        val pillX = contentX + cardW - pillW - 6
-                        val pillY = cardY + 7
+                        if (cap.isNumeric) {
+                            // Stepper Controls [-] value [+]
+                            val numVal = cap.intGetter?.invoke(p) ?: 0
+                            val stepW = 56
+                            val stepH = 19
+                            val stepX = contentX + cardW - stepW - 6
+                            val stepY = cardY + 7
 
-                        val pillBg = if (isOn) 0xFF059669.toInt() else 0xFF27272A.toInt()
-                        val pillBorder = if (isOn) 0xFF10B981.toInt() else 0xFF3F3F46.toInt()
-                        val pillText = if (isOn) "ON" else "OFF"
-                        val pillTextCol = if (isOn) 0xFFFFFF else 0x71717A
+                            val minusHover = mouseX in stepX..(stepX + 16) && mouseY in stepY..(stepY + stepH)
+                            val plusHover = mouseX in (stepX + stepW - 16)..(stepX + stepW) && mouseY in stepY..(stepY + stepH)
 
-                        if (!isPromptBlocked()) {
-                            guiGraphics.fill(pillX, pillY, pillX + pillW, pillY + pillH, pillBg)
-                            guiGraphics.renderOutline(pillX, pillY, pillW, pillH, pillBorder)
+                            // Background container
+                            guiGraphics.fill(stepX, stepY, stepX + stepW, stepY + stepH, 0xFF18181B.toInt())
+                            guiGraphics.renderOutline(stepX, stepY, stepW, stepH, 0xFF3F3F46.toInt())
+
+                            // Minus button
+                            val minusDisabled = isPromptBlocked()
+                            val minusBg = if (minusHover && !minusDisabled) 0xFF3F3F46.toInt() else 0xFF27272A.toInt()
+                            guiGraphics.fill(stepX + 1, stepY + 1, stepX + 16, stepY + stepH - 1, minusBg)
+                            guiGraphics.drawString(font, "-", stepX + 6, stepY + 5, if (!minusDisabled && numVal > cap.minVal) 0xFFFFFF else 0x71717A, false)
+
+                            // Value display
+                            val valStr = numVal.toString()
+                            val valW = font.width(valStr)
+                            guiGraphics.drawString(font, valStr, stepX + (stepW - valW) / 2, stepY + 5, 0x34D399, true)
+
+                            // Plus button
+                            val plusDisabled = isPromptBlocked()
+                            val plusBg = if (plusHover && !plusDisabled) 0xFF3F3F46.toInt() else 0xFF27272A.toInt()
+                            guiGraphics.fill(stepX + stepW - 16, stepY + 1, stepX + stepW - 1, stepY + stepH - 1, plusBg)
+                            guiGraphics.drawString(font, "+", stepX + stepW - 11, stepY + 5, if (!plusDisabled && numVal < cap.maxVal) 0xFFFFFF else 0x71717A, false)
+                        } else {
+                            // Toggle Pill Button (Right side, styled like Image 2)
+                            val isOn = cap.boolGetter?.invoke(p) ?: true
+                            val pillW = 38
+                            val pillH = 19
+                            val pillX = contentX + cardW - pillW - 6
+                            val pillY = cardY + 7
+
+                            val pillBg = if (isOn) 0xFF059669.toInt() else 0xFF27272A.toInt()
+                            val pillBorder = if (isOn) 0xFF10B981.toInt() else 0xFF3F3F46.toInt()
+                            val pillText = if (isOn) "ON" else "OFF"
+                            val pillTextCol = if (isOn) 0xFFFFFF else 0x71717A
+
+                            val isLocked = isPromptBlocked()
+                            if (!isLocked) {
+                                guiGraphics.fill(pillX, pillY, pillX + pillW, pillY + pillH, pillBg)
+                                guiGraphics.renderOutline(pillX, pillY, pillW, pillH, pillBorder)
+                            }
+                            val textX = pillX + (pillW - font.width(pillText)) / 2
+                            val textCol = if (isLocked) (if (isOn) 0x55FF55 else 0x71717A) else pillTextCol
+                            guiGraphics.drawString(font, pillText, textX, pillY + 5, textCol, isOn)
                         }
-                        val textX = pillX + (pillW - font.width(pillText)) / 2
-                        val textCol = if (isPromptBlocked()) (if (isOn) 0x55FF55 else 0x71717A) else pillTextCol
-                        guiGraphics.drawString(font, pillText, textX, pillY + 5, textCol, isOn)
                     }
 
                     // Scrollbar for Capabilities
@@ -929,6 +1078,19 @@ class AiCustomizationScreen(
                 val isRemoteServer = mc.player != null && !mc.isLocalServer
                 if (isPromptBlocked()) {
                     guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.ai_customization.blocked_notice"), contentX + 4, contentY + contentH - 8, 0xFFA500, false)
+                } else if (isModDefault(p)) {
+                    val noticeText = Component.translatable("cobblebrain.screen.ai_customization.mod_default_notice").string
+                    val textW = font.width(noticeText)
+                    val availableW = contentW - 12
+                    val scale = if (textW > 0) minOf(0.85f, availableW.toFloat() / textW.toFloat()).coerceIn(0.5f, 0.85f) else 0.85f
+                    val drawX = contentX + 4.0f
+                    val drawY = contentY + contentH - 8.0f + (font.lineHeight * (1.0f - scale) / 2.0f)
+
+                    guiGraphics.pose().pushPose()
+                    guiGraphics.pose().translate(drawX, drawY, 0.0f)
+                    guiGraphics.pose().scale(scale, scale, 1.0f)
+                    guiGraphics.drawString(font, noticeText, 0, 0, 0xFFA500, false)
+                    guiGraphics.pose().popPose()
                 } else if (isRemoteServer) {
                     guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.ai_customization.server_notice"), contentX + 4, contentY + contentH - 8, 0x666666, false)
                 }
@@ -1008,6 +1170,62 @@ class AiCustomizationScreen(
             }
         }
 
+        // Tab 0 interactions (scrollbar + widgets)
+        if (button == 0 && currentTab == 0) {
+            val contentX = getContentX()
+            val contentW = getContentW()
+            val contentY = getContentY()
+            val contentH = getContentH()
+            val maxScroll = getTab0MaxScroll()
+
+            // Scrollbar track/thumb click
+            if (maxScroll > 0) {
+                val barX = contentX + contentW - 6
+                val barW = 7
+                if (mouseX >= barX && mouseX <= barX + barW && mouseY >= contentY && mouseY <= contentY + contentH) {
+                    val totalH = getTab0TotalContentH()
+                    val thumbH = ((contentH.toFloat() / totalH) * contentH).toInt().coerceIn(14, contentH - 4)
+                    val thumbY = contentY + ((tab0ScrollY.toFloat() / maxScroll) * (contentH - thumbH)).toInt()
+
+                    isDraggingTab0VScroll = true
+                    dragTab0StartMouseY = mouseY
+                    dragTab0StartScrollY = tab0ScrollY
+
+                    if (mouseY < thumbY || mouseY > thumbY + thumbH) {
+                        val trackH = contentH - thumbH
+                        if (trackH > 0) {
+                            val clickProgress = ((mouseY - contentY - (thumbH / 2.0)) / trackH).coerceIn(0.0, 1.0)
+                            tab0ScrollY = (clickProgress * maxScroll).toInt()
+                            updateTab0Layout()
+                        }
+                    }
+                    return true
+                }
+            }
+
+            // Accordion buttons and boxes click within content area
+            if (mouseX >= contentX && mouseX <= contentX + contentW && mouseY >= contentY && mouseY <= contentY + contentH) {
+                if (togglePlayerAboutBtn.visible && togglePlayerAboutBtn.mouseClicked(mouseX, mouseY, button)) {
+                    return true
+                }
+                if (playerAboutBox.visible && playerAboutBox.mouseClicked(mouseX, mouseY, button)) {
+                    setFocused(playerAboutBox)
+                    return true
+                }
+                if (toggleInstructBtn.visible && toggleInstructBtn.mouseClicked(mouseX, mouseY, button)) {
+                    return true
+                }
+                if (instructBox.visible && instructBox.mouseClicked(mouseX, mouseY, button)) {
+                    setFocused(instructBox)
+                    return true
+                }
+            } else {
+                if (focused == playerAboutBox || focused == instructBox) {
+                    setFocused(null)
+                }
+            }
+        }
+
         // Click on Capability Cards (Tab 1, Recommended mode)
         if (button == 0 && currentTab == 1) {
             val p = workingProfiles.getOrNull(selectedProfileIndex)
@@ -1030,7 +1248,8 @@ class AiCustomizationScreen(
                         val cardY = listY + (clickedRow * cardSlotH)
 
                         val clipMinX = contentX + 7
-                        val clipMaxX = contentX + cardW - 54
+                        val rightMargin = if (cap.isNumeric) 72 else 54
+                        val clipMaxX = contentX + cardW - rightMargin
                         val visibleW = clipMaxX - clipMinX
                         val textW = font.width(cap.description)
                         val extraPadding = (textW * 0.10f).toInt().coerceAtLeast(16)
@@ -1070,20 +1289,60 @@ class AiCustomizationScreen(
                             }
                         }
 
-                        val pillW = 38
-                        val pillH = 19
-                        val pillX = contentX + cardW - pillW - 6
-                        val pillY = cardY + 7
+                        if (cap.isNumeric) {
+                            val stepW = 56
+                            val stepH = 19
+                            val stepX = contentX + cardW - stepW - 6
+                            val stepY = cardY + 7
 
-                        val isPillClicked = mouseX in pillX.toDouble()..(pillX + pillW).toDouble() && mouseY in pillY.toDouble()..(pillY + pillH).toDouble()
-                        val isCardClicked = mouseX in contentX.toDouble()..(contentX + cardW).toDouble() && mouseY in cardY.toDouble()..(cardY + cardH).toDouble()
+                            val isMinusClicked = mouseX in stepX.toDouble()..(stepX + 16).toDouble() && mouseY in stepY.toDouble()..(stepY + stepH).toDouble()
+                            val isPlusClicked = mouseX in (stepX + stepW - 16).toDouble()..(stepX + stepW).toDouble() && mouseY in stepY.toDouble()..(stepY + stepH).toDouble()
 
-                        if (isPillClicked || isCardClicked) {
-                            if (isPromptBlocked()) return true
-                            val currentVal = cap.getter(p)
-                            cap.setter(p, !currentVal)
-                            playClickSound()
-                            return true
+                            if (isMinusClicked) {
+                                if (isPromptBlocked()) return true
+                                val cur = cap.intGetter?.invoke(p) ?: 0
+                                if (cur > cap.minVal) {
+                                    cap.intSetter?.invoke(p, cur - 1)
+                                    if (isModDefault(p)) {
+                                        val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+                                        ClientConfigHandler.clientConfig.isCustomizedFromPreset = AiProfileManager.isProfileModifiedFromPreset(p, currentPreset)
+                                    }
+                                    playClickSound()
+                                }
+                                return true
+                            } else if (isPlusClicked) {
+                                if (isPromptBlocked()) return true
+                                val cur = cap.intGetter?.invoke(p) ?: 0
+                                if (cur < cap.maxVal) {
+                                    cap.intSetter?.invoke(p, cur + 1)
+                                    if (isModDefault(p)) {
+                                        val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+                                        ClientConfigHandler.clientConfig.isCustomizedFromPreset = AiProfileManager.isProfileModifiedFromPreset(p, currentPreset)
+                                    }
+                                    playClickSound()
+                                }
+                                return true
+                            }
+                        } else {
+                            val pillW = 38
+                            val pillH = 19
+                            val pillX = contentX + cardW - pillW - 6
+                            val pillY = cardY + 7
+
+                            val isPillClicked = mouseX in pillX.toDouble()..(pillX + pillW).toDouble() && mouseY in pillY.toDouble()..(pillY + pillH).toDouble()
+                            val isCardClicked = mouseX in contentX.toDouble()..(contentX + cardW).toDouble() && mouseY in cardY.toDouble()..(cardY + cardH).toDouble()
+
+                            if (isPillClicked || isCardClicked) {
+                                if (isPromptBlocked()) return true
+                                val currentVal = cap.boolGetter?.invoke(p) ?: true
+                                cap.boolSetter?.invoke(p, !currentVal)
+                                if (isModDefault(p)) {
+                                    val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+                                    ClientConfigHandler.clientConfig.isCustomizedFromPreset = AiProfileManager.isProfileModifiedFromPreset(p, currentPreset)
+                                }
+                                playClickSound()
+                                return true
+                            }
                         }
                     }
                 }
@@ -1095,6 +1354,23 @@ class AiCustomizationScreen(
 
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
         if (button == 0) {
+            // Dragging Tab 0 Vertical Scrollbar
+            if (currentTab == 0 && isDraggingTab0VScroll) {
+                val maxScroll = getTab0MaxScroll()
+                if (maxScroll > 0) {
+                    val contentH = getContentH()
+                    val totalH = getTab0TotalContentH()
+                    val thumbH = ((contentH.toFloat() / totalH) * contentH).toInt().coerceIn(14, contentH - 4)
+                    val trackH = contentH - thumbH
+                    if (trackH > 0) {
+                        val dragProgress = ((mouseY - getContentY() - (thumbH / 2.0)) / trackH).coerceIn(0.0, 1.0)
+                        tab0ScrollY = Math.round(dragProgress * maxScroll).toInt()
+                        updateTab0Layout()
+                        return true
+                    }
+                }
+            }
+
             // Dragging Capabilities Vertical Scrollbar
             if (currentTab == 1 && isDraggingCapVScroll) {
                 val listY = getCapabilityListY()
@@ -1172,6 +1448,7 @@ class AiCustomizationScreen(
             draggingHScrollCapIdx = -1
             isDraggingCapVScroll = false
             isDraggingSidebarVScroll = false
+            isDraggingTab0VScroll = false
         }
         return super.mouseReleased(mouseX, mouseY, button)
     }
@@ -1195,6 +1472,36 @@ class AiCustomizationScreen(
                 sidebarScrollOffset = (sidebarScrollOffset + 1).coerceAtMost(maxScroll)
             }
             return true
+        }
+
+        // Scroll Tab 0 (Prompt & Lore)
+        if (currentTab == 0) {
+            val contentX = getContentX()
+            val contentW = getContentW()
+            val contentY = getContentY()
+            val contentH = getContentH()
+            if (mouseX >= contentX && mouseX <= contentX + contentW && mouseY >= contentY && mouseY <= contentY + contentH) {
+                val overPlayerAbout = playerAboutBox.visible && mouseX >= playerAboutBox.x && mouseX <= playerAboutBox.x + playerAboutBox.width && mouseY >= playerAboutBox.y && mouseY <= playerAboutBox.y + playerAboutBox.height
+                val overInstruct = instructBox.visible && mouseX >= instructBox.x && mouseX <= instructBox.x + instructBox.width && mouseY >= instructBox.y && mouseY <= instructBox.y + instructBox.height
+
+                val innerHandled = when {
+                    overPlayerAbout -> playerAboutBox.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+                    overInstruct -> instructBox.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+                    else -> false
+                }
+
+                if (!innerHandled) {
+                    val maxScroll = getTab0MaxScroll()
+                    if (maxScroll > 0) {
+                        val delta = if (scrollY > 0) -22 else 22
+                        tab0ScrollY = (tab0ScrollY + delta).coerceIn(0, maxScroll)
+                        updateTab0Layout()
+                        return true
+                    }
+                } else {
+                    return true
+                }
+            }
         }
 
         // Scroll Capability List (Tab 1, Recommended mode) - only scrolls the vertical list
@@ -1237,6 +1544,9 @@ private class CustomMultiLineEditBox(
     message: Component
 ) : MultiLineEditBox(font, x, y, width, height, placeholder, message) {
 
+    var clipTop: Int = 0
+    var clipBottom: Int = Int.MAX_VALUE
+
     fun setBounds(newX: Int, newY: Int, newWidth: Int, newHeight: Int) {
         this.x = newX
         this.y = newY
@@ -1246,6 +1556,7 @@ private class CustomMultiLineEditBox(
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (!this.visible || !this.active) return false
+        if (mouseY < clipTop || mouseY > clipBottom) return false
         return super.mouseClicked(mouseX, mouseY, button)
     }
 
@@ -1261,6 +1572,7 @@ private class CustomMultiLineEditBox(
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
         if (!this.visible || !this.active) return false
+        if (mouseY < clipTop || mouseY > clipBottom) return false
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
     }
 }

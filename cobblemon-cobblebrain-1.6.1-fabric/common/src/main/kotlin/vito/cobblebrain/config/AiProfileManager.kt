@@ -25,9 +25,18 @@ data class AiProfile(
     var outputMobsContext: Boolean = true,
     var outputQuests: Boolean = true,
     var enableTraits: Boolean = true,
+    var maxPokemonLikes: Int = 5,
+    var maxPokemonDislikes: Int = 5,
     var outputMemories: Boolean = true,
     var outputPokemonLanguage: Boolean = false
 ) {
+    var maxAiLikes: Int
+        get() = maxPokemonLikes
+        set(v) { maxPokemonLikes = v }
+    var maxAiDislikes: Int
+        get() = maxPokemonDislikes
+        set(v) { maxPokemonDislikes = v }
+
     fun deepCopy(): AiProfile {
         return AiProfile(
             id = UUID.randomUUID().toString().take(8),
@@ -47,6 +56,8 @@ data class AiProfile(
             outputMobsContext = outputMobsContext,
             outputQuests = outputQuests,
             enableTraits = enableTraits,
+            maxPokemonLikes = maxPokemonLikes,
+            maxPokemonDislikes = maxPokemonDislikes,
             outputMemories = outputMemories,
             outputPokemonLanguage = outputPokemonLanguage
         )
@@ -64,9 +75,102 @@ object AiProfileManager {
             } catch (_: Throwable) {}
         }
 
+    fun isModDefaultProfile(p: AiProfile?): Boolean {
+        if (p == null) return false
+        return p.id == "default" || p.name.equals("Mod Default", ignoreCase = true) || p.name.equals("Default", ignoreCase = true)
+    }
+
+    fun syncModDefaultProfile(p: AiProfile, presetMode: String = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }) {
+        p.id = "default"
+        p.name = "Mod Default"
+        if (p.preferredName.isBlank()) {
+            p.preferredName = try { ClientConfigHandler.clientConfig.preferredName } catch (_: Throwable) { "" }
+        }
+        p.psychicTranslation = try { ClientConfigHandler.clientConfig.psychicTranslation } catch (_: Throwable) { false }
+        p.showHunger = try { ClientConfigHandler.clientConfig.showHunger } catch (_: Throwable) { false }
+        if (p.instruct.isEmpty()) {
+            p.instruct = CobblebrainClientConfig.DEFAULT_INSTRUCT
+        }
+        if (p.playerAbout.isEmpty()) {
+            p.playerAbout = CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
+        }
+        p.useDefaultOutput = true
+        p.outputFormat = CobblebrainClientConfig.DEFAULT_OUTPUT_FORMAT
+        p.outputDialogue = true
+        p.outputActions = true
+        p.outputFriendship = true
+        p.outputWorldContext = true
+        p.outputGuaranteedCatch = true
+        p.outputQuests = true
+        p.enableTraits = true
+        p.maxPokemonLikes = 5
+        p.maxPokemonDislikes = 5
+        p.outputPokemonLanguage = false
+
+        when (presetMode) {
+            "Light" -> {
+                p.outputMobsContext = false
+                p.outputMemories = false
+            }
+            "Custom" -> {
+                val srv = try { ConfigHandler.config } catch (_: Throwable) { null }
+                p.outputDialogue = srv?.outputDialogue ?: true
+                p.outputActions = srv?.outputActions ?: true
+                p.outputFriendship = srv?.outputFriendship ?: true
+                p.outputWorldContext = srv?.outputWorldContext ?: true
+                p.outputGuaranteedCatch = srv?.outputGuaranteedCatch ?: true
+                p.outputMobsContext = srv?.outputMobsContext ?: true
+                p.outputQuests = srv?.outputQuests ?: true
+                p.enableTraits = srv?.enableTraits ?: true
+                p.maxPokemonLikes = srv?.maxPokemonLikes ?: 5
+                p.maxPokemonDislikes = srv?.maxPokemonDislikes ?: 5
+                p.outputMemories = srv?.outputMemories ?: true
+                p.outputPokemonLanguage = srv?.outputPokemonLanguage ?: false
+                p.useDefaultOutput = true
+            }
+            else -> {
+                // "Smart", "Normal", "Offline"
+                p.outputMobsContext = true
+                p.outputMemories = true
+            }
+        }
+    }
+
+    fun isProfileModifiedFromPreset(p: AiProfile, mode: String = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }): Boolean {
+        return when (mode) {
+            "Light" -> {
+                p.outputMobsContext ||
+                p.outputMemories ||
+                !p.outputDialogue ||
+                !p.outputActions ||
+                !p.outputFriendship ||
+                !p.outputWorldContext ||
+                !p.outputGuaranteedCatch ||
+                !p.outputQuests ||
+                !p.enableTraits ||
+                !p.useDefaultOutput ||
+                p.outputPokemonLanguage
+            }
+            "Smart", "Normal" -> {
+                !p.outputMobsContext ||
+                !p.outputMemories ||
+                !p.outputDialogue ||
+                !p.outputActions ||
+                !p.outputFriendship ||
+                !p.outputWorldContext ||
+                !p.outputGuaranteedCatch ||
+                !p.outputQuests ||
+                !p.enableTraits ||
+                !p.useDefaultOutput ||
+                p.outputPokemonLanguage
+            }
+            else -> false
+        }
+    }
+
     fun getActiveProfile(): AiProfile {
         return profiles.find { it.id == activeProfileId }
-            ?: profiles.find { it.id == "default" } ?: profiles.firstOrNull()
+            ?: profiles.find { isModDefaultProfile(it) } ?: profiles.firstOrNull()
             ?: createDefaultProfile()
     }
 
@@ -78,28 +182,11 @@ object AiProfileManager {
     }
 
     fun createDefaultProfile(): AiProfile {
-        val srv = try { ConfigHandler.config } catch (_: Throwable) { null }
         val p = AiProfile(
             id = "default",
-            name = "Default",
-            preferredName = try { ClientConfigHandler.clientConfig.preferredName } catch (_: Throwable) { "" },
-            psychicTranslation = try { ClientConfigHandler.clientConfig.psychicTranslation } catch (_: Throwable) { false },
-            showHunger = try { ClientConfigHandler.clientConfig.showHunger } catch (_: Throwable) { false },
-            instruct = try { ClientConfigHandler.clientConfig.instruct } catch (_: Throwable) { CobblebrainClientConfig.DEFAULT_INSTRUCT },
-            playerAbout = try { ClientConfigHandler.clientConfig.playerAbout } catch (_: Throwable) { CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT },
-            useDefaultOutput = srv?.useDefaultOutput ?: true,
-            outputFormat = try { ClientConfigHandler.clientConfig.outputFormat } catch (_: Throwable) { CobblebrainClientConfig.DEFAULT_OUTPUT_FORMAT },
-            outputDialogue = srv?.outputDialogue ?: true,
-            outputActions = srv?.outputActions ?: true,
-            outputFriendship = srv?.outputFriendship ?: true,
-            outputWorldContext = srv?.outputWorldContext ?: true,
-            outputGuaranteedCatch = srv?.outputGuaranteedCatch ?: true,
-            outputMobsContext = srv?.outputMobsContext ?: true,
-            outputQuests = srv?.outputQuests ?: true,
-            enableTraits = srv?.enableTraits ?: true,
-            outputMemories = srv?.outputMemories ?: true,
-            outputPokemonLanguage = srv?.outputPokemonLanguage ?: false
+            name = "Mod Default"
         )
+        syncModDefaultProfile(p)
         if (profiles.none { it.id == p.id }) {
             profiles.add(0, p)
         }
@@ -130,9 +217,16 @@ object AiProfileManager {
             srvCfg.outputMobsContext = p.outputMobsContext
             srvCfg.outputQuests = p.outputQuests
             srvCfg.enableTraits = p.enableTraits
+            srvCfg.maxPokemonLikes = p.maxPokemonLikes
+            srvCfg.maxPokemonDislikes = p.maxPokemonDislikes
             srvCfg.outputMemories = p.outputMemories
             srvCfg.outputPokemonLanguage = p.outputPokemonLanguage
             ConfigHandler.save()
+
+            if (isModDefaultProfile(p) && cfg.presetMode != "Custom") {
+                cfg.isCustomizedFromPreset = isProfileModifiedFromPreset(p, cfg.presetMode)
+                ClientConfigHandler.save()
+            }
         } catch (_: Throwable) {}
     }
 
@@ -151,6 +245,10 @@ object AiProfileManager {
                     for (elem in arr) {
                         val profile = gson.fromJson(elem, AiProfile::class.java)
                         if (profile != null) {
+                            if (isModDefaultProfile(profile)) {
+                                profile.id = "default"
+                                profile.name = "Mod Default"
+                            }
                             profiles.add(profile)
                         }
                     }
@@ -163,8 +261,16 @@ object AiProfileManager {
         if (profiles.isEmpty()) {
             createDefaultProfile()
             save()
-        } else if (profiles.none { it.id == activeProfileId }) {
-            val savedId = try { ClientConfigHandler.clientConfig.activeAiProfileId } catch (_: Throwable) { "default" }; activeProfileId = if (profiles.any { it.id == savedId }) savedId else (profiles.find { it.id == "default" }?.id ?: profiles.first().id)
+        } else {
+            if (profiles.none { isModDefaultProfile(it) }) {
+                val p = AiProfile(id = "default", name = "Mod Default")
+                syncModDefaultProfile(p)
+                profiles.add(0, p)
+            }
+            if (profiles.none { it.id == activeProfileId }) {
+                val savedId = try { ClientConfigHandler.clientConfig.activeAiProfileId } catch (_: Throwable) { "default" }
+                activeProfileId = if (profiles.any { it.id == savedId }) savedId else (profiles.find { isModDefaultProfile(it) }?.id ?: profiles.first().id)
+            }
         }
         applyActiveProfileToClient()
     }

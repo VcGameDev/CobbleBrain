@@ -3,6 +3,7 @@ package vito.cobblebrain.client.gui.widgets
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
@@ -116,7 +117,7 @@ class StoryEditorAIAssistantWidget(
         val callCounts = java.util.concurrent.ConcurrentHashMap<Int, Int>()
         @Volatile var isRunningPipeline: Boolean = false
         @Volatile var activeCallStage: Int = 0 // 0=Idle, 1=Call1, 51=Call5a, 52=Call5b, 21=Call2a, 22=Call2b, 6=Question, 3=Call3, 4=Call4
-        @Volatile var currentStatusText: String = "Pronto para ajudar no projeto"
+        @Volatile var currentStatusText: String = Component.translatable("cobblebrain.story_editor.ai.status_ready").string
         @Volatile var completedCallsMask: Int = 0
         @Volatile var totalEstimatedTokens: Int = 0
         @Volatile var currentRequestTokens: Int = 0
@@ -210,9 +211,9 @@ class StoryEditorAIAssistantWidget(
         val boxW = (panelW - 16 - sendBtnW).coerceAtLeast(60)
 
         if (!::inputBox.isInitialized) {
-            inputBox = EditBox(font, boxX, boxY, boxW, 18, Component.literal("Pergunte ou peça para criar blocos..."))
+            inputBox = EditBox(font, boxX, boxY, boxW, 18, Component.translatable("cobblebrain.story_editor.ai.input_placeholder"))
             inputBox.setMaxLength(1000)
-            inputBox.setHint(Component.literal("§8Peça para criar/editar blocos..."))
+            inputBox.setHint(Component.translatable("cobblebrain.story_editor.ai.input_hint").withStyle(ChatFormatting.DARK_GRAY))
             inputBox.value = savedInputText
             inputBox.setResponder { savedInputText = it }
         } else {
@@ -235,7 +236,7 @@ class StoryEditorAIAssistantWidget(
         guiGraphics.fill(panelX + 1, panelY, panelX + panelW, panelY + 20, 0xFF1A2234.toInt())
         guiGraphics.fill(panelX + 1, panelY + 19, panelX + panelW, panelY + 20, 0xFF2D3B55.toInt())
 
-        val headerTitle = "🤖 Assistente IA"
+        val headerTitle = Component.translatable("cobblebrain.story_editor.ai.title").string
         guiGraphics.drawString(font, headerTitle, panelX + 6, panelY + 6, 0xFF00FFCC.toInt(), true)
 
         // Close Button [✖]
@@ -254,10 +255,10 @@ class StoryEditorAIAssistantWidget(
         // Focus Selection Toggle Button [🎯] in Header
         val focusedCount = getEffectiveFocusedNodes().size
         val focusLabel = when {
-            !focusOnSelectionEnabled -> "🎯Livre"
+            !focusOnSelectionEnabled -> "🎯" + Component.translatable("cobblebrain.story_editor.ai.focus.free").string
             focusedCount > 0 -> "🎯$focusedCount"
-            getEffectiveFocusedScene() != null -> "🎯Cena"
-            else -> "🎯Auto"
+            getEffectiveFocusedScene() != null -> "🎯" + Component.translatable("cobblebrain.story_editor.ai.focus.scene").string
+            else -> "🎯" + Component.translatable("cobblebrain.story_editor.ai.focus.auto").string
         }
         val focusBtnW = font.width(focusLabel) + 8
         val focusBtnX = clearX - focusBtnW - 3
@@ -277,12 +278,12 @@ class StoryEditorAIAssistantWidget(
 
         // Render 6 call badges horizontally: [1.Ped] [5.JSON] [2.Bloc] [6.Perg] [3.Proj] [4.Rev]
         val stages = listOf(
-            Triple(1, "1.Ped", 1 shl 1),
-            Triple(5, "5.JSON", 1 shl 5),
-            Triple(2, "2.Bloc", 1 shl 2),
-            Triple(6, "6.Perg", 1 shl 6),
-            Triple(3, "3.Proj", 1 shl 3),
-            Triple(4, "4.Rev", 1 shl 4)
+            Triple(1, Component.translatable("cobblebrain.story_editor.ai.stage.1").string, 1 shl 1),
+            Triple(5, Component.translatable("cobblebrain.story_editor.ai.stage.5").string, 1 shl 5),
+            Triple(2, Component.translatable("cobblebrain.story_editor.ai.stage.2").string, 1 shl 2),
+            Triple(6, Component.translatable("cobblebrain.story_editor.ai.stage.6").string, 1 shl 6),
+            Triple(3, Component.translatable("cobblebrain.story_editor.ai.stage.3").string, 1 shl 3),
+            Triple(4, Component.translatable("cobblebrain.story_editor.ai.stage.4").string, 1 shl 4)
         )
         val badgeGap = 2
         val availW = panelW - 10
@@ -429,16 +430,17 @@ class StoryEditorAIAssistantWidget(
             guiGraphics.fill(panelX + 1, overlayTopY, panelX + panelW, overlayTopY + 1, 0xFFA855F7.toInt())
 
             val qHeader = if (qState.isTypingCustomOther) {
-                "✏ Digite abaixo sua resposta (Opção 4):"
+                Component.translatable("cobblebrain.story_editor.ai.question_typing").string
             } else {
-                "❓ Escolha uma opção para responder à IA:"
+                Component.translatable("cobblebrain.story_editor.ai.question_choose").string
             }
             guiGraphics.drawString(font, font.plainSubstrByWidth(qHeader, panelW - 12), panelX + 6, overlayTopY + 4, 0xFFE9D5FF.toInt(), false)
 
             var optY = overlayTopY + 16
             val optH = 15
             for (idx in 0 until 4) {
-                val optLabel = qState.options.getOrElse(idx) { "${idx + 1}. Opção ${idx + 1}" }
+                val defaultOpt = if (idx == 3) Component.translatable("cobblebrain.story_editor.ai.question_other").string else "${idx + 1}. Option ${idx + 1}"
+                val optLabel = qState.options.getOrElse(idx) { defaultOpt }
                 val optX = panelX + 6
                 val optW = panelW - 12
                 val isOptHover = mouseX >= optX && mouseX <= optX + optW && mouseY >= optY && mouseY <= optY + optH
@@ -462,7 +464,7 @@ class StoryEditorAIAssistantWidget(
             guiGraphics.fill(panelX + 1, overlayTopY, panelX + panelW, overlayTopY + acceptBarH, 0xFF132A2E.toInt())
             guiGraphics.fill(panelX + 1, overlayTopY, panelX + panelW, overlayTopY + 1, 0xFF10B981.toInt())
 
-            val infoTxt = font.plainSubstrByWidth("📝 $pendingChangesCount alt.", (panelW - 108).coerceAtLeast(30))
+            val infoTxt = font.plainSubstrByWidth(Component.translatable("cobblebrain.story_editor.ai.pending_changes", pendingChangesCount).string, (panelW - 108).coerceAtLeast(30))
             guiGraphics.drawString(font, infoTxt, panelX + 6, overlayTopY + 8, 0xFFA7F3D0.toInt(), false)
 
             val btnW = 46
@@ -475,10 +477,10 @@ class StoryEditorAIAssistantWidget(
             val isRejectHover = mouseX >= rejectX && mouseX <= rejectX + btnW && mouseY >= btnY && mouseY <= btnY + btnH
 
             guiGraphics.fill(acceptX, btnY, acceptX + btnW, btnY + btnH, if (isAcceptHover) 0xFF22C55E.toInt() else 0xFF15803D.toInt())
-            guiGraphics.drawString(font, "✓ Aceitar", acceptX + 4, btnY + 4, 0xFFFFFFFF.toInt(), false)
+            guiGraphics.drawString(font, Component.translatable("cobblebrain.story_editor.ai.accept").string, acceptX + 4, btnY + 4, 0xFFFFFFFF.toInt(), false)
 
             guiGraphics.fill(rejectX, btnY, rejectX + btnW, btnY + btnH, if (isRejectHover) 0xFFEF4444.toInt() else 0xFFB91C1C.toInt())
-            guiGraphics.drawString(font, "✗ Rejeitar", rejectX + 3, btnY + 4, 0xFFFFFFFF.toInt(), false)
+            guiGraphics.drawString(font, Component.translatable("cobblebrain.story_editor.ai.reject").string, rejectX + 3, btnY + 4, 0xFFFFFFFF.toInt(), false)
 
             overlayTopY += acceptBarH
         }
@@ -534,7 +536,7 @@ class StoryEditorAIAssistantWidget(
                     callCounts.clear()
                     completedCallsMask = 0
                     currentRequestTokens = 0
-                    currentStatusText = "Histórico limpo"
+                    currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_cleared").string
                     chatScroll = 0f
                 }
                 return true
@@ -603,14 +605,14 @@ class StoryEditorAIAssistantWidget(
                             qState.isTypingCustomOther = true
                             if (::inputBox.isInitialized) {
                                 inputBox.value = ""
-                                inputBox.setHint(Component.literal("§dDigite sua resposta para a IA..."))
+                                inputBox.setHint(Component.translatable("cobblebrain.story_editor.ai.input_question_hint").withStyle(ChatFormatting.DARK_PURPLE))
                                 inputBox.isFocused = true
                             }
                         } else {
                             val chosenText = qState.options.getOrElse(idx) { "Opção ${idx + 1}" }
                             activeQuestion = null
                             if (::inputBox.isInitialized) {
-                                inputBox.setHint(Component.literal("§8Peça para criar/editar blocos..."))
+                                inputBox.setHint(Component.translatable("cobblebrain.story_editor.ai.input_hint").withStyle(ChatFormatting.DARK_GRAY))
                             }
                             qState.responseFuture.complete(chosenText)
                         }
@@ -676,11 +678,11 @@ class StoryEditorAIAssistantWidget(
         editor.markDirty()
         appendEntry(
             ChatRole.CALL_TRACE,
-            "✅ Alterações Aceitas",
-            "Você confirmou as $count alterações feitas pela IA no projeto.",
+            Component.translatable("cobblebrain.story_editor.ai.accepted_title").string,
+            Component.translatable("cobblebrain.story_editor.ai.accepted_msg", count).string,
             0xFF22C55E.toInt()
         )
-        currentStatusText = "Alterações aceitas!"
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.accepted_status").string
     }
 
     private fun rejectPendingChanges() {
@@ -693,11 +695,11 @@ class StoryEditorAIAssistantWidget(
         pendingChangesCount = 0
         appendEntry(
             ChatRole.CALL_TRACE,
-            "↩ Alterações Rejeitadas (Revertido)",
-            "O projeto foi restaurado exatamente para a cópia original antes das edições da IA.",
+            Component.translatable("cobblebrain.story_editor.ai.rejected_title").string,
+            Component.translatable("cobblebrain.story_editor.ai.rejected_msg").string,
             0xFFEF4444.toInt()
         )
-        currentStatusText = "Alterações revertidas!"
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.rejected_status").string
     }
 
     fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
@@ -834,7 +836,7 @@ class StoryEditorAIAssistantWidget(
         if (qState != null && qState.isTypingCustomOther) {
             inputBox.value = ""
             savedInputText = ""
-            inputBox.setHint(Component.literal("§8Peça para criar/editar blocos..."))
+            inputBox.setHint(Component.translatable("cobblebrain.story_editor.ai.input_hint").withStyle(ChatFormatting.DARK_GRAY))
             activeQuestion = null
             qState.responseFuture.complete("Outro: $userText")
             return
@@ -844,7 +846,7 @@ class StoryEditorAIAssistantWidget(
 
         inputBox.value = ""
         savedInputText = ""
-        appendEntry(ChatRole.USER, "👤 Você", userText, 0xFF38BDF8.toInt())
+        appendEntry(ChatRole.USER, Component.translatable("cobblebrain.story_editor.ai.user").string, userText, 0xFF38BDF8.toInt())
 
         runMultiCallPipeline(userText)
     }
@@ -1110,7 +1112,7 @@ class StoryEditorAIAssistantWidget(
                                 )
                                 appendEntry(
                                     ChatRole.ASSISTANT,
-                                    "🤖 Assistente IA",
+                                    Component.translatable("cobblebrain.story_editor.ai.assistant").string,
                                     cleanUserMessage,
                                     0xFF00FFCC.toInt()
                                 )
@@ -1136,9 +1138,9 @@ class StoryEditorAIAssistantWidget(
                 }
 
                 currentStatusText = if (pendingChangesCount > 0) {
-                    "Concluído! Aceite ou Rejeite abaixo"
+                    Component.translatable("cobblebrain.story_editor.ai.status_review_needed").string
                 } else {
-                    "Pronto ($END_TOKEN)"
+                    Component.translatable("cobblebrain.story_editor.ai.status_done", END_TOKEN).string
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1150,7 +1152,7 @@ class StoryEditorAIAssistantWidget(
                     e.message ?: "Falha inesperada durante a execução das chamadas.",
                     0xFFEF4444.toInt()
                 )
-                currentStatusText = "Erro na chamada"
+                currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_error").string
             } finally {
                 activeCallStage = 0
                 isRunningPipeline = false

@@ -3244,7 +3244,7 @@ object DialogueSystem {
                 if (config.actionSettings.rest.enabledForAI) universalActions += "S (sit/rest - makes Pokémon sleep at night)"
                 if (config.actionSettings.protect.enabledForAI) universalActions += "P (protect)"
                 if (config.actionSettings.idle.enabledForAI) universalActions += "I (idle)"
-                if (config.actionSettings.music.enabledForAI) universalActions += "M (music - play quick melody)"
+                
                 if (config.actionSettings.song.enabledForAI) universalActions += "SO (song - perform full 1-minute song with multi-track accompaniment and singing)"
 
                 if (config.actionSettings.cook.enabledForAI && "fire" in presentTypes) typeActions += "Fire: C (cook/smelt)"
@@ -4568,10 +4568,10 @@ object DialogueSystem {
                             }
                             RecentEventsSystem.commandSources[pokemon.uuid] = RecentEventsSystem.CommandSource.AI
                             CommandState.activeCommands[pokemon.uuid] = cmd.action
-                            if (cmd.action == "music") {
-                                MusicManager.startMusicAction(pokemon, player)
-                            } else if (cmd.action == "song") {
-                                MusicManager.startSongAction(pokemon, player)
+                            if (cmd.action == "song") { MusicManager.startSongAction(pokemon, player)
+
+
+
                             }
                         }
                     }

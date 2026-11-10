@@ -820,7 +820,7 @@ class AIHandler {
         }
 
         val sanitizedRaw = DialogueFilter.sanitizeRawResponse(responseText)
-        val isMusic = prompt.contains("~MUSIC") || prompt.contains("[POKEMON MUSIC GENERATION]")
+        val isMusic = prompt.contains("~MUSIC") || prompt.contains("[POKEMON MUSIC") || prompt.contains("[POKEMON SONG")
 
         val formatted = sanitizedRaw
             .replace("\\n", "\n")
@@ -931,7 +931,7 @@ class AIHandler {
     }
 
     fun generateBackgroundState(prompt: String): String {
-        val isMusic = prompt.contains("[POKEMON MUSIC GENERATION]")
+        val isMusic = prompt.contains("~MUSIC") || prompt.contains("[POKEMON MUSIC") || prompt.contains("[POKEMON SONG")
         val systemOverride = if (isMusic) {
             "You are a music composition engine for Pokémon. Output strictly the requested music notation without dialogue or commentary."
         } else {
