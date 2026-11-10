@@ -2986,6 +2986,11 @@ class StoryEditorScreen(
             font = font,
             onAction = { action ->
                 when (action) {
+                    ContextMenuAction.CLEAR_ALL_AI_FOCUS -> {
+                        StoryEditorAIAssistantWidget.pinnedFocusNodeIds.clear()
+                        StoryEditorAIAssistantWidget.pinnedFocusSceneIds.clear()
+                        showStatus("🎯 Todos os focos da IA foram limpos!")
+                    }
                     ContextMenuAction.PASTE_NODES -> {
                         pasteCopiedNodesAt(worldX, worldY)
                     }
@@ -3130,7 +3135,7 @@ class StoryEditorScreen(
                 val allAlreadyPinned = targetIds.all { StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(it) }
                 if (allAlreadyPinned) {
                     StoryEditorAIAssistantWidget.pinnedFocusNodeIds.removeAll(targetIds.toSet())
-                    showStatus("🎯 Foco IA removido de ${targetIds.size} bloco(s).")
+                    showStatus("🎯 Foco IA removido de ${targetIds.size} bloco(s) (Restam: ${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size}).")
                 } else {
                     targetIds.forEach { id ->
                         if (!StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(id)) {
@@ -3139,6 +3144,11 @@ class StoryEditorScreen(
                     }
                     showStatus("🎯 ${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size} bloco(s) marcados para Foco da IA!")
                 }
+            }
+            ContextMenuAction.CLEAR_ALL_AI_FOCUS -> {
+                StoryEditorAIAssistantWidget.pinnedFocusNodeIds.clear()
+                StoryEditorAIAssistantWidget.pinnedFocusSceneIds.clear()
+                showStatus("🎯 Todos os focos da IA foram limpos!")
             }
             ContextMenuAction.PASTE_NODES -> {
                 pasteCopiedNodesAt(currentMouseWorldX, currentMouseWorldY)

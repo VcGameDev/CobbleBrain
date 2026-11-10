@@ -174,15 +174,17 @@ object StoryExecutor {
     }
 
     fun stopStory(storyId: String) {
-        val instance = activeStories.remove(storyId)
-        instance?.context?.isCancelled = true
-        instance?.context?.waitingCondOutNodes?.clear()
-        instance?.context?.waitingTriggers?.clear()
-        if (instance?.context?.player != null) {
+        val instance = activeStories[storyId]
+        if (instance?.context?.player != null && !instance.context.isStoryEndedFired) {
+            instance.context.isStoryEndedFired = true
             sendCancelKeyInput?.invoke(instance.context.player, vito.cobblebrain.network.CobblebrainPayloads.CancelKeyInputPayload(storyId, ""))
             instance.context.waitingKeyInputNodeId = null
             StoryListenerManager.onStoryEnded(instance.context.player, storyId)
         }
+        activeStories.remove(storyId)
+        instance?.context?.isCancelled = true
+        instance?.context?.waitingCondOutNodes?.clear()
+        instance?.context?.waitingTriggers?.clear()
         StoryDebugger.clearNodeStatuses(storyId)
         StoryLookAtManager.clearAll()
         StoryJumpManager.clearAll()
@@ -826,6 +828,14 @@ object StoryExecutor {
 
         executeNodeAction(instance.context, currentNode)
 
+        val player = instance.context.player
+        val executedTag = (currentNode.params["eventTag"] ?: currentNode.params["storyTag"] ?: currentNode.params["tag"])?.trim()
+        if (player != null && !executedTag.isNullOrBlank()) {
+            instance.context.executedEventTags.add(executedTag)
+            StoryListenerManager.onEventExecuted(player, executedTag)
+        }
+        instance.context.executedEventTags.add(currentNode.id)
+
         StoryDebugger.recordLog(
             storyId = storyId,
             blockId = currentNode.id,
@@ -973,6 +983,11 @@ object StoryExecutor {
         // If current scene is marked with isEndScene == true, declare story finished
         if (scene.isEndScene) {
             markStoryCompleted(instance.context.player, instance.storyId)
+            val player = instance.context.player
+            if (player != null && !instance.context.isStoryEndedFired) {
+                instance.context.isStoryEndedFired = true
+                StoryListenerManager.onStoryEnded(player, instance.storyId)
+            }
             stopStory(instance.storyId)
             return
         }
@@ -981,6 +996,11 @@ object StoryExecutor {
         val outgoingSceneConnections = instance.project.sceneConnections.filter { it.fromNodeId == scene.id || it.fromPortId == scene.outPort.id }
         if (outgoingSceneConnections.isEmpty()) {
             markStoryCompleted(instance.context.player, instance.storyId)
+            val player = instance.context.player
+            if (player != null && !instance.context.isStoryEndedFired) {
+                instance.context.isStoryEndedFired = true
+                StoryListenerManager.onStoryEnded(player, instance.storyId)
+            }
             stopStory(instance.storyId)
             return
         }

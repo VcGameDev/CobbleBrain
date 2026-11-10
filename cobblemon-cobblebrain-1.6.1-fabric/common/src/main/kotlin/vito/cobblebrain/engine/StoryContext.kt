@@ -37,6 +37,8 @@ data class StoryContext(
     var waitingKeyInputNodeId: String? = null,
     var waitingKeyInputStepCount: Int = 0,
     val waitingCondOutNodes: MutableMap<String, Int> = mutableMapOf(),
-    val executedEventTags: MutableSet<String> = mutableSetOf()
+    val executedEventTags: MutableSet<String> = mutableSetOf(),
+    var startWorldDayTime: Long = -1L,
+    var isStoryEndedFired: Boolean = false
 )
 

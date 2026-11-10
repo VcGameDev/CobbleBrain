@@ -145,11 +145,40 @@ object StoryMissionManager {
                     if (!sp.isNullOrBlank()) "Defeat $sp: ${mission.currentProgress}/${mission.targetCount}"
                     else "Win Battles: ${mission.currentProgress}/${mission.targetCount}"
                 }
-                "INTERACT_POKEMON", "TALK_TO_POKEMON" -> {
+                "INTERACT_POKEMON" -> {
                     val sp = mission.questNode.params["targetSpecies"]?.trim()
                     if (!sp.isNullOrBlank()) "Interact with $sp: ${mission.currentProgress}/${mission.targetCount}"
                     else "Interact: ${mission.currentProgress}/${mission.targetCount}"
                 }
+                "TALK_TO_POKEMON" -> {
+                    val sp = mission.questNode.params["targetSpecies"]?.trim()
+                    if (!sp.isNullOrBlank()) "Talk to $sp: ${mission.currentProgress}/${mission.targetCount}"
+                    else "Talk to Pokemon: ${mission.currentProgress}/${mission.targetCount}"
+                }
+                "BATTLE_START" -> {
+                    val sp = mission.questNode.params["targetSpecies"]?.trim()
+                    if (!sp.isNullOrBlank()) "Start battle against $sp: ${mission.currentProgress}/${mission.targetCount}"
+                    else "Start Battle: ${mission.currentProgress}/${mission.targetCount}"
+                }
+                "BATTLE_DEFEAT" -> {
+                    val sp = mission.questNode.params["targetSpecies"]?.trim()
+                    if (!sp.isNullOrBlank()) "Battle against $sp (Defeat): ${mission.currentProgress}/${mission.targetCount}"
+                    else "Battle Defeat: ${mission.currentProgress}/${mission.targetCount}"
+                }
+                "TIME_ELAPSED" -> "Wait: ${mission.currentProgress}s / ${mission.targetCount}s"
+                "TIME_OF_DAY" -> "Wait for Time of Day (${mission.questNode.params["timeOfDayTicks"] ?: "6000"} ticks)"
+                "DAYS_PASSED" -> "Days: ${mission.currentProgress} / ${mission.targetCount}"
+                "DAY_NIGHT_CHECK" -> "Wait for ${mission.questNode.params["timePeriod"] ?: "DAY"}"
+                "WEATHER_CHECK" -> "Wait for Weather (${mission.questNode.params["weatherType"] ?: "RAIN"})"
+                "PLAYER_BIOME" -> "Reach Biome: ${(mission.questNode.params["biomeId"] ?: "plains").substringAfter(":")}"
+                "ENTER_STRUCTURE_OR_ZONE" -> "Explore Structure: ${(mission.questNode.params["structureId"] ?: "structure").substringAfter(":")}"
+                "KARMA_CHECK" -> "Karma Condition (${mission.questNode.params["comparisonOp"] ?: ">="} ${mission.questNode.params["targetKarma"] ?: "0"})"
+                "VARIABLE_VALUE_CHECK" -> "Variable ${mission.questNode.params["varKey"] ?: "var"} (${mission.questNode.params["varOp"] ?: "=="} ${mission.questNode.params["varValue"] ?: ""})"
+                "PLAYER_INVENTORY_ITEM_REMOVED" -> {
+                    val itm = (mission.questNode.params["targetItem"] ?: mission.questNode.params["requiredItem"] ?: "item").substringAfter(":")
+                    "Remove $itm from inventory"
+                }
+                "AI_EVALUATION" -> "Satisfy AI condition"
                 "PLAYER_LEVEL" -> "Reach Level ${mission.targetCount}: ${mission.currentProgress}/${mission.targetCount}"
                 "PLAYER_COORDINATES", "LOCATION" -> "Reach Target Location"
                 else -> "${mission.currentProgress} / ${mission.targetCount}"
@@ -284,6 +313,154 @@ object StoryMissionManager {
                     markMissionCompleted(mission, player)
                 }
             }
+
+            "TIME_ELAPSED" -> {
+                val reqSec = mission.questNode.params["timeSeconds"]?.toLongOrNull() ?: mission.questNode.params["seconds"]?.toLongOrNull() ?: mission.targetCount.toLong()
+                val elapsedSec = (System.currentTimeMillis() - mission.startTimeMs) / 1000L
+                val prev = mission.currentProgress
+                mission.currentProgress = elapsedSec.toInt().coerceAtMost(mission.targetCount)
+                if (mission.currentProgress != prev && mission.currentProgress < mission.targetCount) {
+                    syncMissions(player)
+                    fireQuestOutput(mission, "PROGRESS_OUT")
+                }
+                if (elapsedSec >= reqSec) {
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "TIME_OF_DAY" -> {
+                val targetTicks = mission.questNode.params["timeOfDayTicks"]?.toIntOrNull() ?: 6000
+                val timeOfDay = Math.floorMod(player.serverLevel().dayTime, 24000L).toInt()
+                val diff = Math.abs(timeOfDay - targetTicks)
+                if (diff <= 20 || diff >= 23980) {
+                    mission.currentProgress = mission.targetCount
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "DAYS_PASSED" -> {
+                val reqDays = mission.questNode.params["daysCount"]?.toLongOrNull() ?: mission.targetCount.toLong()
+                if (mission.instance.context.startWorldDayTime < 0L) {
+                    mission.instance.context.startWorldDayTime = player.serverLevel().dayTime
+                }
+                val elapsedTicks = Math.max(0L, player.serverLevel().dayTime - mission.instance.context.startWorldDayTime)
+                val elapsedDays = elapsedTicks / 24000L
+                val prev = mission.currentProgress
+                mission.currentProgress = elapsedDays.toInt().coerceAtMost(mission.targetCount)
+                if (mission.currentProgress != prev && mission.currentProgress < mission.targetCount) {
+                    syncMissions(player)
+                    fireQuestOutput(mission, "PROGRESS_OUT")
+                }
+                if (elapsedDays >= reqDays) {
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "DAY_NIGHT_CHECK" -> {
+                val timeOfDay = Math.floorMod(player.serverLevel().dayTime, 24000L)
+                val isDay = timeOfDay < 13000L || timeOfDay >= 23000L
+                val expected = (mission.questNode.params["timePeriod"] ?: "DAY").trim().uppercase()
+                if ((isDay && expected == "DAY") || (!isDay && expected == "NIGHT")) {
+                    mission.currentProgress = mission.targetCount
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "WEATHER_CHECK" -> {
+                val level = player.serverLevel()
+                val current = if (level.isThundering) "THUNDER" else if (level.isRaining) "RAIN" else "CLEAR"
+                val expected = (mission.questNode.params["weatherType"] ?: "RAIN").uppercase()
+                if (current == expected) {
+                    mission.currentProgress = mission.targetCount
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "PLAYER_BIOME" -> {
+                val targetBiome = (mission.questNode.params["biomeId"] ?: "minecraft:plains").trim().lowercase()
+                val biomeHolder = player.serverLevel().getBiome(player.blockPosition())
+                val currentBiome = biomeHolder.unwrapKey().map { it.location().toString() }.orElse("")
+                val biomePath = currentBiome.substringAfter(":")
+                val targetPath = targetBiome.substringAfter(":")
+                if (currentBiome.equals(targetBiome, ignoreCase = true) || biomePath.equals(targetPath, ignoreCase = true)) {
+                    mission.currentProgress = mission.targetCount
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "ENTER_STRUCTURE_OR_ZONE" -> {
+                val structureId = mission.questNode.params["structureId"]?.trim() ?: ""
+                if (structureId.isNotBlank()) {
+                    try {
+                        val serverLevel = player.serverLevel()
+                        val structureManager = serverLevel.structureManager()
+                        val registry = serverLevel.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE)
+                        val pos = player.blockPosition()
+                        val match = registry.entrySet().any { entry ->
+                            val idStr = entry.key.location().toString()
+                            val isTarget = idStr.equals(structureId, ignoreCase = true) || idStr.endsWith(":$structureId", ignoreCase = true)
+                            if (isTarget) {
+                                val holder = registry.getHolder(entry.key).orElse(null)
+                                if (holder != null) {
+                                    structureManager.getStructureWithPieceAt(pos, holder.value()).isValid
+                                } else false
+                            } else false
+                        }
+                        if (match) {
+                            mission.currentProgress = mission.targetCount
+                            markMissionCompleted(mission, player)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
+            "KARMA_CHECK" -> {
+                val targetKarma = mission.questNode.params["targetKarma"]?.toIntOrNull() ?: 0
+                val op = mission.questNode.params["comparisonOp"] ?: ">="
+                val karmaRoot = vito.cobblebrain.social.CobblebrainWorldSave.data.getAsJsonObject("karma")
+                val playerKarma = karmaRoot?.getAsJsonObject(player.uuid.toString())
+                val targetSpecies = (mission.questNode.params["targetSpecies"] ?: mission.questNode.params["species"] ?: "").trim()
+                val karmaVal: Int = if (playerKarma != null) {
+                    if (targetSpecies.isNotBlank() && targetSpecies != "ALL" && targetSpecies != "GLOBAL") {
+                        val entry = playerKarma.entrySet().find { isSpeciesMatching(it.key, targetSpecies) }
+                        entry?.value?.asInt ?: playerKarma.get(targetSpecies)?.asInt ?: 0
+                    } else {
+                        if (playerKarma.size() > 0) playerKarma.entrySet().sumOf { it.value.asInt } else 0
+                    }
+                } else 0
+                val ok = when (op) {
+                    ">" -> karmaVal > targetKarma
+                    "<" -> karmaVal < targetKarma
+                    "<=" -> karmaVal <= targetKarma
+                    "==" -> karmaVal == targetKarma
+                    else -> karmaVal >= targetKarma
+                }
+                if (ok) {
+                    mission.currentProgress = mission.targetCount
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "VARIABLE_VALUE_CHECK" -> {
+                val varKey = mission.questNode.params["varKey"] ?: "var_1"
+                val op = mission.questNode.params["varOp"] ?: ">="
+                val targetVal = mission.questNode.params["varValue"] ?: "100"
+                val actualVal = mission.instance.context.variables[varKey]
+                if (StoryExecutor.evaluateVariableCondition(actualVal, op, targetVal)) {
+                    mission.currentProgress = mission.targetCount
+                    markMissionCompleted(mission, player)
+                }
+            }
+
+            "PLAYER_INVENTORY_ITEM_REMOVED" -> {
+                if (targetItem.isNotBlank()) {
+                    val count = getPlayerItemCount(player, targetItem)
+                    if (count == 0) {
+                        mission.currentProgress = mission.targetCount
+                        markMissionCompleted(mission, player)
+                    }
+                }
+            }
         }
     }
 
@@ -385,6 +562,45 @@ object StoryMissionManager {
                             continue
                         }
                     }
+                } else if (normalizedIncoming == "BATTLE_START") {
+                    val reqType = mission.questNode.params["battleType"]?.trim()
+                    if (!reqType.isNullOrBlank() && !reqType.equals("ANY", ignoreCase = true)) {
+                        val evType = eventData["battleType"]?.trim() ?: ""
+                        if (!evType.equals(reqType, ignoreCase = true)) {
+                            continue
+                        }
+                    }
+                    val reqSpecies = mission.questNode.params["targetSpecies"]?.trim()
+                    if (!reqSpecies.isNullOrBlank()) {
+                        val evSpecies = eventData["targetSpecies"]?.trim() ?: ""
+                        if (evSpecies.isNotBlank() && !isSpeciesMatching(evSpecies, reqSpecies)) {
+                            continue
+                        }
+                    }
+                } else if (normalizedIncoming == "BATTLE_DEFEAT") {
+                    val reqSpecies = mission.questNode.params["targetSpecies"]?.trim()
+                    if (!reqSpecies.isNullOrBlank()) {
+                        val evSpecies = eventData["targetSpecies"]?.trim() ?: ""
+                        if (evSpecies.isNotBlank() && !isSpeciesMatching(evSpecies, reqSpecies)) {
+                            continue
+                        }
+                    }
+                } else if (normalizedIncoming == "TALK_TO_POKEMON") {
+                    val reqSpecies = mission.questNode.params["targetSpecies"]?.trim()
+                    if (!reqSpecies.isNullOrBlank()) {
+                        val evSpecies = eventData["targetSpecies"]?.trim() ?: ""
+                        if (evSpecies.isNotBlank() && !isSpeciesMatching(evSpecies, reqSpecies)) {
+                            continue
+                        }
+                    }
+                } else if (normalizedIncoming == "AI_EVALUATION") {
+                    val reqIntent = mission.questNode.params["aiIntent"]?.trim()
+                    if (!reqIntent.isNullOrBlank()) {
+                        val evIntent = eventData["aiIntent"]?.trim() ?: ""
+                        if (!evIntent.contains(reqIntent, ignoreCase = true)) {
+                            continue
+                        }
+                    }
                 }
 
                 mission.currentProgress += 1
@@ -399,7 +615,7 @@ object StoryMissionManager {
         }
     }
 
-    fun onEntityTriggerFired(player: ServerPlayer?, triggerId: String, entity: Entity?) {
+    fun onEntityTriggerFired(player: ServerPlayer?, triggerId: String, entity: Entity?, eventData: Map<String, String> = emptyMap()) {
         val snapshot = activeMissions.toList()
         for (mission in snapshot) {
             if (mission.isCompleted || mission.isFailed) continue
@@ -417,7 +633,8 @@ object StoryMissionManager {
             val trigMatches = mission.questTrigger == triggerId ||
                     (triggerId == "INTERACT_ENTITY" && mission.questTrigger == "INTERACT_POKEMON") ||
                     (triggerId == "INTERACT_POKEMON" && mission.questTrigger == "INTERACT_ENTITY") ||
-                    (triggerId == "INTERACT_ENTITY" && mission.questTrigger == "TALK_TO_POKEMON")
+                    (triggerId == "INTERACT_ENTITY" && mission.questTrigger == "TALK_TO_POKEMON") ||
+                    (triggerId == "TALK_TO_POKEMON" && mission.questTrigger == "INTERACT_ENTITY")
 
             if (trigMatches) {
                 if (entity != null) {
@@ -433,6 +650,25 @@ object StoryMissionManager {
                                 continue
                             }
                         }
+                    } else {
+                        val reqEntityType = mission.questNode.params["entityType"]?.trim()
+                        if (!reqEntityType.isNullOrBlank() && !reqEntityType.equals("ANY", ignoreCase = true) && reqEntityType != "*") {
+                            val fullKey = BuiltInRegistries.ENTITY_TYPE.getKey(entity.type).toString()
+                            val path = fullKey.substringAfter(":")
+                            val targetPath = reqEntityType.substringAfter(":")
+                            val matchesType = fullKey.equals(reqEntityType, ignoreCase = true) || path.equals(targetPath, ignoreCase = true)
+                            if (!matchesType) {
+                                continue
+                            }
+                        }
+                    }
+                }
+
+                if (triggerId == "ENTITY_DAMAGED") {
+                    val minDamage = mission.questNode.params["minDamage"]?.toFloatOrNull()
+                    val damageAmount = eventData["damageAmount"]?.toFloatOrNull()
+                    if (minDamage != null && damageAmount != null && damageAmount < minDamage) {
+                        continue
                     }
                 }
 

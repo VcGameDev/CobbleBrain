@@ -432,25 +432,44 @@ object ActionRegistry {
         )
     )
 
-    fun find(id: String?): ActionDefinition {
-        if (id == null) return actions.first()
-        val normalized = when (id) {
+    fun normalizeId(id: String?): String {
+        if (id.isNullOrBlank()) return "SEND_CHAT_MESSAGE"
+        return when (id.trim().uppercase()) {
             "MESSAGE" -> "SEND_CHAT_MESSAGE"
             "SPAWN_POKEMON", "SPAWN" -> "SPAWN_COBBLEMON"
             "SOUND" -> "PLAY_SOUND"
-            "EFFECT" -> "ADD_PLAYER_EFFECT"
+            "EFFECT", "PLAYER_EFFECT", "REMOVE_PLAYER_EFFECT", "CLEAR_PLAYER_EFFECT" -> "ADD_PLAYER_EFFECT"
+            "ENTITY_EFFECT", "REMOVE_ENTITY_EFFECT", "CLEAR_ENTITY_EFFECT", "REMOVE_EFFECT", "CLEAR_EFFECT" -> "ADD_ENTITY_EFFECT"
             "LOOK_AT_BLOCK" -> "LOOK_AT"
-            "ANIMATION_BLOCK" -> "ANIMATION"
+            "ANIMATION_BLOCK", "PLAY_ANIMATION", "POSE", "PLAY_POSE", "PLAY_SPECIAL_POSE", "SLEEP", "WAKE", "WAKE_UP" -> "ANIMATION"
             "NAVIGATE_ENTITY", "MOVE_TO", "PATHFIND_ENTITY", "MOVE_ENTITY" -> "MOVE_TO_BLOCK"
             "TEXTURE_BLOCK", "ENTITY_TEXTURE", "SET_TEXTURE" -> "SET_ENTITY_TEXTURE"
             "MANAGE_TAG", "TAG_ACTION", "TAG", "MANAGE_TAGS" -> "TAG_BLOCK"
-            else -> id
+            "HEAL_PARTY", "CURE_PARTY", "PARTY_EFFECT" -> "ADD_POKEMON_PARTY_EFFECT"
+            "STRUCTURE" -> "SPAWN_STRUCTURE"
+            else -> id.trim().uppercase()
         }
-        return actions.find { it.id == normalized } ?: actions.first()
+    }
+
+    fun isKnownAction(id: String?): Boolean {
+        if (id.isNullOrBlank()) return false
+        val norm = normalizeId(id)
+        return actions.any { it.id.equals(norm, ignoreCase = true) }
+    }
+
+    fun find(id: String?): ActionDefinition {
+        if (id.isNullOrBlank()) {
+            return actions.find { it.id == "SEND_CHAT_MESSAGE" } ?: actions.last()
+        }
+        val normalized = normalizeId(id)
+        return actions.find { it.id.equals(normalized, ignoreCase = true) }
+            ?: actions.find { it.id == "SEND_CHAT_MESSAGE" }
+            ?: actions.last()
     }
 
     fun getAction(id: String?): ActionDefinition? {
         if (id == null) return null
-        return actions.find { it.id.equals(id, ignoreCase = true) } ?: find(id)
+        val normalized = normalizeId(id)
+        return actions.find { it.id.equals(normalized, ignoreCase = true) } ?: find(id)
     }
 }

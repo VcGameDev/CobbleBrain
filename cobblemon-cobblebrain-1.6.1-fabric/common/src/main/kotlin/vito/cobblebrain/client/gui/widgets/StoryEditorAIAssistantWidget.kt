@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.network.chat.Component
 import vito.cobblebrain.client.AIClientHandler
+import vito.cobblebrain.client.AIHandler
 import vito.cobblebrain.client.gui.StoryEditorScreen
 import vito.cobblebrain.model.*
 import java.util.UUID
@@ -41,6 +42,11 @@ class StoryEditorAIAssistantWidget(
         var isTypingCustomOther: Boolean = false
     )
 
+    data class CompletedInteractionMemory(
+        val originalUserQuestion: String,
+        val finalAiResponse: String
+    )
+
     /**
      * A "Prancheta Compartilhada" (Blackboard) que passa de um robô (chamada) para o outro,
      * já que cada chamada de IA é uma mensagem única sem memória de sessão.
@@ -54,12 +60,22 @@ class StoryEditorAIAssistantWidget(
         val blockGuideNotes = mutableListOf<String>()   // Notas da Chamada 2 (blocos escolhidos e opções)
         val executionNotes = mutableListOf<String>()    // Log do que a Chamada 3 já desenhou no projeto
 
-        fun renderPaperForNextRobot(currentTaskInstruction: String): String {
+        fun renderPaperForNextRobot(
+            currentTaskInstruction: String,
+            includeBlockGuideDraft: Boolean = true
+        ): String {
             return buildString {
                 appendLine("╔══════════════════════════════════════════════════════════════════╗")
                 appendLine("║         PRANCHETA COMPARTILHADA ENTRE OS ROBÔS (BLACKBOARD)      ║")
                 appendLine("╚══════════════════════════════════════════════════════════════════╝")
-                appendLine("1. [PEDIDO ORIGINAL DO JOGADOR]: $userRequest")
+                if (recentCompletedInteractions.isNotEmpty()) {
+                    appendLine("0. [MEMÓRIA DAS ÚLTIMAS ${recentCompletedInteractions.size} REQUISIÇÕES ANTERIORES DO JOGADOR]:")
+                    recentCompletedInteractions.takeLast(2).forEachIndexed { idx, mem ->
+                        appendLine("   • [Pedido Anterior #${idx + 1}]: ${mem.originalUserQuestion}")
+                        appendLine("     [Resposta Final #${idx + 1}]: ${mem.finalAiResponse.take(350)}")
+                    }
+                }
+                appendLine("1. [PEDIDO ORIGINAL DO JOGADOR ATUAL]: $userRequest")
                 appendLine("2. [INTENÇÃO GERAL (CARIMBO ROBÔ 1)]: $intentSummary")
                 appendLine("3. [TAREFA ESPECÍFICA DESTA CHAMADA]: $currentTaskInstruction")
                 appendLine("4. [FOCO MARCADO PELO JOGADOR NA TELA]:")
@@ -77,7 +93,7 @@ class StoryEditorAIAssistantWidget(
                     appendLine("7. [ANÁLISE DOS ARQUIVOS DE BLOCOS E CONEXÕES (ROBÔ 5)]:")
                     appendLine(jsonAnalysisNotes.joinToString("\n---\n"))
                 }
-                if (blockGuideNotes.isNotEmpty()) {
+                if (blockGuideNotes.isNotEmpty() && includeBlockGuideDraft) {
                     appendLine("8. [ESPECIFICAÇÃO DOS BLOCOS E OPÇÕES ESCOLHIDAS (ROBÔ 2)]:")
                     appendLine(blockGuideNotes.joinToString("\n---\n"))
                 }
@@ -95,6 +111,8 @@ class StoryEditorAIAssistantWidget(
 
         // Persist chat history and state across screen rebuilds (init()) during the same editing session
         val chatHistory = CopyOnWriteArrayList<ChatEntry>()
+        // Memory of the last 2 completed original user questions and their final AI answers
+        val recentCompletedInteractions = CopyOnWriteArrayList<CompletedInteractionMemory>()
         val callCounts = java.util.concurrent.ConcurrentHashMap<Int, Int>()
         @Volatile var isRunningPipeline: Boolean = false
         @Volatile var activeCallStage: Int = 0 // 0=Idle, 1=Call1, 51=Call5a, 52=Call5b, 21=Call2a, 22=Call2b, 6=Question, 3=Call3, 4=Call4
@@ -133,16 +151,16 @@ class StoryEditorAIAssistantWidget(
 
     private fun getEffectiveFocusedNodes(): List<NodeData> {
         if (!focusOnSelectionEnabled) return emptyList()
-        val liveSelected = editor.selectedWidgets.map { it.node }.toMutableList()
-        editor.selectedWidget?.node?.let { single ->
-            if (liveSelected.none { it.id == single.id }) liveSelected.add(single)
+        val allNodes = editor.project.getAllNodes()
+        val combinedIds = LinkedHashSet<String>()
+        // 1. Always include all nodes explicitly marked/pinned for AI Focus (cumulative multi-block list)
+        combinedIds.addAll(pinnedFocusNodeIds)
+        // 2. Also include any multi-selection on the canvas (Shift+click or Box drag of 2+ nodes)
+        if (editor.selectedWidgets.size > 1) {
+            editor.selectedWidgets.forEach { combinedIds.add(it.node.id) }
         }
-        if (liveSelected.isNotEmpty()) return liveSelected
-        if (pinnedFocusNodeIds.isNotEmpty()) {
-            val allNodes = editor.project.getAllNodes()
-            return allNodes.filter { pinnedFocusNodeIds.contains(it.id) }
-        }
-        return emptyList()
+        if (combinedIds.isEmpty()) return emptyList()
+        return allNodes.filter { combinedIds.contains(it.id) }
     }
 
     private fun getEffectiveFocusedScene(): SceneData? {
@@ -171,7 +189,10 @@ class StoryEditorAIAssistantWidget(
             if (focusedNodes.isNotEmpty()) {
                 appendLine("• $MARKED_TAG Blocos selecionados pelo jogador para FOCO EXCLUSIVO (${focusedNodes.size}):")
                 for (n in focusedNodes) {
-                    appendLine("  - id=\"${n.id}\" | type=${n.nodeType} | title=\"${n.title}\" | pos=(${n.x.toInt()},${n.y.toInt()}) | content=\"${n.content.take(60)}\" | params=${n.params}")
+                    val sc = editor.project.scenes.find { it.id == n.parentSceneId }
+                    val relX = (n.x - (sc?.x ?: 0.0)).toInt()
+                    val relY = (n.y - (sc?.y ?: 0.0)).toInt()
+                    appendLine("  - id=\"${n.id}\" | type=${n.nodeType} | title=\"${n.title}\" | pos=($relX,$relY) | content=\"${n.content.take(60)}\" | params=${n.params}")
                 }
             }
         }.trim()
@@ -332,32 +353,7 @@ class StoryEditorAIAssistantWidget(
         var curY = chatTop + 6 - chatScroll.toInt()
         val msgMaxW = (panelW - 24).coerceAtLeast(60)
 
-        if (chatHistory.isEmpty()) {
-            val welcomeLines = listOf(
-                "👋 Olá! Sou seu Assistente IA do Story Editor.",
-                "",
-                "Funciono como uma equipe de robôs passando uma prancheta de desenho:",
-                "• 1. Pedido: Entende sua meta",
-                "• 5. Funil JSON: Marca blocos com [MARKED] e separa nós/conexões",
-                "• 2. Blocos: Escolhe nós (2a) e lê o guia completo (2b)",
-                "• 6. Pergunta: Tira dúvidas com 4 opções se precisar",
-                "• 3. Projeto: Posiciona e conecta os blocos automaticamente",
-                "• 4. Revisão: Valida tudo e emite [ENDTOKEN]",
-                "",
-                "🎯 Dica: Selecione blocos no canvas para focar a IA apenas neles!"
-            )
-            for (line in welcomeLines) {
-                if (line.isBlank()) {
-                    curY += 5
-                } else {
-                    val wrapped = font.split(Component.literal(line), msgMaxW)
-                    for (wLine in wrapped) {
-                        guiGraphics.drawString(font, wLine, panelX + 8, curY, 0xFF94A3B8.toInt(), false)
-                        curY += font.lineHeight + 2
-                    }
-                }
-            }
-        } else {
+        if (chatHistory.isNotEmpty()) {
             for (entry in chatHistory) {
                 val wrappedLines = font.split(Component.literal(entry.text), msgMaxW - 8)
                 val isTrace = entry.role == ChatRole.CALL_TRACE
@@ -534,6 +530,7 @@ class StoryEditorAIAssistantWidget(
             if (mouseX >= clearX && mouseX <= clearX + 14 && mouseY >= closeY && mouseY <= closeY + 12) {
                 if (!isRunningPipeline) {
                     chatHistory.clear()
+                    recentCompletedInteractions.clear()
                     callCounts.clear()
                     completedCallsMask = 0
                     currentRequestTokens = 0
@@ -556,20 +553,24 @@ class StoryEditorAIAssistantWidget(
             if (mouseX >= focusBtnX && mouseX <= focusBtnX + focusBtnW && mouseY >= closeY && mouseY <= closeY + 12) {
                 val liveSelectedNodes = editor.selectedWidgets.map { it.node.id }.toMutableList()
                 editor.selectedWidget?.node?.id?.let { if (!liveSelectedNodes.contains(it)) liveSelectedNodes.add(it) }
+                val newToPin = liveSelectedNodes.filter { !pinnedFocusNodeIds.contains(it) }
 
                 if (!focusOnSelectionEnabled) {
                     focusOnSelectionEnabled = true
                     pinnedFocusNodeIds.clear()
                     pinnedFocusNodeIds.addAll(liveSelectedNodes)
-                    currentStatusText = if (liveSelectedNodes.isNotEmpty()) {
-                        "🎯 Foco fixado em ${liveSelectedNodes.size} bloco(s)"
+                    currentStatusText = if (pinnedFocusNodeIds.isNotEmpty()) {
+                        "🎯 Foco fixado em ${pinnedFocusNodeIds.size} bloco(s)"
                     } else {
-                        "🎯 Foco automático na seleção ativo"
+                        "🎯 Modo de foco ativo (Clique direito -> Adicionar ao Foco IA)"
                     }
-                } else if (liveSelectedNodes.isNotEmpty() && pinnedFocusNodeIds != liveSelectedNodes) {
+                } else if (newToPin.isNotEmpty()) {
+                    pinnedFocusNodeIds.addAll(newToPin)
+                    currentStatusText = "🎯 ${pinnedFocusNodeIds.size} bloco(s) em Foco da IA"
+                } else if (pinnedFocusNodeIds.isNotEmpty() || pinnedFocusSceneIds.isNotEmpty()) {
                     pinnedFocusNodeIds.clear()
-                    pinnedFocusNodeIds.addAll(liveSelectedNodes)
-                    currentStatusText = "🎯 Fixados ${liveSelectedNodes.size} bloco(s) para a IA"
+                    pinnedFocusSceneIds.clear()
+                    currentStatusText = "🎯 Focos limpos (Trabalhando na cena ativa)"
                 } else {
                     focusOnSelectionEnabled = false
                     pinnedFocusNodeIds.clear()
@@ -759,8 +760,10 @@ class StoryEditorAIAssistantWidget(
     }
 
     private fun appendEntry(role: ChatRole, badge: String, text: String, accentColor: Int) {
-        chatHistory.add(ChatEntry(role, badge, text.trim(), accentColor))
+        val cleaned = text.trim()
+        chatHistory.add(ChatEntry(role, badge, cleaned, accentColor))
         autoScrollToBottom = true
+        AIHandler.logStoryEditor("[CHAT-UI][$role] $badge:\n$cleaned\n------------------------------------------------------------")
     }
 
     private fun estimateTokens(vararg texts: String): Int {
@@ -768,16 +771,55 @@ class StoryEditorAIAssistantWidget(
         return (chars / 4).coerceAtLeast(1)
     }
 
+    private fun stageLabelForLog(stage: Int): String = when (stage) {
+        1 -> "CALL_1 (Roteador / Intenção)"
+        51 -> "CALL_5A (Funil JSON [MARKED])"
+        52 -> "CALL_5B (Análise dos [MARKED] - 2 Arquivos)"
+        21 -> "CALL_2A (Seleção de Nós de Interesse)"
+        22 -> "CALL_2B (Guia Completo dos Blocos)"
+        6 -> "CALL_6 (Pergunta Interativa de 4 Opções)"
+        3 -> "CALL_3 (Execução de Blocos e Conexões no Projeto)"
+        4 -> "CALL_4 (Revisão Final e [ENDTOKEN])"
+        else -> "STAGE_$stage"
+    }
+
     private fun callLLM(prompt: String, systemPrompt: String): String {
+        val stageDesc = stageLabelForLog(activeCallStage)
         val inTok = estimateTokens(prompt, systemPrompt)
         totalEstimatedTokens += inTok
         currentRequestTokens += inTok
+
+        AIHandler.logStoryEditor(
+            buildString {
+                appendLine("================================================================================")
+                appendLine(">>> INICIANDO CHAMADA IA: $stageDesc")
+                appendLine(">>> Tokens Estimados de Entrada: ~$inTok (Acumulado Sessão: ~$totalEstimatedTokens)")
+                appendLine("--- [SYSTEM PROMPT] ---")
+                appendLine(systemPrompt)
+                appendLine("--- [USER PROMPT / PRANCHETA COMPARTILHADA] ---")
+                appendLine(prompt)
+                appendLine("================================================================================")
+            }
+        )
+
+        val startMs = System.currentTimeMillis()
         val response = AIClientHandler.sendStandalonePrompt(prompt, systemPrompt).join()
+        val elapsedMs = System.currentTimeMillis() - startMs
+
         val outTok = estimateTokens(response)
         totalEstimatedTokens += outTok
         currentRequestTokens += outTok
-        if (response.startsWith("ERROR:")) {
-            throw RuntimeException(response.removePrefix("ERROR:").trim())
+
+        AIHandler.logStoryEditor(
+            buildString {
+                appendLine("<<< RESPOSTA RECEBIDA: $stageDesc (${elapsedMs}ms | +~$outTok tokens)")
+                appendLine(response)
+                appendLine("================================================================================")
+            }
+        )
+
+        if (response.startsWith("ERROR:") || response.startsWith("!Error")) {
+            throw RuntimeException(response.removePrefix("ERROR:").removePrefix("!Error!").removePrefix("!Error").trim())
         }
         return response
     }
@@ -915,21 +957,48 @@ class StoryEditorAIAssistantWidget(
                         // CALL 5: JSON FUNNEL WITH [MARKED] + SEPARATED NODES & CONNECTIONS
                         // -------------------------------------------------------------
                         5 -> {
-                            val passNum = incrementCallCount(5)
                             val defaultAfter5 = when {
                                 needCall2Fallback && blackboard.blockGuideNotes.isEmpty() -> 2
                                 needCall3Fallback -> 3
                                 else -> 4
                             }
-                            val step5 = executeCall5ProjectJsonInspection(
-                                blackboard = blackboard,
-                                query = currentInstruction,
-                                passNum = passNum,
-                                defaultNextCall = defaultAfter5
-                            )
-                            blackboard.jsonAnalysisNotes.add("[Análise dos [MARKED] #$passNum]:\n${step5.outputSummary}")
-                            currentCall = step5.requestedNextCall
-                            currentInstruction = step5.nextInstruction.ifBlank { userRequest }
+                            val targetSc = getEffectiveFocusedScene() ?: editor.project.getActiveScene()
+                            val isSceneFreshAndEmpty = targetSc != null &&
+                                targetSc.nodes.size <= 1 &&
+                                targetSc.connections.isEmpty() &&
+                                getEffectiveFocusedNodes().isEmpty() &&
+                                (needCall2Fallback || needCall3Fallback)
+
+                            if (isSceneFreshAndEmpty && targetSc != null) {
+                                // Skip redundant Call 5a + 5b when the active scene only has the initial BEGIN_SCENE node
+                                completedCallsMask = completedCallsMask or (1 shl 5)
+                                blackboard.markedSceneIds.add(targetSc.id)
+                                targetSc.nodes.forEach { blackboard.markedNodeIds.add(it.id) }
+                                val startNode = targetSc.nodes.firstOrNull()
+                                val relX = ((startNode?.x ?: targetSc.x) - targetSc.x).toInt()
+                                val relY = ((startNode?.y ?: targetSc.y) - targetSc.y).toInt()
+                                val fastNote = "Cena ativa '${targetSc.title}' (id=${targetSc.id}) está no estado inicial (apenas BEGIN_SCENE id=\"${startNode?.id ?: "BEGIN_SCENE"}\" em relPos=($relX,$relY) e 0 conexões). Funil 5a/5b otimizado automaticamente."
+                                blackboard.jsonAnalysisNotes.add("[Análise Rápida Cena Inicial]:\n$fastNote")
+                                appendEntry(
+                                    ChatRole.CALL_TRACE,
+                                    "⚡ [Chamada 5] Cena Inicial Detectada → Próx: Chamada $defaultAfter5",
+                                    fastNote,
+                                    0xFFA855F7.toInt()
+                                )
+                                currentCall = defaultAfter5
+                                currentInstruction = userRequest
+                            } else {
+                                val passNum = incrementCallCount(5)
+                                val step5 = executeCall5ProjectJsonInspection(
+                                    blackboard = blackboard,
+                                    query = currentInstruction,
+                                    passNum = passNum,
+                                    defaultNextCall = defaultAfter5
+                                )
+                                blackboard.jsonAnalysisNotes.add("[Análise dos [MARKED] #$passNum]:\n${step5.outputSummary}")
+                                currentCall = step5.requestedNextCall
+                                currentInstruction = step5.nextInstruction.ifBlank { userRequest }
+                            }
                         }
 
                         // -------------------------------------------------------------
@@ -1022,6 +1091,17 @@ class StoryEditorAIAssistantWidget(
                                     .trim()
                                     .ifBlank { "Tudo revisado e concluído com sucesso!" }
 
+                                // Save the last 2 original user requests and their final AI responses across requests
+                                recentCompletedInteractions.add(
+                                    CompletedInteractionMemory(
+                                        originalUserQuestion = userRequest,
+                                        finalAiResponse = cleanUserMessage
+                                    )
+                                )
+                                while (recentCompletedInteractions.size > 2) {
+                                    recentCompletedInteractions.removeAt(0)
+                                }
+
                                 appendEntry(
                                     ChatRole.CALL_TRACE,
                                     "🏁 [Chamada 4 #$passNum] Revisão Finalizada $END_TOKEN",
@@ -1062,6 +1142,7 @@ class StoryEditorAIAssistantWidget(
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                AIHandler.logStoryEditor("[EXCEPTION IN PIPELINE]: ${e.stackTraceToString()}")
                 activeQuestion = null
                 appendEntry(
                     ChatRole.ERROR,
@@ -1094,7 +1175,6 @@ class StoryEditorAIAssistantWidget(
 
         val proj = editor.project
         val activeScene = proj.getActiveScene()
-        val recentChat = chatHistory.takeLast(5).joinToString("\n") { "${it.badge}: ${it.text.take(160)}" }
 
         val projectOverview = buildString {
             appendLine("Project ID: ${proj.id} | Name: ${proj.name}")
@@ -1107,8 +1187,8 @@ class StoryEditorAIAssistantWidget(
             Our architecture works like robots passing a shared drawing clipboard (Blackboard) from one to the next because each API call is stateless.
             Your job is to stamp the overall intent onto the Blackboard and choose which robot receives the clipboard first:
             - Call 6 ("CALL_6_QUESTION"): Choose this FIRST if the player's request is ambiguous or has creative choices where asking a 4-option multiple-choice question will help! (Or if the user explicitly asked you to ask them a question).
-            - Call 5 ("CALL_5"): Project JSON Funnel ($MARKED_TAG marker + separated nodes/connections inspection). Set "needsJsonInspection": true if we should inspect existing nodes/connections in the project.
-            - Call 2 ("CALL_2"): Block Catalog & Guide (2a choose nodes of interest, 2b read full guide & choices). Set "needsBlockSelection": true if we will create or edit blocks.
+            - Call 5 ("CALL_5"): Project JSON Funnel ($MARKED_TAG marker + separated nodes/connections inspection). Set "needsJsonInspection": true ONLY if the active scene already has > 1 node or existing connections that need to be inspected. If the active scene only has 1 node (BEGIN_SCENE) and 0 connections and the player is creating a scene from scratch, set "needsJsonInspection": false and go directly to "CALL_2" (or "CALL_6_QUESTION")!
+            - Call 2 ("CALL_2"): Block Catalog & Guide (2a choose nodes of interest by name, 2b read full guide & choices). Set "needsBlockSelection": true whenever we will create or edit blocks so we know their exact arguments and choices before building!
             - Call 3 ("CALL_3"): Project Builder (positions blocks & connects them logically). Set "needsProjectExecution": true if we will modify the project.
             - Call 4 ("CALL_4"): Final Reviewer & $END_TOKEN Gatekeeper.
             
@@ -1129,9 +1209,6 @@ class StoryEditorAIAssistantWidget(
         val userPrompt = """
             [PROJECT OVERVIEW]
             $projectOverview
-            
-            [RECENT CHAT]
-            $recentChat
             
             ${blackboard.renderPaperForNextRobot(currentFocus)}
         """.trimIndent()
@@ -1241,13 +1318,15 @@ class StoryEditorAIAssistantWidget(
         // If the player already manually selected nodes on the canvas, pre-mark them with [MARKED]!
         val focusedNodes = getEffectiveFocusedNodes()
         focusedNodes.forEach { blackboard.markedNodeIds.add(it.id) }
-        getEffectiveFocusedScene()?.let { blackboard.markedSceneIds.add(it.id) }
+        val focusedScene = getEffectiveFocusedScene()
+        focusedScene?.let { blackboard.markedSceneIds.add(it.id) }
 
-        // Chunk nodes of the project (up to 15 nodes per scan chunk) so it never chokes on huge projects
-        val candidateNodes = if (allScenes.size == 1 && activeScene != null) {
-            activeScene.nodes
-        } else {
-            allScenes.flatMap { it.nodes }
+        // Scope Funnel 5a to the focused/active scene by default so it doesn't waste chunks scanning unrelated scenes
+        val targetSceneForFunnel = focusedScene ?: activeScene
+        val candidateNodes = when {
+            pinnedFocusSceneIds.size > 1 -> allScenes.filter { pinnedFocusSceneIds.contains(it.id) }.flatMap { it.nodes }
+            targetSceneForFunnel != null && focusOnSelectionEnabled -> targetSceneForFunnel.nodes
+            else -> allScenes.flatMap { it.nodes }
         }
 
         val chunkSize = 18
@@ -1383,7 +1462,10 @@ class StoryEditorAIAssistantWidget(
                 val alreadyMarked = if (blackboard.markedNodeIds.contains(n.id)) " $MARKED_TAG" else ""
                 val sub = n.params["actionSubtype"] ?: n.params["triggerType"] ?: n.params["questTrigger"] ?: ""
                 val subStr = if (sub.isNotBlank()) "($sub)" else ""
-                appendLine("  - id=\"${n.id}\"$alreadyMarked | scene=${n.parentSceneId} | type=${n.nodeType}$subStr | title=\"${n.title}\" | pos=(${n.x.toInt()},${n.y.toInt()})")
+                val sc = proj.scenes.find { it.id == n.parentSceneId }
+                val relX = (n.x - (sc?.x ?: 0.0)).toInt()
+                val relY = (n.y - (sc?.y ?: 0.0)).toInt()
+                appendLine("  - id=\"${n.id}\"$alreadyMarked | scene=${n.parentSceneId} | type=${n.nodeType}$subStr | title=\"${n.title}\" | pos=($relX,$relY)")
             }
         }
     }
@@ -1417,8 +1499,8 @@ class StoryEditorAIAssistantWidget(
                         nObj.addProperty("title", n.title)
                         nObj.addProperty("nodeType", n.nodeType.name)
                         nObj.addProperty("content", n.content)
-                        nObj.addProperty("x", n.x.toInt())
-                        nObj.addProperty("y", n.y.toInt())
+                        nObj.addProperty("x", (n.x - sc.x).toInt())
+                        nObj.addProperty("y", (n.y - sc.y).toInt())
                         nObj.add("portsOut", StorySerializer.gson.toJsonTree(n.outputs.map { it.name }))
                         nObj.add("portsIn", StorySerializer.gson.toJsonTree(n.inputs.map { it.name }))
                         nObj.add("params", StorySerializer.gson.toJsonTree(n.params))
@@ -1459,8 +1541,8 @@ class StoryEditorAIAssistantWidget(
         val compactCatalog2a = buildCompactNodesAndSceneStructureIndexFor2a()
         val sys2a = """
             You are Robot 2a (Call 2a: Block Interest Selector) of the CobbleBrain Story Editor AI Assistant.
-            You receive the Shared Blackboard and the compact index of all existing nodes (only the nodes that exist and their argument keys) plus Scene Structure.
-            Choose which specific nodes (and ACTION / TRIGGER subtypes) you are interested in reading the complete guide for.
+            You receive the Shared Blackboard and the list of all existing node names and ACTION / TRIGGER subtype names (ONLY the names, without arguments or ports).
+            Choose which specific nodes (and `ACTION:<SUBTYPE>` / `TRIGGER:<SUBTYPE>`) you want to receive the complete explanations, arguments, ports, and available choices for in Sub-call 2b.
             
             Respond ONLY with a valid JSON object:
             {
@@ -1468,6 +1550,7 @@ class StoryEditorAIAssistantWidget(
                 "DIALOGUE",
                 "QUEST",
                 "ACTION:SPAWN_COBBLEMON",
+                "ACTION:ANIMATION",
                 "TRIGGER:POKEMON_CATCH",
                 "END_SCENE"
               ],
@@ -1478,7 +1561,7 @@ class StoryEditorAIAssistantWidget(
         val prompt2a = """
             ${blackboard.renderPaperForNextRobot(currentFocusInstruction)}
             
-            [EXISTING NODES, ARGUMENTS & SCENE STRUCTURE (SUB-CALL 2A)]:
+            [EXISTING NODE & SUBTYPE NAMES (SUB-CALL 2A - ONLY NAMES)]:
             $compactCatalog2a
         """.trimIndent()
 
@@ -1553,50 +1636,21 @@ class StoryEditorAIAssistantWidget(
     }
 
     private fun buildCompactNodesAndSceneStructureIndexFor2a(): String {
-        val actionList = ActionRegistry.actions.joinToString("\n") { act ->
-            "  - ACTION:${act.id} -> args: [${act.defaultParams.keys.joinToString(", ")}]"
-        }
-        val triggerList = TriggerRegistry.triggers.joinToString("\n") { trig ->
-            "  - TRIGGER:${trig.id} -> args: [requireInputSignal, triggerCondition${if (trig.defaultParams.isNotEmpty()) ", " + trig.defaultParams.keys.joinToString(", ") else ""}]"
-        }
+        val nodeNames = NodeType.entries.joinToString(", ") { it.name }
+        val actionNames = ActionRegistry.actions.joinToString(", ") { "ACTION:${it.id}" }
+        val triggerNames = TriggerRegistry.triggers.joinToString(", ") { "TRIGGER:${it.id}" }
         return """
-            === 1. SCENE STRUCTURE & UNIVERSAL NODE ARCHITECTURE ===
-            - StoryProject: Contains scenes (SceneData[]) and variables (StoryVariable[]).
-            - SceneData: Visual container (id, title, description, x, y, width, height).
-              * Saved on disk as 2 separated files: `<scene>_nodes.json` (blocks & positions) and `<scene>_connections.json` (logical connections).
-              * Every scene starts at its internal `BEGIN_SCENE` node and finishes when reaching `END_SCENE`.
-            - StoryVariable: (id, name, type=[BOOLEAN, NUMBER, STRING, LIST], defaultValue, scope=[GLOBAL, SCENE_LOCAL]).
-              * Interpolation in text/commands: `<var:id>`, `{id}`, `{player}`, `{player_x}`, `{player_y}`, `{player_z}`.
-            - Universal NodeData fields: (id, parentSceneId, title, nodeType, content, x, y, width, height, preDelayTicks [20=1s], postDelayTicks [20=1s], params{}).
-            - Universal Conditional Output (`OUT_COND` in params of any node): args: [condOutEnabled, condOutMode, includeMainOut, condVarKey, condOp, condVarValue].
+            === 1. SCENE STRUCTURE ===
+            SCENE_STRUCTURE, StoryProject, SceneData (<scene>_nodes.json, <scene>_connections.json), StoryVariable (BOOLEAN, NUMBER, STRING, LIST), BEGIN_SCENE -> END_SCENE
 
-            === 2. ALL 24 EXISTING NODES & THEIR ARGUMENT KEYS (ONLY NODES & ARGS) ===
-            - BEGIN_SCENE -> ports: [Out] | args: []
-            - END_SCENE -> ports: [In] | args: []
-            - QUEST -> ports: [In -> Success, Fail, Progress] | args: [questTitle, questTrigger, targetCount, timeLimitSec, failOnDeath, showHud, targetSpecies, requiredStoryTag, targetItem, minLevel, minFriendship, targetX, targetY, targetZ, radius, biomeId, weatherType, blockId, entityType, variableName, operator, expectedValue, evaluationPrompt]
-            - DIALOGUE -> ports: [In -> Out, Fallback] | content: [text or AI prompt] | args: [useAi, fallbackText, displayMode, allowActions, saveOutputVariable, freezePlayer, bubbleDurationTicks, speakerMode, messageType, subTitle, titleColor, fadeIn, stay, fadeOut, speakerType, partySlot, targetSpecies, entityStoryTag, customSpeakerName, nameFormat, emotionPitch, customPitch, enableChatBubble, bubbleDuration, playCry, socialLook, jumpEffect, sendToChat]
-            - CONDITION_NODE -> ports: [In, Val -> IF, ELSE] | args: [condCount, varKey, varKey_0, varOp, varOp_0, varValue, varValue_0, hasElse]
-            - VARIABLE_SET -> ports: [In -> Out] | args: [varKey, varOp, varValue]
-            - VARIABLE_GET -> ports: [Val] | args: [varKey]
-            - TIMER -> ports: [In -> Out] | args: [timerSeconds]
-            - LOOP -> ports: [In, Stop -> Cycle, Done] | args: [loopMode, loopCount, loopDurationSec, loopIntervalSec]
-            - GATE -> ports: [IN 1, IN 2 -> OUT] | args: []
-            - LINK_SEND -> ports: [In] | args: [channelTag]
-            - LINK_RECEIVE -> ports: [Out] | args: [channelTag]
-            - COMMAND_NODE -> ports: [In -> Out] | content: [commands] | args: [commands, commandSource, silent]
-            - AUDIO -> ports: [In -> Out] | args: [audioMode, audioId, audioVolume, audioPitch, loopMusic]
-            - KEY_INPUT -> ports: [In -> Out] | args: [triggerMode, inputMode, targetKey, requiredPresses, holdSeconds, promptText]
-            - TEXTURE -> ports: [In -> Out] | args: [targetType, targetIdentifier, textureName]
-            - SAVE_STATE_NODE -> ports: [In -> Success, Error] | args: [profileId, scope, savePosition, saveVariables]
-            - LOAD_STATE_NODE -> ports: [In -> Success, Error] | args: [profileId, scope, restorePosition, restoreVariables]
-            - CONSTRUCTION -> ports: [In -> Out] | args: [schematicName, originX, originY, originZ, buildMode, blocksPerTick]
-            - BEGIN_CONSTRUCTION -> ports: [In -> Out] | args: [schematicName, originX, originY, originZ]
-            - END_CONSTRUCTION -> ports: [In -> Out] | args: [schematicName, instantFinish]
-            - COMMENT -> ports: [] | fields: [title, content]
-            - ACTION (nodeType="ACTION", params["actionSubtype"]):
-            $actionList
-            - TRIGGER (nodeType="TRIGGER", params["triggerType"]):
-            $triggerList
+            === 2. NODE TYPES (ONLY NAMES) ===
+            $nodeNames
+
+            === 3. ACTION SUBTYPES (ONLY NAMES) ===
+            $actionNames
+
+            === 4. TRIGGER / QUEST SUBTYPES (ONLY NAMES) ===
+            $triggerNames
         """.trimIndent()
     }
 
@@ -1606,17 +1660,18 @@ class StoryEditorAIAssistantWidget(
             val resourceStream = StoryEditorAIAssistantWidget::class.java.getResourceAsStream("/assets/cobblebrain/story_editor_blocks_guide.txt")
             val resourceText = resourceStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
 
-            if (resourceText.isNotBlank() && !externalFile.exists()) {
+            if (resourceText.isNotBlank()) {
                 runCatching {
                     externalFile.parentFile?.mkdirs()
-                    externalFile.writeText(resourceText, Charsets.UTF_8)
+                    if (!externalFile.exists() || externalFile.readText(Charsets.UTF_8) != resourceText) {
+                        externalFile.writeText(resourceText, Charsets.UTF_8)
+                    }
                 }
-            }
-
-            if (externalFile.exists() && externalFile.length() > 100) {
+                resourceText
+            } else if (externalFile.exists() && externalFile.length() > 100) {
                 externalFile.readText(Charsets.UTF_8)
             } else {
-                resourceText
+                ""
             }
         } catch (e: Exception) {
             ""
@@ -1644,8 +1699,6 @@ class StoryEditorAIAssistantWidget(
             }
         }
 
-        extractBlock("NODE", "SCENE_STRUCTURE")?.let { extractedSections.add(it) }
-
         var addedActionHeader = false
         var addedTriggerHeader = false
 
@@ -1653,7 +1706,8 @@ class StoryEditorAIAssistantWidget(
             val item = rawItem.trim().uppercase()
             when {
                 item.startsWith("ACTION:") -> {
-                    val sub = item.removePrefix("ACTION:").trim()
+                    val rawSub = item.removePrefix("ACTION:").trim()
+                    val sub = ActionRegistry.normalizeId(rawSub)
                     if (!addedActionHeader) {
                         extractedSections.add(
                             "=== [NODE: ACTION (CABEÇALHO)] ===\n" +
@@ -1666,6 +1720,10 @@ class StoryEditorAIAssistantWidget(
                         extractedSections.add(subBlock)
                     } else {
                         extractBlock("NODE", "ACTION")?.let { extractedSections.add(it) }
+                    }
+                    // If the AI asked about entity effects, also include ANIMATION & COMMAND_NODE tips so it knows how to sleep/wake or clear effects
+                    if (sub == "ADD_ENTITY_EFFECT") {
+                        extractBlock("ACTION", "ANIMATION")?.let { extractedSections.add(it) }
                     }
                 }
                 item.startsWith("TRIGGER:") -> {
@@ -1686,6 +1744,8 @@ class StoryEditorAIAssistantWidget(
                 }
                 else -> {
                     extractBlock("NODE", item)?.let { extractedSections.add(it) }
+                        ?: extractBlock("ACTION", ActionRegistry.normalizeId(item))?.let { extractedSections.add(it) }
+                        ?: extractBlock("TRIGGER", item)?.let { extractedSections.add(it) }
                 }
             }
         }
@@ -1725,6 +1785,7 @@ class StoryEditorAIAssistantWidget(
             {
               "operations": [
                 { "op": "ADD_VARIABLE", "varId": "coins", "varType": "NUMBER", "defaultValue": "0", "scope": "GLOBAL" },
+                { "op": "EDIT_SCENE", "title": "Novo Nome da Cena", "description": "Descrição opcional da cena" },
                 { "op": "ADD_SCENE", "tempId": "sc_new", "title": "Floresta", "description": "Cena 2", "setActive": true },
                 {
                   "op": "ADD_NODE",
@@ -1806,6 +1867,7 @@ class StoryEditorAIAssistantWidget(
                 editor.markDirty()
                 editor.rebuildNodeWidgets()
             } catch (e: Exception) {
+                AIHandler.logStoryEditor("[EXCEPTION IN CALL 3 APPLY]: ${e.stackTraceToString()}")
                 appliedLogs.add("Erro ao aplicar operação: ${e.message}")
             } finally {
                 latch.countDown()
@@ -1831,9 +1893,9 @@ class StoryEditorAIAssistantWidget(
         if (scene == null) return "No active scene."
         val focusedIds = getEffectiveFocusedNodes().map { it.id }.toSet()
         return buildString {
-            appendLine("Active Scene: '${scene.title}' (id=${scene.id}, canvasOrigin=(${scene.x.toInt()},${scene.y.toInt()}), size=${scene.width.toInt()}x${scene.height.toInt()})")
+            appendLine("Active Scene: '${scene.title}' (id=${scene.id}, size=${scene.width.toInt()}x${scene.height.toInt()})")
             appendLine("Variables: ${proj.variables.joinToString { "${it.id}(${it.type}=${it.defaultValue})" }}")
-            appendLine("--- [ARQUIVO 1: BLOCOS DA CENA (${scene.nodes.size})] ---")
+            appendLine("--- [ARQUIVO 1: BLOCOS DA CENA (${scene.nodes.size}) - Coordenadas x/y relativas à cena] ---")
             for (n in scene.nodes) {
                 val markBadge = when {
                     focusedIds.contains(n.id) -> " [FOCUSED_BY_PLAYER]"
@@ -1841,7 +1903,9 @@ class StoryEditorAIAssistantWidget(
                     else -> ""
                 }
                 val outPorts = n.outputs.joinToString { it.name }
-                appendLine("  - id=\"${n.id}\"$markBadge | type=${n.nodeType} | title=\"${n.title}\" | pos=(${n.x.toInt()},${n.y.toInt()}) | outPorts=[$outPorts] | content=\"${n.content.take(55)}\" | params=${n.params}")
+                val relX = (n.x - scene.x).toInt()
+                val relY = (n.y - scene.y).toInt()
+                appendLine("  - id=\"${n.id}\"$markBadge | type=${n.nodeType} | title=\"${n.title}\" | pos=($relX,$relY) | outPorts=[$outPorts] | content=\"${n.content.take(55)}\" | params=${n.params}")
             }
             appendLine("--- [ARQUIVO 2: CONEXÕES LÓGICAS DA CENA (${scene.connections.size})] ---")
             for (c in scene.connections) {
@@ -1993,19 +2057,49 @@ class StoryEditorAIAssistantWidget(
                     logs.add("• Cena criada: '$title'")
                 }
 
+                "EDIT_SCENE", "RENAME_SCENE", "UPDATE_SCENE" -> {
+                    val scId = opObj.get("sceneId")?.asString?.trim() ?: opObj.get("id")?.asString?.trim()
+                    val scToEdit = if (!scId.isNullOrBlank()) {
+                        proj.scenes.find { it.id == scId || it.title.equals(scId, ignoreCase = true) } ?: targetScene
+                    } else targetScene
+                    if (scToEdit != null) {
+                        val newTitle = opObj.get("title")?.asString?.trim()
+                            ?: opObj.get("newTitle")?.asString?.trim()
+                            ?: opObj.get("sceneTitle")?.asString?.trim()
+                            ?: opObj.get("name")?.asString?.trim()
+                        if (!newTitle.isNullOrBlank()) {
+                            val oldTitle = scToEdit.title
+                            scToEdit.title = newTitle
+                            logs.add("• Cena renomeada: '$oldTitle' ➔ '$newTitle'")
+                        }
+                        opObj.get("description")?.asString?.let { scToEdit.description = it }
+                    }
+                }
+
                 "ADD_NODE" -> {
                     val sc = targetScene ?: continue
-                    val rawType = opObj.get("nodeType")?.asString?.uppercase()?.trim() ?: "DIALOGUE"
+                    val titleHint = opObj.get("title")?.asString?.trim() ?: ""
+                    val rawType = (opObj.get("nodeType")?.asString ?: opObj.get("type")?.asString)?.uppercase()?.trim()
+                        ?: if (
+                            titleHint.contains("Fim da Cena", ignoreCase = true) ||
+                            titleHint.equals("Finish Scene", ignoreCase = true) ||
+                            titleHint.equals("End Scene", ignoreCase = true) ||
+                            titleHint.equals("Encerrar Cena", ignoreCase = true)
+                        ) "END_SCENE" else "DIALOGUE"
                     val nodeType = parseNodeTypeFlexible(rawType)
                     val subtype = opObj.get("subtype")?.asString?.trim()
                         ?: opObj.getAsJsonObject("params")?.get("actionSubtype")?.asString
                         ?: opObj.getAsJsonObject("params")?.get("triggerType")?.asString
 
-                    // AI can specify node canvas coordinates (x, y) to organize layout, or omit for auto-layout
+                    // AI can specify node canvas coordinates (x, y) relative to the scene (or world coordinates), or omit for auto-layout
                     val customX = opObj.get("x")?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asDouble }.getOrNull() }
                     val customY = opObj.get("y")?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asDouble }.getOrNull() }
-                    val finalX = if (customX != null) (sc.x + customX.coerceAtLeast(20.0)) else nextAutoX
-                    val finalY = if (customY != null) (sc.y + customY.coerceAtLeast(30.0)) else nextAutoY
+                    val finalX = if (customX != null) {
+                        if (sc.x > 50.0 && customX >= sc.x - 20.0) customX else (sc.x + customX.coerceAtLeast(20.0))
+                    } else nextAutoX
+                    val finalY = if (customY != null) {
+                        if (sc.y > 50.0 && customY >= sc.y - 20.0) customY else (sc.y + customY.coerceAtLeast(30.0))
+                    } else nextAutoY
 
                     val createdNode = createConfiguredNodeData(
                         proj = proj,
@@ -2026,6 +2120,8 @@ class StoryEditorAIAssistantWidget(
                             createdNode.params[k] = v.asString
                         }
                     }
+
+                    normalizeNodeParamsAfterEdit(createdNode, subtype)
 
                     if (nodeType == NodeType.COMMAND_NODE) {
                         if (createdNode.content.isNotBlank() && createdNode.params["commands"].isNullOrBlank()) {
@@ -2070,7 +2166,7 @@ class StoryEditorAIAssistantWidget(
                     val requiredHeight = (createdNode.y + createdNode.height + 50.0) - sc.y
                     if (requiredHeight > sc.height) sc.height = requiredHeight
 
-                    logs.add("• Bloco posicionado: [${createdNode.nodeType}] '${createdNode.title}' em (${createdNode.x.toInt()},${createdNode.y.toInt()})")
+                    logs.add("• Bloco posicionado: [${createdNode.nodeType}] '${createdNode.title}' em (${(createdNode.x - sc.x).toInt()},${(createdNode.y - sc.y).toInt()})")
                 }
 
                 "EDIT_NODE" -> {
@@ -2078,10 +2174,57 @@ class StoryEditorAIAssistantWidget(
                     val targetId = opObj.get("nodeId")?.asString ?: opObj.get("id")?.asString
                     val node = resolveNode(targetId)
                     if (node != null) {
+                        (opObj.get("nodeType")?.asString ?: opObj.get("type")?.asString)?.takeIf { it.isNotBlank() }?.let { rawType ->
+                            node.nodeType = parseNodeTypeFlexible(rawType)
+                        }
+                        opObj.get("sceneTitle")?.asString?.takeIf { it.isNotBlank() }?.let { newScTitle ->
+                            if (sc != null) {
+                                val oldScTitle = sc.title
+                                sc.title = newScTitle
+                                logs.add("• Cena renomeada: '$oldScTitle' ➔ '$newScTitle'")
+                            }
+                        }
+                        val editSubtype = opObj.get("subtype")?.asString?.trim()
+                            ?: opObj.getAsJsonObject("params")?.get("actionSubtype")?.asString?.trim()
+                            ?: opObj.getAsJsonObject("params")?.get("actionId")?.asString?.trim()
+                            ?: opObj.getAsJsonObject("params")?.get("triggerType")?.asString?.trim()
+
+                        if (!editSubtype.isNullOrBlank()) {
+                            if (node.nodeType == NodeType.ACTION) {
+                                val newAct = ActionRegistry.find(editSubtype)
+                                val oldSubtype = node.params["actionSubtype"] ?: node.params["actionId"]
+                                if (oldSubtype != newAct.id) {
+                                    // Clear leftover params from a previous subtype (e.g., SPAWN_STRUCTURE's structureId/posX/posY/posZ)
+                                    node.params.clear()
+                                    newAct.defaultParams.forEach { (k, v) -> node.params[k] = v }
+                                }
+                                node.params["actionSubtype"] = newAct.id
+                                node.params["actionId"] = newAct.id
+                            } else if (node.nodeType == NodeType.TRIGGER) {
+                                val newTrig = TriggerRegistry.find(editSubtype)
+                                node.params["triggerType"] = newTrig.id
+                                newTrig.defaultParams.forEach { (k, v) ->
+                                    if (!node.params.containsKey(k)) node.params[k] = v
+                                }
+                            }
+                        }
+
                         opObj.get("title")?.asString?.takeIf { it.isNotBlank() }?.let { node.title = it }
                         opObj.get("content")?.asString?.let { node.content = it }
-                        opObj.get("x")?.takeIf { it.isJsonPrimitive }?.let { runCatching { node.x = (sc?.x ?: 0.0) + it.asDouble }.getOrNull() }
-                        opObj.get("y")?.takeIf { it.isJsonPrimitive }?.let { runCatching { node.y = (sc?.y ?: 0.0) + it.asDouble }.getOrNull() }
+                        opObj.get("x")?.takeIf { it.isJsonPrimitive }?.let {
+                            runCatching {
+                                val cx = it.asDouble
+                                val sx = sc?.x ?: 0.0
+                                node.x = if (sx > 50.0 && cx >= sx - 20.0) cx else (sx + cx)
+                            }.getOrNull()
+                        }
+                        opObj.get("y")?.takeIf { it.isJsonPrimitive }?.let {
+                            runCatching {
+                                val cy = it.asDouble
+                                val sy = sc?.y ?: 0.0
+                                node.y = if (sy > 50.0 && cy >= sy - 20.0) cy else (sy + cy)
+                            }.getOrNull()
+                        }
                         opObj.get("preDelayTicks")?.asInt?.let { node.preDelayTicks = it.coerceAtLeast(0) }
                         opObj.get("postDelayTicks")?.asInt?.let { node.postDelayTicks = it.coerceAtLeast(0) }
                         opObj.getAsJsonObject("params")?.entrySet()?.forEach { (k, v) ->
@@ -2089,6 +2232,7 @@ class StoryEditorAIAssistantWidget(
                                 node.params[k] = v.asString
                             }
                         }
+                        normalizeNodeParamsAfterEdit(node, editSubtype)
                         if (node.nodeType == NodeType.COMMAND_NODE && node.content.isNotBlank()) {
                             node.params["commands"] = node.content
                         }
@@ -2215,7 +2359,10 @@ class StoryEditorAIAssistantWidget(
         """.trimIndent()
 
         val userPrompt = """
-            ${blackboard.renderPaperForNextRobot("Revisão Final (#$reviewRound, forceFinalize=$forceFinalize)")}
+            ${blackboard.renderPaperForNextRobot(
+                currentTaskInstruction = "Revisão Final (#$reviewRound, forceFinalize=$forceFinalize)",
+                includeBlockGuideDraft = blackboard.executionNotes.isEmpty()
+            )}
             
             [DISCONNECTED NODE WARNINGS]:
             ${if (disconnectedWarnings.isEmpty()) "None! All flow nodes have incoming connections." else disconnectedWarnings.joinToString("\n")}
@@ -2236,6 +2383,64 @@ class StoryEditorAIAssistantWidget(
     // =========================================================================
     // NODE FACTORY (MATCHING StoryEditorScreen.addNode)
     // =========================================================================
+    private fun normalizeNodeParamsAfterEdit(node: NodeData, rawSubtype: String?) {
+        if (node.nodeType == NodeType.TIMER) {
+            val sec = node.params["durationSeconds"]?.takeIf { it.isNotBlank() }
+                ?: node.params["durationSec"]?.takeIf { it.isNotBlank() }
+                ?: node.params["seconds"]?.takeIf { it.isNotBlank() }
+                ?: node.params["duration"]?.takeIf { it.isNotBlank() }
+            if (!sec.isNullOrBlank()) {
+                node.params["timerSeconds"] = sec
+                node.params.remove("durationSeconds")
+                node.params.remove("durationSec")
+                node.params.remove("seconds")
+                node.params.remove("duration")
+            }
+        }
+
+        if (node.nodeType == NodeType.ACTION) {
+            val rawUpper = rawSubtype?.uppercase()?.trim()
+                ?: node.params["actionSubtype"]?.uppercase()?.trim()
+                ?: node.params["actionId"]?.uppercase()?.trim()
+                ?: ""
+
+            val resolvedAct = ActionRegistry.find(rawUpper.ifBlank { "SEND_CHAT_MESSAGE" })
+            node.params["actionSubtype"] = resolvedAct.id
+            node.params["actionId"] = resolvedAct.id
+
+            // If AI requested a removal alias (e.g., REMOVE_ENTITY_EFFECT), set durationSec="0" to clear effect
+            if (rawUpper in setOf("REMOVE_ENTITY_EFFECT", "CLEAR_ENTITY_EFFECT", "REMOVE_EFFECT", "CLEAR_EFFECT")) {
+                node.params["durationSec"] = "0"
+            }
+
+            // Normalize common parameter aliases so NodeInspectorWidget and ActionExecutor both see the right keys
+            node.params["durationSeconds"]?.takeIf { it.isNotBlank() }?.let {
+                node.params["durationSec"] = it
+                node.params.remove("durationSeconds")
+            }
+
+            when (resolvedAct.id) {
+                "ADD_ENTITY_EFFECT", "KILL_ENTITY", "MODIFY_ENTITY_PROPERTIES", "TELEPORT" -> {
+                    val tag = node.params["targetStoryTag"]?.takeIf { it.isNotBlank() }
+                        ?: node.params["storyTag"]?.takeIf { it.isNotBlank() }
+                        ?: node.params["targetIdentifier"]?.takeIf { it.isNotBlank() }
+                    if (!tag.isNullOrBlank()) {
+                        node.params["targetStoryTag"] = tag
+                        node.params["targetMode"] = "STORY_TAG"
+                    }
+                }
+                "ANIMATION" -> {
+                    val tag = node.params["targetIdentifier"]?.takeIf { it.isNotBlank() }
+                        ?: node.params["storyTag"]?.takeIf { it.isNotBlank() }
+                        ?: node.params["targetStoryTag"]?.takeIf { it.isNotBlank() }
+                    if (!tag.isNullOrBlank()) {
+                        node.params["targetIdentifier"] = tag
+                    }
+                }
+            }
+        }
+    }
+
     private fun parseNodeTypeFlexible(raw: String): NodeType {
         return when (raw.uppercase().trim()) {
             "BEGIN_SCENE", "START_SCENE", "SCENE_START" -> NodeType.BEGIN_SCENE

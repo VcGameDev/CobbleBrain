@@ -234,83 +234,164 @@ TODAS AS ESCOLHAS DISPONÍVEIS PARA `actionSubtype` NO BLOCO `ACTION`:
 --- 1. Categoria WORLD (Mundo e Clima) ---
 === [ACTION: SPAWN_STRUCTURE] ===
 * `actionSubtype`: `"SPAWN_STRUCTURE"` (Gerar estrutura ou schematic no mundo)
-  - Parâmetros: `structureId` (ID da estrutura, ex: `"minecraft:village_plains"`), `x`, `y`, `z` (coordenadas, ex: `"0"`, `"64"`, `"0"`), `rotation` (Escolhas: `"NONE"`, `"CLOCKWISE_90"`, `"CLOCKWISE_180"`, `"COUNTERCLOCKWISE_90"`).
+  - Parâmetros: `structureId` (ID da estrutura, ex: `"minecraft:village_plains"`, `"minecraft:small_house"`), `posX`, `posY`, `posZ` (coordenadas, ex: `"~"`, `"~"`, `"~"` ou `"0"`, `"64"`, `"0"`).
 === [/ACTION: SPAWN_STRUCTURE] ===
 === [ACTION: TELEPORT] ===
-* `actionSubtype`: `"TELEPORT"` (Teletransportar jogador ou entidade)
-  - Parâmetros: `target` (Escolhas: `"PLAYER"`, `"PARTY_POKEMON"`, `"TAGGED_ENTITY"`), `entityTag` (se `TAGGED_ENTITY`), `x`, `y`, `z`, `yaw` (rotação horizontal, ex: `"0.0"`), `pitch` (rotação vertical, ex: `"0.0"`).
+* `actionSubtype`: `"TELEPORT"` (Teletransportar jogador, Pokémon ou entidade com tag)
+  - Parâmetros:
+    * `targetMode` (Escolhas disponíveis: `"PLAYER"`, `"PLAYER_POKEMON"`, `"STORY_TAG"`).
+    * `pokemonSlot` (Se `PLAYER_POKEMON`, slot `"1"` a `"6"`).
+    * `targetStoryTag` (Se `STORY_TAG`, tag da entidade alvo, ex: `"bulba_dormindo"`).
+    * `coordinates` (Coordenadas de destino `"x y z"`, ex: `"~ ~ ~5"` ou `"100 64 -20"`).
 === [/ACTION: TELEPORT] ===
 === [ACTION: CHANGE_WEATHER] ===
 * `actionSubtype`: `"CHANGE_WEATHER"` (Mudar o clima do mundo)
-  - Parâmetros: `weatherType` (Escolhas disponíveis: `"CLEAR"`, `"RAIN"`, `"THUNDER"`), `durationSeconds` (duração em segundos, ex: `"300"`).
+  - Parâmetros: `weatherType` (Escolhas disponíveis: `"CLEAR"`, `"RAIN"`, `"THUNDER"`), `durationTicks` (duração em ticks, 20 ticks = 1s, ex: `"6000"`).
 === [/ACTION: CHANGE_WEATHER] ===
 === [ACTION: SET_TIME_OF_DAY] ===
 * `actionSubtype`: `"SET_TIME_OF_DAY"` (Definir horário do dia no mundo)
-  - Parâmetros: `timePreset` (Escolhas disponíveis: `"DAY"`, `"NOON"`, `"SUNSET"`, `"NIGHT"`, `"MIDNIGHT"`, `"CUSTOM"`), `customTicks` (usado se `CUSTOM`, ex: `"6000"`).
+  - Parâmetros: `timeTicks` (Escolhas comuns: `"1000"` = Dia, `"6000"` = Meio-dia, `"13000"` = Noite, `"18000"` = Meia-noite).
 === [/ACTION: SET_TIME_OF_DAY] ===
 
 --- 2. Categoria BLOCK (Blocos do Mundo) ---
 === [ACTION: SPAWN_BLOCK] ===
 * `actionSubtype`: `"SPAWN_BLOCK"` (Colocar um bloco em uma coordenada)
-  - Parâmetros: `blockId` (ex: `"minecraft:stone"`, `"minecraft:redstone_block"`), `x`, `y`, `z`, `replaceExisting` (`"true"` ou `"false"`).
+  - Parâmetros: `blockId` (ex: `"minecraft:stone"`, `"minecraft:redstone_block"`), `coordinates` (ex: `"~ ~ ~"` ou `"10 64 10"`).
 === [/ACTION: SPAWN_BLOCK] ===
 === [ACTION: MODIFY_BLOCK_PROPERTY] ===
 * `actionSubtype`: `"MODIFY_BLOCK_PROPERTY"` (Alterar propriedade de estado de um bloco, ex: abrir porta/ativar alavanca)
-  - Parâmetros: `x`, `y`, `z`, `propertyName` (ex: `"open"`, `"powered"`, `"lit"`), `propertyValue` (ex: `"true"`, `"false"`).
+  - Parâmetros: `coordinates` (ex: `"10 64 10"`), `propertyKey` (ex: `"open"`, `"powered"`, `"lit"`), `propertyValue` (ex: `"true"`, `"false"`).
 === [/ACTION: MODIFY_BLOCK_PROPERTY] ===
 === [ACTION: TAG_BLOCK] ===
-* `actionSubtype`: `"TAG_BLOCK"` (Associar uma tag de história a uma posição de bloco)
-  - Parâmetros: `x`, `y`, `z`, `storyTag` (ex: `"altar_misterioso"`).
+* `actionSubtype`: `"TAG_BLOCK"` (Adicionar, remover ou limpar storyTag em Entidade, Bloco ou Jogador)
+  - Parâmetros:
+    * `targetCategory` (Escolhas: `"ENTITY"`, `"WORLD_BLOCK"`, `"PLAYER"`).
+    * `targetSelector` (Escolhas para `ENTITY`: `"CLOSEST_MOB"`, `"LOOKING_AT_MOB"`, `"BY_EXISTING_TAG"`, `"PLAYER_POKEMON_SLOT"`; para `WORLD_BLOCK`: `"LOOKING_AT_BLOCK"`, `"BLOCK_UNDER_PLAYER"`, `"COORDINATES"`).
+    * `selectorIdentifier` (Raio, tag existente, slot `"1"`..`"6"`, ou coordenada `"x y z"`).
+    * `operation` (Escolhas: `"ADD_TAG"`, `"REMOVE_TAG"`, `"CLEAR_TAGS"`).
+    * `tagName` (Nome da tag a adicionar/remover, ex: `"altar_misterioso"`).
 === [/ACTION: TAG_BLOCK] ===
 
---- 3. Categoria ENTITY (Entidades e NPCs) ---
+--- 3. Categoria ENTITY (Entidades, Animações e Efeitos) ---
 === [ACTION: SPAWN_ENTITY] ===
 * `actionSubtype`: `"SPAWN_ENTITY"` (Spawnar uma entidade do Minecraft)
-  - Parâmetros: `entityType` (ex: `"minecraft:villager"`, `"minecraft:zombie"`, `"minecraft:iron_golem"`), `x`, `y`, `z`, `customName` (nome visível opcional), `storyTag` (tag para referenciar depois em missões/ações/diálogos), `invulnerable` (`"true"` ou `"false"`), `noAi` (`"true"` para deixar parado como NPC ou `"false"`).
+  - Parâmetros: `entityId` (ex: `"minecraft:villager"`, `"minecraft:zombie"`, `"minecraft:iron_golem"`), `coordinates` (ex: `"~ ~ ~"`), `customName` (nome visível opcional), `storyTag` (tag para referenciar depois em missões/ações/diálogos), `noAi` (`"true"` para deixar parado como NPC ou `"false"`).
 === [/ACTION: SPAWN_ENTITY] ===
 === [ACTION: KILL_ENTITY] ===
-* `actionSubtype`: `"KILL_ENTITY"` (Remover ou matar entidade com tag de história)
-  - Parâmetros: `storyTag` (tag da entidade alvo), `radius` (raio máximo de busca, ex: `"64.0"`).
+* `actionSubtype`: `"KILL_ENTITY"` (Remover ou matar entidade)
+  - Parâmetros: `targetMode` (Escolhas: `"STORY_TAG"` ou `"AREA_NEAREST"`), `targetStoryTag` (tag da entidade alvo quando `STORY_TAG`), `entitySelector` (quando `AREA_NEAREST`, ex: `"@e[type=zombie,distance=..10]"`).
 === [/ACTION: KILL_ENTITY] ===
 === [ACTION: MODIFY_ENTITY_PROPERTIES] ===
-* `actionSubtype`: `"MODIFY_ENTITY_PROPERTIES"` (Alterar vida, nome, IA ou invulnerabilidade de entidade com tag)
-  - Parâmetros: `storyTag`, `customName` (opcional), `health` (ex: `"20.0"`), `invulnerable` (`"true"`/`"false"`), `noAi` (`"true"`/`"false"`), `glowing` (`"true"`/`"false"`).
+* `actionSubtype`: `"MODIFY_ENTITY_PROPERTIES"` (Alterar vida, velocidade, nome ou IA de entidade)
+  - Parâmetros: `targetMode` (Escolhas: `"STORY_TAG"` ou `"AREA_NEAREST"`), `targetStoryTag` (tag da entidade alvo), `entitySelector`, `health` (ex: `"20"`), `speedMultiplier` (ex: `"1.0"`), `customName` (opcional), `noAi` (`"true"`/`"false"`).
 === [/ACTION: MODIFY_ENTITY_PROPERTIES] ===
 === [ACTION: ADD_ENTITY_EFFECT] ===
-* `actionSubtype`: `"ADD_ENTITY_EFFECT"` (Aplicar efeito de poção em entidade com tag)
-  - Parâmetros: `storyTag`, `effectId` (ex: `"minecraft:speed"`, `"minecraft:glowing"`, `"minecraft:regeneration"`), `durationSeconds` (ex: `"10"`), `amplifier` (nível do efeito começando em `"0"`).
+* `actionSubtype`: `"ADD_ENTITY_EFFECT"` (Aplicar ou remover/zerar efeito de poção em entidade ou Pokémon com tag)
+  - Parâmetros:
+    * `targetMode` (Escolhas disponíveis):
+      - `"STORY_TAG"`    -> Mira especificamente na entidade/Pokémon que possui a tag em `targetStoryTag` (RECOMENDADO quando você spawnou um Pokémon/NPC com `storyTag`).
+      - `"AREA_NEAREST"` -> Mira na entidade mais próxima usando `entitySelector` (padrão `"@e[type=!player,distance=..5,limit=1]"`).
+    * `targetStoryTag`: Tag da entidade/Pokémon alvo (ex: `"bulba_dormindo"`). (Você também pode passar `storyTag` com o mesmo valor).
+    * `effectId`: ID do efeito de poção do Minecraft (ex: `"minecraft:slowness"`, `"minecraft:glowing"`, `"minecraft:speed"`, `"minecraft:blindness"`, `"minecraft:regeneration"`, `"minecraft:weakness"`).
+    * `durationSec`: Duração em segundos (ex: `"15"`, `"9999"`).
+      - **COMO REMOVER / LIMPAR EFEITO:** NÃO existe um subtipo chamado `REMOVE_ENTITY_EFFECT`! Para remover um efeito de poção de uma entidade, use `actionSubtype="ADD_ENTITY_EFFECT"` com `durationSec="0"` (ou use um bloco `COMMAND_NODE` com `effect clear @e[tag=sua_tag]`).
+      - **DICA PARA POKÉMON DORMINDO / ACORDANDO:** Se o objetivo for a pose/efeito visual de **dormir e acordar** do Cobblemon (ou dar um pulo de susto), use `ACTION:ANIMATION` com `animationSystem="COBBLEMON"` e `animationId="sleep"` (para dormir) e depois outro `ACTION:ANIMATION` com `animationId="jump"` ou `"idle"` (para acordar/pular)!
+    * `amplifier`: Nível/potência do efeito (ex: `"1"`, `"2"`).
+    * `showParticles`: `"true"` (mostra partículas de poção) ou `"false"`.
 === [/ACTION: ADD_ENTITY_EFFECT] ===
 === [ACTION: ADD_AREA_EFFECT] ===
-* `actionSubtype`: `"ADD_AREA_EFFECT"` (Aplicar efeito de poção em todas as entidades em uma área)
-  - Parâmetros: `x`, `y`, `z`, `radius` (ex: `"8.0"`), `effectId` (ex: `"minecraft:slowness"`), `durationSeconds` (ex: `"10"`), `amplifier` (`"0"`), `affectPlayers` (`"true"` ou `"false"`).
+* `actionSubtype`: `"ADD_AREA_EFFECT"` (Aplicar efeito de poção em todas as entidades em um raio)
+  - Parâmetros: `effectId` (ex: `"minecraft:slowness"`), `radius` (raio em blocos, ex: `"8"`), `durationSec` (segundos, ex: `"10"`), `amplifier` (`"1"`), `showParticles` (`"true"` ou `"false"`).
 === [/ACTION: ADD_AREA_EFFECT] ===
 === [ACTION: LOOK_AT] ===
-* `actionSubtype`: `"LOOK_AT"` (Fazer uma entidade ou jogador olhar para um alvo ou coordenada)
-  - Parâmetros: `actorTag` (`"PLAYER"` ou a `storyTag` da entidade que vai olhar), `targetMode` (Escolhas: `"PLAYER"`, `"COORDS"`, `"TAGGED_ENTITY"`), `targetTag` (se `TAGGED_ENTITY`), `targetX`, `targetY`, `targetZ` (se `COORDS`).
+* `actionSubtype`: `"LOOK_AT"` (Fazer uma entidade, Pokémon ou jogador olhar para um alvo ou direção)
+  - Parâmetros:
+    * `operationMode` (Escolhas: `"APPLY_LOOK"` para aplicar olhar, `"RESET_LOOK"` para liberar o olhar).
+    * `subjectType` (Quem vai olhar - Escolhas: `"PLAYER_POKEMON"`, `"NPC_TAG"`, `"PLAYER"`).
+    * `subjectIdentifier` (Se `PLAYER_POKEMON`, slot `"1"`..`"6"`; se `NPC_TAG`, a `storyTag` da entidade/Pokémon no mundo).
+    * `targetType` (Para quem vai olhar - Escolhas: `"PLAYER"`, `"PLAYER_POKEMON"`, `"NPC_TAG"`, `"COORDINATES"`).
+    * `targetIdentifier` (Slot `"1"`..`"6"`, `storyTag`, ou coordenadas `"x y z"`).
+    * `lookMode` (Escolhas: `"TOWARDS_REFERENCE"`, `"AWAY_FROM_REFERENCE"`, `"AT_SKY"`, `"AT_GROUND"`).
+    * `durationMode` (Escolhas: `"TEMPORARY"`, `"INDEFINITE"`).
+    * `durationTicks` (Ticks se `TEMPORARY`, ex: `"60"`).
+    * `waitForCompletion` (`"true"` ou `"false"`).
 === [/ACTION: LOOK_AT] ===
 === [ACTION: MOVE_TO_BLOCK] ===
-* `actionSubtype`: `"MOVE_TO_BLOCK"` (Fazer uma entidade/Pokémon caminhar usando pathfinding até uma coordenada)
-  - Parâmetros: `storyTag` (tag da entidade ou espécie Pokémon), `targetX`, `targetY`, `targetZ`, `speed` (velocidade de caminhada, ex: `"1.0"`).
+* `actionSubtype`: `"MOVE_TO_BLOCK"` (Fazer um Pokémon ou NPC caminhar/correr até uma coordenada ou tag)
+  - Parâmetros:
+    * `subjectType` (Escolhas: `"PLAYER_POKEMON"` ou `"NPC_TAG"` — use `"NPC_TAG"` para qualquer Pokémon/entidade spawnado no mundo com `storyTag`).
+    * `subjectIdentifier` (Slot `"1"`..`"6"` se `PLAYER_POKEMON`, ou a `storyTag` da entidade/Pokémon se `NPC_TAG`).
+    * `targetDestinationType` (Escolhas: `"COORDINATES"` ou `"STORY_TAG"`).
+    * `destinationIdentifier` (Coordenadas ex: `"~0 ~0 ~5"` ou nome da tag de destino).
+    * `speedMode` (Escolhas: `"WALK"`, `"SPRINT"`, `"SNEAK"`, `"CUSTOM"`).
+    * `customSpeedMultiplier` (Ex: `"1.0"`, `"1.25"`).
+    * `waitForCompletion` (`"true"` para aguardar chegar no destino antes de ativar `Out`, ou `"false"`).
+    * `timeoutTicks` (Tempo limite em ticks, ex: `"100"`).
+    * `onTimeoutBehavior` (Escolhas: `"TELEPORT_TO_DESTINATION"` ou `"ADVANCE_ANYWAY"`).
+    * `lockPositionOnArrival` (`"true"` para travar no lugar ao chegar ou `"false"`).
 === [/ACTION: MOVE_TO_BLOCK] ===
 === [ACTION: ANIMATION] ===
-* `actionSubtype`: `"ANIMATION"` (Executar animação em entidade/Pokémon)
-  - Parâmetros: `storyTag`, `animationType` (Escolhas: `"SWING_ARM"`, `"HURT"`, `"JUMP"`, `"CRY"`, `"HAPPY_PARTICLES"`, `"ANGRY_PARTICLES"`).
+* `actionSubtype`: `"ANIMATION"` (Executar animação ou pose em Pokémon do Cobblemon ou NPC/Mob — **USADO PARA DORMIR, ACORDAR, PULAR, SENTAR, ATACAR, GRITAR, ETC.**)
+  - Parâmetros e todas as escolhas disponíveis:
+    * `animationSystem` (Escolhas disponíveis):
+      - `"COBBLEMON"` -> Animações nativas de Pokémon do Cobblemon.
+      - `"NPC"`       -> Poses e animações de NPCs / Mobs do Minecraft.
+    * `targetIdentifier`:
+      - Se for um Pokémon spawnado na cena com `storyTag` (ex: `"bulba_dormindo"`), passe a `storyTag` dele (ex: `"bulba_dormindo"`) ou `"1"` se for o slot 1 da equipe do jogador.
+      - Se `animationSystem="NPC"`, passe a `storyTag` da entidade (ex: `"guarda_1"`).
+    * `animationId` (Todas as escolhas disponíveis):
+      - Quando `animationSystem="COBBLEMON"`:
+        * `"sleep"`           -> 💤 Dormindo (deitado em sono profundo — use com `durationMode="PERMANENT"` para o Pokémon ficar dormindo até ser acordado!).
+        * `"idle"`            -> 🐾 Acordado / Pose normal em pé (use para **acordar / tirar o sono** de um Pokémon que estava em `"sleep"`!).
+        * `"jump"`            -> 🦘 Pulo / salto no ar (ótimo para o Pokémon pular de susto ao acordar!).
+        * `"cry"`             -> 🗣️ Grito / rugido expressivo do Pokémon.
+        * `"happy"`           -> 💖 Pulinho de alegria e sorriso.
+        * `"hurt"`            -> 💔 Reação de susto / recuo de dano.
+        * `"sit"`             -> 🪑 Sentado descansando.
+        * `"faint"`           -> 💀 Desmaiado no chão.
+        * `"battle_idle"`     -> ⚔️ Postura de combate.
+        * `"walk"`            -> 🚶 Caminhando.
+        * `"fly_idle"`        -> 🦅 Voando / batendo asas no ar.
+        * `"hover"`           -> ✨ Flutuando / levitando.
+        * `"physical_attack"` -> 💥 Ataque físico / investida.
+        * `"special_attack"`  -> 🔮 Ataque especial de energia.
+      - Quando `animationSystem="NPC"`:
+        * `"SLEEPING"`        -> 💤 Deitado dormindo.
+        * `"CROUCHING"`       -> 🥷 Agachado (Sneak).
+        * `"SITTING"`         -> 🪑 Sentado.
+        * `"JUMP"`            -> 🦘 Pulo vertical.
+        * `"CELEBRATE"`       -> 🎉 Pulo de comemoração.
+        * `"ATTACK_SWING"`    -> ⚔️ Golpe com o braço.
+        * `"HURT"`            -> 💔 Reação de dano.
+        * `"CRITICAL_HIT"`    -> ✨ Golpe crítico com partículas.
+        * `"MAGIC_SPELL"`     -> 🧙Conjurando magia.
+        * `"VILLAGER_HAPPY"`  -> 💚 Partículas verdes de felicidade.
+        * `"VILLAGER_ANGRY"`  -> 💢 Partículas de raiva/trovão.
+        * `"SWIMMING"`        -> 🏊 Nadando.
+        * `"SPIN_ATTACK"`     -> 🌀 Giro Riptide.
+    * `durationMode` (Escolhas disponíveis):
+      - `"TEMPORARY"` -> A animação/pose dura `durationTicks` ticks e depois volta ao normal.
+      - `"PERMANENT"` -> A pose (ex: `"sleep"`) fica ativa indefinidamente até que outro bloco `ACTION:ANIMATION` mude a animação para `"idle"` ou `"jump"`.
+    * `durationTicks`: Duração em ticks quando `durationMode="TEMPORARY"` (20 ticks = 1 segundo, padrão `"60"`).
+    * `waitForCompletion`: `"true"` (aguarda `durationTicks` terminar antes de liberar a porta `Out`) ou `"false"` (libera a porta `Out` imediatamente enquanto a animação roda).
+    * `overridePriority`: `"true"` (trava a IA para o Pokémon não andar e cancelar a pose sozinho) ou `"false"`.
 === [/ACTION: ANIMATION] ===
 === [ACTION: SET_ENTITY_TEXTURE] ===
-* `actionSubtype`: `"SET_ENTITY_TEXTURE"` (Alterar textura/aspecto visual de entidade com tag)
-  - Parâmetros: `storyTag`, `texturePath` (caminho ou aspect identifier).
+* `actionSubtype`: `"SET_ENTITY_TEXTURE"` (Alterar textura/skin de Pokémon ou NPC com tag)
+  - Parâmetros: `targetType` (Escolhas: `"PLAYER_POKEMON"` ou `"NPC_TAG"`), `targetIdentifier` (slot `"1"`..`"6"` ou `storyTag`), `pokemonSlot` (`"1"`..`"6"`), `textureName` (ex: `"custom_texture.png"`), `resetToDefault` (`"true"` para restaurar textura original ou `"false"`).
 === [/ACTION: SET_ENTITY_TEXTURE] ===
 
 --- 4. Categoria POKEMON (Cobblemon) ---
 === [ACTION: SPAWN_COBBLEMON] ===
 * `actionSubtype`: `"SPAWN_COBBLEMON"` (Spawnar um Pokémon selvagem ou NPC no mundo)
   - Parâmetros:
-    * `species`: Nome da espécie (ex: `"Pikachu"`, `"Charizard"`, `"Eevee"`, `"Gengar"`).
-    * `level`: Nível do Pokémon (ex: `"15"`).
+    * `species`: Nome da espécie (ex: `"Bulbasaur"`, `"Pikachu"`, `"Charizard"`, `"Eevee"`, `"Gengar"`).
+    * `level`: Nível do Pokémon (ex: `"5"`, `"15"`).
     * `shiny`: `"true"` ou `"false"`.
-    * `x`, `y`, `z`: Coordenadas de spawn (ou deixe `"~"` / coordenadas relativas se desejar perto do jogador).
-    * `storyTag`: Tag de história para identificar este Pokémon depois em missões, ações ou diálogos (ex: `"pikachu_amigo"`).
-    * `customName`: Apelido visível acima do Pokémon (opcional, ex: `"Sparky"`).
+    * `coordinates`: Coordenadas de spawn `"x y z"` (ex: `"~ ~ ~"` para spawnar perto do jogador ou `"100 64 -20"`).
+    * `storyTag`: Tag de história para identificar este Pokémon depois em `ACTION:ANIMATION`, `ACTION:ADD_ENTITY_EFFECT`, `DIALOGUE`, `QUEST`, etc. (ex: `"bulba_dormindo"`).
+    * `safePosition`: `"true"` (busca posição segura sem sufocar) ou `"false"`.
+    * `snapToGround`: `"true"` (alinha no chão firme) ou `"false"`.
     * `aiLock`: `"true"` (congela a IA de caminhada para ele ficar parado no lugar como NPC) ou `"false"`.
     * `uncatchable`: `"true"` (impede que jogadores capturem com Pokébola) ou `"false"`.
     * `invulnerable`: `"true"` (imune a dano físico no mundo) ou `"false"`.

@@ -88,6 +88,36 @@ class AIHandler {
             dir.resolve(fileName)
         }
 
+        val storyEditorLogFile: Path by lazy {
+            val dir = Minecraft.getInstance().gameDirectory.toPath()
+                .resolve("cobblebrain/story_editor_logs")
+            Files.createDirectories(dir)
+
+            val fileName = "story_editor_${
+                LocalDateTime.now()
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
+            }.log"
+
+            dir.resolve(fileName)
+        }
+
+        @Synchronized
+        fun logStoryEditor(text: String) {
+            val line = "[${LocalDateTime.now()}] $text"
+            if (clientConfig.debugLogging) {
+                println("[StoryEditor-AI] $line")
+            }
+            try {
+                Files.writeString(
+                    storyEditorLogFile,
+                    "$line\n",
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         private val gson = Gson()
         private val INSTRUCTS: String
             get() {
@@ -467,7 +497,22 @@ class AIHandler {
     }
 
     // ---------------- Logging ----------------
+    private var isStandaloneCall: Boolean = false
+
+    // ---------------- Logging ----------------
     private fun log(text: String) {
+        if (isStandaloneCall) {
+            if (
+                text.startsWith("HTTP ") ||
+                text.startsWith("Error") ||
+                text.contains("ERROR =====") ||
+                text.startsWith("Message:") ||
+                text.startsWith("Exception:")
+            ) {
+                logStoryEditor("[HTTP-TRANSPORT] $text")
+            }
+            return
+        }
         if (!DEBUG) return
 
         val line = "[${LocalDateTime.now()}] $text"
@@ -926,6 +971,7 @@ class AIHandler {
 
 
     fun generateStandaloneText(prompt: String, systemOverride: String): String {
+        isStandaloneCall = true
         val responseText = try {
             when {
                 apiBase.contains("generativelanguage.googleapis.com") -> {
@@ -936,8 +982,10 @@ class AIHandler {
                 }
             }
         } catch (e: Exception) {
+            isStandaloneCall = false
             return "!Error! ${e.message}"
         }
+        isStandaloneCall = false
 
         if (responseText.isBlank() || responseText.startsWith("!Error") || responseText.startsWith("Error")) {
             return extractErrorMessage(responseText).let { if (it.startsWith("!Error")) it else "!Error! $it" }

@@ -48,13 +48,21 @@ object DialogueSystemFabric {
 
         net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register { player, world, hand, hitResult ->
             if (!world.isClientSide && hand == net.minecraft.world.InteractionHand.MAIN_HAND && player is ServerPlayer) {
-                val blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(world.getBlockState(hitResult.blockPos).block).toString()
-                vito.cobblebrain.engine.StoryListenerManager.onBlockInteract(player, blockId)
+                val blockPos = hitResult.blockPos
+                val blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(world.getBlockState(blockPos).block).toString()
+                vito.cobblebrain.engine.StoryListenerManager.onBlockInteract(player, blockId, blockPos)
 
                 val heldItem = player.mainHandItem.item
                 if (heldItem is net.minecraft.world.item.BlockItem) {
-                    val placedBlockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(heldItem.block).toString()
-                    vito.cobblebrain.engine.StoryListenerManager.onBlockPlaced(player, placedBlockId)
+                    val placedBlock = heldItem.block
+                    val targetPos = blockPos.relative(hitResult.direction)
+                    player.server.execute {
+                        if (world.getBlockState(targetPos).`is`(placedBlock) || world.getBlockState(blockPos).`is`(placedBlock)) {
+                            val placedBlockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(placedBlock).toString()
+                            val actualPos = if (world.getBlockState(targetPos).`is`(placedBlock)) targetPos else blockPos
+                            vito.cobblebrain.engine.StoryListenerManager.onBlockPlaced(player, placedBlockId, actualPos)
+                        }
+                    }
                 }
             }
             net.minecraft.world.InteractionResult.PASS
@@ -114,12 +122,28 @@ object DialogueSystemFabric {
         // Battle start
         CobblemonEvents.BATTLE_STARTED_POST.subscribe { event ->
             DialogueSystem.onBattleStarted(event)
+            val isPvP = event.battle.players.size > 1
             event.battle.players.forEach { p ->
-                val enemySpecies = event.battle.activePokemon
+                val myActor = event.battle.actors.firstOrNull { it.uuid == p.uuid }
+                val opponents = event.battle.actors.filter { it != myActor }
+                val enemyPokemon = event.battle.activePokemon
                     .mapNotNull { it.battlePokemon }
                     .filter { it.originalPokemon.getOwnerUUID() != p.uuid }
-                    .firstOrNull()?.originalPokemon?.species?.name ?: ""
-                vito.cobblebrain.engine.StoryListenerManager.onBattleStart(p, enemySpecies)
+                    .firstOrNull()?.originalPokemon
+                    ?: opponents.flatMap { it.pokemonList }.firstOrNull()?.originalPokemon
+                val enemySpecies = enemyPokemon?.species?.name ?: ""
+                val battleType = if (isPvP) {
+                    "PVP"
+                } else {
+                    val opponentActor = opponents.firstOrNull()
+                    val actorName = opponentActor?.getName()?.string ?: ""
+                    if (actorName.isNotBlank() && !actorName.equals(enemySpecies, ignoreCase = true) && !actorName.equals(enemyPokemon?.nickname?.string ?: "", ignoreCase = true)) {
+                        "TRAINER"
+                    } else {
+                        "WILD"
+                    }
+                }
+                vito.cobblebrain.engine.StoryListenerManager.onBattleStart(p, enemySpecies, battleType)
             }
         }
 
@@ -134,7 +158,8 @@ object DialogueSystemFabric {
                 event.pokemon.nickname = null
             }
             CobblebrainWorldSave.migrateWildToPermanent(event.pokemon)
-            vito.cobblebrain.engine.StoryListenerManager.onPokemonCatch(event.player, event.pokemon.species.name)
+            val entityTags = event.pokemon.entity?.tags ?: emptySet()
+            vito.cobblebrain.engine.StoryListenerManager.onPokemonCatch(event.player, event.pokemon.species.name, entityTags)
             DialogueSystem.onPokemonCaptured(event.pokemon)
         }
 
@@ -161,8 +186,20 @@ object DialogueSystemFabric {
         // Victory
         CobblemonEvents.BATTLE_VICTORY.subscribe { event ->
             DialogueSystem.onBattleVictory(event)
-            event.battle.players.forEach { p ->
-                vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p)
+            val battle = event.battle
+            for (p in battle.players) {
+                val myActor = battle.actors.firstOrNull { it.uuid == p.uuid }
+                val won = myActor != null && event.winners.contains(myActor)
+                val opponentSpecies = if (won) {
+                    event.losers.flatMap { it.pokemonList }.firstOrNull()?.originalPokemon?.species?.name ?: ""
+                } else {
+                    event.winners.flatMap { it.pokemonList }.firstOrNull()?.originalPokemon?.species?.name ?: ""
+                }
+                if (won) {
+                    vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p, opponentSpecies)
+                } else {
+                    vito.cobblebrain.engine.StoryListenerManager.onBattleDefeat(p, opponentSpecies)
+                }
             }
         }
 

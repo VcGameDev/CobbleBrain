@@ -891,6 +891,14 @@ object DialogueSystem {
         }
         val ativos = PokemonQuery.findActivePokemon(player)
 
+        if (ativos.isNotEmpty()) {
+            ativos.forEach { p ->
+                vito.cobblebrain.engine.StoryListenerManager.onPokemonTalk(player, p.species.name)
+            }
+        } else {
+            vito.cobblebrain.engine.StoryListenerManager.onPokemonTalk(player, "")
+        }
+
         val formattedText = if (isStt) {
             "[Voice Input / Speech-to-Text Notice: This player message was transcribed using microphone speech recognition. It may contain transcription or phonetic inaccuracies, particularly regarding Pokémon names, moves, or game terms. Interpret player intent accordingly.]\n\n${player.name.string} said: $text"
         } else if (text.startsWith("${player.name.string} said:")) {

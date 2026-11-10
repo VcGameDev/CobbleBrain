@@ -81,8 +81,12 @@ object StoryListenerManager {
                     }
                     "DAYS_PASSED" -> {
                         val requiredDays = trigNode.params["daysCount"]?.toLongOrNull() ?: 1L
-                        val currentDays = Math.max(0L, player.serverLevel().dayTime / 24000L)
-                        currentDays >= requiredDays
+                        if (instance.context.startWorldDayTime < 0L) {
+                            instance.context.startWorldDayTime = player.serverLevel().dayTime
+                        }
+                        val elapsedTicks = Math.max(0L, player.serverLevel().dayTime - instance.context.startWorldDayTime)
+                        val elapsedDays = elapsedTicks / 24000L
+                        elapsedDays >= requiredDays
                     }
                     "TIME_ELAPSED" -> {
                         val reqSec = trigNode.params["timeSeconds"]?.toLongOrNull() ?: trigNode.params["seconds"]?.toLongOrNull() ?: 10L
@@ -282,8 +286,11 @@ object StoryListenerManager {
     }
 
     @Suppress("unused")
-    fun onPokemonCatch(player: ServerPlayer, species: String) {
-        val data = mapOf("targetSpecies" to species)
+    fun onPokemonCatch(player: ServerPlayer, species: String, tags: Set<String> = emptySet()) {
+        val data = mutableMapOf("targetSpecies" to species)
+        if (tags.isNotEmpty()) {
+            data["entityTags"] = tags.joinToString(",")
+        }
         StoryMissionManager.onTriggerFired(player, "POKEMON_CATCH", data)
         dispatchReactiveTrigger(player, "POKEMON_CATCH", data)
     }
@@ -294,18 +301,22 @@ object StoryListenerManager {
         dispatchReactiveTrigger(player, "BATTLE_VICTORY", data)
     }
 
-    @Suppress("unused")
-    fun onBattleDefeat(player: ServerPlayer) {
-        StoryMissionManager.onPlayerDeath(player)
-        dispatchReactiveTrigger(player, "BATTLE_DEFEAT", emptyMap())
+    fun onBattleDefeat(player: ServerPlayer, targetSpecies: String = "") {
+        val data = if (targetSpecies.isNotBlank()) mapOf("targetSpecies" to targetSpecies) else emptyMap()
+        StoryMissionManager.onTriggerFired(player, "BATTLE_DEFEAT", data)
+        dispatchReactiveTrigger(player, "BATTLE_DEFEAT", data)
     }
 
     @Suppress("unused")
     fun onPokemonInteract(player: ServerPlayer, species: String) {
         val data = mapOf("targetSpecies" to species)
         StoryMissionManager.onTriggerFired(player, "INTERACT_POKEMON", data)
-        StoryMissionManager.onTriggerFired(player, "TALK_TO_POKEMON", data)
         dispatchReactiveTrigger(player, "INTERACT_POKEMON", data)
+    }
+
+    fun onPokemonTalk(player: ServerPlayer, species: String) {
+        val data = mapOf("targetSpecies" to species)
+        StoryMissionManager.onTriggerFired(player, "TALK_TO_POKEMON", data)
         dispatchReactiveTrigger(player, "TALK_TO_POKEMON", data)
     }
 
@@ -323,15 +334,25 @@ object StoryListenerManager {
     }
 
     @Suppress("unused")
-    fun onBlockInteract(player: ServerPlayer, blockId: String) {
-        val data = mapOf("blockId" to blockId)
+    fun onBlockInteract(player: ServerPlayer, blockId: String, pos: net.minecraft.core.BlockPos? = null) {
+        val data = mutableMapOf("blockId" to blockId)
+        if (pos != null) {
+            data["posX"] = pos.x.toString()
+            data["posY"] = pos.y.toString()
+            data["posZ"] = pos.z.toString()
+        }
         StoryMissionManager.onTriggerFired(player, "BLOCK_INTERACTED", data)
         dispatchReactiveTrigger(player, "BLOCK_INTERACTED", data)
     }
 
     @Suppress("unused")
-    fun onBlockPlaced(player: ServerPlayer, blockId: String) {
-        val data = mapOf("blockId" to blockId)
+    fun onBlockPlaced(player: ServerPlayer, blockId: String, pos: net.minecraft.core.BlockPos? = null) {
+        val data = mutableMapOf("blockId" to blockId)
+        if (pos != null) {
+            data["posX"] = pos.x.toString()
+            data["posY"] = pos.y.toString()
+            data["posZ"] = pos.z.toString()
+        }
         StoryMissionManager.onTriggerFired(player, "BLOCK_PLACED", data)
         dispatchReactiveTrigger(player, "BLOCK_PLACED", data)
     }
@@ -542,6 +563,7 @@ object StoryListenerManager {
                  (triggerType in listOf("INTERACT_POKEMON", "INTERACT_ENTITY") && t in listOf("INTERACT_POKEMON", "INTERACT_ENTITY", "TALK_TO_POKEMON")) ||
                  (triggerType == "TALK_TO_POKEMON" && t in listOf("TALK_TO_POKEMON", "INTERACT_POKEMON", "INTERACT_ENTITY")) ||
                  (triggerType == "BATTLE_START" && t == "BATTLE_START") ||
+                 (triggerType == "BATTLE_DEFEAT" && (t == "BATTLE_DEFEAT" || t == "DEFEAT")) ||
                  (triggerType == "PREVIOUS_MISSION_COMPLETED" && t == "PREVIOUS_MISSION_COMPLETED") ||
                  (triggerType == "PREVIOUS_EVENT_EXECUTED" && t == "PREVIOUS_EVENT_EXECUTED") ||
                  (triggerType == "AI_EVALUATION" && t == "AI_EVALUATION") ||
@@ -558,6 +580,22 @@ object StoryListenerManager {
                     }
                 }
 
+                val nodeBattleType = node.params["battleType"]?.trim()
+                if (!nodeBattleType.isNullOrBlank() && !nodeBattleType.equals("ANY", ignoreCase = true) && eventData.containsKey("battleType")) {
+                    val evBattleType = eventData["battleType"] ?: ""
+                    if (!evBattleType.equals(nodeBattleType, ignoreCase = true)) {
+                        matches = false
+                    }
+                }
+
+                val reqTag = (node.params["requiredStoryTag"] ?: node.params["storyTag"])?.trim()
+                if (!reqTag.isNullOrBlank() && eventData.containsKey("entityTags")) {
+                    val evTags = eventData["entityTags"]?.split(",")?.map { it.trim() } ?: emptyList()
+                    if (!evTags.contains(reqTag)) {
+                        matches = false
+                    }
+                }
+
                 val targetBlock = node.params["blockId"]
                 if (!targetBlock.isNullOrBlank() && eventData.containsKey("blockId")) {
                     val evBlock = eventData["blockId"] ?: ""
@@ -565,6 +603,13 @@ object StoryListenerManager {
                         matches = false
                     }
                 }
+
+                val nodeX = node.params["posX"]?.toIntOrNull()
+                val nodeY = node.params["posY"]?.toIntOrNull()
+                val nodeZ = node.params["posZ"]?.toIntOrNull()
+                if (nodeX != null && eventData.containsKey("posX") && eventData["posX"]?.toIntOrNull() != nodeX) matches = false
+                if (nodeY != null && eventData.containsKey("posY") && eventData["posY"]?.toIntOrNull() != nodeY) matches = false
+                if (nodeZ != null && eventData.containsKey("posZ") && eventData["posZ"]?.toIntOrNull() != nodeZ) matches = false
 
                 val targetSlot = node.params["slotId"] ?: node.params["profileId"]
                 if (!targetSlot.isNullOrBlank() && eventData.containsKey("slotId")) {
@@ -598,6 +643,14 @@ object StoryListenerManager {
                     }
                 }
 
+                val targetStoryId = node.params["storyId"]?.trim()
+                if (!targetStoryId.isNullOrBlank() && eventData.containsKey("storyId")) {
+                    val evStory = eventData["storyId"] ?: ""
+                    if (!evStory.equals(targetStoryId, ignoreCase = true)) {
+                        matches = false
+                    }
+                }
+
                 val isIfNot = node.params["triggerCondition"] == "IF_NOT"
                 val finalResult = if (isIfNot) !matches else matches
                 if (finalResult) {
@@ -607,8 +660,11 @@ object StoryListenerManager {
         }
     }
 
-    fun onBattleStart(player: ServerPlayer, targetSpecies: String = "") {
-        val data = if (targetSpecies.isNotBlank()) mapOf("targetSpecies" to targetSpecies) else emptyMap()
+    fun onBattleStart(player: ServerPlayer, targetSpecies: String = "", battleType: String = "") {
+        val data = mutableMapOf<String, String>()
+        if (targetSpecies.isNotBlank()) data["targetSpecies"] = targetSpecies
+        if (battleType.isNotBlank()) data["battleType"] = battleType
+        StoryMissionManager.onTriggerFired(player, "BATTLE_START", data)
         dispatchReactiveTrigger(player, "BATTLE_START", data)
     }
 

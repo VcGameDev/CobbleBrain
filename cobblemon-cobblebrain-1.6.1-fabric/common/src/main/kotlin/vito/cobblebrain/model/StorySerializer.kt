@@ -68,9 +68,7 @@ data class SceneConnectionsFile(
 )
 
 object StorySerializer {
-    val gson: Gson = GsonBuilder()
-        .setPrettyPrinting()
-        .create()
+    val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 
     val storageDir: File
         get() {
@@ -86,14 +84,69 @@ object StorySerializer {
         }
 
     fun deepCopyProject(project: StoryProject): StoryProject {
-        val json = gson.toJson(project)
-        val copy = gson.fromJson(json, StoryProject::class.java)
-        copy.isFolderPack = project.isFolderPack
-        copy.packDirectory = project.packDirectory
-        copy.isReadOnly = project.isReadOnly
-        copy.sourceZipFile = project.sourceZipFile
-        copy.scenes.forEach { it.isLoaded = true }
-        return copy
+        fun copyPort(p: PortData) = PortData(id = p.id, name = p.name, type = p.type, dataType = p.dataType)
+        fun copyConn(c: ConnectionData) = ConnectionData(
+            id = c.id,
+            fromNodeId = c.fromNodeId,
+            fromPortId = c.fromPortId,
+            toNodeId = c.toNodeId,
+            toPortId = c.toPortId
+        )
+        fun copyNode(n: NodeData): NodeData = NodeData(
+            id = n.id,
+            parentSceneId = n.parentSceneId,
+            title = n.title,
+            nodeType = n.nodeType,
+            content = n.content,
+            x = n.x,
+            y = n.y,
+            width = n.width,
+            height = n.height,
+            preDelayTicks = n.preDelayTicks,
+            postDelayTicks = n.postDelayTicks,
+            inputs = n.inputs.map { copyPort(it) }.toMutableList(),
+            outputs = n.outputs.map { copyPort(it) }.toMutableList(),
+            params = HashMap(n.params),
+            innerNodes = n.innerNodes.map { copyNode(it) }.toMutableList(),
+            innerConnections = n.innerConnections.map { copyConn(it) }.toMutableList()
+        )
+        fun copyScene(s: SceneData) = SceneData(
+            id = s.id,
+            title = s.title,
+            description = s.description,
+            isStartScene = s.isStartScene,
+            isEndScene = s.isEndScene,
+            x = s.x,
+            y = s.y,
+            width = s.width,
+            height = s.height,
+            inPort = copyPort(s.inPort),
+            outPort = copyPort(s.outPort),
+            isLoaded = s.isLoaded,
+            sourceFileName = s.sourceFileName,
+            nodes = s.nodes.map { copyNode(it) }.toMutableList(),
+            connections = s.connections.map { copyConn(it) }.toMutableList()
+        )
+
+        return StoryProject(
+            id = project.id,
+            name = project.name,
+            author = project.author,
+            description = project.description,
+            version = project.version,
+            activeSceneId = project.activeSceneId,
+            prerequisites = project.prerequisites.copy(
+                requiredCompletedStories = project.prerequisites.requiredCompletedStories.toMutableList()
+            ),
+            scenes = project.scenes.map { copyScene(it) }.toMutableList(),
+            sceneConnections = project.sceneConnections.map { copyConn(it) }.toMutableList(),
+            globalNodes = project.globalNodes.map { copyNode(it) }.toMutableList(),
+            variables = project.variables.map { it.copy() }.toMutableList(),
+            isFolderPack = project.isFolderPack,
+            packDirectory = project.packDirectory,
+            isReadOnly = project.isReadOnly,
+            sourceZipFile = project.sourceZipFile
+        )
     }
 
     fun loadSceneWithSplitSupport(sceneFile: File): SceneData? {

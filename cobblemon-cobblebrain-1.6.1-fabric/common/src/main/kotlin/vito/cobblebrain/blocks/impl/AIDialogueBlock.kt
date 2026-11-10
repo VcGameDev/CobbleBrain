@@ -124,6 +124,12 @@ class AIDialogueBlock {
                     player.sendSystemMessage(Component.literal("§b[$speakerName]§f: $verbalText"))
                 }
 
+                if (player != null && verbalText.isNotBlank()) {
+                    val pokemonSpecies = (targetLivingEntity as? com.cobblemon.mod.common.entity.pokemon.PokemonEntity)?.pokemon?.species?.name ?: speakerName
+                    vito.cobblebrain.engine.StoryListenerManager.onPokemonTalk(player, pokemonSpecies)
+                    vito.cobblebrain.engine.StoryListenerManager.onAIEvaluation(player, verbalText)
+                }
+
                 if (showHUD && player != null) {
                     // Send S2C packet to open client HUD Dialogue Box Overlay
                     DialogueSystem.sendAIDialogueBoxToPlayer?.invoke(

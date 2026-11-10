@@ -43,14 +43,30 @@ class DialogueSystemNeoForge {
                 CobblebrainNetworkingNeoForge.sendQuests(player)
             }
 
-            CobblemonEvents.BATTLE_STARTED_POST.subscribe {
-                DialogueSystem.onBattleStarted(it)
-                it.battle.players.forEach { p ->
-                    val enemySpecies = it.battle.activePokemon
-                        .mapNotNull { b -> b.battlePokemon }
-                        .filter { b -> b.originalPokemon.getOwnerUUID() != p.uuid }
-                        .firstOrNull()?.originalPokemon?.species?.name ?: ""
-                    vito.cobblebrain.engine.StoryListenerManager.onBattleStart(p, enemySpecies)
+            CobblemonEvents.BATTLE_STARTED_POST.subscribe { event ->
+                DialogueSystem.onBattleStarted(event)
+                val isPvP = event.battle.players.size > 1
+                event.battle.players.forEach { p ->
+                    val myActor = event.battle.actors.firstOrNull { it.uuid == p.uuid }
+                    val opponents = event.battle.actors.filter { it != myActor }
+                    val enemyPokemon = event.battle.activePokemon
+                        .mapNotNull { it.battlePokemon }
+                        .filter { it.originalPokemon.getOwnerUUID() != p.uuid }
+                        .firstOrNull()?.originalPokemon
+                        ?: opponents.flatMap { it.pokemonList }.firstOrNull()?.originalPokemon
+                    val enemySpecies = enemyPokemon?.species?.name ?: ""
+                    val battleType = if (isPvP) {
+                        "PVP"
+                    } else {
+                        val opponentActor = opponents.firstOrNull()
+                        val actorName = opponentActor?.getName()?.string ?: ""
+                        if (actorName.isNotBlank() && !actorName.equals(enemySpecies, ignoreCase = true) && !actorName.equals(enemyPokemon?.nickname?.string ?: "", ignoreCase = true)) {
+                            "TRAINER"
+                        } else {
+                            "WILD"
+                        }
+                    }
+                    vito.cobblebrain.engine.StoryListenerManager.onBattleStart(p, enemySpecies, battleType)
                 }
             }
 
@@ -64,7 +80,8 @@ class DialogueSystemNeoForge {
                     it.pokemon.nickname = null
                 }
                 CobblebrainWorldSave.migrateWildToPermanent(it.pokemon)
-                vito.cobblebrain.engine.StoryListenerManager.onPokemonCatch(it.player, it.pokemon.species.name)
+                val entityTags = it.pokemon.entity?.tags ?: emptySet()
+                vito.cobblebrain.engine.StoryListenerManager.onPokemonCatch(it.player, it.pokemon.species.name, entityTags)
                 DialogueSystem.onPokemonCaptured(it.pokemon)
             }
 
@@ -74,8 +91,20 @@ class DialogueSystemNeoForge {
 
             CobblemonEvents.BATTLE_VICTORY.subscribe { event ->
                 DialogueSystem.onBattleVictory(event)
-                event.battle.players.forEach { p ->
-                    vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p)
+                val battle = event.battle
+                for (p in battle.players) {
+                    val myActor = battle.actors.firstOrNull { it.uuid == p.uuid }
+                    val won = myActor != null && event.winners.contains(myActor)
+                    val opponentSpecies = if (won) {
+                        event.losers.flatMap { it.pokemonList }.firstOrNull()?.originalPokemon?.species?.name ?: ""
+                    } else {
+                        event.winners.flatMap { it.pokemonList }.firstOrNull()?.originalPokemon?.species?.name ?: ""
+                    }
+                    if (won) {
+                        vito.cobblebrain.engine.StoryListenerManager.onBattleVictory(p, opponentSpecies)
+                    } else {
+                        vito.cobblebrain.engine.StoryListenerManager.onBattleDefeat(p, opponentSpecies)
+                    }
                 }
             }
 
@@ -212,7 +241,7 @@ class DialogueSystemNeoForge {
         val player = event.entity as? ServerPlayer ?: return
         if (event.hand == net.minecraft.world.InteractionHand.MAIN_HAND && !event.level.isClientSide) {
             val blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(event.level.getBlockState(event.pos).block).toString()
-            vito.cobblebrain.engine.StoryListenerManager.onBlockInteract(player, blockId)
+            vito.cobblebrain.engine.StoryListenerManager.onBlockInteract(player, blockId, event.pos)
         }
     }
 
@@ -220,7 +249,7 @@ class DialogueSystemNeoForge {
     fun onBlockPlace(event: net.neoforged.neoforge.event.level.BlockEvent.EntityPlaceEvent) {
         val player = event.entity as? ServerPlayer ?: return
         val blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(event.placedBlock.block).toString()
-        vito.cobblebrain.engine.StoryListenerManager.onBlockPlaced(player, blockId)
+        vito.cobblebrain.engine.StoryListenerManager.onBlockPlaced(player, blockId, event.pos)
     }
 
     @SubscribeEvent

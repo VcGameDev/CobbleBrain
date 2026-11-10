@@ -14,6 +14,7 @@ enum class ContextMenuAction {
     RESET_PROPERTIES,
     DISCONNECT_PORTS,
     TOGGLE_AI_FOCUS,
+    CLEAR_ALL_AI_FOCUS,
     PASTE_NODES,
     SAVE_STORY,
     ADD_NODE
@@ -36,7 +37,7 @@ class ContextMenuWidget(
     )
 
     private val menuItems = mutableListOf<MenuItem>()
-    private val menuWidth = 160
+    private val menuWidth = 175
     private val itemHeight = 18
     var isShowingResetConfirmation: Boolean = false
 
@@ -48,7 +49,10 @@ class ContextMenuWidget(
         menuItems.clear()
         if (targetNode != null) {
             val isPinned = StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(targetNode.id)
-            menuItems.add(MenuItem(if (isPinned) "🎯 Remover Foco IA" else "🎯 Marcar Foco IA", ContextMenuAction.TOGGLE_AI_FOCUS))
+            menuItems.add(MenuItem(if (isPinned) "🎯 Remover do Foco IA" else "🎯 Adicionar ao Foco IA", ContextMenuAction.TOGGLE_AI_FOCUS))
+            if (StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size > 1 || (StoryEditorAIAssistantWidget.pinnedFocusNodeIds.isNotEmpty() && !isPinned)) {
+                menuItems.add(MenuItem("🎯 Limpar Focos IA (${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size})", ContextMenuAction.CLEAR_ALL_AI_FOCUS))
+            }
             menuItems.add(MenuItem("🗑️ Delete Block", ContextMenuAction.DELETE))
             menuItems.add(MenuItem("📋 Duplicate Block", ContextMenuAction.DUPLICATE))
             menuItems.add(MenuItem("⛓️ Detach from Scene", ContextMenuAction.DETACH_FROM_SCENE))
@@ -65,6 +69,9 @@ class ContextMenuWidget(
             menuItems.add(MenuItem("📋 Duplicate Scene", ContextMenuAction.DUPLICATE))
             menuItems.add(MenuItem("🔄 Reset Scene", ContextMenuAction.RESET_PROPERTIES))
         } else if (isCanvasMenu) {
+            if (StoryEditorAIAssistantWidget.pinnedFocusNodeIds.isNotEmpty()) {
+                menuItems.add(MenuItem("🎯 Limpar Focos IA (${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size})", ContextMenuAction.CLEAR_ALL_AI_FOCUS))
+            }
             val canPasteNodes = BlockDataClipboard.hasCopiedNodes()
             menuItems.add(MenuItem("📋 Paste Nodes", ContextMenuAction.PASTE_NODES, enabled = canPasteNodes))
             menuItems.add(MenuItem("💾 Save Story", ContextMenuAction.SAVE_STORY))
