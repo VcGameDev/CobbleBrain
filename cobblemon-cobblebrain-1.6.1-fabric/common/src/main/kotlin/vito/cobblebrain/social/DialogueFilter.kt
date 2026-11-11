@@ -24,6 +24,8 @@ object DialogueFilter {
     val MUSIC_NOTE_REGEX = Regex("""-[VI]:[^\n|]+""", RegexOption.IGNORE_CASE)
     val TARGET_TAG_REGEX = Regex("""\s*>([A-Za-z0-9_.'♀♂#-]+)""")
     val START_QUEST_REGEX = Regex("""(?:^|[\s|;])&START_QUEST:([^:\n|]+):([A-Za-z]+)(?::([^|\n;&%#!=]+))?""", RegexOption.IGNORE_CASE)
+    val STORY_RECAP_REGEX = Regex("""(?:^|[\s|;])&STORY_RECAP:([^|\n;&%#!]+)""", RegexOption.IGNORE_CASE)
+    val CHAR_RECAP_REGEX = Regex("""(?:^|[\s|;])&CHAR_RECAP:([^:\n|]+):([^|\n;&%#!]+)""", RegexOption.IGNORE_CASE)
 
     val MULTI_SPACE_REGEX = Regex("""[ \t]+""")
     val PUNCTUATION_SPACING_REGEX = Regex("""\s+([,.:!?])""")
@@ -67,7 +69,10 @@ object DialogueFilter {
         "like",
         "dislike",
         "likes",
-        "dislikes"
+        "dislikes",
+        "story_recap",
+        "char_recap",
+        "recap"
     )
 
     fun isErrorResponse(text: String): Boolean {
@@ -136,6 +141,8 @@ object DialogueFilter {
             .replace(MEMORY_REGEX, "")
             .replace(CATCH_REGEX, "")
             .replace(START_QUEST_REGEX, "")
+            .replace(STORY_RECAP_REGEX, "")
+            .replace(CHAR_RECAP_REGEX, "")
             .replace(MUSIC_HEADER_REGEX, "")
             .replace(MUSIC_NOTE_REGEX, "")
             .replace(TARGET_TAG_REGEX, "")
@@ -162,6 +169,8 @@ object DialogueFilter {
             normalized.startsWith("&start_quest") ||
             normalized.startsWith("&like") ||
             normalized.startsWith("&dislike") ||
+            normalized.startsWith("&story_recap") ||
+            normalized.startsWith("&char_recap") ||
             normalized.startsWith("##") ||
             normalized.startsWith("==") ||
             normalized.startsWith("~music") ||

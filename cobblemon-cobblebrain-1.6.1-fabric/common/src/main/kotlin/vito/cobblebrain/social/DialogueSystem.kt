@@ -85,6 +85,7 @@ object DialogueSystem {
     private val lastPromptContext = ConcurrentHashMap<UUID, Pair<List<Pokemon>, String>>()
 
     val scheduledMessages: MutableMap<UUID, MutableList<ScheduledMessage>> = ConcurrentHashMap()
+    val messagesSinceLastRecap = ConcurrentHashMap<UUID, Int>()
 
     private val pokemonAliasMap =
         mutableMapOf<UUID, MutableMap<String, UUID>>()
@@ -2271,7 +2272,7 @@ object DialogueSystem {
             entityUuid = entity.uuid,
             playerUuid = player.uuid,
             targetEntityUuid = if (targetEntity != null && targetEntity != player) targetEntity.uuid else null,
-            expireTick = currentTick + 600L
+            expireTick = currentTick + 160L // 8 seconds (160 ticks)
         )
     }
 
@@ -2318,7 +2319,7 @@ object DialogueSystem {
             val entry = iterator.next()
             val data = entry.value
 
-            // 1. Timeout expired (30 seconds)
+            // 1. Timeout expired (8 seconds)
             if (currentTick >= data.expireTick) {
                 val entity = server.allLevels.firstNotNullOfOrNull { it.getEntity(data.entityUuid) as? PokemonEntity }
                 entity?.navigation?.stop()
@@ -2896,7 +2897,7 @@ object DialogueSystem {
 
             // Inject last session summary if present
             val sessionSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
-            if (sessionSummary != null) {
+            if (sessionSummary != null && config.enableRecap) {
                 appendLine("[LAST SESSION RECAP]")
                 appendLine(sessionSummary)
                 appendLine()
@@ -3438,12 +3439,20 @@ object DialogueSystem {
                 appendLine()
             }
 
-            // Memory Diary Creation: Only append if [FLAG: MEMORY] is present
-            if (config.outputMemories && ("MEMORY" in flags || flags.isEmpty())) {
-                appendLine("[MEMORY DIARY]")
-                appendLine("If this interaction was significant, summarize it into a lasting memory:")
-                appendLine("Format: &MEMORY:<PokemonNames>:<MemoryText>|<7 comma-separated keywords>")
-                appendLine()
+            // Memory Diary Creation: Based on outputMemories ("OFF", "AVERAGE", "HIGH")
+            val memMode = config.outputMemories.uppercase()
+            if (memMode != "OFF") {
+                val isHigh = (memMode == "HIGH")
+                if (isHigh || "MEMORY" in flags || flags.isEmpty()) {
+                    appendLine("[MEMORY DIARY]")
+                    if (isHigh) {
+                        appendLine("MANDATORY: You must generate a memorable summary (&MEMORY:) of this interaction for the participating Pokémon:")
+                    } else {
+                        appendLine("If this interaction was significant, summarize it into a lasting memory:")
+                    }
+                    appendLine("Format: &MEMORY:<PokemonNames>:<MemoryText>|<7 comma-separated keywords>")
+                    appendLine()
+                }
             }
 
             // Guaranteed Catch: Only append if [FLAG: CATCH] is present
@@ -3453,14 +3462,31 @@ object DialogueSystem {
                 appendLine()
             }
 
+            if (config.enableRecap) {
+                appendLine("[RECAP SYSTEM]")
+                appendLine("Record strictly what you directly observed in this conversation:")
+                appendLine("- Story Recap: In 1-2 concise sentences, summarize the events, topics discussed, and immediate plans established in this conversation.")
+                appendLine("  Format: &STORY_RECAP:<observed event and conversation summary>")
+                appendLine("- Character Observation: In 1 short sentence per participating Pokémon, describe strictly how they spoke, reacted, or treated the trainer in this interaction (never invent lore or unshown traits).")
+                appendLine("  Format: &CHAR_RECAP:<PokemonName>:<factual observation of demonstrated attitude and tone>")
+                appendLine()
+            }
+
             appendLine("##OUTPUT RULES##")
-            appendLine("- Output ONLY state update tags (&TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, !catch, =resume).")
+            appendLine("- Output ONLY state update tags (&STORY_RECAP:, &CHAR_RECAP:, &TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, !catch, =resume).")
             appendLine("- Output exactly ONE tag per line per Pokémon. NEVER combine multiple Pokémon on the same line with semicolons or commas.")
             appendLine("  Example correct format:")
             appendLine("  &TRAIT:Squirtle:Energetic")
             appendLine("  &TRAIT:Farfetch’d:Vigilant")
             appendLine("- Do NOT generate conversational dialogue, roleplay, or greetings in this response.")
-            appendLine("- If no state updates are needed, leave output empty.")
+            if (config.enableRecap) {
+                appendLine("- Mandatory: &STORY_RECAP: and &CHAR_RECAP: (for participating Pokémon) must always be generated. For all other systems, if no updates are needed, leave them empty.")
+            } else {
+                appendLine("- If no state updates are needed, leave output empty.")
+            }
+            if (config.outputMemories.equals("HIGH", ignoreCase = true)) {
+                appendLine("- Mandatory: &MEMORY: must always be generated for this interaction.")
+            }
         }.trim()
     }
 
@@ -3820,7 +3846,7 @@ object DialogueSystem {
 
             // Inject last session summary if present
             val sessionSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
-            if (sessionSummary != null) {
+            if (sessionSummary != null && config.enableRecap) {
                 appendLine("[LAST SESSION RECAP]")
                 appendLine(sessionSummary)
                 appendLine()
@@ -4298,22 +4324,6 @@ object DialogueSystem {
             return
         }
 
-        // Standard dialogue response reached
-        // If summary exists, show notice before clearing
-        val currentSummary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
-        if (currentSummary != null) {
-            player.sendSystemMessage(Component.literal("\n"))
-            player.sendSystemMessage(
-                Component.translatable("cobblebrain.summary.previously")
-                    .withStyle(ChatFormatting.GOLD)
-                    .append(Component.translatable("cobblebrain.summary.applied").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC))
-            )
-            player.sendSystemMessage(Component.literal("\n"))
-            
-            // Clear last session summary as AI already consumed it in prompt
-            CobblebrainWorldSave.clearSessionSummary(player.uuid.toString())
-        }
-
         // Extract and strip Stage 1 routing flags
         val parsedFlags = mutableSetOf<String>()
         DialogueFilter.FLAG_REGEX.findAll(sanitized).forEach { matchResult ->
@@ -4690,12 +4700,13 @@ object DialogueSystem {
 
         // 3. Pipeline Branching: Optimized Mode vs Legacy Flow
         if (config.optimizedMode) {
-            val playerMsg = lastPlayerMessage[player.uuid] ?: ""
-
-            val hasRelevantFlags = parsedFlags.any { it in setOf("FRIENDSHIP", "QUEST", "MEMORY", "TRAIT", "QUIRK", "CATCH") } ||
+            val isHighMemory = config.outputMemories.equals("HIGH", ignoreCase = true)
+            val hasRelevantFlags = parsedFlags.any { it in setOf("FRIENDSHIP", "QUEST", "MEMORY", "TRAIT", "QUIRK", "CATCH", "RECAP") } ||
                     contentWithoutFlags.contains("&START_QUEST", ignoreCase = true)
 
-            if (hasRelevantFlags) {
+            if (config.enableRecap || isHighMemory || hasRelevantFlags) {
+                val playerMsg = lastPlayerMessage[player.uuid] ?: ""
+
                 val bgPrompt = buildBackgroundResolutionPrompt(player, activePokemons, playerMsg, contentWithoutFlags, parsedFlags)
 
                 vito.cobblebrain.engine.StoryDebugger.recordLog(
@@ -4704,21 +4715,11 @@ object DialogueSystem {
                     blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
                     status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
                     level = "INFO",
-                    message = "Stage 1 Foreground completed with flags: $parsedFlags. Triggering asynchronous Stage 2 background state resolution.",
+                    message = "Stage 1 Foreground completed. Triggering asynchronous Stage 2 background state and recap resolution.",
                     server = server
                 )
 
                 sendToPlayerBackground?.invoke(player, bgPrompt)
-            } else {
-                vito.cobblebrain.engine.StoryDebugger.recordLog(
-                    storyId = "system",
-                    blockId = "stage2_background",
-                    blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
-                    status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
-                    level = "INFO",
-                    message = "[Stage 2 Bypassed: Mundane interaction]",
-                    server = server
-                )
             }
         } else {
             // Legacy flow: apply background state updates synchronously from the monolithic response
@@ -5261,7 +5262,8 @@ object DialogueSystem {
         }
 
         // 3. Process Memories
-        memoryRegex.findAll(sanitized).forEach { match ->
+        if (!config.outputMemories.equals("OFF", ignoreCase = true)) {
+            memoryRegex.findAll(sanitized).forEach { match ->
             val namesStr = match.groupValues[1].trim()
             val memoryText = match.groupValues[2].trim()
             val keywordsStr = match.groupValues[3].trim()
@@ -5288,6 +5290,7 @@ object DialogueSystem {
                 }
             }
         }
+        }
 
         // 4. Process Resumes
         val allParts = content.split(Regex("[|\n]")).map { it.trim() }
@@ -5307,6 +5310,53 @@ object DialogueSystem {
             }
         }
 
+        if (config.enableRecap) {
+            // 4b. Process Recap System: Story Recap (&STORY_RECAP:<summary>)
+            DialogueFilter.STORY_RECAP_REGEX.findAll(sanitized).forEach { match ->
+                val storyRecap = match.groupValues[1].trim()
+                if (storyRecap.isNotBlank()) {
+                    CobblebrainWorldSave.setSessionSummary(player.uuid.toString(), storyRecap)
+                    messagesSinceLastRecap[player.uuid] = 0
+                    vito.cobblebrain.engine.StoryDebugger.recordLog(
+                        storyId = "system",
+                        blockId = "stage2_background",
+                        blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
+                        status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
+                        level = "INFO",
+                        message = "[Story Recap Updated] $storyRecap",
+                        server = server
+                    )
+                }
+            }
+
+            // 4c. Process Recap System: Character Observation (&CHAR_RECAP:<PokemonName>:<bio>)
+            DialogueFilter.CHAR_RECAP_REGEX.findAll(sanitized).forEach { match ->
+                val pokeName = match.groupValues[1].trim()
+                val charBio = match.groupValues[2].trim()
+                if (charBio.isNotBlank()) {
+                    val target = resolveTargetPokemon(pokeName)
+                    if (target != null) {
+                        val uuid = target.uuid
+                        val displayName = target.cleanDisplayName
+                        val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
+                        if (personality.effectiveCanUpdatePersonality) {
+                            personality.about = charBio
+                            MemorySystem.savePersonality(uuid.toString(), personality, displayName)
+                            vito.cobblebrain.engine.StoryDebugger.recordLog(
+                                storyId = "system",
+                                blockId = "stage2_background",
+                                blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
+                                status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
+                                level = "INFO",
+                                message = "[Character Bio Observed] $displayName: $charBio",
+                                server = server
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // 5. Process Quest Summaries
         val summaryLines = allParts.filter { 
             it.startsWith("&", ignoreCase = true) && 
@@ -5317,6 +5367,8 @@ object DialogueSystem {
             !it.startsWith("&LIKE:", ignoreCase = true) &&
             !it.startsWith("&DISLIKE:", ignoreCase = true) &&
             !it.startsWith("&MEMORY:", ignoreCase = true) &&
+            !it.startsWith("&STORY_RECAP:", ignoreCase = true) &&
+            !it.startsWith("&CHAR_RECAP:", ignoreCase = true) &&
             !it.startsWith("&START_QUEST:", ignoreCase = true) 
         }
         summaryLines.forEach { line ->

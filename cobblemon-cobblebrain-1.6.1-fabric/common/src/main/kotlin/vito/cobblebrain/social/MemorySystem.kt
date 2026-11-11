@@ -30,7 +30,7 @@ data class Memory(
 data class PokemonPersonality(
     val traits: MutableList<String> = mutableListOf(),
     val quirks: MutableList<String> = mutableListOf(),
-    val about: String = "",
+    var about: String = "",
     val likes: MutableList<String> = mutableListOf(),
     val dislikes: MutableList<String> = mutableListOf(),
     val canTalk: Boolean? = true,

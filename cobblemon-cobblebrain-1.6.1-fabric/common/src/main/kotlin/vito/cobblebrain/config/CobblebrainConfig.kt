@@ -6,7 +6,7 @@ data class CobblebrainConfig(
     var increaseFriendship: Boolean = true,
     var maxFriendship: Int = 255,
     var showFriendship: Boolean = true,
-    var hidePersonalityCreation: Boolean = false,
+    var hidePersonalityCreation: Boolean = true,
     @com.google.gson.annotations.SerializedName(value = "maxPokemonLikes", alternate = ["maxAiLikes"])
     var maxPokemonLikes: Int = 5,
     @com.google.gson.annotations.SerializedName(value = "maxPokemonDislikes", alternate = ["maxAiDislikes"])
@@ -48,7 +48,8 @@ data class CobblebrainConfig(
     var outputMobsContext: Boolean = true,
     val outputLastContext: Boolean = true,
     val outputBlockSensors: Boolean = true,
-    var outputMemories: Boolean = true,
+    var outputMemories: String = "AVERAGE",
+    var enableRecap: Boolean = true,
     var outputApril1: Boolean = false,
     var outputPokemonLanguage: Boolean = false,
     var needsPokemonTranslator: Boolean = false,
@@ -66,6 +67,11 @@ data class CobblebrainConfig(
     var maxAiDislikes: Int
         get() = maxPokemonDislikes
         set(v) { maxPokemonDislikes = v }
+    var monolithMode: Boolean
+        get() = !optimizedMode
+        set(v) { optimizedMode = !v }
+    val isMemoriesEnabled: Boolean
+        get() = !outputMemories.equals("OFF", ignoreCase = true)
 }
 
 data class BaseActionConfig(

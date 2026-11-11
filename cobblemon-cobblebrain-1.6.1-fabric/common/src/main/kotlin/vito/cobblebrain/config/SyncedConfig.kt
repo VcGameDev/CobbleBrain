@@ -17,7 +17,11 @@ object SyncedConfig {
         private set
     var outputFriendship = true
         private set
-    var outputMemories = false
+    var outputMemories = "AVERAGE"
+        private set
+    val isMemoriesEnabled: Boolean
+        get() = !outputMemories.equals("OFF", ignoreCase = true)
+    var enableRecap = true
         private set
     var outputApril1 = false
         private set
@@ -49,6 +53,8 @@ object SyncedConfig {
         private set
     var optimizedMode = true
         private set
+    val monolithMode: Boolean
+        get() = !optimizedMode
     var actionSettings: ActionSettings = ActionSettings()
         private set
 
@@ -117,7 +123,8 @@ object SyncedConfig {
         outputDialogue: Boolean,
         outputActions: Boolean,
         outputFriendship: Boolean,
-        outputMemories: Boolean,
+        outputMemories: String = "AVERAGE",
+        enableRecap: Boolean = true,
         outputApril1: Boolean,
         outputQuests: Boolean,
         outputPokemonLanguage: Boolean,
@@ -144,6 +151,7 @@ object SyncedConfig {
         this.outputActions = outputActions
         this.outputFriendship = outputFriendship
         this.outputMemories = outputMemories
+        this.enableRecap = enableRecap
         this.outputApril1 = outputApril1
         this.outputQuests = outputQuests
         this.outputPokemonLanguage = outputPokemonLanguage
@@ -166,6 +174,7 @@ object SyncedConfig {
         cfg.outputActions = outputActions
         cfg.outputFriendship = outputFriendship
         cfg.outputMemories = outputMemories
+        cfg.enableRecap = enableRecap
         cfg.outputApril1 = outputApril1
         cfg.outputQuests = outputQuests
         cfg.outputPokemonLanguage = outputPokemonLanguage
@@ -194,6 +203,7 @@ object SyncedConfig {
             outputActions = cfg.outputActions
             outputFriendship = cfg.outputFriendship
             outputMemories = cfg.outputMemories
+            enableRecap = cfg.enableRecap
             outputApril1 = cfg.outputApril1
             outputQuests = cfg.outputQuests
             outputPokemonLanguage = cfg.outputPokemonLanguage

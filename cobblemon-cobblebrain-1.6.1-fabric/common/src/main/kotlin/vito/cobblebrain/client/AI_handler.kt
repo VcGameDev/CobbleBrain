@@ -448,7 +448,8 @@ class AIHandler {
             - QUEST: Starting a quest (&START_QUEST), active quest discussion, progress, completion, or advice.
             - MEMORY: Memorable bonding, humor, secrets, promises, battle milestones. Skip routine small-talk.
             - TRAIT: Major psychological shift, or discovering/revealing a strong like or dislike. Never for routine chatter or open slots.
-            - QUIRK: Developing or breaking a distinct habit, tic, or ritual from a profound event. Never for routine actions or open slots.$catchFlag
+            - QUIRK: Developing or breaking a distinct habit, tic, or ritual from a profound event. Never for routine actions or open slots.
+            - RECAP: Story progression, plans agreed upon, or a companion clearly demonstrating their demeanor.$catchFlag
             
             ##STAGE 1 RESTRICTIONS##
             Generate ONLY in-character spoken dialogue$actionsRestriction and flags.$noActionsNote$questInstruction
@@ -470,7 +471,7 @@ class AIHandler {
             //mobsContext = clientConfig.outputMobsContext,
             //lastContext = clientConfig.outputLastContext,
             //blockSensors = clientConfig.outputBlockSensors,
-            memories = SyncedConfig.outputMemories,
+            memories = SyncedConfig.isMemoriesEnabled,
             psychicTranslation = clientConfig.psychicTranslation
         )
     }

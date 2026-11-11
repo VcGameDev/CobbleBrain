@@ -836,6 +836,7 @@ object CobblebrainConfigScreen {
         clientConfig.isCustomizedFromPreset = false
         clientConfig.optimizedMode = true
         config.optimizedMode = true
+        config.hidePersonalityCreation = true
 
         when (mode) {
             "Smart" -> {
@@ -855,8 +856,9 @@ object CobblebrainConfigScreen {
                 config.outputDialogue = true
                 config.outputActions = true
                 config.outputFriendship = true
-                config.outputMemories = true
+                config.outputMemories = "AVERAGE"
                 config.outputGuaranteedCatch = true
+                config.hidePersonalityCreation = true
             }
             "Normal" -> {
                 clientConfig.offlineMode = false
@@ -875,8 +877,9 @@ object CobblebrainConfigScreen {
                 config.outputDialogue = true
                 config.outputActions = true
                 config.outputFriendship = true
-                config.outputMemories = true
+                config.outputMemories = "AVERAGE"
                 config.outputGuaranteedCatch = true
+                config.hidePersonalityCreation = true
             }
             "Light" -> {
                 clientConfig.offlineMode = false
@@ -895,12 +898,14 @@ object CobblebrainConfigScreen {
                 config.outputDialogue = true
                 config.outputActions = true
                 config.outputFriendship = true
-                config.outputMemories = false
+                config.outputMemories = "OFF"
                 config.outputGuaranteedCatch = true
+                config.hidePersonalityCreation = true
             }
             "Offline" -> {
                 clientConfig.offlineMode = true
                 clientConfig.offlineTalkMode = true
+                config.hidePersonalityCreation = true
             }
             "Custom" -> {
             }
@@ -923,8 +928,9 @@ object CobblebrainConfigScreen {
                 !config.outputDialogue ||
                 !config.outputActions ||
                 !config.outputFriendship ||
-                !config.outputMemories ||
+                config.outputMemories != "AVERAGE" ||
                 !config.outputGuaranteedCatch ||
+                !config.hidePersonalityCreation ||
                 clientConfig.maxInteractionSaves != 4 ||
                 clientConfig.offlineMode ||
                 clientConfig.offlineTalkMode ||
@@ -942,8 +948,9 @@ object CobblebrainConfigScreen {
                 !config.outputDialogue ||
                 !config.outputActions ||
                 !config.outputFriendship ||
-                !config.outputMemories ||
+                config.outputMemories != "AVERAGE" ||
                 !config.outputGuaranteedCatch ||
+                !config.hidePersonalityCreation ||
                 clientConfig.maxInteractionSaves != 3 ||
                 clientConfig.offlineMode ||
                 clientConfig.offlineTalkMode ||
@@ -961,8 +968,9 @@ object CobblebrainConfigScreen {
                 !config.outputDialogue ||
                 !config.outputActions ||
                 !config.outputFriendship ||
-                config.outputMemories ||
+                config.outputMemories != "OFF" ||
                 !config.outputGuaranteedCatch ||
+                !config.hidePersonalityCreation ||
                 clientConfig.maxInteractionSaves != 2 ||
                 clientConfig.offlineMode ||
                 clientConfig.offlineTalkMode ||
@@ -1423,15 +1431,15 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.debug_logging.tooltip"))
             .build()
 
-        val optimizedModeEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Optimized Pipeline Mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            clientConfig.optimizedMode
-        ).setDefaultValue(true)
+        val monolithModeEntry = entryBuilder.startBooleanToggle(
+            Component.translatable("cobblebrain.config.monolith_mode").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            !clientConfig.optimizedMode
+        ).setDefaultValue(false)
             .setSaveConsumer { value ->
-                clientConfig.optimizedMode = value
-                optimizedMode = value
+                clientConfig.optimizedMode = !value
+                optimizedMode = !value
             }
-            .setTooltip(Component.literal("Splits AI processing into two stages: delivers immediate in-game dialogue and actions first, then resolves all other systems (memory, traits, quests, state updates) asynchronously in the background."))
+            .setTooltip(Component.translatable("cobblebrain.config.monolith_mode.tooltip"))
             .build()
 
         val showHungerEntry = entryBuilder.startBooleanToggle(
@@ -1954,7 +1962,7 @@ object CobblebrainConfigScreen {
         val hidePersonalityCreationEntry = entryBuilder.startBooleanToggle(
             Component.translatable("cobblebrain.config.hide_personality_creation").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
             config.hidePersonalityCreation
-        ).setDefaultValue(false)
+        ).setDefaultValue(true)
             .setSaveConsumer { value -> config.hidePersonalityCreation = value }
             .setTooltip(Component.translatable("cobblebrain.config.hide_personality_creation.tooltip"))
             .build()
@@ -2152,15 +2160,14 @@ object CobblebrainConfigScreen {
             .setTooltip(Component.translatable("cobblebrain.config.output_pokemon_language.tooltip"))
             .build()
 
-        val outputMemoriesEntry = entryBuilder.startBooleanToggle(
-            Component.literal("Enable Memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
-            getConfigValue(
-                SyncedConfig.outputMemories,
-                config.outputMemories
-            )
-        ).setDefaultValue(true)
+        val memoryModeOptions = arrayOf("OFF", "AVERAGE", "HIGH")
+        val outputMemoriesEntry = entryBuilder.startSelector(
+            Component.translatable("cobblebrain.cap.memories").withStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFFFFF))),
+            memoryModeOptions,
+            getConfigValue(SyncedConfig.outputMemories, config.outputMemories).uppercase()
+        ).setDefaultValue("AVERAGE")
             .setSaveConsumer { value -> outputMemories = value }
-            .setTooltip(Component.translatable("cobblebrain.config.output_memories.tooltip"))
+            .setTooltip(Component.translatable("cobblebrain.cap.memories.desc"))
             .build()
 
         val wildPokemonCanBeHostileEntry = entryBuilder.startBooleanToggle(
@@ -2228,6 +2235,8 @@ object CobblebrainConfigScreen {
             modelRotationEntry.value?.let { clientConfig.modelRotation = it }
             modelRotationTriggerEntry.value?.let { clientConfig.modelRotationTrigger = it }
             outputPokemonLanguageEntry.value?.let { outputPokemonLanguage = it; config.outputPokemonLanguage = it }
+            outputMemoriesEntry.value?.let { outputMemories = it; config.outputMemories = it }
+            monolithModeEntry.value?.let { clientConfig.optimizedMode = !it; optimizedMode = !it }
         }
 
         fun reloadScreen(preserveScroll: Boolean = true) {
@@ -2693,6 +2702,18 @@ object CobblebrainConfigScreen {
 
             addServerSubtitle("ACTIONS MANAGER (SERVER)")
             category.entries.add(actionManagerButton)
+            category.entries.add(makeSpacer(15))
+
+            addServerSubtitle("EXPERIMENTAL (SERVER)", 0xFFA500)
+            category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
+            category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
+            category.entries.add(makeSpacer(8))
+            category.entries.add(monolithModeEntry)
+            category.entries.add(characteristicsEntry)
+            category.entries.add(wildPokemonCanBeHostileEntry)
+            category.entries.add(hostileDamageMultiplierEntry)
+            category.entries.add(outputApril1Entry)
+            category.entries.add(onlyNearbyChatEntry)
             category.entries.add(makeSpacer(24))
         } else {
             category.entries.add(makeSubtitleEntry("AI CONFIGURATION", 0xFFFF00))
@@ -2715,7 +2736,6 @@ object CobblebrainConfigScreen {
 
             category.entries.add(offlineModeEntry)
             category.entries.add(offlineTalkModeEntry)
-            category.entries.add(optimizedModeEntry)
 
             category.entries.add(makeSpacer(10))
             category.entries.add(makeSubtitleEntry("CLIENT GAMEPLAY", 0xFFFF00))
@@ -2812,6 +2832,7 @@ object CobblebrainConfigScreen {
             category.entries.add(makeDescriptionEntry("These options may cause unexpected effects on the mod", 0xFFA500, 12))
             category.entries.add(makeDescriptionEntry("or the world, use with CAUTION.", 0xFFA500, 12))
             category.entries.add(makeSpacer(8))
+            category.entries.add(monolithModeEntry)
             category.entries.add(characteristicsEntry)
             category.entries.add(wildPokemonCanBeHostileEntry)
             category.entries.add(hostileDamageMultiplierEntry)
@@ -2861,25 +2882,26 @@ object CobblebrainConfigScreen {
             ClientConfigHandler.save()
             if (!isRemoteServer) {
                 SyncedConfig.updateLocal(
-                    config.useDefaultOutput,
-                    config.outputDialogue,
-                    config.outputActions,
-                    config.outputFriendship,
-                    outputMemories,
-                    outputApril1,
-                    config.outputQuests,
-                    outputPokemonLanguage,
-                    needsPokemonTranslator,
-                    config.outputGuaranteedCatch,
-                    enableKarma,
-                    maxStoredMemories,
-                    maxRelevantMemories,
-                    favoriteMemorySlots,
-                    baseCandidateMemories,
-                    config.allowClientPersonalityEditing,
-                    enableAiMemoryRetrieval,
-                    clientConfig.optimizedMode,
-                    config.allowCustomClientPrompt
+                    useDefaultOutput = config.useDefaultOutput,
+                    outputDialogue = config.outputDialogue,
+                    outputActions = config.outputActions,
+                    outputFriendship = config.outputFriendship,
+                    outputMemories = outputMemories,
+                    enableRecap = config.enableRecap,
+                    outputApril1 = outputApril1,
+                    outputQuests = config.outputQuests,
+                    outputPokemonLanguage = outputPokemonLanguage,
+                    needsPokemonTranslator = needsPokemonTranslator,
+                    outputGuaranteedCatch = config.outputGuaranteedCatch,
+                    enableKarma = enableKarma,
+                    maxStoredMemories = maxStoredMemories,
+                    maxRelevantMemories = maxRelevantMemories,
+                    favoriteMemorySlots = favoriteMemorySlots,
+                    baseCandidateMemories = baseCandidateMemories,
+                    allowClientPersonalityEditing = config.allowClientPersonalityEditing,
+                    enableAiMemoryRetrieval = enableAiMemoryRetrieval,
+                    optimizedMode = clientConfig.optimizedMode,
+                    allowCustomClientPrompt = config.allowCustomClientPrompt
                 )
             }
             val syncName = clientConfig.preferredName.ifBlank { Minecraft.getInstance().user.name }

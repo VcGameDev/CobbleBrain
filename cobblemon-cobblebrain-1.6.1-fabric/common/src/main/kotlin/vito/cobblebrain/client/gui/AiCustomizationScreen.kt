@@ -78,16 +78,22 @@ class AiCustomizationScreen(
         val isNumeric: Boolean = false,
         val minVal: Int = 0,
         val maxVal: Int = 30,
+        val cycleOptions: List<String>? = null,
         val boolGetter: ((AiProfile) -> Boolean)? = null,
         val boolSetter: ((AiProfile, Boolean) -> Unit)? = null,
         val intGetter: ((AiProfile) -> Int)? = null,
-        val intSetter: ((AiProfile, Int) -> Unit)? = null
+        val intSetter: ((AiProfile, Int) -> Unit)? = null,
+        val strGetter: ((AiProfile) -> String)? = null,
+        val strSetter: ((AiProfile, String) -> Unit)? = null
     ) {
         constructor(titleKey: String, descKey: String, getter: (AiProfile) -> Boolean, setter: (AiProfile, Boolean) -> Unit) :
-            this(titleKey, descKey, false, 0, 30, getter, setter, null, null)
+            this(titleKey, descKey, false, 0, 30, null, getter, setter, null, null, null, null)
 
         constructor(titleKey: String, descKey: String, minVal: Int, maxVal: Int, getter: (AiProfile) -> Int, setter: (AiProfile, Int) -> Unit) :
-            this(titleKey, descKey, true, minVal, maxVal, null, null, getter, setter)
+            this(titleKey, descKey, true, minVal, maxVal, null, null, null, getter, setter, null, null)
+
+        constructor(titleKey: String, descKey: String, cycleOptions: List<String>, getter: (AiProfile) -> String, setter: (AiProfile, String) -> Unit) :
+            this(titleKey, descKey, false, 0, 30, cycleOptions, null, null, null, null, getter, setter)
 
         val title: String get() = Component.translatable(titleKey).string
         val description: String get() = Component.translatable(descKey).string
@@ -101,7 +107,10 @@ class AiCustomizationScreen(
         CapabilityItem("cobblebrain.cap.friendship", "cobblebrain.cap.friendship.desc",
             { it.outputFriendship }, { p, v -> p.outputFriendship = v }),
         CapabilityItem("cobblebrain.cap.memories", "cobblebrain.cap.memories.desc",
+            listOf("OFF", "AVERAGE", "HIGH"),
             { it.outputMemories }, { p, v -> p.outputMemories = v }),
+        CapabilityItem("cobblebrain.cap.recap", "cobblebrain.cap.recap.desc",
+            { it.enableRecap }, { p, v -> p.enableRecap = v }),
         CapabilityItem("cobblebrain.cap.world_context", "cobblebrain.cap.world_context.desc",
             { it.outputWorldContext }, { p, v -> p.outputWorldContext = v }),
         CapabilityItem("cobblebrain.cap.mobs_context", "cobblebrain.cap.mobs_context.desc",
@@ -150,6 +159,7 @@ class AiCustomizationScreen(
                 outputActions = SyncedConfig.outputActions,
                 outputFriendship = SyncedConfig.outputFriendship,
                 outputMemories = SyncedConfig.outputMemories,
+                enableRecap = SyncedConfig.enableRecap,
                 outputWorldContext = ConfigHandler.config.outputWorldContext,
                 outputMobsContext = ConfigHandler.config.outputMobsContext,
                 outputQuests = SyncedConfig.outputQuests,
@@ -284,11 +294,25 @@ class AiCustomizationScreen(
         addRenderableWidget(setActiveBtn)
         addRenderableWidget(deleteProfileBtn)
 
-        // --- ROW 1: PROFILE NAME & TRAINER NAME (SIDE BY SIDE) ---
+        // --- ROW 1: PROFILE NAME & PLAYER NAME (SIDE BY SIDE) ---
         val headerY = getHeaderY()
-        val halfInputW = ((mainW - 140) / 2).coerceIn(75, 140)
+        val profileLabelComp = Component.translatable("cobblebrain.screen.ai_customization.profile_name_label")
+        val playerLabelComp = Component.translatable("cobblebrain.screen.ai_customization.trainer_name_label")
+        val profileLabelW = font.width(profileLabelComp)
+        val playerLabelW = font.width(playerLabelComp)
 
-        profileNameEdit = EditBox(font, mainX + 34, headerY + 1, halfInputW, 16, Component.translatable("cobblebrain.screen.ai_customization.profile_name"))
+        val profileLabelX = mainX + 2
+        val profileEditX = profileLabelX + profileLabelW + 4
+
+        val spaceBetweenSections = 10
+        val spaceLabelToEdit = 4
+        val rightMargin = 4
+
+        val fixedW = (profileLabelW + spaceLabelToEdit) + spaceBetweenSections + (playerLabelW + spaceLabelToEdit) + rightMargin
+        val availableForInputs = (mainW - fixedW).coerceAtLeast(100)
+        val inputW = (availableForInputs / 2).coerceIn(50, 160)
+
+        profileNameEdit = EditBox(font, profileEditX, headerY + 1, inputW, 16, Component.translatable("cobblebrain.screen.ai_customization.profile_name"))
         profileNameEdit.setMaxLength(26)
         profileNameEdit.setTooltip(Tooltip.create(Component.translatable("cobblebrain.screen.ai_customization.profile_name.tooltip")))
         profileNameEdit.setResponder { text ->
@@ -298,8 +322,10 @@ class AiCustomizationScreen(
         }
         addRenderableWidget(profileNameEdit)
 
-        val trainerLabelX = profileNameEdit.x + halfInputW + 8
-        preferredNameEdit = EditBox(font, trainerLabelX + 56, headerY + 1, halfInputW, 16, Component.translatable("cobblebrain.screen.ai_customization.trainer_name"))
+        val playerLabelX = profileNameEdit.x + inputW + spaceBetweenSections
+        val playerEditX = playerLabelX + playerLabelW + spaceLabelToEdit
+
+        preferredNameEdit = EditBox(font, playerEditX, headerY + 1, inputW, 16, Component.translatable("cobblebrain.screen.ai_customization.trainer_name"))
         preferredNameEdit.setMaxLength(32)
         preferredNameEdit.setHint(Component.translatable("cobblebrain.screen.ai_customization.trainer_name.hint").withStyle(ChatFormatting.DARK_GRAY))
         preferredNameEdit.setTooltip(Tooltip.create(Component.translatable("cobblebrain.screen.ai_customization.trainer_name.tooltip")))
@@ -832,11 +858,12 @@ class AiCustomizationScreen(
             guiGraphics.fill(barX, thumbY, barX + barW, thumbY + thumbH, thumbCol)
         }
 
-        // --- ROW 1 LABELS: PRESET NAME & TRAINER NAME SIDE BY SIDE ---
-        val halfInputW = ((mainW - 140) / 2).coerceIn(75, 140)
-        val trainerLabelX = profileNameEdit.x + halfInputW + 8
-        guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.ai_customization.profile_name_label"), mainX + 2, headerY + 4, 0xCCCCCC, false)
-        guiGraphics.drawString(font, Component.translatable("cobblebrain.screen.ai_customization.trainer_name_label"), trainerLabelX, headerY + 4, 0xCCCCCC, false)
+        // --- ROW 1 LABELS: PRESET NAME & PLAYER NAME SIDE BY SIDE ---
+        val profileLabelComp = Component.translatable("cobblebrain.screen.ai_customization.profile_name_label")
+        val playerLabelComp = Component.translatable("cobblebrain.screen.ai_customization.trainer_name_label")
+        val playerLabelX = preferredNameEdit.x - font.width(playerLabelComp) - 4
+        guiGraphics.drawString(font, profileLabelComp, mainX + 2, headerY + 4, 0xCCCCCC, false)
+        guiGraphics.drawString(font, playerLabelComp, playerLabelX, headerY + 4, 0xCCCCCC, false)
 
         // Tab contents notices
         when (currentTab) {
@@ -938,7 +965,7 @@ class AiCustomizationScreen(
 
                         // Description (line 2) with horizontal scrolling
                         val clipMinX = contentX + 7
-                        val rightMargin = if (cap.isNumeric) 72 else 54
+                        val rightMargin = if (cap.isNumeric || cap.cycleOptions != null) 72 else 54
                         val clipMaxX = contentX + cardW - rightMargin
                         val visibleW = clipMaxX - clipMinX
                         val textW = font.width(cap.description)
@@ -1031,6 +1058,36 @@ class AiCustomizationScreen(
                             val plusBg = if (plusHover && !plusDisabled) 0xFF3F3F46.toInt() else 0xFF27272A.toInt()
                             guiGraphics.fill(stepX + stepW - 16, stepY + 1, stepX + stepW - 1, stepY + stepH - 1, plusBg)
                             guiGraphics.drawString(font, "+", stepX + stepW - 11, stepY + 5, if (!plusDisabled && numVal < cap.maxVal) 0xFFFFFF else 0x71717A, false)
+                        } else if (cap.cycleOptions != null) {
+                            val curVal = cap.strGetter?.invoke(p)?.uppercase() ?: "AVERAGE"
+                            val pillW = 56
+                            val pillH = 19
+                            val pillX = contentX + cardW - pillW - 6
+                            val pillY = cardY + 7
+
+                            val isOff = curVal == "OFF"
+                            val isHigh = curVal == "HIGH"
+
+                            val pillBg = when {
+                                isOff -> 0xFF27272A.toInt()
+                                isHigh -> 0xFF0284C7.toInt()
+                                else -> 0xFF059669.toInt()
+                            }
+                            val pillBorder = when {
+                                isOff -> 0xFF3F3F46.toInt()
+                                isHigh -> 0xFF38BDF8.toInt()
+                                else -> 0xFF10B981.toInt()
+                            }
+                            val pillTextCol = if (isOff) 0x71717A else 0xFFFFFF
+
+                            val isLocked = isPromptBlocked()
+                            if (!isLocked) {
+                                guiGraphics.fill(pillX, pillY, pillX + pillW, pillY + pillH, pillBg)
+                                guiGraphics.renderOutline(pillX, pillY, pillW, pillH, pillBorder)
+                            }
+                            val textX = pillX + (pillW - font.width(curVal)) / 2
+                            val textCol = if (isLocked) (if (!isOff) 0x55FF55 else 0x71717A) else pillTextCol
+                            guiGraphics.drawString(font, curVal, textX, pillY + 5, textCol, !isOff)
                         } else {
                             // Toggle Pill Button (Right side, styled like Image 2)
                             val isOn = cap.boolGetter?.invoke(p) ?: true
@@ -1321,6 +1378,30 @@ class AiCustomizationScreen(
                                     }
                                     playClickSound()
                                 }
+                                return true
+                            }
+                        } else if (cap.cycleOptions != null) {
+                            val pillW = 56
+                            val pillH = 19
+                            val pillX = contentX + cardW - pillW - 6
+                            val pillY = cardY + 7
+
+                            val isPillClicked = mouseX in pillX.toDouble()..(pillX + pillW).toDouble() && mouseY in pillY.toDouble()..(pillY + pillH).toDouble()
+                            val isCardClicked = mouseX in contentX.toDouble()..(contentX + cardW).toDouble() && mouseY in cardY.toDouble()..(cardY + cardH).toDouble()
+
+                            if (isPillClicked || isCardClicked) {
+                                if (isPromptBlocked()) return true
+                                val currentVal = cap.strGetter?.invoke(p)?.uppercase() ?: "AVERAGE"
+                                val options = cap.cycleOptions
+                                val currentIndex = options.indexOfFirst { it.equals(currentVal, ignoreCase = true) }
+                                val nextIndex = if (currentIndex >= 0) (currentIndex + 1) % options.size else 0
+                                val nextVal = options[nextIndex]
+                                cap.strSetter?.invoke(p, nextVal)
+                                if (isModDefault(p)) {
+                                    val currentPreset = try { ClientConfigHandler.clientConfig.presetMode } catch (_: Throwable) { "Normal" }
+                                    ClientConfigHandler.clientConfig.isCustomizedFromPreset = AiProfileManager.isProfileModifiedFromPreset(p, currentPreset)
+                                }
+                                playClickSound()
                                 return true
                             }
                         } else {

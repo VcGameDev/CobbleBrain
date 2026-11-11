@@ -51,6 +51,13 @@ class ConfigBuilder<T> private constructor(
                 userJson.add("customApiProvider", userJson.get("localApiProvider"))
             }
 
+            if (userJson.has("outputMemories") && userJson.get("outputMemories").isJsonPrimitive) {
+                val prim = userJson.getAsJsonPrimitive("outputMemories")
+                if (prim.isBoolean) {
+                    userJson.addProperty("outputMemories", if (prim.asBoolean) "AVERAGE" else "OFF")
+                }
+            }
+
             var changed = false
             for ((key, value) in defaultJson.entrySet()) {
                 if (!userJson.has(key)) {

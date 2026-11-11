@@ -27,8 +27,9 @@ data class AiProfile(
     var enableTraits: Boolean = true,
     var maxPokemonLikes: Int = 5,
     var maxPokemonDislikes: Int = 5,
-    var outputMemories: Boolean = true,
-    var outputPokemonLanguage: Boolean = false
+    var outputMemories: String = "AVERAGE",
+    var outputPokemonLanguage: Boolean = false,
+    var enableRecap: Boolean = true
 ) {
     var maxAiLikes: Int
         get() = maxPokemonLikes
@@ -36,6 +37,8 @@ data class AiProfile(
     var maxAiDislikes: Int
         get() = maxPokemonDislikes
         set(v) { maxPokemonDislikes = v }
+    val isMemoriesEnabled: Boolean
+        get() = !outputMemories.equals("OFF", ignoreCase = true)
 
     fun deepCopy(): AiProfile {
         return AiProfile(
@@ -59,7 +62,8 @@ data class AiProfile(
             maxPokemonLikes = maxPokemonLikes,
             maxPokemonDislikes = maxPokemonDislikes,
             outputMemories = outputMemories,
-            outputPokemonLanguage = outputPokemonLanguage
+            outputPokemonLanguage = outputPokemonLanguage,
+            enableRecap = enableRecap
         )
     }
 }
@@ -110,7 +114,7 @@ object AiProfileManager {
         when (presetMode) {
             "Light" -> {
                 p.outputMobsContext = false
-                p.outputMemories = false
+                p.outputMemories = "OFF"
             }
             "Custom" -> {
                 val srv = try { ConfigHandler.config } catch (_: Throwable) { null }
@@ -124,14 +128,16 @@ object AiProfileManager {
                 p.enableTraits = srv?.enableTraits ?: true
                 p.maxPokemonLikes = srv?.maxPokemonLikes ?: 5
                 p.maxPokemonDislikes = srv?.maxPokemonDislikes ?: 5
-                p.outputMemories = srv?.outputMemories ?: true
+                p.outputMemories = srv?.outputMemories ?: "AVERAGE"
                 p.outputPokemonLanguage = srv?.outputPokemonLanguage ?: false
+                p.enableRecap = srv?.enableRecap ?: true
                 p.useDefaultOutput = true
             }
             else -> {
                 // "Smart", "Normal", "Offline"
                 p.outputMobsContext = true
-                p.outputMemories = true
+                p.outputMemories = "AVERAGE"
+                p.enableRecap = true
             }
         }
     }
@@ -140,7 +146,7 @@ object AiProfileManager {
         return when (mode) {
             "Light" -> {
                 p.outputMobsContext ||
-                p.outputMemories ||
+                p.outputMemories != "OFF" ||
                 !p.outputDialogue ||
                 !p.outputActions ||
                 !p.outputFriendship ||
@@ -149,11 +155,12 @@ object AiProfileManager {
                 !p.outputQuests ||
                 !p.enableTraits ||
                 !p.useDefaultOutput ||
-                p.outputPokemonLanguage
+                p.outputPokemonLanguage ||
+                !p.enableRecap
             }
             "Smart", "Normal" -> {
                 !p.outputMobsContext ||
-                !p.outputMemories ||
+                p.outputMemories != "AVERAGE" ||
                 !p.outputDialogue ||
                 !p.outputActions ||
                 !p.outputFriendship ||
@@ -162,7 +169,8 @@ object AiProfileManager {
                 !p.outputQuests ||
                 !p.enableTraits ||
                 !p.useDefaultOutput ||
-                p.outputPokemonLanguage
+                p.outputPokemonLanguage ||
+                !p.enableRecap
             }
             else -> false
         }
@@ -205,6 +213,7 @@ object AiProfileManager {
             cfg.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(p.playerAbout)
             cfg.outputFormat = p.outputFormat
             cfg.activeAiProfileId = p.id
+            cfg.enableRecap = p.enableRecap
             ClientConfigHandler.save()
 
             val srvCfg = ConfigHandler.config
@@ -221,6 +230,7 @@ object AiProfileManager {
             srvCfg.maxPokemonDislikes = p.maxPokemonDislikes
             srvCfg.outputMemories = p.outputMemories
             srvCfg.outputPokemonLanguage = p.outputPokemonLanguage
+            srvCfg.enableRecap = p.enableRecap
             ConfigHandler.save()
 
             if (isModDefaultProfile(p) && cfg.presetMode != "Custom") {
@@ -243,6 +253,15 @@ object AiProfileManager {
                     val arr = obj.getAsJsonArray("profiles")
                     val gson = GsonBuilder().create()
                     for (elem in arr) {
+                        if (elem.isJsonObject) {
+                            val pObj = elem.asJsonObject
+                            if (pObj.has("outputMemories") && pObj.get("outputMemories").isJsonPrimitive) {
+                                val prim = pObj.getAsJsonPrimitive("outputMemories")
+                                if (prim.isBoolean) {
+                                    pObj.addProperty("outputMemories", if (prim.asBoolean) "AVERAGE" else "OFF")
+                                }
+                            }
+                        }
                         val profile = gson.fromJson(elem, AiProfile::class.java)
                         if (profile != null) {
                             if (isModDefaultProfile(profile)) {

@@ -121,7 +121,7 @@ object CobblebrainPayloads {
         val outputDialogue: Boolean,
         val outputActions: Boolean,
         val outputFriendship: Boolean,
-        val outputMemories: Boolean,
+        val outputMemories: String = "AVERAGE",
         val outputApril1: Boolean,
         val outputQuests: Boolean,
         val outputPokemonLanguage: Boolean,
@@ -151,7 +151,7 @@ object CobblebrainPayloads {
                         buf.writeBoolean(payload.outputDialogue)
                         buf.writeBoolean(payload.outputActions)
                         buf.writeBoolean(payload.outputFriendship)
-                        buf.writeBoolean(payload.outputMemories)
+                        buf.writeUtf(payload.outputMemories)
                         buf.writeBoolean(payload.outputApril1)
                         buf.writeBoolean(payload.outputQuests)
                         buf.writeBoolean(payload.outputPokemonLanguage)
@@ -175,7 +175,7 @@ object CobblebrainPayloads {
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),
-                            buf.readBoolean(),
+                            buf.readUtf(),
                             buf.readBoolean(),
                             buf.readBoolean(),
                             buf.readBoolean(),

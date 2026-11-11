@@ -170,14 +170,14 @@ object ConfigCommands {
                                 player.sendSystemMessage(Component.literal(" "))
 
                                 player.sendSystemMessage(
-                                    Component.literal("/cobblebrain summary - Shows the previous session summary.")
+                                    Component.literal("/cobblebrain summary - Shows your journey's story recap and companions' observed traits.")
                                         .withStyle(color)
                                 )
 
                                 player.sendSystemMessage(Component.literal(" "))
 
                                 player.sendSystemMessage(
-                                    Component.literal("/cobblebrain saveContext - Saves the current session summary for the next login.")
+                                    Component.literal("/cobblebrain saveContext - (Automatic) Recap is saved automatically without commands.")
                                         .withStyle(color)
                                 )
 
@@ -535,22 +535,45 @@ object ConfigCommands {
                             val player = ctx.source.playerOrException
                             val summary = CobblebrainWorldSave.getSessionSummary(player.uuid.toString())
                             
-                            if (summary != null) {
+                            val headerColor = ChatFormatting.GOLD
+                            player.sendSystemMessage(
+                                Component.literal("=== CobbleBrain Journey Recap ===")
+                                    .withStyle(headerColor, ChatFormatting.BOLD)
+                            )
+                            if (!summary.isNullOrBlank()) {
                                 player.sendSystemMessage(
-                                    Component.literal("\nPREVIOUS SESSION SUMMARY:\n")
-                                        .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
+                                    Component.literal("Story Recap:").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD)
                                 )
                                 player.sendSystemMessage(
-                                    Component.literal(summary)
-                                        .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
+                                    Component.literal("  $summary").withStyle(ChatFormatting.WHITE, ChatFormatting.ITALIC)
                                 )
                                 player.sendSystemMessage(Component.literal("\n"))
                             } else {
                                 player.sendSystemMessage(
-                                    Component.literal("No session summary found. use /cobblebrain saveContext to generate one for the next time you enter the world!")
-                                        .withStyle(ChatFormatting.RED)
+                                    Component.literal("No story recap recorded yet. Keep talking and exploring with your Pokémon!").withStyle(ChatFormatting.GRAY)
                                 )
                             }
+
+                            val party = PokemonQuery.getAllPokemon(player).filter { it.currentHealth > 0 }
+                            val observedCompanions = party.mapNotNull { p ->
+                                val name = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                                val personality = MemorySystem.loadPersonality(p.uuid.toString(), name)
+                                if (personality.about.isNotBlank()) name to personality.about else null
+                            }
+
+                            if (observedCompanions.isNotEmpty()) {
+                                player.sendSystemMessage(Component.literal(" "))
+                                player.sendSystemMessage(
+                                    Component.literal("Observed Companions:").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD)
+                                )
+                                observedCompanions.forEach { (name, about) ->
+                                    player.sendSystemMessage(
+                                        Component.literal("• $name: ").withStyle(ChatFormatting.YELLOW)
+                                            .append(Component.literal(about).withStyle(ChatFormatting.WHITE))
+                                    )
+                                }
+                            }
+                            player.sendSystemMessage(Component.literal(" "))
                             1
                         }
                 )
@@ -558,7 +581,10 @@ object ConfigCommands {
                     Commands.literal("saveContext")
                         .executes { ctx ->
                             val player = ctx.source.playerOrException
-                            DialogueSystem.triggerSessionSummary(player)
+                            player.sendSystemMessage(
+                                Component.literal("Manual saving is no longer needed! CobbleBrain's Recap System now tracks your story and companions automatically.")
+                                    .withStyle(ChatFormatting.GREEN)
+                            )
                             1
                         }
                 )
