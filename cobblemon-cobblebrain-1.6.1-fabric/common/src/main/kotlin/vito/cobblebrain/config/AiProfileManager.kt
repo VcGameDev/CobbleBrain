@@ -42,8 +42,8 @@ data class AiProfile(
 
     fun deepCopy(): AiProfile {
         return AiProfile(
-            id = UUID.randomUUID().toString().take(8),
-            name = if (name.endsWith(" (Copy)")) name else "$name (Copy)",
+            id = id,
+            name = name,
             preferredName = preferredName,
             psychicTranslation = psychicTranslation,
             showHunger = showHunger,
@@ -110,6 +110,7 @@ object AiProfileManager {
         p.maxPokemonLikes = 5
         p.maxPokemonDislikes = 5
         p.outputPokemonLanguage = false
+        p.enableRecap = true
 
         when (presetMode) {
             "Light" -> {
@@ -190,9 +191,24 @@ object AiProfileManager {
     }
 
     fun createDefaultProfile(): AiProfile {
+        val existingInstruct = try {
+            val inst = ClientConfigHandler.clientConfig.instruct
+            if (inst.isNotEmpty() && inst != CobblebrainClientConfig.DEFAULT_INSTRUCT) inst else null
+        } catch (_: Throwable) { null }
+
+        val existingAbout = try {
+            val ab = ClientConfigHandler.clientConfig.playerAbout
+            if (ab.isNotEmpty() && ab != CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT) ab else null
+        } catch (_: Throwable) { null }
+
+        val existingPrefName = try { ClientConfigHandler.clientConfig.preferredName } catch (_: Throwable) { "" }
+
         val p = AiProfile(
             id = "default",
-            name = "Mod Default"
+            name = "Mod Default",
+            preferredName = existingPrefName,
+            instruct = existingInstruct ?: CobblebrainClientConfig.DEFAULT_INSTRUCT,
+            playerAbout = existingAbout ?: CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
         )
         syncModDefaultProfile(p)
         if (profiles.none { it.id == p.id }) {
@@ -282,13 +298,28 @@ object AiProfileManager {
             save()
         } else {
             if (profiles.none { isModDefaultProfile(it) }) {
-                val p = AiProfile(id = "default", name = "Mod Default")
-                syncModDefaultProfile(p)
-                profiles.add(0, p)
+                createDefaultProfile()
             }
             if (profiles.none { it.id == activeProfileId }) {
                 val savedId = try { ClientConfigHandler.clientConfig.activeAiProfileId } catch (_: Throwable) { "default" }
                 activeProfileId = if (profiles.any { it.id == savedId }) savedId else (profiles.find { isModDefaultProfile(it) }?.id ?: profiles.first().id)
+            }
+
+            // Migration safeguard: If active profile still has default values, but clientConfig has custom ones, adopt them!
+            val activeP = getActiveProfile()
+            val existingInstruct = try { ClientConfigHandler.clientConfig.instruct } catch (_: Throwable) { emptyList() }
+            val existingAbout = try { ClientConfigHandler.clientConfig.playerAbout } catch (_: Throwable) { emptyList() }
+            var shouldSave = false
+            if (activeP.instruct == CobblebrainClientConfig.DEFAULT_INSTRUCT && existingInstruct.isNotEmpty() && existingInstruct != CobblebrainClientConfig.DEFAULT_INSTRUCT) {
+                activeP.instruct = existingInstruct
+                shouldSave = true
+            }
+            if (activeP.playerAbout == CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT && existingAbout.isNotEmpty() && existingAbout != CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT) {
+                activeP.playerAbout = existingAbout
+                shouldSave = true
+            }
+            if (shouldSave) {
+                save()
             }
         }
         applyActiveProfileToClient()

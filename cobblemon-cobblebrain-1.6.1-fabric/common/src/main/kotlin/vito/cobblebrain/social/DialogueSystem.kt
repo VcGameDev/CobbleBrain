@@ -166,6 +166,7 @@ object DialogueSystem {
     private val bubbleText = mutableMapOf<UUID, String>()           // standUuid -> full text
     private val bubbleSpeed = mutableMapOf<UUID, Int>()             // standUuid -> chars per tick
     private val bubbleLevelMap = mutableMapOf<UUID, ServerLevel>()   // standUuid -> ServerLevel dimension
+    val notifiedPersonalityThisSession = ConcurrentHashMap<UUID, MutableSet<UUID>>()
 
     fun onPlayerJoin(player: ServerPlayer) {
         isWaitingForQuestResponse[player.uuid] = false
@@ -228,6 +229,8 @@ object DialogueSystem {
         temporaryFeedback.remove(playerUuid)
         playerSleepingState.remove(playerUuid)
         lastPrompt.remove(playerUuid)
+        messagesSinceLastRecap.remove(playerUuid)
+        notifiedPersonalityThisSession.remove(playerUuid)
     }
 
     fun clearAll() {
@@ -242,6 +245,8 @@ object DialogueSystem {
         serverLastInteractions.clear()
         lastPromptContext.clear()
         scheduledMessages.clear()
+        messagesSinceLastRecap.clear()
+        notifiedPersonalityThisSession.clear()
         pokemonAliasMap.clear()
         reversePokemonAliasMap.clear()
         temporaryFeedback.clear()
@@ -4906,7 +4911,14 @@ object DialogueSystem {
         val traitRegex = DialogueFilter.TRAIT_REGEX
         val quirkRegex = DialogueFilter.QUIRK_REGEX
 
-        val newlyIdentified = mutableMapOf<String, MutableList<String>>()
+        val newlyIdentified = mutableSetOf<String>()
+        val playerNotified = notifiedPersonalityThisSession.getOrPut(player.uuid) { ConcurrentHashMap.newKeySet() }
+        val alreadyNotifiedPriorToThis = playerNotified.toSet()
+        val notifiedThisInteraction = mutableSetOf<UUID>()
+
+        fun canNotifyThisSession(uuid: UUID): Boolean {
+            return uuid !in alreadyNotifiedPriorToThis
+        }
 
         data class TargetPokemonResult(
             val uuid: UUID,
@@ -5009,15 +5021,24 @@ object DialogueSystem {
                         message = "[Trait Evolved] $displayName: $previous -> $rawNew",
                         server = server
                     )
-                    if (!config.hidePersonalityCreation) {
+                    if (!config.hidePersonalityCreation && canNotifyThisSession(uuid) && uuid !in notifiedThisInteraction) {
                         player.sendSystemMessage(
-                            Component.literal("§6[Character Development] §f$displayName's trait evolved: §e$previous §7-> §a$rawNew")
+                            Component.translatable("cobblebrain.personality.evolved", displayName)
+                                .withStyle(ChatFormatting.GOLD)
                         )
+                        player.sendSystemMessage(
+                            Component.translatable("cobblebrain.personality.editor_hint")
+                                .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
+                        )
+                        notifiedThisInteraction.add(uuid)
                     }
                 } else if (personality.traits.size < 2) {
                     personality.traits.add(rawNew)
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
-                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(rawNew)
+                    if (canNotifyThisSession(uuid) && uuid !in notifiedThisInteraction) {
+                        newlyIdentified.add(displayName)
+                        notifiedThisInteraction.add(uuid)
+                    }
                 }
             }
         }
@@ -5054,15 +5075,24 @@ object DialogueSystem {
                         message = "[Quirk Evolved] $displayName: $previous -> $rawNew",
                         server = server
                     )
-                    if (!config.hidePersonalityCreation) {
+                    if (!config.hidePersonalityCreation && canNotifyThisSession(uuid) && uuid !in notifiedThisInteraction) {
                         player.sendSystemMessage(
-                            Component.literal("§6[Behavioral Shift] §f$displayName's quirk evolved: §e$previous §7-> §a$rawNew")
+                            Component.translatable("cobblebrain.personality.evolved", displayName)
+                                .withStyle(ChatFormatting.GOLD)
                         )
+                        player.sendSystemMessage(
+                            Component.translatable("cobblebrain.personality.editor_hint")
+                                .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
+                        )
+                        notifiedThisInteraction.add(uuid)
                     }
                 } else if (personality.quirks.size < 2) {
                     personality.quirks.add(rawNew)
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
-                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(rawNew)
+                    if (canNotifyThisSession(uuid) && uuid !in notifiedThisInteraction) {
+                        newlyIdentified.add(displayName)
+                        notifiedThisInteraction.add(uuid)
+                    }
                 }
             }
         }
@@ -5085,7 +5115,10 @@ object DialogueSystem {
                 if (!isDup) {
                     personality.traits.add(cleanTrait)
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
-                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(cleanTrait)
+                    if (canNotifyThisSession(uuid) && uuid !in notifiedThisInteraction) {
+                        newlyIdentified.add(displayName)
+                        notifiedThisInteraction.add(uuid)
+                    }
                 }
             }
         }
@@ -5129,7 +5162,10 @@ object DialogueSystem {
                 if (!isDup) {
                     personality.quirks.add(cleanQuirk)
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
-                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add(cleanQuirk)
+                    if (canNotifyThisSession(uuid) && uuid !in notifiedThisInteraction) {
+                        newlyIdentified.add(displayName)
+                        notifiedThisInteraction.add(uuid)
+                    }
                 }
             }
         }
@@ -5175,7 +5211,6 @@ object DialogueSystem {
                 if (!isDup && !isLocked) {
                     personality.likes.add(cleanLike)
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
-                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add("Likes $cleanLike")
                 }
             }
         }
@@ -5221,7 +5256,6 @@ object DialogueSystem {
                 if (!isDup && !isLocked) {
                     personality.dislikes.add(cleanDislike)
                     MemorySystem.savePersonality(uuid.toString(), personality, displayName)
-                    newlyIdentified.getOrPut(displayName) { mutableListOf() }.add("Dislikes $cleanDislike")
                 }
             }
         }
@@ -5248,10 +5282,9 @@ object DialogueSystem {
         }
 
         if (!config.hidePersonalityCreation && newlyIdentified.isNotEmpty()) {
-            newlyIdentified.forEach { (pokeName, traitsOrQuirks) ->
-                val traitsList = traitsOrQuirks.joinToString(", ")
+            newlyIdentified.forEach { pokeName ->
                 player.sendSystemMessage(
-                    Component.translatable("cobblebrain.personality.identified", pokeName, traitsList)
+                    Component.translatable("cobblebrain.personality.identified", pokeName)
                         .withStyle(ChatFormatting.GOLD)
                 )
             }
@@ -5260,6 +5293,7 @@ object DialogueSystem {
                     .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
             )
         }
+        playerNotified.addAll(notifiedThisInteraction)
 
         // 3. Process Memories
         if (!config.outputMemories.equals("OFF", ignoreCase = true)) {
@@ -5339,7 +5373,7 @@ object DialogueSystem {
                         val uuid = target.uuid
                         val displayName = target.cleanDisplayName
                         val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
-                        if (personality.effectiveCanUpdatePersonality) {
+                        if (personality.effectiveCanUpdatePersonality && personality.about.isBlank()) {
                             personality.about = charBio
                             MemorySystem.savePersonality(uuid.toString(), personality, displayName)
                             vito.cobblebrain.engine.StoryDebugger.recordLog(

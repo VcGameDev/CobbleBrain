@@ -6,7 +6,7 @@ data class CobblebrainConfig(
     var increaseFriendship: Boolean = true,
     var maxFriendship: Int = 255,
     var showFriendship: Boolean = true,
-    var hidePersonalityCreation: Boolean = true,
+    var hidePersonalityCreation: Boolean = false,
     @com.google.gson.annotations.SerializedName(value = "maxPokemonLikes", alternate = ["maxAiLikes"])
     var maxPokemonLikes: Int = 5,
     @com.google.gson.annotations.SerializedName(value = "maxPokemonDislikes", alternate = ["maxAiDislikes"])

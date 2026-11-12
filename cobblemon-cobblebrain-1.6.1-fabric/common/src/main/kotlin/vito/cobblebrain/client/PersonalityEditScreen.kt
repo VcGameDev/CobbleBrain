@@ -204,7 +204,7 @@ class PersonalityEditScreen(
     private fun calculateTotalComplexity(): Double {
         var score = 0.0
         val currentAbout = aboutEdit?.value?.trim() ?: personality.about
-        score += currentAbout.length * 0.25
+        score += currentAbout.length * 0.08
 
         personality.traits.forEach { score += it.length * 0.5 + 4.0 }
         personality.quirks.forEach { score += it.length * 0.5 + 4.0 }

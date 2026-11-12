@@ -2880,6 +2880,13 @@ object CobblebrainConfigScreen {
                 ConfigHandler.save()
             }
             ClientConfigHandler.save()
+            try {
+                val activeP = AiProfileManager.getActiveProfile()
+                activeP.preferredName = clientConfig.preferredName
+                activeP.psychicTranslation = clientConfig.psychicTranslation
+                activeP.showHunger = clientConfig.showHunger
+                AiProfileManager.save()
+            } catch (_: Throwable) {}
             if (!isRemoteServer) {
                 SyncedConfig.updateLocal(
                     useDefaultOutput = config.useDefaultOutput,
