@@ -413,7 +413,8 @@ object WorldEventsSystem {
         x: Int,
         y: Int,
         z: Int,
-        level: Int? = null
+        level: Int? = null,
+        glowing: Boolean = false
     ): PokemonEntity? {
 
         val properties = PokemonProperties()
@@ -433,9 +434,9 @@ object WorldEventsSystem {
         }
 
         pokemon.moveTo(
-            x.toDouble(),
+            x.toDouble() + 0.5,
             y.toDouble(),
-            z.toDouble(),
+            z.toDouble() + 0.5,
             Random.nextFloat() * 360f,
             0f
         )
@@ -450,7 +451,24 @@ object WorldEventsSystem {
         // Passive/ambient behavior (not aggressive like raid)
         pokemon.setPersistenceRequired()
 
-        world.addFreshEntity(pokemon)
+        if (glowing) {
+            pokemon.setGlowingTag(true)
+            pokemon.addEffect(
+                net.minecraft.world.effect.MobEffectInstance(
+                    net.minecraft.world.effect.MobEffects.GLOWING,
+                    999999,
+                    0,
+                    false,
+                    false
+                )
+            )
+        }
+
+        val added = world.addFreshEntity(pokemon)
+        if (!added) {
+            println("[SPAWN ERROR] world.addFreshEntity returned false for $speciesName at ($x, $y, $z)")
+            return null
+        }
 
         return pokemon
     }

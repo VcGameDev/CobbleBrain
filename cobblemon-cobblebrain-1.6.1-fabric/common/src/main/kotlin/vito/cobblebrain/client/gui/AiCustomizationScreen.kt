@@ -25,7 +25,8 @@ class AiCustomizationScreen(
 ) : Screen(Component.translatable("cobblebrain.screen.ai_customization.title")) {
 
     private val workingProfiles = mutableListOf<AiProfile>()
-    private var activeProfileId: String = "default"
+    private var savedProfilesSnapshot: List<AiProfile> = emptyList()
+    private var activeProfileId: String = ""
     private var selectedProfileIndex: Int = 0
     private var currentTab: Int = 0 // 0 = Prompt & Lore, 1 = Capacidades & Formato
     private var sidebarScrollOffset: Int = 0
@@ -170,7 +171,7 @@ class AiCustomizationScreen(
             workingProfiles.add(0, serverP)
             activeProfileId = "server"
         }
-        activeProfileId = if (workingProfiles.any { it.id == activeProfileId }) {
+        activeProfileId = if (activeProfileId.isNotEmpty() && workingProfiles.any { it.id == activeProfileId }) {
             activeProfileId
         } else if (workingProfiles.any { it.id == AiProfileManager.activeProfileId }) {
             AiProfileManager.activeProfileId
@@ -270,7 +271,17 @@ class AiCustomizationScreen(
         setActiveBtn = Button.builder(Component.translatable("cobblebrain.screen.ai_customization.set_active")) {
             if (isPromptBlocked()) return@builder
             if (selectedProfileIndex in workingProfiles.indices) {
-                activeProfileId = workingProfiles[selectedProfileIndex].id
+                saveCurrentValuesToSelectedProfile()
+                val selected = workingProfiles[selectedProfileIndex]
+                activeProfileId = selected.id
+                if (AiProfileManager.profiles.none { it.id == selected.id }) {
+                    AiProfileManager.profiles.add(selected.deepCopy())
+                }
+                AiProfileManager.setActiveProfile(selected.id)
+                if (ClientConfigHandler.clientConfig.presetMode != "Custom") {
+                    ClientConfigHandler.clientConfig.isCustomizedFromPreset = vito.cobblebrain.config.CobblebrainConfigScreen.isPresetModified(ClientConfigHandler.clientConfig.presetMode)
+                    ClientConfigHandler.save()
+                }
                 playClickSound()
             }
         }.tooltip(Tooltip.create(Component.translatable("cobblebrain.screen.ai_customization.set_active.tooltip"))).bounds(sidebarX + 2, btnRow2Y, sideBtnW, 18).build()
@@ -433,24 +444,14 @@ class AiCustomizationScreen(
         // === BOTTOM BAR WIDGETS ===
         val bottomY = height - 25
         saveBtn = Button.builder(Component.translatable("cobblebrain.screen.ai_customization.save")) {
-            saveCurrentValuesToSelectedProfile()
-            AiProfileManager.profiles.clear()
-            AiProfileManager.profiles.addAll(workingProfiles)
-            AiProfileManager.activeProfileId = activeProfileId
-            AiProfileManager.applyActiveProfileToClient()
-            AiProfileManager.save()
-            if (ClientConfigHandler.clientConfig.presetMode != "Custom") {
-                ClientConfigHandler.clientConfig.isCustomizedFromPreset = vito.cobblebrain.config.CobblebrainConfigScreen.isPresetModified(ClientConfigHandler.clientConfig.presetMode)
-            }
-            ClientConfigHandler.save()
-            ConfigHandler.save()
+            saveAllChanges()
             saveFeedbackTicks = 60
             playClickSound()
         }.bounds(width / 2 - 100, bottomY, 95, 20).build()
 
         closeBtn = Button.builder(Component.translatable("cobblebrain.screen.ai_customization.close")) {
             playClickSound()
-            Minecraft.getInstance().setScreen(parentScreen)
+            attemptClose()
         }.bounds(width / 2 + 5, bottomY, 95, 20).build()
 
         addRenderableWidget(saveBtn)
@@ -458,7 +459,52 @@ class AiCustomizationScreen(
 
         // Initialize display
         loadSelectedProfileToWidgets()
+        if (savedProfilesSnapshot.isEmpty()) {
+            saveCurrentValuesToSelectedProfile()
+            savedProfilesSnapshot = workingProfiles.map { it.deepCopy() }
+        }
         switchTab(currentTab)
+    }
+
+    private fun saveAllChanges() {
+        saveCurrentValuesToSelectedProfile()
+        AiProfileManager.profiles.clear()
+        AiProfileManager.profiles.addAll(workingProfiles.map { it.deepCopy() })
+        AiProfileManager.activeProfileId = activeProfileId
+        AiProfileManager.applyActiveProfileToClient()
+        AiProfileManager.save()
+        if (ClientConfigHandler.clientConfig.presetMode != "Custom") {
+            ClientConfigHandler.clientConfig.isCustomizedFromPreset = vito.cobblebrain.config.CobblebrainConfigScreen.isPresetModified(ClientConfigHandler.clientConfig.presetMode)
+        }
+        ClientConfigHandler.save()
+        ConfigHandler.save()
+        savedProfilesSnapshot = workingProfiles.map { it.deepCopy() }
+    }
+
+    private fun hasUnsavedChanges(): Boolean {
+        if (::saveBtn.isInitialized && !saveBtn.visible) return false
+        if (::profileNameEdit.isInitialized) {
+            saveCurrentValuesToSelectedProfile()
+        }
+        return savedProfilesSnapshot.isNotEmpty() && workingProfiles != savedProfilesSnapshot
+    }
+
+    private fun attemptClose() {
+        if (hasUnsavedChanges()) {
+            Minecraft.getInstance().setScreen(
+                ConfirmUnsavedAiProfilesScreen(
+                    editorScreen = this,
+                    exitTargetScreen = parentScreen,
+                    onSaveAndClose = { saveAllChanges() }
+                )
+            )
+        } else {
+            Minecraft.getInstance().setScreen(parentScreen)
+        }
+    }
+
+    override fun onClose() {
+        attemptClose()
     }
 
     private fun ensureProfileVisible(idx: Int) {

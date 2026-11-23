@@ -394,9 +394,100 @@ object CobblebrainWorldSave {
         moveQuest(playerUuid, giverUuid, type, "FAILED")
     }
 
-    fun createBattleQuest(player: ServerPlayer, giver: PokemonEntity, storyId: String? = null): Quest {
+    fun findSafeBattleSpawnPos(level: ServerLevel, player: ServerPlayer): net.minecraft.core.BlockPos {
+        val useSurface = level.canSeeSky(player.blockPosition()) && !level.dimensionType().hasCeiling()
+
+        fun isValidStandPos(pos: net.minecraft.core.BlockPos): Boolean {
+            if (pos.y <= level.minBuildHeight + 1 || pos.y >= level.maxBuildHeight - 2) return false
+            val belowState = level.getBlockState(pos.below())
+            if (belowState.isAir || !belowState.fluidState.isEmpty) return false
+            val atState = level.getBlockState(pos)
+            val aboveState = level.getBlockState(pos.above())
+            return atState.fluidState.isEmpty &&
+                aboveState.fluidState.isEmpty &&
+                atState.getCollisionShape(level, pos).isEmpty &&
+                aboveState.getCollisionShape(level, pos.above()).isEmpty
+        }
+
+        fun tryRange(minDist: Int, maxDist: Int, attempts: Int): net.minecraft.core.BlockPos? {
+            repeat(attempts) {
+                val angle = Random.nextDouble(0.0, kotlin.math.PI * 2.0)
+                val dist = Random.nextDouble(minDist.toDouble(), maxDist.toDouble())
+                val cx = player.blockX + (kotlin.math.cos(angle) * dist).toInt()
+                val cz = player.blockZ + (kotlin.math.sin(angle) * dist).toInt()
+                val probe = net.minecraft.core.BlockPos(cx, player.blockY, cz)
+                if (!level.isLoaded(probe)) return@repeat
+
+                if (useSurface) {
+                    val sy = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz)
+                    val candidate = net.minecraft.core.BlockPos(cx, sy, cz)
+                    if (isValidStandPos(candidate)) return candidate
+                } else {
+                    for (dy in 0..10) {
+                        val offsets = if (dy == 0) intArrayOf(0) else intArrayOf(dy, -dy)
+                        for (off in offsets) {
+                            val candidate = net.minecraft.core.BlockPos(cx, player.blockY + off, cz)
+                            if (isValidStandPos(candidate)) return candidate
+                        }
+                    }
+                }
+            }
+            return null
+        }
+
+        return tryRange(12, 30, 16)
+            ?: tryRange(6, 12, 8)
+            ?: player.blockPosition()
+    }
+
+    fun spawnBattleQuestTarget(
+        level: ServerLevel,
+        player: ServerPlayer,
+        giverUuid: UUID?,
+        targetSpecies: String,
+        targetLevel: Int
+    ): PokemonEntity? {
+        val nearbyWildPokemon = level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(48.0)) {
+            it.uuid != giverUuid &&
+                it.isAlive &&
+                !it.isRemoved &&
+                !it.isBattling &&
+                it.pokemon.getOwnerUUID() == null &&
+                it.pokemon.species.name.equals(targetSpecies, ignoreCase = true)
+        }.minByOrNull { it.distanceTo(player) }
+
+        if (nearbyWildPokemon != null) {
+            nearbyWildPokemon.setPersistenceRequired()
+            nearbyWildPokemon.setGlowingTag(true)
+            nearbyWildPokemon.addEffect(MobEffectInstance(MobEffects.GLOWING, 999999, 0, false, false))
+            return nearbyWildPokemon
+        }
+
+        val spawnPos = findSafeBattleSpawnPos(level, player)
+        return WorldEventsSystem.spawnPokemon(
+            level,
+            targetSpecies,
+            spawnPos.x,
+            spawnPos.y,
+            spawnPos.z,
+            targetLevel,
+            glowing = true
+        )
+    }
+
+    fun createBattleQuest(
+        player: ServerPlayer,
+        giver: PokemonEntity,
+        storyId: String? = null,
+        requestedSpecies: String? = null
+    ): Quest {
         ensureQuestsInitialized()
-        val targetSpecies = battleSpecies.random()
+        val resolvedRequested = requestedSpecies?.trim()?.takeIf { it.isNotEmpty() }?.let { raw ->
+            val normalized = raw.lowercase().replace(" ", "").replace("-", "")
+            com.cobblemon.mod.common.api.pokemon.PokemonSpecies.getByName(raw.lowercase())?.name
+                ?: com.cobblemon.mod.common.api.pokemon.PokemonSpecies.getByName(normalized)?.name
+        }
+        val targetSpecies = resolvedRequested ?: battleSpecies.random()
 
         val level = player.serverLevel()
 
@@ -406,26 +497,21 @@ object CobblebrainWorldSave {
         val maxLevel = strongestLevel + 8
         val targetLevel = Random.nextInt(minLevel, maxLevel + 1)
 
-        val nearbyWildPokemon = level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(64.0)) {
-            it.pokemon.getOwnerUUID() == null && it.pokemon.species.name.equals(targetSpecies, ignoreCase = true)
-        }.minByOrNull { it.distanceTo(player) }
-
-        val targetPokemon = nearbyWildPokemon ?: run {
-            val spawnX = player.blockX + (if (Random.nextBoolean()) (20..40).random() else (-40..-20).random())
-            val spawnZ = player.blockZ + (if (Random.nextBoolean()) (20..40).random() else (-40..-20).random())
-            val spawnY = level.getHeight(Heightmap.Types.MOTION_BLOCKING, spawnX, spawnZ)
-            WorldEventsSystem.spawnPokemon(level, targetSpecies, spawnX, spawnY, spawnZ, targetLevel)
-        }
-
-        targetPokemon?.addEffect(
-            MobEffectInstance(MobEffects.GLOWING, 999999, 0, false, false)
-        )
+        val targetPokemon = spawnBattleQuestTarget(level, player, giver.uuid, targetSpecies, targetLevel)
 
         val questObj = JsonObject().apply {
             addProperty("ownerUuid", player.uuid.toString())
             addProperty("giverUuid", giver.uuid.toString())
             addProperty("type", "BATTLE")
             addProperty("targetSpecies", targetSpecies)
+            addProperty("targetLevel", targetLevel)
+            addProperty("targetDimension", level.dimension().location().toString())
+            if (targetPokemon != null) {
+                addProperty("targetEntityUuid", targetPokemon.uuid.toString())
+                addProperty("targetX", targetPokemon.blockX)
+                addProperty("targetY", targetPokemon.blockY)
+                addProperty("targetZ", targetPokemon.blockZ)
+            }
             addProperty("status", "IN_PROGRESS")
             addProperty("giverSpecies", giver.pokemon.species.name)
             addProperty("questSummary", "This is a Battle quest!")

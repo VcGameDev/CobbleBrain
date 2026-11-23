@@ -12,14 +12,14 @@ object DialogueFilter {
         RegexOption.IGNORE_CASE
     )
 
-    val MEMORY_REGEX = Regex("""&MEMORY:([^:\n|]+):([^|\n]+)\|([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
+    val MEMORY_REGEX = Regex("""&MEMORY:([^:\n|]+):([^|\n;&%#!=]+)(?:\|(?!\s*[&%#!=])([^|\n;&%#!=]+))?""", RegexOption.IGNORE_CASE)
     val REPLACE_TRAIT_REGEX = Regex("""(?:^|[\s|;])&REPLACE_TRAIT:([^:\n|]+):([^->\n;|]+)->([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val REPLACE_QUIRK_REGEX = Regex("""(?:^|[\s|;])&REPLACE_QUIRK:([^:\n|]+):([^->\n;|]+)->([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val TRAIT_REGEX = Regex("""(?:^|[\s|;])&TRAIT:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val QUIRK_REGEX = Regex("""(?:^|[\s|;])&QUIRK:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val LIKE_REGEX = Regex("""(?:^|[\s|;])&LIKE:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
     val DISLIKE_REGEX = Regex("""(?:^|[\s|;])&DISLIKE:([^:\n|]+):([^|\n;&%#!=]+)""", RegexOption.IGNORE_CASE)
-    val CATCH_REGEX = Regex("""(?:^|[\n|;])\s*(?:[-*•+]|\d+\.)?\s*!(?!RESUME\b|Error\b|Erro\b)(?:CATCH[:\s-]*)?([A-Za-z0-9_.'♀♂#-]+)?""", RegexOption.IGNORE_CASE)
+    val CATCH_REGEX = Regex("""(?:^|[\n|;])\s*(?:[-*•+]|\d+\.)?\s*!(?!RESUME\b|Error\b|Erro\b|none\b|null\b|nothing\b|false\b|empty\b|no\b)(?:CATCH[:\s-]+)?([A-Za-z0-9_.'♀♂#-]+)""", RegexOption.IGNORE_CASE)
     val MUSIC_HEADER_REGEX = Regex("""~MUSIC:[^\n|]+""", RegexOption.IGNORE_CASE)
     val MUSIC_NOTE_REGEX = Regex("""-[VI]:[^\n|]+""", RegexOption.IGNORE_CASE)
     val TARGET_TAG_REGEX = Regex("""\s*>([A-Za-z0-9_.'♀♂#-]+)""")

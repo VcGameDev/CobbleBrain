@@ -186,9 +186,18 @@ class PersonalityEditScreen(
         refreshWidgets()
     }
 
+    private var initialAbout: String = personality.about
+    private var userToggledAboutAi: Boolean = false
+
     private fun saveCurrentAbout() {
         aboutEdit?.let {
-            personality = personality.copy(about = it.value.trim())
+            val newAbout = it.value.trim()
+            val updatedAllowAi = if (!userToggledAboutAi && newAbout != initialAbout && newAbout.isNotBlank()) {
+                false
+            } else {
+                personality.allowAiEditAbout
+            }
+            personality = personality.copy(about = newAbout, allowAiEditAbout = updatedAllowAi)
         }
     }
 
@@ -284,6 +293,26 @@ class PersonalityEditScreen(
             box.setEditable(!isReadOnly)
             aboutEdit = box
             addRenderableWidget(box)
+
+            // AI Edit toggle attached directly to the About field header
+            if (!isReadOnly) {
+                val aiAboutW = 86
+                val aiAboutX = startX + editW - aiAboutW
+                val aiAboutY = listAreaTop - 12
+                val allowAi = personality.effectiveAllowAiEditAbout
+                val aiAboutKey = if (allowAi) "cobblebrain.button.toggle_about_ai.on" else "cobblebrain.button.toggle_about_ai.off"
+                val aiAboutTooltipKey = if (allowAi) "cobblebrain.button.toggle_about_ai.on.tooltip" else "cobblebrain.button.toggle_about_ai.off.tooltip"
+                addRenderableWidget(
+                    Button.builder(Component.translatable(aiAboutKey)) {
+                        userToggledAboutAi = true
+                        saveCurrentAbout()
+                        val next = !personality.effectiveAllowAiEditAbout
+                        personality = personality.copy(allowAiEditAbout = next)
+                        refreshWidgets()
+                    }.tooltip(Tooltip.create(Component.translatable(aiAboutTooltipKey)))
+                     .bounds(aiAboutX, aiAboutY, aiAboutW, 14).build()
+                )
+            }
 
             // Behavior Toggles: Dialogue, Actions, Personality Evolution
             if (!isReadOnly) {

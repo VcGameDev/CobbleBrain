@@ -36,6 +36,7 @@ data class PokemonPersonality(
     val canTalk: Boolean? = true,
     val canAct: Boolean? = true,
     val canUpdatePersonality: Boolean? = true,
+    val allowAiEditAbout: Boolean? = true,
     val lockedTraits: MutableList<String>? = mutableListOf(),
     val lockedQuirks: MutableList<String>? = mutableListOf(),
     val lockedLikes: MutableList<String>? = mutableListOf(),
@@ -49,6 +50,9 @@ data class PokemonPersonality(
 
     val effectiveCanUpdatePersonality: Boolean
         get() = canUpdatePersonality ?: true
+
+    val effectiveAllowAiEditAbout: Boolean
+        get() = allowAiEditAbout ?: true
 
     val isMuted: Boolean
         get() = !effectiveCanTalk

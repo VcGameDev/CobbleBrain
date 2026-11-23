@@ -203,6 +203,21 @@ private fun enterAttackMode(pokemon: Mob) {
     pokemon.isAggressive = true
 }
 
+fun safeClearTarget(mob: Mob) {
+    try {
+        mob.brain.eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.ATTACK_TARGET)
+    } catch (_: Exception) {
+    }
+    try {
+        if (mob.target != null) {
+            mob.target = null
+        }
+    } catch (_: NullPointerException) {
+        // Cobblemon's PokemonEntity.setTarget(null) can throw NPE when target is null
+    } catch (_: Exception) {
+    }
+}
+
 private fun exitAttackMode(pokemon: Mob) {
     val currentCmd = CommandState.activeCommands[pokemon.uuid]
     if (currentCmd != "rest" && currentCmd != "sit") {
@@ -213,7 +228,7 @@ private fun exitAttackMode(pokemon: Mob) {
     }
 
     pokemon.isAggressive = false
-    pokemon.target = null
+    safeClearTarget(pokemon)
     CommandState.clearPokemonIrritation(pokemon.uuid)
     CommandState.clearPhysicalAttack(pokemon.uuid)
 }
@@ -1116,7 +1131,7 @@ object CommandTickHandler {
                         if (pokemon.navigation.isDone || server.tickCount % 6 == 0) {
                             pokemon.navigation.moveTo(owner, speed)
                         }
-                        pokemon.target = null
+                        safeClearTarget(pokemon)
 
                         val idleTicks = chaseCooldown.getOrDefault(pokemonId, 0)
                         if (idleTicks > 1500) {
@@ -1280,7 +1295,7 @@ object CommandTickHandler {
                     pokemon.navigation.stop()
                     pokemon.deltaMovement = Vec3(0.0, pokemon.deltaMovement.y.coerceAtMost(0.0), 0.0)
                     pokemon.isAggressive = false
-                    pokemon.target = null
+                    safeClearTarget(pokemon)
                     CommandState.clearPokemonIrritation(pokemon.uuid)
                     CommandState.clearPhysicalAttack(pokemon.uuid)
 

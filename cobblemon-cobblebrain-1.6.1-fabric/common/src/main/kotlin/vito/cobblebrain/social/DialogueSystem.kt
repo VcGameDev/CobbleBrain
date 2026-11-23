@@ -40,6 +40,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
 import vito.cobblebrain.currentServer
 import vito.cobblebrain.sensors.CommandState
+import vito.cobblebrain.sensors.WorldContext
 import vito.cobblebrain.sensors.collectWorldContext
 import vito.cobblebrain.sensors.parseCommand
 import java.lang.Math.toDegrees
@@ -746,6 +747,8 @@ object DialogueSystem {
                             val storyId = activeQuest.get("storyId")?.asString ?: "generic"
 
                             if (storyId != "generic") {
+                                activeQuest.addProperty("battleDefeated", true)
+                                CobblebrainWorldSave.save()
                                 player.sendSystemMessage(
                                     Component.translatable("cobblebrain.quest.story_event", targetSpecies, giverName)
                                         .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
@@ -913,9 +916,6 @@ object DialogueSystem {
             "${player.name.string} said: $text"
         }
 
-        if (!config.optimizedMode && config.enableAiMemoryRetrieval) {
-            lastPromptContext[player.uuid] = Pair(ativos, "\n\n$formattedText")
-        }
         // Automatic wild quest roll when player speaks
         var questPromptDirective: String? = null
         if (config.outputQuests) {
@@ -976,6 +976,9 @@ object DialogueSystem {
         }
 
         val fullText = formattedText + (questPromptDirective ?: "")
+        if (config.enableAiMemoryRetrieval) {
+            lastPromptContext[player.uuid] = Pair(ativos, "\n\n$fullText")
+        }
         val prompt = buildPrompt(player, ativos, "\n\n$fullText")
 
         // Send prompt to client for processing
@@ -1866,9 +1869,78 @@ object DialogueSystem {
     }
 
     fun handleQuestTick(player: ServerPlayer, quest: JsonObject) {
-        val type = quest.get("type").asString
-        if (type == "TREASURE") {
-            handleTreasureQuestTick(player, quest)
+        val type = quest.get("type")?.asString ?: return
+        when (type) {
+            "TREASURE" -> handleTreasureQuestTick(player, quest)
+            "BATTLE" -> handleBattleQuestTick(player, quest)
+        }
+    }
+
+    fun handleBattleQuestTick(player: ServerPlayer, quest: JsonObject) {
+        val level = player.serverLevel()
+        if (level.server.tickCount % 40 != 0) return
+        if (quest.get("battleDefeated")?.asBoolean == true) return
+
+        val currentDim = level.dimension().location().toString()
+        val savedDim = quest.get("targetDimension")?.asString
+        if (savedDim != null && savedDim != currentDim) return
+
+        val targetSpecies = quest.get("targetSpecies")?.asString?.takeIf { it.isNotBlank() } ?: return
+        val targetUuidStr = quest.get("targetEntityUuid")?.asString
+        val existingTarget = targetUuidStr?.let {
+            try {
+                level.getEntity(UUID.fromString(it)) as? PokemonEntity
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        if (existingTarget != null && existingTarget.isAlive && !existingTarget.isRemoved) {
+            if (!existingTarget.isCurrentlyGlowing) {
+                existingTarget.setGlowingTag(true)
+            }
+            if (!existingTarget.hasEffect(net.minecraft.world.effect.MobEffects.GLOWING)) {
+                existingTarget.addEffect(
+                    net.minecraft.world.effect.MobEffectInstance(
+                        net.minecraft.world.effect.MobEffects.GLOWING,
+                        999999,
+                        0,
+                        false,
+                        false
+                    )
+                )
+            }
+            return
+        }
+
+        // If player is currently in a battle, wait until battle resolves before considering a respawn
+        if (com.cobblemon.mod.common.battles.BattleRegistry.getBattleByParticipatingPlayer(player) != null) return
+
+        // If we had a saved target in an unloaded chunk, don't duplicate it while chunk is unloaded
+        val hasSavedCoords = quest.has("targetX") && quest.has("targetY") && quest.has("targetZ")
+        if (targetUuidStr != null && hasSavedCoords) {
+            val savedPos = BlockPos(
+                quest.get("targetX").asInt,
+                quest.get("targetY").asInt,
+                quest.get("targetZ").asInt
+            )
+            if (!level.isLoaded(savedPos)) return
+        }
+
+        val giverUuid = quest.get("giverUuid")?.asString?.let {
+            try { UUID.fromString(it) } catch (_: Exception) { null }
+        }
+        val targetLevel = quest.get("targetLevel")?.asInt
+            ?: ((PokemonQuery.findActivePokemon(player).maxOfOrNull { it.level } ?: 20) + 3)
+
+        val respawned = CobblebrainWorldSave.spawnBattleQuestTarget(level, player, giverUuid, targetSpecies, targetLevel)
+        if (respawned != null) {
+            quest.addProperty("targetEntityUuid", respawned.uuid.toString())
+            quest.addProperty("targetDimension", currentDim)
+            quest.addProperty("targetX", respawned.blockX)
+            quest.addProperty("targetY", respawned.blockY)
+            quest.addProperty("targetZ", respawned.blockZ)
+            CobblebrainWorldSave.save()
         }
     }
 
@@ -2797,6 +2869,231 @@ object DialogueSystem {
         reversePokemonAliasMap[player.uuid] = reverseMap
     }
 
+    private fun buildMemoryPromptSection(
+        player: ServerPlayer,
+        activePokemon: List<Pokemon>,
+        context: WorldContext,
+        moreText: String,
+        forcedRelevantMemory: String?
+    ): String {
+        val keywords = moreText.lowercase()
+            .split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+"))
+            .filter { it.length >= 3 }
+            .toSet()
+
+        val teamPokemon = activePokemon.filter { it.currentHealth > 0 && !PokemonQuery.isPokemonSleeping(it) }
+        val nearbyPokemon = context.nearbyPokemonEntities
+            .filter { !it.isSleeping && !PokemonQuery.isPokemonSleeping(it.pokemon) }
+            .map { it.pokemon }
+            .filter { it.currentHealth > 0 && it.uuid !in activePokemon.map { a -> a.uuid } }
+        val participatingPokemon = (teamPokemon + nearbyPokemon).take(8)
+        val participantsUuids = participatingPokemon.map { it.uuid.toString() }.toSet()
+
+        val pokemonCount = participatingPokemon.size.coerceAtLeast(1)
+        val maxTotalCandidates = config.baseCandidateMemories + ((pokemonCount - 1) * 7)
+        val quotaPerPokemon = maxTotalCandidates / pokemonCount
+
+        val candidateMemoriesPerPoke = mutableMapOf<String, MutableList<Memory>>()
+        participatingPokemon.forEach { p ->
+            val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+            val loaded = MemorySystem.loadMemories(p.uuid.toString(), displayName)
+            candidateMemoriesPerPoke[p.uuid.toString()] = loaded.toMutableList()
+        }
+
+        val allLoadedMemories = candidateMemoriesPerPoke.values.flatten()
+        val allFavoriteMemories = allLoadedMemories.filter { it.isFavorite }
+
+        val recentInteractions = serverLastInteractions[player.uuid] ?: emptyList()
+        val currentTick = player.server.tickCount
+
+        fun scoreMemory(m: Memory): Int {
+            var score = 0
+            val matchCount = m.keywords.count { it.lowercase() in keywords }
+            score += matchCount
+
+            val playerMsgWords = m.playerMessage.lowercase().split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+")).filter { it.length >= 3 }.toSet()
+            val playerMsgMatchCount = playerMsgWords.count { it in keywords }
+            score += playerMsgMatchCount * 2
+
+            val memoryWords = m.memory.lowercase().split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+")).filter { it.length >= 3 }.toSet()
+            val memoryMatchCount = memoryWords.count { it in keywords }
+            score += memoryMatchCount
+
+            val activeParticipantsCount = m.participants.count { it in participantsUuids }
+            score += activeParticipantsCount * 2
+
+            if (currentTick - m.createdTick < 100000) {
+                score += 2
+            }
+
+            if (activeParticipantsCount > 1) {
+                score += 1
+            }
+
+            val mWords = m.memory.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+            var overlapWithLastInteractions = false
+            for (interaction in recentInteractions) {
+                val interactionWords = interaction.lowercase().split(Regex("\\W+")).filter { it.length > 3 }.toSet()
+                val intersection = mWords.intersect(interactionWords).size
+                val union = mWords.union(interactionWords).size
+                val jaccard = if (union > 0) intersection.toDouble() / union else 0.0
+                if (jaccard > 0.5) {
+                    overlapWithLastInteractions = true
+                    break
+                }
+
+                val keywordsInInteraction = m.keywords.count { it in interaction.lowercase() }
+                if (m.keywords.isNotEmpty() && keywordsInInteraction.toDouble() / m.keywords.size > 0.6) {
+                    overlapWithLastInteractions = true
+                    break
+                }
+            }
+
+            if (overlapWithLastInteractions) {
+                println("repetição detectada")
+                score -= 10
+            }
+
+            return score
+        }
+
+        val selectedFavoriteMemories = allFavoriteMemories
+            .map { it to scoreMemory(it) }
+            .sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+            .take(config.favoriteMemorySlots)
+            .map { it.first }
+
+        val normalCandidateMemoriesPerPoke = candidateMemoriesPerPoke.mapValues { entry ->
+            entry.value.filter { !it.isFavorite }.toMutableList()
+        }
+
+        val equalizedCandidates = mutableListOf<Pair<Memory, Int>>()
+        val leftoverMemories = mutableListOf<Pair<Memory, Int>>()
+
+        normalCandidateMemoriesPerPoke.values.forEach { pokeMemories ->
+            val sorted = pokeMemories.map { it to scoreMemory(it) }
+                .sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+
+            val taken = sorted.take(quotaPerPokemon)
+            val left = sorted.drop(quotaPerPokemon)
+
+            equalizedCandidates.addAll(taken)
+            leftoverMemories.addAll(left)
+        }
+
+        if (equalizedCandidates.size < maxTotalCandidates && leftoverMemories.isNotEmpty()) {
+            val remainingSlots = maxTotalCandidates - equalizedCandidates.size
+            val sortedLeftovers = leftoverMemories.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+            equalizedCandidates.addAll(sortedLeftovers.take(remainingSlots))
+        }
+
+        val scoredMemories = equalizedCandidates.sortedWith(compareByDescending<Pair<Memory, Int>> { it.second }.thenByDescending { it.first.createdTick })
+
+        val stopWords = setOf(
+            "para", "com", "que", "como", "mais", "sobre", "quando", "depois", "eles", "elas", "essa", "esse",
+            "esta", "este", "muito", "mesmo", "ainda", "assim", "agora", "aqui", "onde", "quem", "qual",
+            "with", "from", "that", "this", "they", "them", "then", "there", "where", "when", "about", "more"
+        )
+
+        val participantNames = participatingPokemon.map { (it.nickname?.string?.takeIf { s -> s.isNotBlank() } ?: it.species.name).lowercase() }.toSet() +
+            setOf(player.name.string.lowercase())
+
+        fun extractMeaningfulWords(text: String): Set<String> {
+            return text.lowercase()
+                .split(Regex("\\W+"))
+                .filter { it.length > 2 && it !in stopWords && it !in participantNames }
+                .toSet()
+        }
+
+        val selectedMemories = mutableListOf<Memory>()
+        val selectedKeywords = mutableSetOf<String>()
+        val selectedTexts = mutableListOf<String>()
+
+        for ((m, _) in scoredMemories.filter { it.second >= 2 }) {
+            val words2 = extractMeaningfulWords(m.memory)
+            val isTooSimilarText = selectedTexts.any { existingText ->
+                val words1 = extractMeaningfulWords(existingText)
+                val intersection = words1.intersect(words2).size
+                val union = words1.union(words2).size
+                val jaccard = if (union > 0) intersection.toDouble() / union else 0.0
+                jaccard > 0.38
+            }
+
+            val overlapCount = m.keywords.count { it in selectedKeywords }
+            val isTooSimilarKeywords = m.keywords.isNotEmpty() && (overlapCount.toDouble() / m.keywords.size > 0.7)
+
+            if (!isTooSimilarText && !isTooSimilarKeywords) {
+                if (selectedMemories.size < config.maxRelevantMemories) {
+                    selectedMemories.add(m)
+                    selectedKeywords.addAll(m.keywords)
+                    selectedTexts.add(m.memory)
+                }
+            }
+        }
+
+        fun resolveParticipantName(uuidStr: String): String {
+            val uuid = try { UUID.fromString(uuidStr) } catch (_: Exception) { null } ?: return uuidStr.take(5)
+            val alias = reversePokemonAliasMap[player.uuid]?.get(uuid)
+            if (alias != null) return alias
+
+            val partyPoke = PokemonQuery.getAllPokemon(player).find { it.uuid == uuid }
+            if (partyPoke != null) {
+                return partyPoke.nickname?.string?.takeIf { it.isNotBlank() } ?: partyPoke.species.name
+            }
+
+            val level = player.serverLevel()
+            val entity = level.getEntity(uuid)
+            if (entity is PokemonEntity) {
+                val poke = entity.pokemon
+                return poke.nickname?.string?.takeIf { it.isNotBlank() } ?: poke.species.name
+            }
+
+            return "Pokémon (${uuidStr.take(5)})"
+        }
+
+        return buildString {
+            if (selectedFavoriteMemories.isNotEmpty()) {
+                appendLine("[FAVORITE MEMORIES]")
+                selectedFavoriteMemories.forEach { m ->
+                    val partsStr = m.participants.joinToString(", ") { resolveParticipantName(it) }
+                    appendLine("- Memory: ${m.memory} (Participants: $partsStr) | Keywords: ${m.keywords.joinToString(", ")}")
+                }
+                appendLine()
+            }
+
+            when {
+                forcedRelevantMemory != null -> {
+                    appendLine("[RELEVANT MEMORIES]")
+                    if (forcedRelevantMemory == "NO_MEMORY") {
+                        appendLine("NO_MEMORY")
+                    } else {
+                        val formattedMem = if (forcedRelevantMemory.trimStart().startsWith("-")) forcedRelevantMemory.trim() else "- Memory: ${forcedRelevantMemory.trim()}"
+                        appendLine(formattedMem)
+                    }
+                    appendLine()
+                }
+                config.enableAiMemoryRetrieval && scoredMemories.isNotEmpty() -> {
+                    val aiCandidates = scoredMemories.take(maxTotalCandidates)
+                    appendLine("[CANDIDATE_MEMORIES]")
+                    appendLine("PLAYER_MESSAGE:${moreText.trim()}")
+                    aiCandidates.forEachIndexed { idx, (m, _) ->
+                        appendLine("${idx + 1}. ${m.memory}")
+                    }
+                    appendLine("[/CANDIDATE_MEMORIES]")
+                    appendLine()
+                }
+                selectedMemories.isNotEmpty() -> {
+                    appendLine("[RELEVANT MEMORIES]")
+                    selectedMemories.forEach { m ->
+                        val partsStr = m.participants.joinToString(", ") { resolveParticipantName(it) }
+                        appendLine("- Memory: ${m.memory} (Participants: $partsStr) | Keywords: ${m.keywords.joinToString(", ")}")
+                    }
+                    appendLine()
+                }
+            }
+        }
+    }
+
     fun buildForegroundPrompt(
         player: ServerPlayer,
         pokemons: List<Pokemon>,
@@ -2908,6 +3205,12 @@ object DialogueSystem {
                 appendLine()
             }
 
+            // Compute memories first so we know if this is an AI memory retrieval pre-pass (don't consume one-shot events on pre-pass)
+            val memorySection = if (recommendedTopics == null) {
+                buildMemoryPromptSection(player, activePokemon, context, moreText, forcedRelevantMemory)
+            } else ""
+            val isMemoryRetrievalPass = memorySection.contains("[CANDIDATE_MEMORIES]")
+
             // Player Message / Spontaneous Conversation Section
             if (recommendedTopics != null) {
                 appendLine("[SPONTANEOUS POKÉMON CONVERSATION]")
@@ -2929,30 +3232,29 @@ object DialogueSystem {
                 appendLine(moreText.trim())
                 appendLine()
 
-                // Recent Events (only in normal player conversation, in spontaneous it is unified in [RECOMMENDED TOPICS])
-                val recentEvents = RecentEventsSystem.getAndClearEvents(activeUuids.toList())
-                if (recentEvents.isNotEmpty()) {
-                    appendLine("[RECENT EVENTS]")
-                    recentEvents.forEach { appendLine("- $it") }
-                    appendLine()
-                }
-
-                // Injeta nota pendente (ex: abandono de quest) se houver
-                if (config.outputQuests) {
-                    val questNote = pendingQuestNote.remove(player.uuid)
-                    if (questNote != null) {
-                        appendLine("[IMPORTANT NOTE]")
-                        appendLine(questNote)
+                // Recent Events (skip consuming on AI memory retrieval pre-pass so they aren't lost on rebuild)
+                if (!isMemoryRetrievalPass) {
+                    val recentEvents = RecentEventsSystem.getAndClearEvents(activeUuids.toList())
+                    if (recentEvents.isNotEmpty()) {
+                        appendLine("[RECENT EVENTS]")
+                        recentEvents.forEach { appendLine("- $it") }
                         appendLine()
+                    }
+
+                    // Injeta nota pendente (ex: abandono de quest) se houver
+                    if (config.outputQuests) {
+                        val questNote = pendingQuestNote.remove(player.uuid)
+                        if (questNote != null) {
+                            appendLine("[IMPORTANT NOTE]")
+                            appendLine(questNote)
+                            appendLine()
+                        }
                     }
                 }
 
-                // Relevant Memories (only in normal player conversation)
-                if (!forcedRelevantMemory.isNullOrBlank()) {
-                    appendLine("[RELEVANT MEMORIES]")
-                    val formattedMem = if (forcedRelevantMemory.startsWith("-")) forcedRelevantMemory else "- Memory: $forcedRelevantMemory"
-                    appendLine(formattedMem.trim())
-                    appendLine()
+                // Favorite, Candidate & Relevant Memories (only in normal player conversation)
+                if (memorySection.isNotEmpty()) {
+                    append(memorySection)
                 }
             }
 
@@ -3053,16 +3355,18 @@ object DialogueSystem {
                                     appendLine("Karma: $karmaValue")
                                 }
                             }
-                            val killRoot = CobblebrainWorldSave.data.getAsJsonObject("kill_count")
-                            if (killRoot.has(player.stringUUID)) {
-                                val playerKills = killRoot.getAsJsonObject(player.stringUUID)
-                                playerKills.entrySet().forEach { entry ->
-                                    val species = entry.key
-                                    val killValue = entry.value.asInt
-                                    appendLine("The player killed x$killValue $species")
+                            if (!isMemoryRetrievalPass) {
+                                val killRoot = CobblebrainWorldSave.data.getAsJsonObject("kill_count")
+                                if (killRoot.has(player.stringUUID)) {
+                                    val playerKills = killRoot.getAsJsonObject(player.stringUUID)
+                                    playerKills.entrySet().forEach { entry ->
+                                        val species = entry.key
+                                        val killValue = entry.value.asInt
+                                        appendLine("The player killed x$killValue $species")
+                                    }
+                                    killRoot.add(player.stringUUID, JsonObject())
+                                    CobblebrainWorldSave.save()
                                 }
-                                killRoot.add(player.stringUUID, JsonObject())
-                                CobblebrainWorldSave.save()
                             }
                         }
                     }
@@ -3446,24 +3750,31 @@ object DialogueSystem {
 
             // Memory Diary Creation: Based on outputMemories ("OFF", "AVERAGE", "HIGH")
             val memMode = config.outputMemories.uppercase()
+            val memoryFlagged = "MEMORY" in flags
             if (memMode != "OFF") {
                 val isHigh = (memMode == "HIGH")
-                if (isHigh || "MEMORY" in flags || flags.isEmpty()) {
-                    appendLine("[MEMORY DIARY]")
-                    if (isHigh) {
-                        appendLine("MANDATORY: You must generate a memorable summary (&MEMORY:) of this interaction for the participating Pokémon:")
-                    } else {
-                        appendLine("If this interaction was significant, summarize it into a lasting memory:")
-                    }
-                    appendLine("Format: &MEMORY:<PokemonNames>:<MemoryText>|<7 comma-separated keywords>")
-                    appendLine()
+                appendLine("[MEMORY DIARY]")
+                when {
+                    isHigh -> appendLine("MANDATORY: You must generate a memorable summary (&MEMORY:) of this interaction for each participating Pokémon:")
+                    memoryFlagged -> appendLine("IMPORTANT: This interaction was flagged as memorable. Generate a lasting memory (&MEMORY:) for each participating Pokémon involved:")
+                    else -> appendLine("If this interaction involved bonding, humor, discoveries, promises, emotions, or notable events, summarize it into a lasting memory (&MEMORY:):")
                 }
+                appendLine("Format: &MEMORY:<PokemonName>:<MemoryText>|<5 to 7 comma-separated keywords>")
+                appendLine()
             }
 
-            // Guaranteed Catch: Only append if [FLAG: CATCH] is present
-            if (config.outputGuaranteedCatch && ("CATCH" in flags || flags.isEmpty())) {
+            // Guaranteed Catch: Only append if [FLAG: CATCH] is present AND wild Pokémon are actually nearby in dialogue range
+            val nearbyWildInDialogue = collectWorldContext(player).nearbyPokemonEntities.filter {
+                it.pokemon.getOwnerUUID() == null && it.isAlive && !it.isRemoved
+            }
+            val includeCatch = config.outputGuaranteedCatch && "CATCH" in flags && nearbyWildInDialogue.isNotEmpty()
+            if (includeCatch) {
+                val eligibleWildNames = nearbyWildInDialogue.map { e ->
+                    reverseAliases[e.pokemon.uuid] ?: reverseAliases[e.uuid] ?: e.pokemon.species.name
+                }.distinct().joinToString(", ")
                 appendLine("[GUARANTEED CATCH]")
-                appendLine("Format: !<PokemonName> (Wild Pokémon only, rare, upon exceptionally positive bond)")
+                appendLine("Eligible nearby wild Pokémon: $eligibleWildNames")
+                appendLine("Format: !<PokemonName> (ONLY for an eligible wild Pokémon above that explicitly agreed to join the trainer)")
                 appendLine()
             }
 
@@ -3472,25 +3783,43 @@ object DialogueSystem {
                 appendLine("Record strictly what you directly observed in this conversation:")
                 appendLine("- Story Recap: In 1-2 concise sentences, summarize the events, topics discussed, and immediate plans established in this conversation.")
                 appendLine("  Format: &STORY_RECAP:<observed event and conversation summary>")
-                appendLine("- Character Observation: In 1 short sentence per participating Pokémon, describe strictly how they spoke, reacted, or treated the trainer in this interaction (never invent lore or unshown traits).")
-                appendLine("  Format: &CHAR_RECAP:<PokemonName>:<factual observation of demonstrated attitude and tone>")
+                appendLine("- Character About (&CHAR_RECAP): 1 short behavioral sentence (max ~25 words / 160 characters) describing how the Pokémon acts, speaks, and treats the trainer (never invent lore). It REPLACES the previous About completely—do NOT append to it.")
+                appendLine("  Format: &CHAR_RECAP:<PokemonName>:<1 short behavioral sentence>")
+                appendLine("  Current About status for participating Pokémon:")
+                activePokemon.forEach { p ->
+                    val displayName = reverseAliases[p.uuid] ?: p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                    val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
+                    when {
+                        !personality.effectiveCanUpdatePersonality || !personality.effectiveAllowAiEditAbout ->
+                            appendLine("  - $displayName | LOCKED (do NOT output &CHAR_RECAP for this Pokémon)")
+                        personality.about.isBlank() ->
+                            appendLine("  - $displayName | Current About: (empty — generate initial 1-sentence About)")
+                        else ->
+                            appendLine("  - $displayName | Current About: \"${personality.about}\" (ONLY rewrite if new behavior/nuance emerged; otherwise omit &CHAR_RECAP)")
+                    }
+                }
                 appendLine()
             }
 
             appendLine("##OUTPUT RULES##")
-            appendLine("- Output ONLY state update tags (&STORY_RECAP:, &CHAR_RECAP:, &TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, !catch, =resume).")
+            val allowedTags = if (includeCatch) {
+                "&STORY_RECAP:, &CHAR_RECAP:, &TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, !<WildPokemonName>, =resume"
+            } else {
+                "&STORY_RECAP:, &CHAR_RECAP:, &TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, =resume"
+            }
+            appendLine("- Output ONLY state update tags ($allowedTags).")
             appendLine("- Output exactly ONE tag per line per Pokémon. NEVER combine multiple Pokémon on the same line with semicolons or commas.")
             appendLine("  Example correct format:")
             appendLine("  &TRAIT:Squirtle:Energetic")
             appendLine("  &TRAIT:Farfetch’d:Vigilant")
             appendLine("- Do NOT generate conversational dialogue, roleplay, or greetings in this response.")
             if (config.enableRecap) {
-                appendLine("- Mandatory: &STORY_RECAP: and &CHAR_RECAP: (for participating Pokémon) must always be generated. For all other systems, if no updates are needed, leave them empty.")
+                appendLine("- Mandatory: &STORY_RECAP: must always be generated. Generate &CHAR_RECAP: for unlocked Pokémon with empty About or meaningful behavioral evolution. For all other systems, if no updates are needed, leave them empty.")
             } else {
                 appendLine("- If no state updates are needed, leave output empty.")
             }
-            if (config.outputMemories.equals("HIGH", ignoreCase = true)) {
-                appendLine("- Mandatory: &MEMORY: must always be generated for this interaction.")
+            if (config.outputMemories.equals("HIGH", ignoreCase = true) || (!config.outputMemories.equals("OFF", ignoreCase = true) && "MEMORY" in flags)) {
+                appendLine("- Mandatory: &MEMORY: must be generated for this interaction.")
             }
         }.trim()
     }
@@ -4853,14 +5182,11 @@ object DialogueSystem {
                 )
             }
             "BATTLE" -> {
-                CobblebrainWorldSave.createBattleQuest(player, giverEntity)
-                if (extraArg != null) {
-                    val q = CobblebrainWorldSave.getActiveQuests(player).lastOrNull()
-                    if (q != null && extraArg.isNotBlank()) {
-                        q.addProperty("targetSpecies", extraArg)
-                        CobblebrainWorldSave.save()
-                    }
-                }
+                CobblebrainWorldSave.createBattleQuest(
+                    player,
+                    giverEntity,
+                    requestedSpecies = extraArg?.takeIf { it.isNotBlank() }
+                )
                 player.sendSystemMessage(
                     Component.translatable("cobblebrain.quest.started.battle", giverName)
                         .withStyle(ChatFormatting.YELLOW)
@@ -5298,32 +5624,41 @@ object DialogueSystem {
         // 3. Process Memories
         if (!config.outputMemories.equals("OFF", ignoreCase = true)) {
             memoryRegex.findAll(sanitized).forEach { match ->
-            val namesStr = match.groupValues[1].trim()
-            val memoryText = match.groupValues[2].trim()
-            val keywordsStr = match.groupValues[3].trim()
+                val namesStr = match.groupValues[1].trim()
+                val memoryText = match.groupValues[2].trim()
+                val keywordsStr = match.groupValues.getOrNull(3)?.trim() ?: ""
 
-            val names = namesStr.split(",").map { it.trim() }
-            val targets = names.mapNotNull { resolveTargetPokemon(it) }
+                if (memoryText.isBlank()) return@forEach
 
-            if (targets.isNotEmpty()) {
-                val participantsList = targets.map { it.uuid.toString() }
-                val keywordsList = keywordsStr.split(",")
-                    .map { it.trim().lowercase() }
-                    .filter { it.isNotEmpty() }
+                val names = namesStr.split(",").map { it.trim() }
+                val targets = names.mapNotNull { resolveTargetPokemon(it) }
 
-                val memoryObj = Memory(
-                    participants = participantsList,
-                    memory = memoryText,
-                    keywords = keywordsList,
-                    createdTick = server.tickCount.toLong(),
-                    playerMessage = lastPlayerMessage[player.uuid] ?: ""
-                )
+                if (targets.isNotEmpty()) {
+                    val participantsList = targets.map { it.uuid.toString() }
+                    val parsedKeywords = keywordsStr.split(",")
+                        .map { it.trim().lowercase() }
+                        .filter { it.isNotEmpty() }
+                    val keywordsList = parsedKeywords.ifEmpty {
+                        memoryText.lowercase()
+                            .split(Regex("[^a-zA-Z0-9áéíóúâêîôûãõç\\-]+"))
+                            .filter { it.length >= 4 }
+                            .distinct()
+                            .take(6)
+                    }
 
-                targets.forEach { target ->
-                    MemorySystem.saveMemory(target.uuid.toString(), memoryObj, target.cleanDisplayName)
+                    val memoryObj = Memory(
+                        participants = participantsList,
+                        memory = memoryText,
+                        keywords = keywordsList,
+                        createdTick = server.tickCount.toLong(),
+                        playerMessage = lastPlayerMessage[player.uuid] ?: ""
+                    )
+
+                    targets.forEach { target ->
+                        MemorySystem.saveMemory(target.uuid.toString(), memoryObj, target.cleanDisplayName)
+                    }
                 }
             }
-        }
         }
 
         // 4. Process Resumes
@@ -5364,16 +5699,28 @@ object DialogueSystem {
             }
 
             // 4c. Process Recap System: Character Observation (&CHAR_RECAP:<PokemonName>:<bio>)
+            fun truncateAboutCleanly(rawText: String, maxChars: Int = 220): String {
+                val normalized = rawText.replace(Regex("\\s+"), " ").trim().trim('"', '\'')
+                if (normalized.length <= maxChars) return normalized
+                val cut = normalized.substring(0, maxChars)
+                val lastSentenceEnd = maxOf(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'))
+                if (lastSentenceEnd >= maxChars / 2) {
+                    return cut.substring(0, lastSentenceEnd + 1).trim()
+                }
+                val lastSpace = cut.lastIndexOf(' ')
+                return (if (lastSpace > 0) cut.substring(0, lastSpace) else cut).trimEnd(',', ';', ':', '-') + "."
+            }
+
             DialogueFilter.CHAR_RECAP_REGEX.findAll(sanitized).forEach { match ->
                 val pokeName = match.groupValues[1].trim()
-                val charBio = match.groupValues[2].trim()
+                val charBio = truncateAboutCleanly(match.groupValues[2].trim(), 220)
                 if (charBio.isNotBlank()) {
                     val target = resolveTargetPokemon(pokeName)
                     if (target != null) {
                         val uuid = target.uuid
                         val displayName = target.cleanDisplayName
                         val personality = MemorySystem.loadPersonality(uuid.toString(), displayName)
-                        if (personality.effectiveCanUpdatePersonality && personality.about.isBlank()) {
+                        if (personality.effectiveCanUpdatePersonality && personality.effectiveAllowAiEditAbout) {
                             personality.about = charBio
                             MemorySystem.savePersonality(uuid.toString(), personality, displayName)
                             vito.cobblebrain.engine.StoryDebugger.recordLog(
@@ -5420,58 +5767,63 @@ object DialogueSystem {
         // 5b. Process Dynamic Quest Start (&START_QUEST:<PokemonName>:<TYPE>)
         processStartQuestTag(server, player, content)
 
-        // 6. Process Guaranteed Catch (!CATCH or !<Pokemon>)
+        // 6. Process Guaranteed Catch (!<WildPokemonName>)
         if (config.outputGuaranteedCatch) {
-            val catchMatch = DialogueFilter.CATCH_REGEX.find(content)
+            val catchMatch = DialogueFilter.CATCH_REGEX.find(sanitized)
             if (catchMatch != null) {
                 val rawPokemonName = catchMatch.groupValues.getOrNull(1)?.trim().orEmpty()
-                val targetUuid = if (rawPokemonName.isNotEmpty()) resolvePokemonUuid(rawPokemonName) else null
-                val cleanSpeciesName = rawPokemonName.substringBefore("_").substringBefore("#").trim()
+                val ignoredPlaceholders = setOf("catch", "none", "null", "nothing", "false", "empty", "no", "n/a")
+                if (rawPokemonName.isNotEmpty() && rawPokemonName.lowercase() !in ignoredPlaceholders) {
+                    val targetUuid = resolvePokemonUuid(rawPokemonName)
+                    val cleanSpeciesName = rawPokemonName.substringBefore("_").substringBefore("#").trim()
 
-                val level = player.serverLevel()
-                val wildPokemon = when {
-                    targetUuid != null -> {
-                        (level.getEntity(targetUuid) as? PokemonEntity)?.takeIf { it.pokemon.getOwnerUUID() == null }
-                            ?: level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(32.0)) {
-                                (it.uuid == targetUuid || it.pokemon.uuid == targetUuid) && it.pokemon.getOwnerUUID() == null
-                            }.firstOrNull()
-                    }
-                    cleanSpeciesName.isNotEmpty() -> {
-                        level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(24.0)) {
-                            it.pokemon.getOwnerUUID() == null && (
+                    // Restrict strictly to wild Pokémon that actually participated in this conversation (present in dialogueAliases)
+                    val dialogueAliases = pokemonAliasMap[player.uuid]?.values?.toSet() ?: emptySet()
+                    val dialogueWildCandidates = if (dialogueAliases.isNotEmpty()) {
+                        player.serverLevel().getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(14.0)) {
+                            it.pokemon.getOwnerUUID() == null &&
+                                it.isAlive &&
+                                !it.isRemoved &&
+                                (it.pokemon.uuid in dialogueAliases || it.uuid in dialogueAliases)
+                        }
+                    } else emptyList()
+
+                    val wildPokemon = when {
+                        targetUuid != null -> {
+                            dialogueWildCandidates.firstOrNull {
+                                it.uuid == targetUuid || it.pokemon.uuid == targetUuid
+                            }
+                        }
+                        cleanSpeciesName.isNotEmpty() -> {
+                            dialogueWildCandidates.filter {
                                 it.pokemon.species.name.equals(cleanSpeciesName, ignoreCase = true) ||
-                                it.displayName?.string?.contains(cleanSpeciesName, ignoreCase = true) == true
+                                    it.pokemon.nickname?.string?.equals(cleanSpeciesName, ignoreCase = true) == true
+                            }.minByOrNull { it.distanceTo(player) }
+                        }
+                        else -> null
+                    }
+
+                    wildPokemon?.let { entity ->
+                        CommandState.clearPokemonIrritation(entity.uuid)
+                        if (CommandState.activeCommands[entity.uuid] == "hostile") {
+                            CommandState.activeCommands.remove(entity.uuid)
+                        }
+                        CommandState.activeTargets.remove(entity.uuid)
+                        vito.cobblebrain.sensors.safeClearTarget(entity)
+
+                        val wasAlreadyGuaranteed = entity.tags.contains("cobblebrain:guaranteed_${player.uuid}")
+                        entity.addTag("cobblebrain:guaranteed_${player.uuid}")
+                        guaranteedCatchPokemon.add(entity.uuid)
+                        val nameToDisplay = entity.pokemon.species.name
+                        entity.customName = Component.literal(nameToDisplay).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
+                        entity.isCustomNameVisible = true
+
+                        if (!wasAlreadyGuaranteed) {
+                            player.sendSystemMessage(
+                                Component.translatable("cobblebrain.pokemon.convinced", nameToDisplay)
+                                    .withStyle(ChatFormatting.GREEN, ChatFormatting.ITALIC)
                             )
-                        }.minByOrNull { it.distanceTo(player) }
-                    }
-                    catchMatch.value.contains("CATCH", ignoreCase = true) -> {
-                        level.getEntitiesOfClass(PokemonEntity::class.java, player.boundingBox.inflate(16.0)) {
-                            it.pokemon.getOwnerUUID() == null
-                        }.minByOrNull { it.distanceTo(player) }
-                    }
-                    else -> null
-                }
-
-                wildPokemon?.let { entity ->
-                    CommandState.clearPokemonIrritation(entity.uuid)
-                    if (CommandState.activeCommands[entity.uuid] == "hostile") {
-                        CommandState.activeCommands.remove(entity.uuid)
-                    }
-                    CommandState.activeTargets.remove(entity.uuid)
-                    entity.target = null
-
-                    val wasAlreadyGuaranteed = entity.tags.contains("cobblebrain:guaranteed_${player.uuid}")
-                    entity.addTag("cobblebrain:guaranteed_${player.uuid}")
-                    guaranteedCatchPokemon.add(entity.uuid)
-                    val nameToDisplay = entity.pokemon.species.name
-                    entity.customName = Component.literal(nameToDisplay).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
-                    entity.isCustomNameVisible = true
-
-                    if (!wasAlreadyGuaranteed) {
-                        player.sendSystemMessage(
-                            Component.translatable("cobblebrain.pokemon.convinced", nameToDisplay)
-                                .withStyle(ChatFormatting.GREEN, ChatFormatting.ITALIC)
-                        )
+                        }
                     }
                 }
             }
