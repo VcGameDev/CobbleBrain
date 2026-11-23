@@ -945,10 +945,10 @@ class AIHandler {
                     callGoogleGemma(prompt, systemOverride)
                 }
                 isLocalApi(apiBase) -> {
-                    callOpenAISchema(prompt, systemOverride)
+                    callOpenAISchema(prompt, systemOverride, allowEmpty = !isMusic)
                 }
                 else -> {
-                    callOpenAISchema(prompt, systemOverride)
+                    callOpenAISchema(prompt, systemOverride, allowEmpty = !isMusic)
                 }
             }
         } catch (e: Exception) {
@@ -956,7 +956,10 @@ class AIHandler {
             "Error: ${e.message}"
         }
 
-        if (responseText.isBlank() || responseText.startsWith("Error")) {
+        if (responseText.isBlank()) {
+            return ""
+        }
+        if (responseText.startsWith("Error") || responseText.startsWith("!Error")) {
             val msg = extractErrorMessage(responseText)
             log("Background state error for prompt ${sha256(prompt)}: $msg")
             return msg
@@ -996,7 +999,7 @@ class AIHandler {
             .replace("\\n", "\n")
     }
 
-    private fun callOpenAISchema(prompt: String, systemOverride: String? = null): String {
+    private fun callOpenAISchema(prompt: String, systemOverride: String? = null, allowEmpty: Boolean = false): String {
         log("===== OPENAI REQUEST =====")
         log("Custom Provider: ${clientConfig.customApiProvider}")
         log("ApiBaseUrl: ${clientConfig.apiBaseUrl}")
@@ -1063,7 +1066,18 @@ class AIHandler {
                 throw RuntimeException("HTTP ${res.statusCode()}")
             }
 
-            extractOpenAIContent(res.body())
+            val extracted = extractOpenAIContent(res.body(), allowEmpty)
+            if (!allowEmpty && extracted == EMPTY_OPENAI_RESPONSE_ERROR) {
+                log("Empty content received on HTTP 200; retrying once...")
+                val retryRes = client.send(req, HttpResponse.BodyHandlers.ofString())
+                log("\n===== OPENAI RETRY RESPONSE =====")
+                log("HTTP ${retryRes.statusCode()}")
+                log(retryRes.body())
+                if (retryRes.statusCode() == 200) {
+                    return extractOpenAIContent(retryRes.body(), allowEmpty)
+                }
+            }
+            extracted
 
         } catch (e: Exception) {
 
@@ -1175,7 +1189,9 @@ class AIHandler {
     }
 
 
-    private fun extractOpenAIContent(body: String): String {
+    private val EMPTY_OPENAI_RESPONSE_ERROR = "!Error! Empty response from AI provider"
+
+    private fun extractOpenAIContent(body: String, allowEmpty: Boolean = false): String {
         return try {
             println(body)
             val json = gson.fromJson(body, Map::class.java)
@@ -1194,6 +1210,10 @@ class AIHandler {
             val text = first["text"] as? String
             if (!text.isNullOrBlank()) {
                 return removeThinkBlocks(text)
+            }
+
+            if (message != null || first.containsKey("finish_reason")) {
+                return if (allowEmpty) "" else EMPTY_OPENAI_RESPONSE_ERROR
             }
 
             "!Error! Erro parsing resposta: ${extractErrorMessage(body)}"
