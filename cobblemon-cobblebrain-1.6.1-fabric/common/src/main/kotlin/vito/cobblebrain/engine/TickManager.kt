@@ -38,15 +38,18 @@ object TickManager {
         if (tasks.isEmpty()) return
         val now = System.currentTimeMillis()
 
+        val targetServer = server ?: vito.cobblebrain.currentServer ?: return
         val iterator = tasks.iterator()
         while (iterator.hasNext()) {
             val task = iterator.next()
             if (now >= task.targetTimeMs) {
                 iterator.remove()
-                try {
-                    task.callback()
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                targetServer.execute {
+                    try {
+                        task.callback()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
         }

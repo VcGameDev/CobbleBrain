@@ -47,17 +47,24 @@ class FollowPlayerGoal(
 ) : Goal() {
 
     override fun canUse(): Boolean {
-        return player.isAlive && pokemon.distanceTo(player) > startDistance
+        return player.isAlive && !player.hasDisconnected() && pokemon.level() == player.level() && pokemon.distanceTo(player) > startDistance
     }
 
     override fun canContinueToUse(): Boolean {
-        return pokemon.distanceTo(player) > stopDistance && pokemon.isAlive
+        return player.isAlive && !player.hasDisconnected() && pokemon.isAlive && pokemon.level() == player.level() && pokemon.distanceTo(player) > stopDistance
     }
 
     override fun start() {
+        if (vito.cobblebrain.sensors.isPokemonEntitySleeping(pokemon)) {
+            vito.cobblebrain.sensors.stopRestAndSleep(pokemon.pokemon, pokemon, player.server)
+        }
     }
 
     override fun tick() {
+        if (pokemon.level() != player.level()) return
+        if (pokemon.tickCount % 10 == 0 && vito.cobblebrain.sensors.isPokemonEntitySleeping(pokemon)) {
+            vito.cobblebrain.sensors.stopRestAndSleep(pokemon.pokemon, pokemon, player.server)
+        }
         val distance = pokemon.distanceTo(player)
 
         if (distance > maxDistance) {
@@ -293,12 +300,29 @@ object CobblebrainWorldSave {
     }
 
     fun save() {
+        if (!::saveFile.isInitialized) return
         val file = saveFile
         val dataSnapshot = data.deepCopy()
         DiskWriteExecutor.submit {
             try {
-                FileWriter(file).use { writer ->
+                file.parentFile?.mkdirs()
+                val tempFile = File(file.parentFile, "${file.name}.tmp")
+                FileWriter(tempFile).use { writer ->
                     GsonBuilder().setPrettyPrinting().create().toJson(dataSnapshot, writer)
+                }
+                try {
+                    java.nio.file.Files.move(
+                        tempFile.toPath(),
+                        file.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                    )
+                } catch (_: Exception) {
+                    java.nio.file.Files.move(
+                        tempFile.toPath(),
+                        file.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                    )
                 }
             } catch (e: Exception) {
                 println("Error saving world save data: ${e.message}")
@@ -359,6 +383,9 @@ object CobblebrainWorldSave {
     }
 
     private fun startFollowingPlayer(giver: PokemonEntity, player: ServerPlayer) {
+        if (vito.cobblebrain.sensors.isPokemonEntitySleeping(giver)) {
+            vito.cobblebrain.sensors.stopRestAndSleep(giver.pokemon, giver, player.server)
+        }
         // If already following, don't add another goal
         if (followers.containsKey(giver.uuid.toString())) return
 

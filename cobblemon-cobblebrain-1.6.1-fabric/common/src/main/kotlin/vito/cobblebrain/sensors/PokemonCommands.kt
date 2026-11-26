@@ -334,6 +334,137 @@ fun removeWoolCarpet(pokemonId: UUID, server: MinecraftServer) {
     }
 }
 
+private object CobblemonSleepBridge {
+    private val behaviourFlagClass: Class<*>? by lazy {
+        try {
+            Class.forName("com.cobblemon.mod.common.entity.pokemon.PokemonBehaviourFlag")
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val sleepingFlag: Any? by lazy {
+        try {
+            behaviourFlagClass?.enumConstants?.firstOrNull { (it as? Enum<*>)?.name == "SLEEPING" }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val getBehaviourFlagMethod by lazy {
+        try {
+            behaviourFlagClass?.let { PokemonEntity::class.java.getMethod("getBehaviourFlag", it) }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val setBehaviourFlagMethod by lazy {
+        try {
+            behaviourFlagClass?.let {
+                PokemonEntity::class.java.getMethod("setBehaviourFlag", it, Boolean::class.javaPrimitiveType)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val setSleepingMethod by lazy {
+        try {
+            PokemonEntity::class.java.getMethod("setSleeping", Boolean::class.javaPrimitiveType)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val getCurrentPoseTypeMethod by lazy {
+        try {
+            PokemonEntity::class.java.getMethod("getCurrentPoseType")
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val pokemonSleepingMemory: Any? by lazy {
+        try {
+            val memoriesClass = Class.forName("com.cobblemon.mod.common.api.ai.CobblemonMemories")
+            val instance = try { memoriesClass.getField("INSTANCE").get(null) } catch (_: Throwable) { null }
+            try {
+                memoriesClass.getMethod("getPOKEMON_SLEEPING").invoke(instance)
+            } catch (_: Throwable) {
+                memoriesClass.getField("POKEMON_SLEEPING").get(instance)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val eraseMemoryMethod by lazy {
+        try {
+            net.minecraft.world.entity.ai.Brain::class.java.getMethod(
+                "eraseMemory",
+                net.minecraft.world.entity.ai.memory.MemoryModuleType::class.java
+            )
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    fun isNativeSleeping(pokeEntity: PokemonEntity): Boolean {
+        try {
+            val flag = sleepingFlag
+            val getter = getBehaviourFlagMethod
+            if (flag != null && getter != null && getter.invoke(pokeEntity, flag) == true) {
+                return true
+            }
+        } catch (_: Throwable) {}
+
+        try {
+            val poseName = getCurrentPoseTypeMethod?.invoke(pokeEntity)?.toString()
+            if (poseName.equals("SLEEP", ignoreCase = true)) {
+                return true
+            }
+        } catch (_: Throwable) {}
+
+        return false
+    }
+
+    fun clearNativeSleep(pokeEntity: PokemonEntity) {
+        val wasNativeSleeping = isNativeSleeping(pokeEntity)
+        try {
+            val flag = sleepingFlag
+            val setter = setBehaviourFlagMethod
+            if (flag != null && setter != null) {
+                setter.invoke(pokeEntity, flag, false)
+            }
+        } catch (_: Throwable) {}
+
+        try {
+            setSleepingMethod?.invoke(pokeEntity, false)
+        } catch (_: Throwable) {}
+
+        try {
+            val memory = pokemonSleepingMemory
+            if (memory != null) {
+                eraseMemoryMethod?.invoke(pokeEntity.brain, memory)
+            }
+        } catch (_: Throwable) {}
+
+        if (wasNativeSleeping) {
+            try {
+                pokeEntity.brain.setActiveActivityIfPossible(net.minecraft.world.entity.schedule.Activity.IDLE)
+            } catch (_: Throwable) {}
+        }
+    }
+}
+
+fun isPokemonEntitySleeping(entity: PokemonEntity): Boolean {
+    if (entity.pokemon.status?.status?.name?.path?.lowercase() == "sleep") return true
+    if (entity.isSleeping || entity.pose == Pose.SLEEPING) return true
+    if (sleepingState[entity.uuid] == true || sleepingState[entity.pokemon.uuid] == true) return true
+    return CobblemonSleepBridge.isNativeSleeping(entity)
+}
+
 fun stopRestAndSleep(
     pokemon: com.cobblemon.mod.common.pokemon.Pokemon,
     entity: Mob? = (pokemon.entity as? Mob) ?: vito.cobblebrain.currentServer?.allLevels?.firstNotNullOfOrNull { it.getEntity(pokemon.uuid) as? Mob },
@@ -388,11 +519,9 @@ fun stopRestAndSleep(
         try {
             entity.stopSleeping()
         } catch (_: Throwable) {}
-        try {
-            val pokeEntity = entity as? PokemonEntity
-            val method = pokeEntity?.javaClass?.getMethod("setSleeping", Boolean::class.javaPrimitiveType)
-            method?.invoke(pokeEntity, false)
-        } catch (_: Throwable) {}
+        if (entity is PokemonEntity) {
+            CobblemonSleepBridge.clearNativeSleep(entity)
+        }
         restoreFollowGoal(entity)
     }
 }
@@ -400,7 +529,9 @@ fun stopRestAndSleep(
 fun wakeUpPokemon(pokemon: Mob, owner: ServerPlayer?, reason: String) {
     val pokemonId = pokemon.uuid
     val pokeEntity = pokemon as? PokemonEntity
-    val wasSleeping = sleepingState.remove(pokemonId) == true || (pokemon.pose == Pose.SLEEPING)
+    val wasSleeping = sleepingState.remove(pokemonId) == true ||
+        (pokemon.pose == Pose.SLEEPING) ||
+        (pokeEntity != null && CobblemonSleepBridge.isNativeSleeping(pokeEntity))
 
     // Complete pose & sitting state reset
     pokemon.pose = Pose.STANDING
@@ -414,10 +545,9 @@ fun wakeUpPokemon(pokemon: Mob, owner: ServerPlayer?, reason: String) {
         pokemon.stopSleeping()
     } catch (_: Throwable) {}
 
-    try {
-        val method = pokeEntity?.javaClass?.getMethod("setSleeping", Boolean::class.javaPrimitiveType)
-        method?.invoke(pokeEntity, false)
-    } catch (_: Throwable) {}
+    if (pokeEntity != null) {
+        CobblemonSleepBridge.clearNativeSleep(pokeEntity)
+    }
 
     sleepingState.remove(pokemonId)
     restTicks.remove(pokemonId)
@@ -1935,17 +2065,6 @@ object CommandTickHandler {
 
                     // Activate ability
                     if (duration <= 0) {
-
-                        pokemon.isInvulnerable = true
-                        level.playSound(
-                            null,
-                            pokemon.blockPosition(),
-                            SoundEvents.ENDERMAN_STARE,
-                            SoundSource.HOSTILE,
-                            0.8f,
-                            1.4f
-                        )
-
                         if (cooldown > 0) {
 
                             sendMessage(
@@ -1959,6 +2078,16 @@ object CommandTickHandler {
 
                             return@forEach
                         }
+
+                        pokemon.isInvulnerable = true
+                        level.playSound(
+                            null,
+                            pokemon.blockPosition(),
+                            SoundEvents.ENDERMAN_STARE,
+                            SoundSource.HOSTILE,
+                            0.8f,
+                            1.4f
+                        )
 
                         val durTicks = config.actionSettings.nightmare.durationSeconds.coerceAtLeast(1) * 20
                         val cdTicks = config.actionSettings.nightmare.cooldownSeconds.coerceAtLeast(1) * 20
@@ -4256,6 +4385,10 @@ fun handleSSStyle(level: ServerLevel) {
 
         if (player == null || !player.isAlive) {
             toRemove.add(playerId)
+            return@forEach
+        }
+
+        if (player.level() != level) {
             return@forEach
         }
 

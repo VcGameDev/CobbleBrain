@@ -175,15 +175,21 @@ object CobblebrainNetworkingNeoForge {
             }
 
             CobblebrainClientCommon.requestPokemonMemories = { uuid ->
-                PacketDistributor.sendToServer(CobblebrainPayloads.RequestPokemonMemoriesPayload(uuid))
+                if (Minecraft.getInstance().player != null) {
+                    PacketDistributor.sendToServer(CobblebrainPayloads.RequestPokemonMemoriesPayload(uuid))
+                }
             }
 
             CobblebrainClientCommon.savePersonality = { uuid, json, memoriesJson ->
-                PacketDistributor.sendToServer(CobblebrainPayloads.SavePersonalityPayload(uuid, json, memoriesJson))
+                if (Minecraft.getInstance().player != null) {
+                    PacketDistributor.sendToServer(CobblebrainPayloads.SavePersonalityPayload(uuid, json, memoriesJson))
+                }
             }
 
             CobblebrainClientCommon.deletePersonality = { uuid ->
-                PacketDistributor.sendToServer(CobblebrainPayloads.DeletePersonalityPayload(uuid))
+                if (Minecraft.getInstance().player != null) {
+                    PacketDistributor.sendToServer(CobblebrainPayloads.DeletePersonalityPayload(uuid))
+                }
             }
 
             ModLoadingContext.get().registerExtensionPoint(

@@ -253,9 +253,15 @@ class AIHandler {
             return buildString {
                 appendLine("ACTION FORMAT")
                 appendLine("Use actions only when appropriate to the dialogue, environment, or situation.")
-                appendLine("Format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
+                if (wildActions.isNotEmpty()) {
+                    appendLine("Format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
+                } else {
+                    appendLine("Format: #<PokemonName>:<action_code>")
+                }
                 appendLine("Always separate actions from dialogue using '|' (e.g. Pikachu: Look! | #Pikachu:P). Never put action codes inside spoken dialogue.")
-                appendLine("The mod automatically notifies players of irritation and hostility. Never narrate or speak system notifications in character dialogue.")
+                if (wildActions.isNotEmpty()) {
+                    appendLine("The mod automatically notifies players of irritation and hostility. Never narrate or speak system notifications in character dialogue.")
+                }
                 if (available.isNotEmpty()) {
                     appendLine("Universal actions (any Pokémon):")
                     appendLine("  ${available.joinToString(", ")}")

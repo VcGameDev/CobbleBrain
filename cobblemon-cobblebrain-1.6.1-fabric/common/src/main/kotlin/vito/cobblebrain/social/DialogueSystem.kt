@@ -270,11 +270,11 @@ object DialogueSystem {
         if (config.onlyNearbyChat) {
 
             val nearbyPlayers = sender.server.playerList.players.filter {
-                it == sender || it.distanceTo(sender) <= 15.0
+                it == sender || (it.level() == sender.level() && it.distanceTo(sender) <= 15.0)
             }
 
             val hasOtherNearby = sender.server.playerList.players.any {
-                it != sender && it.distanceTo(sender) <= 15.0
+                it != sender && it.level() == sender.level() && it.distanceTo(sender) <= 15.0
             }
 
             if (!hasOtherNearby) {
@@ -437,8 +437,8 @@ object DialogueSystem {
 
     fun onServerTick(server: MinecraftServer) {
         flushScheduledMessages(server)
-        tickBubbles(currentServer!!)
-        tickSecondaryBubbles(currentServer!!)
+        tickBubbles(server)
+        tickSecondaryBubbles(server)
         StoryTimerSystem.tick(server)
         AmbientReactionManager.tick(server)
         MusicManager.tick(server)
@@ -470,13 +470,16 @@ object DialogueSystem {
             if (server.tickCount >= targetTick) {
                 val level = server.getLevel(pos.dimension()) ?: server.overworld()
                 val blockPos = pos.pos()
-                level.setBlock(blockPos, Blocks.AIR.defaultBlockState(), 3)
-                // Smoke particles on despawn
-                level.sendParticles(
-                    ParticleTypes.LARGE_SMOKE,
-                    blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5,
-                    10, 0.2, 0.2, 0.2, 0.05
-                )
+                if (level.getBlockState(blockPos).`is`(Blocks.BARREL)) {
+                    (level.getBlockEntity(blockPos) as? net.minecraft.world.level.block.entity.BarrelBlockEntity)?.clearContent()
+                    level.setBlock(blockPos, Blocks.AIR.defaultBlockState(), 3)
+                    // Smoke particles on despawn
+                    level.sendParticles(
+                        ParticleTypes.LARGE_SMOKE,
+                        blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5,
+                        10, 0.2, 0.2, 0.2, 0.05
+                    )
+                }
                 it.remove()
             }
         }
@@ -555,13 +558,62 @@ object DialogueSystem {
 
     private val lastBattleDialogueTime = ConcurrentHashMap<UUID, Long>()
 
+    private fun markBattleQuestStarted(
+        player: ServerPlayer,
+        enemyPokemon: List<com.cobblemon.mod.common.pokemon.Pokemon>
+    ) {
+        if (enemyPokemon.isEmpty()) return
+        var changed = false
+        for (quest in CobblebrainWorldSave.getActiveQuests(player)) {
+            if (quest.get("type")?.takeIf { it.isJsonPrimitive }?.asString != "BATTLE") continue
+            if (quest.get("battleDefeated")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) continue
+            if (quest.get("battleStarted")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) continue
+
+            val targetUuid = quest.get("targetEntityUuid")?.takeIf { it.isJsonPrimitive }?.asString
+            val targetSpecies = quest.get("targetSpecies")?.takeIf { it.isJsonPrimitive }?.asString
+            val matchesTarget = enemyPokemon.any { enemy ->
+                (targetUuid != null && enemy.entity?.uuid?.toString() == targetUuid) ||
+                    (targetSpecies != null && enemy.species.name.equals(targetSpecies, ignoreCase = true))
+            }
+            if (matchesTarget) {
+                quest.addProperty("battleStarted", true)
+                changed = true
+            }
+        }
+        if (changed) {
+            syncQuests?.invoke(player)
+        }
+    }
+
+    private fun resetBattleQuestStarted(player: ServerPlayer) {
+        var changed = false
+        for (quest in CobblebrainWorldSave.getActiveQuests(player)) {
+            if (quest.get("type")?.takeIf { it.isJsonPrimitive }?.asString != "BATTLE") continue
+            if (quest.get("battleDefeated")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) continue
+            if (quest.get("battleStarted")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) {
+                quest.addProperty("battleStarted", false)
+                changed = true
+            }
+        }
+        if (changed) {
+            syncQuests?.invoke(player)
+        }
+    }
+
     fun onBattleStarted(event: BattleStartedEvent) {
         val battle = event.battle
         val server = battle.players.firstOrNull()?.server ?: return
 
-        if (!config.dialogueOnBattle) return
-
         server.execute {
+            for (battlePlayer in battle.players) {
+                val myActor = battle.actors.firstOrNull { it.uuid == battlePlayer.uuid }
+                val opponents = battle.actors.filter { it != myActor }
+                val enemyPokemon = opponents.flatMap { it.pokemonList }.map { it.originalPokemon }
+                markBattleQuestStarted(battlePlayer, enemyPokemon)
+            }
+
+            if (!config.dialogueOnBattle) return@execute
+
             val ativos = battle.activePokemon.mapNotNull { it.battlePokemon }
 
             if (ativos.size < 2) {
@@ -657,10 +709,14 @@ object DialogueSystem {
         val actor = event.player
         val uuids = actor.getPlayerUUIDs()
 
-        if (!config.dialogueOnBattle) return
         if (uuids.isEmpty()) return
 
         val server = currentServer ?: return
+        uuids.forEach { uuid ->
+            server.playerList.getPlayer(uuid)?.let { resetBattleQuestStarted(it) }
+        }
+
+        if (!config.dialogueOnBattle) return
 
         val battle = event.battle
         val opponents = battle.actors.filter { it != actor }
@@ -700,6 +756,12 @@ object DialogueSystem {
 
     fun onBattleVictory(event: BattleVictoryEvent) {
         val battle = event.battle
+        for (player in battle.players) {
+            val myActor = battle.actors.firstOrNull { it.uuid == player.uuid } ?: continue
+            if (!event.winners.contains(myActor)) {
+                resetBattleQuestStarted(player)
+            }
+        }
         if (!config.dialogueOnBattle) return
 
         for (player in battle.players) {
@@ -765,6 +827,7 @@ object DialogueSystem {
                                     "COMPLETED"
                                 )
                             }
+                            syncQuests?.invoke(player)
                             
 
                             if (!OfflinePlayers.isOffline(player.uuid)) {
@@ -1207,6 +1270,9 @@ object DialogueSystem {
 
                     speaker?.let { pokemon ->
                         val entity = pokemon.entity ?: wildEntities.firstOrNull { it.pokemon == pokemon || it.pokemon.uuid == pokemon.uuid }
+                        if (entity != null && vito.cobblebrain.sensors.isPokemonEntitySleeping(entity)) {
+                            vito.cobblebrain.sensors.stopRestAndSleep(pokemon, entity, server)
+                        }
                         val resolvedTargetEntity = resolveTargetEntity(msg.player, msg.targetName, ativos, wildEntities)
                         if (pokemon.getOwnerUUID() == null && entity != null) {
                             activateWildAttention(entity, msg.player, currentTick, resolvedTargetEntity)
@@ -1269,6 +1335,9 @@ object DialogueSystem {
         durationTicks: Int = 100,
         charsPerTick: Int = 1
     ) {
+        if (entity is PokemonEntity && vito.cobblebrain.sensors.isPokemonEntitySleeping(entity)) {
+            vito.cobblebrain.sensors.stopRestAndSleep(entity.pokemon, entity, server)
+        }
         val level = entity.level()
 
         // Safely discard any existing speech bubble on this entity to prevent overlaps
@@ -1766,18 +1835,20 @@ object DialogueSystem {
 
         // Collect quests from both slots
         val allActive = mutableListOf<JsonObject>()
-        if (storyObj.has("type") && storyObj.get("type").asString == "ITEM") allActive.add(storyObj)
-        secondaryArray.map { it.asJsonObject }.filterTo(allActive) { it.get("type").asString == "ITEM" }
+        if (storyObj.get("type")?.takeIf { it.isJsonPrimitive }?.asString == "ITEM") allActive.add(storyObj)
+        secondaryArray.mapNotNull { it.takeIf { el -> el.isJsonObject }?.asJsonObject }
+            .filterTo(allActive) { it.get("type")?.takeIf { el -> el.isJsonPrimitive }?.asString == "ITEM" }
 
-        val quests = allActive.filter { it.get("status").asString == "IN_PROGRESS" }
+        val quests = allActive.filter { it.get("status")?.takeIf { el -> el.isJsonPrimitive }?.asString == "IN_PROGRESS" }
 
         quests.forEach { questObj ->
+            val giverUuidStr = questObj.get("giverUuid")?.takeIf { it.isJsonPrimitive }?.asString ?: return@forEach
+            val ownerUuidStr = questObj.get("ownerUuid")?.takeIf { it.isJsonPrimitive }?.asString ?: return@forEach
+            val giverUuid = runCatching { UUID.fromString(giverUuidStr) }.getOrNull() ?: return@forEach
+            val ownerUuid = runCatching { UUID.fromString(ownerUuidStr) }.getOrNull() ?: return@forEach
 
-            val giverUuid = UUID.fromString(questObj.get("giverUuid").asString)
-            val ownerUuid = UUID.fromString(questObj.get("ownerUuid").asString)
-
-            val target = questObj.get("target").asString
-            val amount = questObj.get("amount").asInt
+            val target = questObj.get("target")?.takeIf { it.isJsonPrimitive }?.asString ?: return@forEach
+            val amount = questObj.get("amount")?.takeIf { it.isJsonPrimitive }?.asInt ?: return@forEach
 
             val giverEntity = server.allLevels.firstNotNullOfOrNull { it.getEntity(giverUuid) } as? PokemonEntity ?: return@forEach
             val level = giverEntity.level() as ServerLevel
@@ -1810,6 +1881,8 @@ object DialogueSystem {
 
                     if (stack.isEmpty) {
                         itemEntity.discard()
+                    } else {
+                        itemEntity.item = stack.copy()
                     }
                 }
 
@@ -1879,7 +1952,12 @@ object DialogueSystem {
     fun handleBattleQuestTick(player: ServerPlayer, quest: JsonObject) {
         val level = player.serverLevel()
         if (level.server.tickCount % 40 != 0) return
-        if (quest.get("battleDefeated")?.asBoolean == true) return
+        if (quest.get("battleDefeated")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) return
+
+        val inBattle = com.cobblemon.mod.common.battles.BattleRegistry.getBattleByParticipatingPlayer(player) != null
+        if (!inBattle && quest.get("battleStarted")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) {
+            quest.addProperty("battleStarted", false)
+        }
 
         val currentDim = level.dimension().location().toString()
         val savedDim = quest.get("targetDimension")?.asString
@@ -1896,6 +1974,17 @@ object DialogueSystem {
         }
 
         if (existingTarget != null && existingTarget.isAlive && !existingTarget.isRemoved) {
+            val newX = existingTarget.blockX
+            val newY = existingTarget.blockY
+            val newZ = existingTarget.blockZ
+            if (quest.get("targetX")?.takeIf { it.isJsonPrimitive }?.asInt != newX ||
+                quest.get("targetY")?.takeIf { it.isJsonPrimitive }?.asInt != newY ||
+                quest.get("targetZ")?.takeIf { it.isJsonPrimitive }?.asInt != newZ
+            ) {
+                quest.addProperty("targetX", newX)
+                quest.addProperty("targetY", newY)
+                quest.addProperty("targetZ", newZ)
+            }
             if (!existingTarget.isCurrentlyGlowing) {
                 existingTarget.setGlowingTag(true)
             }
@@ -1914,7 +2003,7 @@ object DialogueSystem {
         }
 
         // If player is currently in a battle, wait until battle resolves before considering a respawn
-        if (com.cobblemon.mod.common.battles.BattleRegistry.getBattleByParticipatingPlayer(player) != null) return
+        if (inBattle) return
 
         // If we had a saved target in an unloaded chunk, don't duplicate it while chunk is unloaded
         val hasSavedCoords = quest.has("targetX") && quest.has("targetY") && quest.has("targetZ")
@@ -1944,11 +2033,74 @@ object DialogueSystem {
         }
     }
 
+    private fun teleportTreasureGiverToBarrel(
+        level: ServerLevel,
+        player: ServerPlayer,
+        quest: JsonObject,
+        barrelPos: BlockPos
+    ) {
+        val giverUuidStr = quest.get("giverUuid")?.takeIf { it.isJsonPrimitive }?.asString ?: return
+        val giver = CobblebrainWorldSave.followers[giverUuidStr]?.first
+            ?.takeIf { it.isAlive && !it.isRemoved && it.level() == level }
+            ?: try {
+                level.getEntity(UUID.fromString(giverUuidStr)) as? PokemonEntity
+            } catch (_: Exception) {
+                null
+            }?.takeIf { it.isAlive && !it.isRemoved && it.level() == level }
+            ?: return
+
+        fun isSafeStandPos(pos: BlockPos): Boolean {
+            if (pos.y <= level.minBuildHeight + 1 || pos.y >= level.maxBuildHeight - 2) return false
+            val below = level.getBlockState(pos.below())
+            if (below.isAir || !below.fluidState.isEmpty) return false
+            val at = level.getBlockState(pos)
+            val above = level.getBlockState(pos.above())
+            return at.fluidState.isEmpty &&
+                above.fluidState.isEmpty &&
+                at.getCollisionShape(level, pos).isEmpty &&
+                above.getCollisionShape(level, pos.above()).isEmpty
+        }
+
+        val offsets = arrayOf(
+            2 to 0, -2 to 0, 0 to 2, 0 to -2,
+            2 to 2, -2 to 2, 2 to -2, -2 to -2,
+            1 to 0, -1 to 0, 0 to 1, 0 to -1
+        )
+        var targetPos: BlockPos? = null
+        for ((dx, dz) in offsets) {
+            val cx = barrelPos.x + dx
+            val cz = barrelPos.z + dz
+            val surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz)
+            val candidates = listOf(
+                BlockPos(cx, surfaceY, cz),
+                BlockPos(cx, barrelPos.y, cz),
+                BlockPos(cx, barrelPos.y + 1, cz)
+            )
+            val valid = candidates.firstOrNull {
+                kotlin.math.abs(it.y - barrelPos.y) <= 4 && isSafeStandPos(it)
+            }
+            if (valid != null) {
+                targetPos = valid
+                break
+            }
+        }
+
+        if (vito.cobblebrain.sensors.isPokemonEntitySleeping(giver)) {
+            vito.cobblebrain.sensors.stopRestAndSleep(giver.pokemon, giver, level.server)
+        }
+        giver.navigation.stop()
+        val destX = (targetPos?.x ?: barrelPos.x) + 0.5
+        val destY = (targetPos?.y ?: (barrelPos.y + 1)).toDouble()
+        val destZ = (targetPos?.z ?: barrelPos.z) + 0.5
+        giver.teleportTo(destX, destY, destZ)
+        giver.lookAt(player, 30f, 30f)
+    }
+
     fun handleTreasureQuestTick(player: ServerPlayer, quest: JsonObject) {
-        val tx = quest.get("targetX").asInt
-        var ty = quest.get("targetY").asInt
-        val tz = quest.get("targetZ").asInt
-        val spawned = quest.get("spawned")?.asBoolean ?: true
+        val tx = quest.get("targetX")?.takeIf { it.isJsonPrimitive }?.asInt ?: return
+        var ty = quest.get("targetY")?.takeIf { it.isJsonPrimitive }?.asInt ?: return
+        val tz = quest.get("targetZ")?.takeIf { it.isJsonPrimitive }?.asInt ?: return
+        val spawned = quest.get("spawned")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: true
         val level = player.serverLevel()
 
         // Lazy Spawning: when player is within 60 blocks, calculate safe ground Y and spawn barrel
@@ -2006,11 +2158,12 @@ object DialogueSystem {
                 }
             }
             
-            val scanned = quest.get("scanned")?.asBoolean ?: false
+            val scanned = quest.get("scanned")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false
             if (!scanned && distance < 15) {
                 quest.addProperty("scanned", true)
                 CobblebrainWorldSave.save()
                 player.sendSystemMessage(Component.translatable("cobblebrain.quest.barrel_found").withStyle(ChatFormatting.AQUA))
+                teleportTreasureGiverToBarrel(level, player, quest, pos)
             }
         }
 
@@ -3291,7 +3444,11 @@ object DialogueSystem {
             // Active Pokemon Summary
             appendLine("[ACTIVE POKEMON]")
             if (activePokemon.isEmpty()) {
-                appendLine("No party Pokémon are currently active, so none will participate in the dialogue.")
+                if (context.nearbyPokemonEntities.isNotEmpty()) {
+                    appendLine("No party Pokémon are currently active, but nearby wild Pokémon listed below can still respond.")
+                } else {
+                    appendLine("No party Pokémon are currently active, so none will participate in the dialogue.")
+                }
             } else {
                 val nameCounters2 = mutableMapOf<String, Int>()
                 activePokemon.forEach { p ->
@@ -3530,7 +3687,11 @@ object DialogueSystem {
             if (config.outputActions) {
                 appendLine("Deliver immediate spoken dialogue and action commands ONLY.")
                 appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >${player.name.string}, >Pikachu, >Pidgey_e1a4)")
-                appendLine("- Action command format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
+                if (config.wildPokemonCanBeHostile && context.nearbyPokemonEntities.isNotEmpty()) {
+                    appendLine("- Action command format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
+                } else {
+                    appendLine("- Action command format: #<PokemonName>:<action_code>")
+                }
             } else {
                 appendLine("Deliver immediate spoken dialogue ONLY. Do NOT generate action commands.")
                 appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >${player.name.string}, >Pikachu, >Pidgey_e1a4)")

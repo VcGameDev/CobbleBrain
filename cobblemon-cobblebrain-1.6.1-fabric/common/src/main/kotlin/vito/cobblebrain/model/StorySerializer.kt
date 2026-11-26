@@ -852,6 +852,9 @@ object StorySerializer {
 
     fun loadByName(name: String, lazy: Boolean = false): StoryProject? {
         val cleanName = name.removeSuffix(".json").removeSuffix(".zip").trim()
+        if (cleanName.isBlank() || cleanName.contains("..") || cleanName.contains("/") || cleanName.contains("\\")) {
+            return null
+        }
         val folderCandidate = File(storageDir, cleanName)
         if (folderCandidate.exists() && folderCandidate.isDirectory) {
             return load(folderCandidate, lazy)

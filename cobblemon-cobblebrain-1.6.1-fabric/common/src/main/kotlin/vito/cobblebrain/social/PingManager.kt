@@ -128,8 +128,8 @@ object PingManager {
             val pokemon = server.allLevels
                 .firstNotNullOfOrNull { it.getEntity(pokemonEntityUuid) as? Mob }
 
-            if (pokemon == null || !pokemon.isAlive) {
-                // Entity gone — clean up
+            if (pokemon == null || !pokemon.isAlive || pokemon.level().dimension() != ping.dimension) {
+                // Entity gone or in another dimension — clean up
                 toRemove.add(pokemonEntityUuid)
                 continue
             }

@@ -7,7 +7,6 @@ import net.minecraft.commands.CommandSourceStack
 import com.mojang.brigadier.CommandDispatcher
 import net.minecraft.commands.Commands
 import com.cobblemon.mod.common.pokemon.Pokemon
-import com.google.gson.Gson
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.minecraft.ChatFormatting
 import net.minecraft.nbt.CompoundTag
@@ -16,9 +15,7 @@ import net.minecraft.world.entity.Pose
 import vito.cobblebrain.social.CobblebrainWorldSave.giveCobblebrainGuide
 import vito.cobblebrain.config.ClientConfigHandler
 import vito.cobblebrain.config.CobblebrainClientConfig
-import vito.cobblebrain.config.CobblebrainConfig
 import vito.cobblebrain.config.ConfigHandler
-import java.io.File
 
 object PokemonQuery {
 
@@ -113,9 +110,11 @@ object PokemonTalkCommand {
 }
 
 object ConfigCommands {
-    private val gson = Gson()
-    private val configFile = File("config/cobblebrain.json5")
-    private val config: CobblebrainConfig = gson.fromJson(configFile.readText(), CobblebrainConfig::class.java)
+    private fun requireLocalClientConfig(source: CommandSourceStack): Boolean {
+        if (source.server.isSingleplayer && ClientConfigHandler.isInitialized()) return true
+        source.sendFailure(Component.literal("This command edits local client settings and can only be used in singleplayer. Use the client config screen instead."))
+        return false
+    }
 
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
@@ -274,6 +273,10 @@ object ConfigCommands {
 
                 .then(
                     Commands.literal("story")
+                        .requires { src ->
+                            src.hasPermission(2) ||
+                                (src.server.isSingleplayer && (src.entity as? ServerPlayer)?.let { src.server.isSingleplayerOwner(it.gameProfile) } == true)
+                        }
                         .then(
                             Commands.literal("start")
                                 .then(
@@ -438,6 +441,7 @@ object ConfigCommands {
                         .then(
                             Commands.argument("value", StringArgumentType.string())
                                 .executes { ctx ->
+                                    if (!requireLocalClientConfig(ctx.source)) return@executes 0
                                     val value = StringArgumentType.getString(ctx, "value")
                                     ClientConfigHandler.clientConfig.instruct = ClientConfigHandler.ensureCreativePrompt(ClientConfigHandler.clientConfig.instruct.plus(value))
                                     ClientConfigHandler.save()
@@ -454,6 +458,7 @@ object ConfigCommands {
                         .then(
                             Commands.argument("value", StringArgumentType.string())
                                 .executes { ctx ->
+                                    if (!requireLocalClientConfig(ctx.source)) return@executes 0
                                     val value = StringArgumentType.getString(ctx, "value")
                                     ClientConfigHandler.clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(ClientConfigHandler.clientConfig.playerAbout.plus(value))
                                     ClientConfigHandler.save()
@@ -470,6 +475,7 @@ object ConfigCommands {
                         .then(
                             Commands.argument("value", StringArgumentType.string())
                                 .executes { ctx ->
+                                    if (!requireLocalClientConfig(ctx.source)) return@executes 0
                                     val value = StringArgumentType.getString(ctx, "value")
                                     ClientConfigHandler.clientConfig.playerAbout = ClientConfigHandler.ensurePlayerAboutHeader(ClientConfigHandler.clientConfig.playerAbout.plus(value))
                                     ClientConfigHandler.save()
@@ -484,6 +490,7 @@ object ConfigCommands {
                 .then(
                     Commands.literal("clearPlayerAbout")
                         .executes { ctx ->
+                            if (!requireLocalClientConfig(ctx.source)) return@executes 0
                             ClientConfigHandler.clientConfig.playerAbout = listOf("[ABOUT THE PLAYER]")
                             ClientConfigHandler.save()
                             ctx.source.sendSuccess(
@@ -496,6 +503,7 @@ object ConfigCommands {
                 .then(
                     Commands.literal("clearAbout")
                         .executes { ctx ->
+                            if (!requireLocalClientConfig(ctx.source)) return@executes 0
                             ClientConfigHandler.clientConfig.playerAbout = listOf("[ABOUT THE PLAYER]")
                             ClientConfigHandler.save()
                             ctx.source.sendSuccess(
@@ -508,6 +516,7 @@ object ConfigCommands {
                 .then(
                     Commands.literal("resetPlayerAbout")
                         .executes { ctx ->
+                            if (!requireLocalClientConfig(ctx.source)) return@executes 0
                             ClientConfigHandler.clientConfig.playerAbout = CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
                             ClientConfigHandler.save()
                             ctx.source.sendSuccess(
@@ -520,6 +529,7 @@ object ConfigCommands {
                 .then(
                     Commands.literal("resetAbout")
                         .executes { ctx ->
+                            if (!requireLocalClientConfig(ctx.source)) return@executes 0
                             ClientConfigHandler.clientConfig.playerAbout = CobblebrainClientConfig.DEFAULT_PLAYER_ABOUT
                             ClientConfigHandler.save()
                             ctx.source.sendSuccess(
@@ -627,6 +637,7 @@ object ConfigCommands {
                                 StringArgumentType.greedyString()
                             )
                                 .executes { ctx ->
+                                    if (!requireLocalClientConfig(ctx.source)) return@executes 0
 
                                     val player =
                                         ctx.source.playerOrException

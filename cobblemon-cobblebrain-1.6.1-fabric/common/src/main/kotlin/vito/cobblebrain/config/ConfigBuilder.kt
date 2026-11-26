@@ -199,6 +199,8 @@ object ConfigHandler {
 object ClientConfigHandler {
     lateinit var clientConfig: CobblebrainClientConfig
 
+    fun isInitialized(): Boolean = ::clientConfig.isInitialized
+
     fun ensureCreativePrompt(list: List<String>): List<String> {
         val clean = list.filter { line ->
             val norm = line.trim().replace(" ", "").uppercase()

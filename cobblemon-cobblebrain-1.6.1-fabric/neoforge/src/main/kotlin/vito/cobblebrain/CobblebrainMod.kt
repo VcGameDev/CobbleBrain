@@ -14,7 +14,7 @@ import net.neoforged.fml.loading.FMLEnvironment
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.server.ServerStartedEvent
-import net.neoforged.neoforge.event.server.ServerStoppingEvent
+import net.neoforged.neoforge.event.server.ServerStoppedEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import vito.cobblebrain.client.CobblebrainClientRuntimeNeoForge
 import vito.cobblebrain.config.ClientConfigHandler
@@ -41,10 +41,10 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.addListener(::onClientSetup)
+            ClientConfigHandler.load()
+            ClientOnlySetup.register(modEventBus)
+            CobblebrainClientRuntimeNeoForge.init()
         }
-        ClientConfigHandler.load()
-        ClientOnlySetup.register(modEventBus)
-        CobblebrainClientRuntimeNeoForge.init()
 
         // ===== MOB BRIDGE =====
         MobBridge.addGoal = { mob, priority, goal ->
@@ -161,11 +161,17 @@ class CobblebrainNeoForge(modEventBus: IEventBus) {
     fun onPlayerLogout(event: PlayerEvent.PlayerLoggedOutEvent) {
         val player = event.entity as? ServerPlayer ?: return
         vito.cobblebrain.server.CobblebrainServerHandler.clearPendingRequests(player.uuid)
+        DialogueSystem.clearPlayerState(player.uuid)
+        vito.cobblebrain.social.WorldEventsSystem.clearPlayerRaids(player.uuid)
     }
 
     @SubscribeEvent
-    fun onServerStop(event: ServerStoppingEvent) {
+    fun onServerStop(event: ServerStoppedEvent) {
         currentServer = null
+        vito.cobblebrain.engine.TickManager.clear()
         vito.cobblebrain.social.DiskWriteExecutor.shutdown()
+        vito.cobblebrain.social.MemorySystem.clearCache()
+        DialogueSystem.clearAll()
+        vito.cobblebrain.social.WorldEventsSystem.clearAll()
     }
 }

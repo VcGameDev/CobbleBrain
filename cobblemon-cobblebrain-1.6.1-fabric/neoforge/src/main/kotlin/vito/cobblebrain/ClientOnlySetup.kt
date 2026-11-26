@@ -11,7 +11,9 @@ object ClientOnlySetup {
 
             // init principal do client
             modEventBus.addListener { event: FMLClientSetupEvent ->
-                CobbleBrainModClientNeoForge.init()
+                event.enqueueWork {
+                    CobbleBrainModClientNeoForge.init()
+                }
             }
 
             // keybinds

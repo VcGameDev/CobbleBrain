@@ -24,7 +24,7 @@ object CobbleBrainModClientNeoForge {
     private val OPEN_CONFIG = KeyMapping(
         "key.cobblebrain.open_config",
         GLFW.GLFW_KEY_Y,
-        "key.categories.cobblebrain"
+        "category.cobblebrain"
     )
 
 
@@ -78,7 +78,9 @@ object CobbleBrainModClientNeoForge {
 
     fun init() {
         ClientConfigHandler.load()
+        vito.cobblebrain.config.AiProfileManager.load()
         SyncedConfig.resetToLocal()
+        vito.cobblebrain.client.AIHandler().start()
         println("Cobblebrain loaded on the client (NeoForge)")
 
         CobblebrainClientCommon.isMcmtiInstalled = {

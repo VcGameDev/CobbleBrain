@@ -101,7 +101,18 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
     val hostileMobs = nearbyHostiles.isNotEmpty()
 
     val nearbyMobs = nearby
-        .filter { it !is PokemonEntity }
+        .filter { entity ->
+            if (entity is PokemonEntity) return@filter false
+            if (entity is net.minecraft.world.entity.decoration.ArmorStand) {
+                val isModBubble = entity.tags.contains("cobblebrain_chat_bubble") ||
+                    entity.tags.contains("cobblebrain_secondary_bubble") ||
+                    entity.tags.contains("Marker")
+                if (isModBubble || entity.isInvisible || entity.isMarker || entity.noPhysics) {
+                    return@filter false
+                }
+            }
+            true
+        }
         .map { it.type.description.string }
         .groupingBy { it }
         .eachCount()
@@ -116,7 +127,7 @@ fun collectWorldContext(player: ServerPlayer): WorldContext {
         player.boundingBox.inflate(8.0)
     )
 
-    val radius = 8.5
+    val radius = 12.0
 
     val nearbyPokemonEntities = level.getEntitiesOfClass(
         PokemonEntity::class.java,

@@ -170,7 +170,7 @@ object WorldEventsSystem {
             raid.ticksRemaining--
 
             if (raid.ticksRemaining <= 0) {
-                if (raid.player.isAlive) {
+                if (raid.player.isAlive && !raid.player.isRemoved && !raid.player.hasDisconnected()) {
                     spawnRaid(
                         raid.player.serverLevel(),
                         raid.player,
@@ -279,6 +279,16 @@ object WorldEventsSystem {
             val raid = iterator.next()
             val player = raid.player
 
+            // Jogador desconectou durante a raid
+            if (player.isRemoved || player.hasDisconnected()) {
+                raid.spawnedPokemon.forEach {
+                    attackCooldowns.remove(it.uuid)
+                    if (it.isAlive) it.discard()
+                }
+                iterator.remove()
+                continue
+            }
+
             // DERROTA: player morreu
             if (!player.isAlive) {
 
@@ -290,11 +300,13 @@ object WorldEventsSystem {
 
                     if (playerObj != null) {
                         playerObj.addProperty(raid.speciesName, 0)
+                        CobblebrainWorldSave.save()
                     }
                 }
 
                 // Remove remaining Pokémon
                 raid.spawnedPokemon.forEach {
+                    attackCooldowns.remove(it.uuid)
                     if (it.isAlive) {
                         it.discard()
                     }
@@ -318,6 +330,13 @@ object WorldEventsSystem {
                 if (!pokemon.isAlive) {
                     pokemonIterator.remove()
                     attackCooldowns.remove(pokemon.uuid)
+                    continue
+                }
+
+                if (pokemon.level() != player.level()) {
+                    if (pokemon.target == player) {
+                        vito.cobblebrain.sensors.safeClearTarget(pokemon)
+                    }
                     continue
                 }
 
@@ -368,6 +387,7 @@ object WorldEventsSystem {
                     if (playerObj != null) {
                         // RESETA KARMA PRA 0
                         playerObj.addProperty(raid.speciesName, 0)
+                        CobblebrainWorldSave.save()
                     }
                 }
 
@@ -380,6 +400,28 @@ object WorldEventsSystem {
                 continue
             }
         }
+    }
+
+    fun clearPlayerRaids(playerUuid: UUID) {
+        pendingRaids.removeIf { it.player.uuid == playerUuid }
+        val iterator = activeRaids.iterator()
+        while (iterator.hasNext()) {
+            val raid = iterator.next()
+            if (raid.player.uuid == playerUuid) {
+                raid.spawnedPokemon.forEach { pokemon ->
+                    attackCooldowns.remove(pokemon.uuid)
+                    if (pokemon.isAlive) pokemon.discard()
+                }
+                iterator.remove()
+            }
+        }
+    }
+
+    fun clearAll() {
+        pendingRaids.clear()
+        raidCooldown = 0
+        activeRaids.clear()
+        attackCooldowns.clear()
     }
 
     private fun clearRaids() {

@@ -286,13 +286,16 @@ object CobblebrainMod : ModInitializer {
             vito.cobblebrain.social.OfflinePlayers.removePlayer(handler.player.uuid)
             vito.cobblebrain.server.CobblebrainServerHandler.clearPendingRequests(handler.player.uuid)
             vito.cobblebrain.social.DialogueSystem.clearPlayerState(handler.player.uuid)
+            vito.cobblebrain.social.WorldEventsSystem.clearPlayerRaids(handler.player.uuid)
         }
 
         ServerLifecycleEvents.SERVER_STOPPED.register {
             currentServer = null
+            vito.cobblebrain.engine.TickManager.clear()
             vito.cobblebrain.social.DiskWriteExecutor.shutdown()
             vito.cobblebrain.social.MemorySystem.clearCache()
             vito.cobblebrain.social.DialogueSystem.clearAll()
+            vito.cobblebrain.social.WorldEventsSystem.clearAll()
         }
     }
 }

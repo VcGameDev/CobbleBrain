@@ -184,6 +184,22 @@ object HudSystem {
         } catch (_: Exception) {}
     }
 
+    private fun getDirectionArrow(playerPos: net.minecraft.world.phys.Vec3, playerYaw: Float, tx: Double, tz: Double): String {
+        val angle = Math.toDegrees(atan2(tz - playerPos.z, tx - playerPos.x))
+        val normalizedYaw = playerYaw % 360
+        val relativeAngle = ((angle - (normalizedYaw - 90)) % 360 + 360) % 360 - 180
+        return when {
+            relativeAngle > -22.5 && relativeAngle <= 22.5 -> "↑"
+            relativeAngle > 22.5 && relativeAngle <= 67.5 -> "↗"
+            relativeAngle > 67.5 && relativeAngle <= 112.5 -> "→"
+            relativeAngle > 112.5 && relativeAngle <= 157.5 -> "↘"
+            relativeAngle > 157.5 || relativeAngle <= -157.5 -> "↓"
+            relativeAngle > -157.5 && relativeAngle <= -112.5 -> "↙"
+            relativeAngle > -112.5 && relativeAngle <= -67.5 -> "←"
+            else -> "↖"
+        }
+    }
+
     private fun renderSingleQuest(guiGraphics: GuiGraphics, client: Minecraft, quest: com.google.gson.JsonObject, x: Int, y: Int, boxHeight: Int) {
         val type = quest.get("type")?.asString ?: return
         val giverName = quest.get("giverName")?.asString ?: "someone"
@@ -228,10 +244,26 @@ object HudSystem {
                 }
             }
             "BATTLE" -> {
-                val target = quest.get("targetSpecies")?.asString ?: "Target"
-                val status = quest.get("status")?.asString ?: "IN_PROGRESS"
-                progress = if (status == "COMPLETED") 1f else 0f
-                progressText = "Defeat $target in a battle"
+                val target = quest.get("targetSpecies")?.takeIf { it.isJsonPrimitive }?.asString ?: "Target"
+                val status = quest.get("status")?.takeIf { it.isJsonPrimitive }?.asString ?: "IN_PROGRESS"
+                val battleStarted = quest.get("battleStarted")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
+                val battleDefeated = quest.get("battleDefeated")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
+                val targetDim = quest.get("targetDimension")?.takeIf { it.isJsonPrimitive }?.asString
+                val currentDim = client.level?.dimension()?.location()?.toString()
+                val sameDimension = targetDim == null || currentDim == null || targetDim == currentDim
+                val tx = quest.get("targetX")?.takeIf { it.isJsonPrimitive }?.asInt
+                val tz = quest.get("targetZ")?.takeIf { it.isJsonPrimitive }?.asInt
+                val playerPos = client.player?.position()
+
+                if (!battleStarted && !battleDefeated && status != "COMPLETED" && sameDimension && tx != null && tz != null && playerPos != null) {
+                    val dist = playerPos.distanceTo(net.minecraft.world.phys.Vec3(tx.toDouble(), playerPos.y, tz.toDouble()))
+                    val arrow = getDirectionArrow(playerPos, client.player!!.yRot, tx.toDouble(), tz.toDouble())
+                    progress = (1.0f - (dist.toFloat() / 64f)).coerceIn(0f, 1f)
+                    progressText = "Find $target: ${dist.toInt()}m $arrow"
+                } else {
+                    progress = if (status == "COMPLETED" || battleDefeated) 1f else 0f
+                    progressText = "Defeat $target in a battle"
+                }
             }
             "ITEM" -> {
                 val target = quest.get("target")?.asString ?: "Item"
@@ -252,19 +284,7 @@ object HudSystem {
                 val playerPos = client.player?.position()
                 if (playerPos != null) {
                     val dist = playerPos.distanceTo(net.minecraft.world.phys.Vec3(tx.toDouble(), playerPos.y, tz.toDouble()))
-                    val angle = Math.toDegrees(atan2(tz - playerPos.z, tx - playerPos.x))
-                    val playerYaw = client.player!!.yRot % 360
-                    val relativeAngle = (angle - (playerYaw - 90) + 360) % 360 - 180
-                    val arrow = when {
-                        relativeAngle > -22.5 && relativeAngle <= 22.5 -> "↑"
-                        relativeAngle > 22.5 && relativeAngle <= 67.5 -> "↗"
-                        relativeAngle > 67.5 && relativeAngle <= 112.5 -> "→"
-                        relativeAngle > 112.5 && relativeAngle <= 157.5 -> "↘"
-                        relativeAngle > 157.5 || relativeAngle <= -157.5 -> "↓"
-                        relativeAngle > -157.5 && relativeAngle <= -112.5 -> "↙"
-                        relativeAngle > -112.5 && relativeAngle <= -67.5 -> "←"
-                        else -> "↖"
-                    }
+                    val arrow = getDirectionArrow(playerPos, client.player!!.yRot, tx.toDouble(), tz.toDouble())
                     progress = (1.0f - (dist.toFloat() / 400f)).coerceIn(0f, 1f)
                     progressText = "Target: ${dist.toInt()}m $arrow"
                 }

@@ -285,10 +285,12 @@ object CobblebrainPayloadRegistrarNeoForge {
             CobblebrainPayloads.AdvanceAIDialoguePayload.CODEC
         ) { payload, context ->
             context.enqueueWork {
+                val sender = context.player() as? ServerPlayer ?: return@enqueueWork
                 val inst = vito.cobblebrain.engine.StoryExecutor.activeStories.values.find { it.storyId == payload.instanceId }
-                if (inst != null) {
+                val owner = inst?.context?.player
+                if (inst != null && (owner == null || owner.uuid == sender.uuid)) {
                     val node = inst.project.scenes.flatMap { it.nodes }.find { it.id == payload.nodeId }
-                    if (node != null) {
+                    if (node != null && node.nodeType == vito.cobblebrain.model.NodeType.DIALOGUE) {
                         val outPort = node.outputs.find { it.name.equals("OUT", true) || it.name.equals("OUT_SUCCESS", true) } ?: node.outputs.firstOrNull()
                         if (outPort != null) {
                             vito.cobblebrain.engine.StoryExecutor.continuePortConnections(inst, node, outPort.id, 1)
