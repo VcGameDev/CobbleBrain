@@ -2989,7 +2989,7 @@ class StoryEditorScreen(
                     ContextMenuAction.CLEAR_ALL_AI_FOCUS -> {
                         StoryEditorAIAssistantWidget.pinnedFocusNodeIds.clear()
                         StoryEditorAIAssistantWidget.pinnedFocusSceneIds.clear()
-                        showStatus("🎯 Todos os focos da IA foram limpos!")
+                        showStatus(Component.translatable("cobblebrain.story_editor.ai.focus.all_cleared").string)
                     }
                     ContextMenuAction.PASTE_NODES -> {
                         pasteCopiedNodesAt(worldX, worldY)
@@ -3135,20 +3135,20 @@ class StoryEditorScreen(
                 val allAlreadyPinned = targetIds.all { StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(it) }
                 if (allAlreadyPinned) {
                     StoryEditorAIAssistantWidget.pinnedFocusNodeIds.removeAll(targetIds.toSet())
-                    showStatus("🎯 Foco IA removido de ${targetIds.size} bloco(s) (Restam: ${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size}).")
+                    showStatus(Component.translatable("cobblebrain.story_editor.ai.focus.node_removed", targetIds.size, StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size).string)
                 } else {
                     targetIds.forEach { id ->
                         if (!StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(id)) {
                             StoryEditorAIAssistantWidget.pinnedFocusNodeIds.add(id)
                         }
                     }
-                    showStatus("🎯 ${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size} bloco(s) marcados para Foco da IA!")
+                    showStatus(Component.translatable("cobblebrain.story_editor.ai.focus.node_added", StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size).string)
                 }
             }
             ContextMenuAction.CLEAR_ALL_AI_FOCUS -> {
                 StoryEditorAIAssistantWidget.pinnedFocusNodeIds.clear()
                 StoryEditorAIAssistantWidget.pinnedFocusSceneIds.clear()
-                showStatus("🎯 Todos os focos da IA foram limpos!")
+                showStatus(Component.translatable("cobblebrain.story_editor.ai.focus.all_cleared").string)
             }
             ContextMenuAction.PASTE_NODES -> {
                 pasteCopiedNodesAt(currentMouseWorldX, currentMouseWorldY)
@@ -3169,11 +3169,11 @@ class StoryEditorScreen(
                 StoryEditorAIAssistantWidget.focusOnSelectionEnabled = true
                 if (StoryEditorAIAssistantWidget.pinnedFocusSceneIds.contains(scene.id)) {
                     StoryEditorAIAssistantWidget.pinnedFocusSceneIds.remove(scene.id)
-                    showStatus("🎯 Foco IA removido da cena '${scene.title}'.")
+                    showStatus(Component.translatable("cobblebrain.story_editor.ai.focus.scene_removed", scene.title).string)
                 } else {
                     StoryEditorAIAssistantWidget.pinnedFocusSceneIds.clear()
                     StoryEditorAIAssistantWidget.pinnedFocusSceneIds.add(scene.id)
-                    showStatus("🎯 Cena '${scene.title}' marcada como Foco da IA!")
+                    showStatus(Component.translatable("cobblebrain.story_editor.ai.focus.scene_added", scene.title).string)
                 }
             }
             ContextMenuAction.DELETE -> {

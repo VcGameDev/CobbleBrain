@@ -2,6 +2,7 @@ package vito.cobblebrain.client.gui.widgets
 
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.network.chat.Component
 import vito.cobblebrain.model.NodeData
 import vito.cobblebrain.model.NodeType
 import vito.cobblebrain.model.PortData
@@ -258,7 +259,7 @@ class NodeWidget(val node: NodeData) {
 
         // AI Focus Pinned Badge on Top-Left
         if (isAiFocused && !shouldHideText) {
-            val aiBadgeText = "🎯 IA"
+            val aiBadgeText = Component.translatable("cobblebrain.story_editor.ai.badge_focus").string
             val aiBadgeW = font.width(aiBadgeText) + 6
             val aiBadgeX = x
             val aiBadgeY = y - 11

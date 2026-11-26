@@ -979,13 +979,38 @@ object DialogueSystem {
             "${player.name.string} said: $text"
         }
 
+        val worldCtx = collectWorldContext(player)
+        val hasListeningActive = ativos.any { p ->
+            val name = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+            !PokemonQuery.isPokemonSleeping(p) &&
+                MemorySystem.loadPersonality(p.uuid.toString(), name).effectiveCanTalk
+        }
+        val hasListeningNearby = worldCtx.nearbyPokemonEntities.any { entity ->
+            val p = entity.pokemon
+            val name = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+            entity.isAlive &&
+                !entity.isRemoved &&
+                p.currentHealth > 0 &&
+                !entity.isSleeping &&
+                !PokemonQuery.isPokemonSleeping(p) &&
+                MemorySystem.loadPersonality(p.uuid.toString(), name).effectiveCanTalk
+        }
+        if (!hasListeningActive && !hasListeningNearby) {
+            player.sendSystemMessage(
+                Component.literal("* ")
+                    .append(Component.translatable("cobblebrain.dialogue.no_pokemon_heard"))
+                    .append(" *")
+                    .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
+            )
+            return true
+        }
+
         // Automatic wild quest roll when player speaks
         var questPromptDirective: String? = null
         if (config.outputQuests) {
             val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
             val hasActiveQuest = activeQuests.any { it.get("status")?.asString == "IN_PROGRESS" }
             if (!hasActiveQuest) {
-                val worldCtx = collectWorldContext(player)
                 if (worldCtx.nearbyPokemonEntities.isNotEmpty() && Random.nextDouble() <= config.wildQuestChance) {
                     val giverEntity = worldCtx.nearbyPokemonEntities.random()
                     val giverName = giverEntity.pokemon.nickname?.string ?: giverEntity.pokemon.species.name
@@ -3247,6 +3272,83 @@ object DialogueSystem {
         }
     }
 
+    private fun findLookedAtPokemonName(
+        player: ServerPlayer,
+        activePokemon: List<Pokemon>,
+        nearbyPokemonEntities: List<PokemonEntity>,
+        reverseAliases: Map<UUID, String>
+    ): String? {
+        val maxDistance = 12.0
+        val eyePos = player.eyePosition
+        val lookVec = player.lookAngle
+        val rayEnd = eyePos.add(lookVec.scale(maxDistance))
+
+        val candidates = buildList {
+            activePokemon.forEach { p ->
+                val e = p.entity
+                if (e != null && e.isAlive && !e.isRemoved && e.level() == player.level()) {
+                    val name = reverseAliases[p.uuid]
+                        ?: reverseAliases[e.uuid]
+                        ?: p.nickname?.string?.takeIf { it.isNotBlank() }
+                        ?: p.species.name
+                    add(e to name)
+                }
+            }
+            nearbyPokemonEntities.forEach { e ->
+                if (e.isAlive && !e.isRemoved && e.level() == player.level()) {
+                    val name = reverseAliases[e.uuid]
+                        ?: reverseAliases[e.pokemon.uuid]
+                        ?: e.pokemon.species.name
+                    add(e to name)
+                }
+            }
+        }
+        if (candidates.isEmpty()) return null
+
+        var directHitUuid: UUID? = null
+        var directHitName: String? = null
+        var directHitDistSqr = Double.MAX_VALUE
+        val coneMatches = mutableListOf<Triple<UUID, String, Double>>()
+        val coneThreshold = 0.94 // ~20 degree cone
+
+        for ((entity, displayName) in candidates) {
+            val center = entity.boundingBox.center
+            if (eyePos.distanceToSqr(center) > maxDistance * maxDistance) continue
+            if (!player.hasLineOfSight(entity)) continue
+
+            val hit = entity.boundingBox.inflate(0.35).clip(eyePos, rayEnd)
+            if (hit.isPresent) {
+                val hitDistSqr = eyePos.distanceToSqr(hit.get())
+                if (hitDistSqr < directHitDistSqr) {
+                    directHitDistSqr = hitDistSqr
+                    directHitUuid = entity.uuid
+                    directHitName = displayName
+                }
+            }
+
+            val toEntity = center.subtract(eyePos)
+            if (toEntity.lengthSqr() > 1e-6) {
+                val dot = lookVec.dot(toEntity.normalize())
+                if (dot > coneThreshold) {
+                    coneMatches.add(Triple(entity.uuid, displayName, dot))
+                }
+            }
+        }
+
+        val result = mutableListOf<String>()
+        if (directHitName != null) {
+            result += "$directHitName (directly)"
+        }
+        coneMatches
+            .filter { it.first != directHitUuid }
+            .sortedByDescending { it.third }
+            .distinctBy { it.second }
+            .take(3 - result.size)
+            .forEach { result += it.second }
+
+        return result.takeIf { it.isNotEmpty() }?.joinToString(", ")
+    }
+
     fun buildForegroundPrompt(
         player: ServerPlayer,
         pokemons: List<Pokemon>,
@@ -3442,6 +3544,7 @@ object DialogueSystem {
             }
 
             // Active Pokemon Summary
+            var hasTalkOrActionRestriction = false
             appendLine("[ACTIVE POKEMON]")
             if (activePokemon.isEmpty()) {
                 if (context.nearbyPokemonEntities.isNotEmpty()) {
@@ -3544,9 +3647,11 @@ object DialogueSystem {
 
                     val restrictions = mutableListOf<String>()
                     if (!personality.effectiveCanTalk) {
+                        hasTalkOrActionRestriction = true
                         restrictions += "Cannot talk (Must remain silent; do NOT generate speech or spoken dialogue for this Pokémon)"
                     }
                     if (!personality.effectiveCanAct) {
+                        hasTalkOrActionRestriction = true
                         restrictions += "Cannot execute actions (Action commands # disabled for this Pokémon)"
                     }
                     if (!personality.effectiveCanUpdatePersonality) {
@@ -3613,6 +3718,14 @@ object DialogueSystem {
                     playerParts += "HP ${context.health}/${context.maxHealth}"
                     context.mainHand.takeIfUseful()?.let {
                         playerParts += "Main hand: ${compactId(it)}"
+                    }
+                    findLookedAtPokemonName(
+                        player,
+                        activePokemon,
+                        context.nearbyPokemonEntities,
+                        reversePokemonAliasMap[player.uuid] ?: emptyMap()
+                    )?.let {
+                        playerParts += "Looking at: $it"
                     }
                     appendLine("Player: ${playerParts.joinToString(" | ")}")
                 }
@@ -3682,68 +3795,9 @@ object DialogueSystem {
             }
             appendLine()
 
-            // Explicit Output Constraints for Stage 1 Foreground Call
-            appendLine("##STAGE 1 FOREGROUND INSTRUCTIONS##")
-            if (config.outputActions) {
-                appendLine("Deliver immediate spoken dialogue and action commands ONLY.")
-                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >${player.name.string}, >Pikachu, >Pidgey_e1a4)")
-                if (config.wildPokemonCanBeHostile && context.nearbyPokemonEntities.isNotEmpty()) {
-                    appendLine("- Action command format: #<PokemonName>:<action_code> or #<WildPokemon>:H[:<Target>]")
-                } else {
-                    appendLine("- Action command format: #<PokemonName>:<action_code>")
-                }
-            } else {
-                appendLine("Deliver immediate spoken dialogue ONLY. Do NOT generate action commands.")
-                appendLine("- Spoken dialogue format: <PokemonName>: <message> ><Target> (e.g. >${player.name.string}, >Pikachu, >Pidgey_e1a4)")
-            }
-            appendLine("- Strictly respect individual Pokémon restrictions: if marked with 'Cannot talk', do NOT generate speech lines for it. If marked with 'Cannot execute actions', do NOT generate # action commands for it.")
-
-            val presentTypes = allPokemon.flatMap { it.types }.map { it.name.lowercase() }.toSet()
-
-            val universalActions = mutableListOf<String>()
-            val wildActions = mutableListOf<String>()
-            val typeActions = mutableListOf<String>()
-
-            if (config.outputActions) {
-                if (config.actionSettings.attack.enabledForAI) universalActions += "A (attack)"
-                if (config.wildPokemonCanBeHostile && context.nearbyPokemonEntities.isNotEmpty()) {
-                    wildActions += "H (hostile - #<WildPokemon>:H[:<Target>]). Hostility escalation rules: 1st H puts the wild Pokémon in an IRRITATED warning stage. 2nd H while listed as (IRRITATED) in [NEARBY POKEMON] makes it enter combat and actively attack the target. EXCEPTION: If physically attacked/damaged by player or target, H triggers immediate combat. NEVER speak or narrate system status in dialogue. Speak ONLY in natural character dialogue. In normal or annoyed dialogue, use #<WildPokemon>:I."
-                }
-                if (config.actionSettings.eat.enabledForAI) universalActions += "E (eat)"
-                if (config.actionSettings.buff.enabledForAI) universalActions += "B (buff)"
-                if (config.actionSettings.debuffEnemy.enabledForAI) universalActions += "D (debuff)"
-                if (config.actionSettings.rest.enabledForAI) universalActions += "S (sit/rest - makes Pokémon sleep at night)"
-                if (config.actionSettings.protect.enabledForAI) universalActions += "P (protect)"
-                if (config.actionSettings.idle.enabledForAI) universalActions += "I (idle)"
-                
-                if (config.actionSettings.song.enabledForAI) universalActions += "SO (song - perform full 1-minute song with multi-track accompaniment and singing)"
-
-                if (config.actionSettings.cook.enabledForAI && "fire" in presentTypes) typeActions += "Fire: C (cook/smelt)"
-                if (config.actionSettings.repair.enabledForAI && "steel" in presentTypes) typeActions += "Steel: R (repair)"
-                if (config.actionSettings.excavate.enabledForAI && "steel" in presentTypes) typeActions += "Steel: EX (excavate)"
-                if (config.actionSettings.grow.enabledForAI && "grass" in presentTypes) typeActions += "Grass: G (grow)"
-                if (config.actionSettings.shift.enabledForAI && "ghost" in presentTypes) typeActions += "Ghost: SH (shift)"
-                if (config.actionSettings.nightmare.enabledForAI && "dark" in presentTypes) typeActions += "Dark: N (nightmare)"
-                if (config.actionSettings.scout.enabledForAI && "flying" in presentTypes) typeActions += "Flying: SC (scout)"
-                if (config.actionSettings.light.enabledForAI && "electric" in presentTypes) typeActions += "Electric: L (light)"
-                if (config.actionSettings.fish.enabledForAI && "water" in presentTypes) typeActions += "Water: F (fish)"
-                if (config.actionSettings.teleport.enabledForAI && "psychic" in presentTypes) typeActions += "Psychic: T (teleport)"
-            }
-
-            if (universalActions.isNotEmpty()) {
-                appendLine("- Universal actions (any Pokémon): ${universalActions.joinToString(", ")}")
-            }
-            if (wildActions.isNotEmpty()) {
-                appendLine("- Wild Pokémon actions: ${wildActions.joinToString(", ")}")
-            }
-            if (typeActions.isNotEmpty()) {
-                appendLine("- Type-specific actions (available for present Pokémon types):")
-                typeActions.forEach { appendLine("  * $it") }
-            }
-            if (config.outputActions) {
-                appendLine("- Generate ONLY in-character spoken dialogue, optional # actions, and optional routing flags.")
-            } else {
-                appendLine("- Generate ONLY in-character spoken dialogue and optional routing flags. Do NOT generate any # actions.")
+            if (hasTalkOrActionRestriction) {
+                appendLine("[RESTRICTIONS]")
+                appendLine("- Strictly respect individual Pokémon restrictions: if marked with 'Cannot talk', do NOT generate speech lines for it. If marked with 'Cannot execute actions', do NOT generate # action commands for it.")
             }
         }.trim()
     }
@@ -3753,7 +3807,8 @@ object DialogueSystem {
         pokemons: List<Pokemon>,
         playerMessage: String,
         stage1Response: String,
-        flags: Set<String> = emptySet()
+        flags: Set<String> = emptySet(),
+        includeRecap: Boolean = config.enableRecap
     ): String {
         val shoulderPokemon = PokemonQuery.getAllPokemon(player)
             .filter { it.currentHealth > 0 && PokemonQuery.isShoulderMounted(player, it) }
@@ -3764,8 +3819,9 @@ object DialogueSystem {
 
         return buildString {
             appendLine("##STAGE 2 BACKGROUND STATE RESOLUTION##")
-            appendLine("You are the background state analysis engine for CobbleBrain. Analyze the player's message and the Pokémon's dialogue/actions below, then evaluate and output updates for all remaining mod systems.")
             appendLine()
+
+            val allowedTagList = mutableListOf<String>()
 
             appendLine("[PLAYER_MESSAGE]")
             appendLine(playerMessage.trim().ifBlank { "..." })
@@ -3776,14 +3832,18 @@ object DialogueSystem {
             appendLine()
 
             // Active Quests & Scoring: Only append if [FLAG: QUEST] is present
-            if (CobblebrainWorldSave.getActiveQuests(player).isEmpty() && config.outputQuests && ("QUEST" in flags || flags.isEmpty())) {
+            val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
+            if (activeQuests.isEmpty() && config.outputQuests && "QUEST" in flags) {
+                allowedTagList += "&START_QUEST:"
                 appendLine("[QUEST SYSTEM]")
                 appendLine("If the dialogue naturally formed a quest or request for help:")
                 appendLine("Format: &START_QUEST:<PokemonName>:<TYPE> (types: ITEM, BATTLE, TREASURE, ADVICE)")
                 appendLine()
             }
-            val activeQuests = CobblebrainWorldSave.getActiveQuests(player)
-            if (activeQuests.isNotEmpty() && config.outputQuests && ("QUEST" in flags || flags.isEmpty())) {
+            if (activeQuests.isNotEmpty() && config.outputQuests && "QUEST" in flags) {
+                if (activeQuests.any { it.get("type")?.asString == "ADVICE" }) {
+                    allowedTagList += "#SCORE:"
+                }
                 appendLine("[ACTIVE QUESTS]")
                 activeQuests.forEach { q ->
                     val type = q.get("type").asString
@@ -3813,7 +3873,11 @@ object DialogueSystem {
             }
 
             // Personality & Character Development (Traits, Quirks, Evolutions, Replacements)
-            if (config.enableTraits && ("TRAIT" in flags || "QUIRK" in flags || flags.isEmpty())) {
+            val includePersonalitySection = config.enableTraits && ("TRAIT" in flags || "QUIRK" in flags)
+            if (includePersonalitySection) {
+                allowedTagList.addAll(listOf("&TRAIT:", "&QUIRK:", "&REPLACE_TRAIT:", "&REPLACE_QUIRK:"))
+                if (config.maxAiLikes > 0) allowedTagList += "&LIKE:"
+                if (config.maxAiDislikes > 0) allowedTagList += "&DISLIKE:"
                 appendLine("[PERSONALITY & CHARACTER DEVELOPMENT]")
                 appendLine("Current Traits and Quirks for participating Pokémon:")
                 activePokemon.forEach { p ->
@@ -3896,7 +3960,8 @@ object DialogueSystem {
             }
 
             // Friendship Settings: Only append if [FLAG: FRIENDSHIP] is present and enabled
-            if (config.outputFriendship && (config.increaseFriendship || config.decreaseFriendship) && ("FRIENDSHIP" in flags || flags.isEmpty())) {
+            if (config.outputFriendship && (config.increaseFriendship || config.decreaseFriendship) && "FRIENDSHIP" in flags) {
+                allowedTagList += "%<PokemonName>:<delta>"
                 appendLine("[FRIENDSHIP]")
                 appendLine("plus=${config.increaseFriendship}")
                 appendLine("minus=${config.decreaseFriendship}")
@@ -3913,6 +3978,7 @@ object DialogueSystem {
             val memMode = config.outputMemories.uppercase()
             val memoryFlagged = "MEMORY" in flags
             if (memMode != "OFF") {
+                allowedTagList += "&MEMORY:"
                 val isHigh = (memMode == "HIGH")
                 appendLine("[MEMORY DIARY]")
                 when {
@@ -3930,6 +3996,7 @@ object DialogueSystem {
             }
             val includeCatch = config.outputGuaranteedCatch && "CATCH" in flags && nearbyWildInDialogue.isNotEmpty()
             if (includeCatch) {
+                allowedTagList += "!<WildPokemonName>"
                 val eligibleWildNames = nearbyWildInDialogue.map { e ->
                     reverseAliases[e.pokemon.uuid] ?: reverseAliases[e.uuid] ?: e.pokemon.species.name
                 }.distinct().joinToString(", ")
@@ -3939,7 +4006,9 @@ object DialogueSystem {
                 appendLine()
             }
 
-            if (config.enableRecap) {
+            val shouldIncludeRecap = config.enableRecap && includeRecap
+            if (shouldIncludeRecap) {
+                allowedTagList.addAll(listOf("&STORY_RECAP:", "&CHAR_RECAP:"))
                 appendLine("[RECAP SYSTEM]")
                 appendLine("Record strictly what you directly observed in this conversation:")
                 appendLine("- Story Recap: In 1-2 concise sentences, summarize the events, topics discussed, and immediate plans established in this conversation.")
@@ -3963,18 +4032,18 @@ object DialogueSystem {
             }
 
             appendLine("##OUTPUT RULES##")
-            val allowedTags = if (includeCatch) {
-                "&STORY_RECAP:, &CHAR_RECAP:, &TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, !<WildPokemonName>, =resume"
-            } else {
-                "&STORY_RECAP:, &CHAR_RECAP:, &TRAIT:, &QUIRK:, &REPLACE_TRAIT:, &REPLACE_QUIRK:, &MEMORY:, &START_QUEST:, #SCORE:, %friendship, =resume"
+            val allowedTags = allowedTagList.joinToString(", ")
+            if (allowedTags.isNotEmpty()) {
+                appendLine("- Output ONLY state update tags ($allowedTags).")
             }
-            appendLine("- Output ONLY state update tags ($allowedTags).")
             appendLine("- Output exactly ONE tag per line per Pokémon. NEVER combine multiple Pokémon on the same line with semicolons or commas.")
-            appendLine("  Example correct format:")
-            appendLine("  &TRAIT:Squirtle:Energetic")
-            appendLine("  &TRAIT:Farfetch’d:Vigilant")
+            if (includePersonalitySection) {
+                appendLine("  Example correct format:")
+                appendLine("  &TRAIT:Squirtle:Energetic")
+                appendLine("  &TRAIT:Farfetch’d:Vigilant")
+            }
             appendLine("- Do NOT generate conversational dialogue, roleplay, or greetings in this response.")
-            if (config.enableRecap) {
+            if (shouldIncludeRecap) {
                 appendLine("- Mandatory: &STORY_RECAP: must always be generated. Generate &CHAR_RECAP: for unlocked Pokémon with empty About or meaningful behavioral evolution. For all other systems, if no updates are needed, leave them empty.")
             } else {
                 appendLine("- If no state updates are needed, leave output empty.")
@@ -4702,6 +4771,14 @@ object DialogueSystem {
                     context.mainHand.takeIfUseful()?.let {
                         playerParts += "Main hand: ${compactId(it)}"
                     }
+                    findLookedAtPokemonName(
+                        player,
+                        activePokemon,
+                        context.nearbyPokemonEntities,
+                        reversePokemonAliasMap[player.uuid] ?: emptyMap()
+                    )?.let {
+                        playerParts += "Looking at: $it"
+                    }
                     appendLine("Player: ${playerParts.joinToString(" | ")}")
                 }
                 appendLine()
@@ -5196,13 +5273,33 @@ object DialogueSystem {
         // 3. Pipeline Branching: Optimized Mode vs Legacy Flow
         if (config.optimizedMode) {
             val isHighMemory = config.outputMemories.equals("HIGH", ignoreCase = true)
-            val hasRelevantFlags = parsedFlags.any { it in setOf("FRIENDSHIP", "QUEST", "MEMORY", "TRAIT", "QUIRK", "CATCH", "RECAP") } ||
-                    contentWithoutFlags.contains("&START_QUEST", ignoreCase = true)
+            val hasRelevantFlags = parsedFlags.any { it in setOf("FRIENDSHIP", "QUEST", "MEMORY", "TRAIT", "QUIRK", "CATCH") }
 
-            if (config.enableRecap || isHighMemory || hasRelevantFlags) {
+            val needsInitialAbout = config.enableRecap && activePokemons.any { p ->
+                val displayName = p.nickname?.string?.takeIf { it.isNotBlank() } ?: p.species.name
+                val personality = MemorySystem.loadPersonality(p.uuid.toString(), displayName)
+                personality.effectiveCanUpdatePersonality && personality.effectiveAllowAiEditAbout && personality.about.isBlank()
+            }
+            val recapCount = if (config.enableRecap) (messagesSinceLastRecap[player.uuid] ?: 0) + 1 else 0
+            if (config.enableRecap) {
+                messagesSinceLastRecap[player.uuid] = recapCount
+            }
+            val shouldRunRecap = config.enableRecap && ("RECAP" in parsedFlags || recapCount >= 5 || needsInitialAbout)
+
+            if (shouldRunRecap || isHighMemory || hasRelevantFlags) {
+                if (shouldRunRecap) {
+                    messagesSinceLastRecap[player.uuid] = 0
+                }
                 val playerMsg = lastPlayerMessage[player.uuid] ?: ""
 
-                val bgPrompt = buildBackgroundResolutionPrompt(player, activePokemons, playerMsg, contentWithoutFlags, parsedFlags)
+                val bgPrompt = buildBackgroundResolutionPrompt(
+                    player,
+                    activePokemons,
+                    playerMsg,
+                    contentWithoutFlags,
+                    parsedFlags,
+                    includeRecap = shouldRunRecap
+                )
 
                 vito.cobblebrain.engine.StoryDebugger.recordLog(
                     storyId = "system",
@@ -5210,7 +5307,7 @@ object DialogueSystem {
                     blockType = vito.cobblebrain.model.NodeType.DIALOGUE,
                     status = vito.cobblebrain.engine.NodeExecutionStatus.SUCCESS,
                     level = "INFO",
-                    message = "Stage 1 Foreground completed. Triggering asynchronous Stage 2 background state and recap resolution.",
+                    message = "Stage 1 Foreground completed. Triggering asynchronous Stage 2 background state resolution (flags=$parsedFlags, recap=$shouldRunRecap).",
                     server = server
                 )
 

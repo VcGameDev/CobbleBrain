@@ -53,7 +53,7 @@ class StoryEditorAIAssistantWidget(
      * já que cada chamada de IA é uma mensagem única sem memória de sessão.
      */
     class SharedBlackboard(val userRequest: String, val playerFocusSummary: String) {
-        var intentSummary: String = "Processando solicitação..."
+        var intentSummary: String = "Processing request..."
         val markedSceneIds = LinkedHashSet<String>()
         val markedNodeIds = LinkedHashSet<String>()
         val qaPairs = mutableListOf<String>()         // Perguntas feitas pela IA e respostas do jogador
@@ -66,40 +66,38 @@ class StoryEditorAIAssistantWidget(
             includeBlockGuideDraft: Boolean = true
         ): String {
             return buildString {
-                appendLine("╔══════════════════════════════════════════════════════════════════╗")
-                appendLine("║         PRANCHETA COMPARTILHADA ENTRE OS ROBÔS (BLACKBOARD)      ║")
-                appendLine("╚══════════════════════════════════════════════════════════════════╝")
+                appendLine("=== SHARED BLACKBOARD ===")
                 if (recentCompletedInteractions.isNotEmpty()) {
-                    appendLine("0. [MEMÓRIA DAS ÚLTIMAS ${recentCompletedInteractions.size} REQUISIÇÕES ANTERIORES DO JOGADOR]:")
+                    appendLine("0. [PREVIOUS ${recentCompletedInteractions.size} USER REQUESTS]:")
                     recentCompletedInteractions.takeLast(2).forEachIndexed { idx, mem ->
-                        appendLine("   • [Pedido Anterior #${idx + 1}]: ${mem.originalUserQuestion}")
-                        appendLine("     [Resposta Final #${idx + 1}]: ${mem.finalAiResponse.take(350)}")
+                        appendLine("   • [Previous Request #${idx + 1}]: ${mem.originalUserQuestion}")
+                        appendLine("     [Final Response #${idx + 1}]: ${mem.finalAiResponse.take(350)}")
                     }
                 }
-                appendLine("1. [PEDIDO ORIGINAL DO JOGADOR ATUAL]: $userRequest")
-                appendLine("2. [INTENÇÃO GERAL (CARIMBO ROBÔ 1)]: $intentSummary")
-                appendLine("3. [TAREFA ESPECÍFICA DESTA CHAMADA]: $currentTaskInstruction")
-                appendLine("4. [FOCO MARCADO PELO JOGADOR NA TELA]:")
-                appendLine(playerFocusSummary.ifBlank { "Nenhum filtro manual — pode trabalhar na cena ativa." })
+                appendLine("1. [CURRENT PLAYER REQUEST]: $userRequest")
+                appendLine("2. [OVERALL INTENT (ROBOT 1)]: $intentSummary")
+                appendLine("3. [CURRENT TASK INSTRUCTION]: $currentTaskInstruction")
+                appendLine("4. [PLAYER FOCUS ON CANVAS]:")
+                appendLine(playerFocusSummary.ifBlank { "No manual filter — working on the active scene." })
                 if (qaPairs.isNotEmpty()) {
-                    appendLine("5. [PERGUNTAS E RESPOSTAS DO JOGADOR (CHAMADA DE PERGUNTA)]:")
+                    appendLine("5. [PLAYER Q&A (CALL 6)]:")
                     qaPairs.forEachIndexed { idx, qa -> appendLine("   (${idx + 1}) $qa") }
                 }
                 if (markedSceneIds.isNotEmpty() || markedNodeIds.isNotEmpty()) {
-                    appendLine("6. [ITENS MARCADOS COM [MARKED] NO FUNIL JSON]:")
-                    appendLine("   - Cenas [MARKED]: ${if (markedSceneIds.isEmpty()) " Cena Ativa" else markedSceneIds.joinToString(", ")}")
-                    appendLine("   - Blocos [MARKED]: ${if (markedNodeIds.isEmpty()) "Todos da cena" else markedNodeIds.joinToString(", ")}")
+                    appendLine("6. [ITEMS MARKED WITH [MARKED] IN JSON FUNNEL]:")
+                    appendLine("   - Scenes [MARKED]: ${if (markedSceneIds.isEmpty()) "Active Scene" else markedSceneIds.joinToString(", ")}")
+                    appendLine("   - Blocks [MARKED]: ${if (markedNodeIds.isEmpty()) "All in scene" else markedNodeIds.joinToString(", ")}")
                 }
                 if (jsonAnalysisNotes.isNotEmpty()) {
-                    appendLine("7. [ANÁLISE DOS ARQUIVOS DE BLOCOS E CONEXÕES (ROBÔ 5)]:")
+                    appendLine("7. [BLOCKS & CONNECTIONS ANALYSIS (ROBOT 5)]:")
                     appendLine(jsonAnalysisNotes.joinToString("\n---\n"))
                 }
                 if (blockGuideNotes.isNotEmpty() && includeBlockGuideDraft) {
-                    appendLine("8. [ESPECIFICAÇÃO DOS BLOCOS E OPÇÕES ESCOLHIDAS (ROBÔ 2)]:")
+                    appendLine("8. [BLOCK SPECIFICATION & CHOSEN OPTIONS (ROBOT 2)]:")
                     appendLine(blockGuideNotes.joinToString("\n---\n"))
                 }
                 if (executionNotes.isNotEmpty()) {
-                    appendLine("9. [ALTERAÇÕES JÁ APLICADAS NO PROJETO (ROBÔ 3)]:")
+                    appendLine("9. [CHANGES ALREADY APPLIED TO PROJECT (ROBOT 3)]:")
                     appendLine(executionNotes.joinToString("\n---\n"))
                 }
             }
@@ -175,20 +173,20 @@ class StoryEditorAIAssistantWidget(
 
     private fun buildPlayerFocusSummary(): String {
         if (!focusOnSelectionEnabled) {
-            return "Modo de foco manual desativado pelo jogador (escopo livre na cena ativa)."
+            return "Manual focus disabled by player (free scope on active scene)."
         }
         val focusedNodes = getEffectiveFocusedNodes()
         val focusedScene = getEffectiveFocusedScene()
         if (focusedNodes.isEmpty() && focusedScene == null) {
             val act = editor.project.getActiveScene()
-            return "Nenhum bloco individual selecionado; cena ativa em foco: '${act?.title ?: "Nenhuma"}' (id=${act?.id ?: "none"})."
+            return "No individual block selected; active scene in focus: '${act?.title ?: "None"}' (id=${act?.id ?: "none"})."
         }
         return buildString {
             if (focusedScene != null) {
-                appendLine("• $MARKED_TAG Cena fixada pelo jogador: '${focusedScene.title}' (id=${focusedScene.id})")
+                appendLine("• $MARKED_TAG Pinned scene: '${focusedScene.title}' (id=${focusedScene.id})")
             }
             if (focusedNodes.isNotEmpty()) {
-                appendLine("• $MARKED_TAG Blocos selecionados pelo jogador para FOCO EXCLUSIVO (${focusedNodes.size}):")
+                appendLine("• $MARKED_TAG Blocks selected by player for EXCLUSIVE FOCUS (${focusedNodes.size}):")
                 for (n in focusedNodes) {
                     val sc = editor.project.scenes.find { it.id == n.parentSceneId }
                     val relX = (n.x - (sc?.x ?: 0.0)).toInt()
@@ -439,7 +437,11 @@ class StoryEditorAIAssistantWidget(
             var optY = overlayTopY + 16
             val optH = 15
             for (idx in 0 until 4) {
-                val defaultOpt = if (idx == 3) Component.translatable("cobblebrain.story_editor.ai.question_other").string else "${idx + 1}. Option ${idx + 1}"
+                val defaultOpt = if (idx == 3) {
+                    Component.translatable("cobblebrain.story_editor.ai.question_other").string
+                } else {
+                    Component.translatable("cobblebrain.story_editor.ai.question_option_fallback", idx + 1, idx + 1).string
+                }
                 val optLabel = qState.options.getOrElse(idx) { defaultOpt }
                 val optX = panelX + 6
                 val optW = panelW - 12
@@ -545,10 +547,10 @@ class StoryEditorAIAssistantWidget(
             // Focus Selection Toggle Button [🎯]
             val focusedCount = getEffectiveFocusedNodes().size
             val focusLabel = when {
-                !focusOnSelectionEnabled -> "🎯Livre"
+                !focusOnSelectionEnabled -> "🎯" + Component.translatable("cobblebrain.story_editor.ai.focus.free").string
                 focusedCount > 0 -> "🎯$focusedCount"
-                getEffectiveFocusedScene() != null -> "🎯Cena"
-                else -> "🎯Auto"
+                getEffectiveFocusedScene() != null -> "🎯" + Component.translatable("cobblebrain.story_editor.ai.focus.scene").string
+                else -> "🎯" + Component.translatable("cobblebrain.story_editor.ai.focus.auto").string
             }
             val focusBtnW = font.width(focusLabel) + 8
             val focusBtnX = clearX - focusBtnW - 3
@@ -562,22 +564,22 @@ class StoryEditorAIAssistantWidget(
                     pinnedFocusNodeIds.clear()
                     pinnedFocusNodeIds.addAll(liveSelectedNodes)
                     currentStatusText = if (pinnedFocusNodeIds.isNotEmpty()) {
-                        "🎯 Foco fixado em ${pinnedFocusNodeIds.size} bloco(s)"
+                        Component.translatable("cobblebrain.story_editor.ai.focus.status_pinned", pinnedFocusNodeIds.size).string
                     } else {
-                        "🎯 Modo de foco ativo (Clique direito -> Adicionar ao Foco IA)"
+                        Component.translatable("cobblebrain.story_editor.ai.focus.status_active").string
                     }
                 } else if (newToPin.isNotEmpty()) {
                     pinnedFocusNodeIds.addAll(newToPin)
-                    currentStatusText = "🎯 ${pinnedFocusNodeIds.size} bloco(s) em Foco da IA"
+                    currentStatusText = Component.translatable("cobblebrain.story_editor.ai.focus.status_count", pinnedFocusNodeIds.size).string
                 } else if (pinnedFocusNodeIds.isNotEmpty() || pinnedFocusSceneIds.isNotEmpty()) {
                     pinnedFocusNodeIds.clear()
                     pinnedFocusSceneIds.clear()
-                    currentStatusText = "🎯 Focos limpos (Trabalhando na cena ativa)"
+                    currentStatusText = Component.translatable("cobblebrain.story_editor.ai.focus.status_cleared").string
                 } else {
                     focusOnSelectionEnabled = false
                     pinnedFocusNodeIds.clear()
                     pinnedFocusSceneIds.clear()
-                    currentStatusText = "🎯 Foco manual desativado (Cena inteira)"
+                    currentStatusText = Component.translatable("cobblebrain.story_editor.ai.focus.status_disabled").string
                 }
                 return true
             }
@@ -609,7 +611,9 @@ class StoryEditorAIAssistantWidget(
                                 inputBox.isFocused = true
                             }
                         } else {
-                            val chosenText = qState.options.getOrElse(idx) { "Opção ${idx + 1}" }
+                            val chosenText = qState.options.getOrElse(idx) {
+                                Component.translatable("cobblebrain.story_editor.ai.question_choice_fallback", idx + 1).string
+                            }
                             activeQuestion = null
                             if (::inputBox.isInitialized) {
                                 inputBox.setHint(Component.translatable("cobblebrain.story_editor.ai.input_hint").withStyle(ChatFormatting.DARK_GRAY))
@@ -838,7 +842,7 @@ class StoryEditorAIAssistantWidget(
             savedInputText = ""
             inputBox.setHint(Component.translatable("cobblebrain.story_editor.ai.input_hint").withStyle(ChatFormatting.DARK_GRAY))
             activeQuestion = null
-            qState.responseFuture.complete("Outro: $userText")
+            qState.responseFuture.complete(Component.translatable("cobblebrain.story_editor.ai.question_other_prefix", userText).string)
             return
         }
 
@@ -888,7 +892,7 @@ class StoryEditorAIAssistantWidget(
         callCounts.clear()
         currentRequestTokens = 0
         activeCallStage = 1
-        currentStatusText = "1. Processando pedido..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call1_processing").string
 
         // Capture the player's focused nodes/scenes on the canvas at the start of the request
         val initialFocusSummary = buildPlayerFocusSummary()
@@ -946,8 +950,12 @@ class StoryEditorAIAssistantWidget(
 
                             appendEntry(
                                 ChatRole.CALL_TRACE,
-                                "🧭 [Chamada 1${if (passNum > 1) " #$passNum" else ""}] Roteador (Prancheta)",
-                                "${blackboard.intentSummary}\nPassando a prancheta para: Chamada $nextCallFrom1 ($nextInstFrom1)",
+                                if (passNum > 1) {
+                                    Component.translatable("cobblebrain.story_editor.ai.trace.call1_badge_pass", passNum).string
+                                } else {
+                                    Component.translatable("cobblebrain.story_editor.ai.trace.call1_badge").string
+                                },
+                                Component.translatable("cobblebrain.story_editor.ai.trace.call1_passing", blackboard.intentSummary, nextCallFrom1, nextInstFrom1).string,
                                 0xFF38BDF8.toInt()
                             )
 
@@ -983,7 +991,7 @@ class StoryEditorAIAssistantWidget(
                                 blackboard.jsonAnalysisNotes.add("[Análise Rápida Cena Inicial]:\n$fastNote")
                                 appendEntry(
                                     ChatRole.CALL_TRACE,
-                                    "⚡ [Chamada 5] Cena Inicial Detectada → Próx: Chamada $defaultAfter5",
+                                    Component.translatable("cobblebrain.story_editor.ai.trace.call5_fast_badge", defaultAfter5).string,
                                     fastNote,
                                     0xFFA855F7.toInt()
                                 )
@@ -1091,7 +1099,7 @@ class StoryEditorAIAssistantWidget(
                                 val cleanUserMessage = rawFinalMsg
                                     .replace(END_TOKEN, "", ignoreCase = true)
                                     .trim()
-                                    .ifBlank { "Tudo revisado e concluído com sucesso!" }
+                                    .ifBlank { Component.translatable("cobblebrain.story_editor.ai.trace.call4_done_fallback").string }
 
                                 // Save the last 2 original user requests and their final AI responses across requests
                                 recentCompletedInteractions.add(
@@ -1106,8 +1114,8 @@ class StoryEditorAIAssistantWidget(
 
                                 appendEntry(
                                     ChatRole.CALL_TRACE,
-                                    "🏁 [Chamada 4 #$passNum] Revisão Finalizada $END_TOKEN",
-                                    "Prancheta aprovada. Código $END_TOKEN recebido — encerrando requisição.",
+                                    Component.translatable("cobblebrain.story_editor.ai.trace.call4_done_badge", passNum, END_TOKEN).string,
+                                    Component.translatable("cobblebrain.story_editor.ai.trace.call4_done_body", END_TOKEN).string,
                                     0xFF22C55E.toInt()
                                 )
                                 appendEntry(
@@ -1122,8 +1130,8 @@ class StoryEditorAIAssistantWidget(
                                 if (rawNextCall.contains("3")) needCall3Fallback = true
                                 appendEntry(
                                     ChatRole.CALL_TRACE,
-                                    "🔄 [Chamada 4 #$passNum] Revisão passou a prancheta p/ Chamada $targetCall",
-                                    "Instrução: $followUpDesc",
+                                    Component.translatable("cobblebrain.story_editor.ai.trace.call4_next_badge", passNum, targetCall).string,
+                                    Component.translatable("cobblebrain.story_editor.ai.trace.call4_next_body", followUpDesc).string,
                                     0xFFF59E0B.toInt()
                                 )
                                 currentCall = targetCall
@@ -1148,8 +1156,8 @@ class StoryEditorAIAssistantWidget(
                 activeQuestion = null
                 appendEntry(
                     ChatRole.ERROR,
-                    "❌ Erro no Assistente IA",
-                    e.message ?: "Falha inesperada durante a execução das chamadas.",
+                    Component.translatable("cobblebrain.story_editor.ai.error_badge").string,
+                    e.message ?: Component.translatable("cobblebrain.story_editor.ai.error_unexpected").string,
                     0xFFEF4444.toInt()
                 )
                 currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_error").string
@@ -1164,6 +1172,13 @@ class StoryEditorAIAssistantWidget(
         }
     }
 
+    private fun getResponseLanguageRule(): String {
+        val gameLang = Component.translatable("cobblebrain.story_editor.ai.default_language").string
+            .takeIf { it.isNotBlank() && it != "cobblebrain.story_editor.ai.default_language" }
+            ?: "English"
+        return "STRICTLY the same language as the player's request (ignore the language of existing blocks in the scene; e.g. if the player writes in English, respond in English; only default to $gameLang if the request language cannot be determined)"
+    }
+
     // =========================================================================
     // CALL 1: ROUTER & INTENT PROCESSOR
     // =========================================================================
@@ -1173,7 +1188,11 @@ class StoryEditorAIAssistantWidget(
         passNum: Int
     ): JsonObject {
         activeCallStage = 1
-        currentStatusText = "1. Analisando pedido${if (passNum > 1) " (#$passNum)" else ""}..."
+        currentStatusText = if (passNum > 1) {
+            Component.translatable("cobblebrain.story_editor.ai.status_call1_analyzing_pass", passNum).string
+        } else {
+            Component.translatable("cobblebrain.story_editor.ai.status_call1_analyzing").string
+        }
 
         val proj = editor.project
         val activeScene = proj.getActiveScene()
@@ -1194,17 +1213,17 @@ class StoryEditorAIAssistantWidget(
             - Call 3 ("CALL_3"): Project Builder (positions blocks & connects them logically). Set "needsProjectExecution": true if we will modify the project.
             - Call 4 ("CALL_4"): Final Reviewer & $END_TOKEN Gatekeeper.
             
-            Respond ONLY with a valid JSON object in Portuguese:
+            Respond ONLY with a valid JSON object using ${getResponseLanguageRule()} for text values:
             {
-              "intentSummary": "Resumo curto de 1 frase do que será feito",
+              "intentSummary": "Short 1-sentence summary of what will be done",
               "needsUserQuestion": false,
               "needsJsonInspection": true,
-              "jsonInspectionQuery": "O que buscar e marcar com $MARKED_TAG no JSON do projeto",
+              "jsonInspectionQuery": "What to search for and mark with $MARKED_TAG in the project JSON",
               "needsBlockSelection": true,
               "needsProjectExecution": true,
               "nextCall": "CALL_5",
-              "nextCallInstruction": "Instrução clara anotada na prancheta para o próximo robô",
-              "directReply": "Se for apenas uma dúvida simples que vai direto para a Call 4, escreva a resposta base aqui"
+              "nextCallInstruction": "Clear instruction written on the clipboard for the next robot",
+              "directReply": "If this is just a simple question going straight to Call 4, write the base answer here"
             }
         """.trimIndent()
 
@@ -1239,22 +1258,22 @@ class StoryEditorAIAssistantWidget(
         defaultNextCall: Int
     ): CallStepResult {
         activeCallStage = 6
-        currentStatusText = "6. Criando pergunta p/ você (#$passNum)..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call6_creating", passNum).string
 
         val sys6 = """
             You are Robot 6 (Call 6: Interactive Question Formulator) of the CobbleBrain Story Editor AI Assistant.
             Formulate ONE concise, helpful question for the player with 3 concrete options ("option1", "option2", "option3").
-            The UI will automatically add a 4th option: "4. Outro (Digitar resposta...)" so the player can write a custom answer if they prefer.
+            The UI will automatically add a 4th option so the player can write a custom answer if they prefer.
             Also specify which call should receive the clipboard after the player answers ("nextCallAfterAnswer": "CALL_2", "CALL_3", "CALL_5", or "CALL_4").
             
-            Respond ONLY with valid JSON in Portuguese:
+            Respond ONLY with valid JSON using ${getResponseLanguageRule()} for text values:
             {
-              "question": "Qual abordagem você prefere para esta parte da história?",
-              "option1": "Opção A clara e curta",
-              "option2": "Opção B clara e curta",
-              "option3": "Opção C clara e curta",
+              "question": "Which approach do you prefer for this part of the story?",
+              "option1": "Clear and short Option A",
+              "option2": "Clear and short Option B",
+              "option3": "Clear and short Option C",
               "nextCallAfterAnswer": "CALL_$defaultNextCall",
-              "nextCallInstruction": "Instrução para o próximo robô usar a resposta do jogador"
+              "nextCallInstruction": "Instruction for the next robot to use the player's answer"
             }
         """.trimIndent()
 
@@ -1263,23 +1282,23 @@ class StoryEditorAIAssistantWidget(
         val obj6 = parseJsonObjectSafe(raw6)
 
         val questionText = obj6?.get("question")?.asString?.ifBlank { null }
-            ?: "Como você prefere configurar este fluxo?"
-        val opt1 = "1. " + (obj6?.get("option1")?.asString?.removePrefix("1.")?.trim() ?: "Simples e direto")
-        val opt2 = "2. " + (obj6?.get("option2")?.asString?.removePrefix("2.")?.trim() ?: "Com diálogo e missão")
-        val opt3 = "3. " + (obj6?.get("option3")?.asString?.removePrefix("3.")?.trim() ?: "Deixar a IA decidir tudo")
-        val opt4 = "4. Outro (Digitar...)"
+            ?: Component.translatable("cobblebrain.story_editor.ai.question_fallback").string
+        val opt1 = "1. " + (obj6?.get("option1")?.asString?.removePrefix("1.")?.trim() ?: Component.translatable("cobblebrain.story_editor.ai.question_fallback_opt1").string)
+        val opt2 = "2. " + (obj6?.get("option2")?.asString?.removePrefix("2.")?.trim() ?: Component.translatable("cobblebrain.story_editor.ai.question_fallback_opt2").string)
+        val opt3 = "3. " + (obj6?.get("option3")?.asString?.removePrefix("3.")?.trim() ?: Component.translatable("cobblebrain.story_editor.ai.question_fallback_opt3").string)
+        val opt4 = Component.translatable("cobblebrain.story_editor.ai.question_other").string
 
         val nextCall = parseNextCallNumber(obj6?.get("nextCallAfterAnswer")?.asString, defaultNextCall)
         val nextInst = obj6?.get("nextCallInstruction")?.asString ?: blackboard.userRequest
 
         appendEntry(
             ChatRole.QUESTION,
-            "❓ [Chamada 6 #$passNum] Pergunta da IA",
+            Component.translatable("cobblebrain.story_editor.ai.question_badge", passNum).string,
             "$questionText\n• $opt1\n• $opt2\n• $opt3\n• $opt4",
             0xFFC084FC.toInt()
         )
 
-        currentStatusText = "Aguardando sua resposta nas opções abaixo..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call6_waiting").string
         val future = CompletableFuture<String>()
         activeQuestion = InteractiveQuestionState(
             questionText = questionText,
@@ -1292,7 +1311,7 @@ class StoryEditorAIAssistantWidget(
 
         appendEntry(
             ChatRole.USER,
-            "👤 Sua Resposta",
+            Component.translatable("cobblebrain.story_editor.ai.user_answer_badge").string,
             playerAnswer,
             0xFF38BDF8.toInt()
         )
@@ -1337,7 +1356,7 @@ class StoryEditorAIAssistantWidget(
         val reasonsList = mutableListOf<String>()
 
         for ((chunkIdx, nodeChunk) in chunks.take(4).withIndex()) {
-            currentStatusText = "5a. Funil JSON $MARKED_TAG (${chunkIdx + 1}/${chunks.size.coerceAtMost(4)})..."
+            currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call5a", MARKED_TAG, chunkIdx + 1, chunks.size.coerceAtMost(4)).string
             val chunkIndexText = buildChunkIndexFor5aFunnel(proj, nodeChunk, chunkIdx + 1, chunks.size.coerceAtMost(4), blackboard)
 
             val sys5a = """
@@ -1347,12 +1366,12 @@ class StoryEditorAIAssistantWidget(
                 1. The Blocks file (`<scene>_nodes.json` - node properties only)
                 2. The Connections file (`<scene>_connections.json` - logical connections only)
                 
-                Respond ONLY with valid JSON:
+                Respond ONLY with valid JSON using ${getResponseLanguageRule()} for text values:
                 {
                   "markedSceneIds": ["$MARKED_TAG scene_id_1"],
                   "markedNodeIds": ["$MARKED_TAG node_id_1", "$MARKED_TAG node_id_2"],
                   "inspectFileMode": "BOTH_SEPARATED",
-                  "scanReason": "Motivo curto em português para marcar estes blocos com $MARKED_TAG"
+                  "scanReason": "Short reason for marking these blocks with $MARKED_TAG"
                 }
                 Note: "inspectFileMode" can be "BOTH_SEPARATED", "NODES_ONLY", or "CONNECTIONS_ONLY".
             """.trimIndent()
@@ -1393,14 +1412,16 @@ class StoryEditorAIAssistantWidget(
 
         appendEntry(
             ChatRole.CALL_TRACE,
-            "🌪️ [Chamada 5a #$passNum] Funil $MARKED_TAG (${blackboard.markedNodeIds.size} blocos marcados)",
-            reasonsList.joinToString(" | ").ifBlank { "Blocos de interesse marcados com $MARKED_TAG para análise focada." },
+            Component.translatable("cobblebrain.story_editor.ai.trace.call5a_badge", passNum, MARKED_TAG, blackboard.markedNodeIds.size).string,
+            reasonsList.joinToString(" | ").ifBlank {
+                Component.translatable("cobblebrain.story_editor.ai.trace.call5a_default", MARKED_TAG).string
+            },
             0xFFA855F7.toInt()
         )
 
         // --- PHASE 5B: Analyze ONLY the [MARKED] items, split into 2 separate virtual files (Nodes vs Connections) ---
         activeCallStage = 52
-        currentStatusText = "5b. Analisando apenas os $MARKED_TAG..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call5b", MARKED_TAG).string
 
         val separatedMarkedFilesText = extractMarkedNodesAndConnectionsSeparated(proj, blackboard, inspectSectionMode)
 
@@ -1418,11 +1439,11 @@ class StoryEditorAIAssistantWidget(
             - "CALL_5" if we need another Funnel pass.
             - "CALL_4" if the player only wanted an analysis and we are ready for Final Review ($END_TOKEN).
             
-            Respond ONLY with valid JSON in Portuguese:
+            Respond ONLY with valid JSON using ${getResponseLanguageRule()} for text values:
             {
-              "analysisSummary": "Análise focada nos blocos $MARKED_TAG, indicando qual ID de nó deve ser conectado/editado",
+              "analysisSummary": "Focused analysis of the $MARKED_TAG blocks, indicating which node ID should be connected/edited",
               "nextCall": "CALL_$defaultNextCall",
-              "nextCallInstruction": "Instrução clara para o próximo robô na prancheta"
+              "nextCallInstruction": "Clear instruction for the next robot on the clipboard"
             }
         """.trimIndent()
 
@@ -1441,7 +1462,7 @@ class StoryEditorAIAssistantWidget(
 
         appendEntry(
             ChatRole.CALL_TRACE,
-            "🔬 [Chamada 5b #$passNum] Análise $MARKED_TAG → Próx: Chamada $nextCall",
+            Component.translatable("cobblebrain.story_editor.ai.trace.call5b_badge", passNum, MARKED_TAG, nextCall).string,
             analysisText.take(450) + if (analysisText.length > 450) "..." else "",
             0xFFC084FC.toInt()
         )
@@ -1538,7 +1559,7 @@ class StoryEditorAIAssistantWidget(
     ): CallStepResult {
         // --- SUB-CALL 2A: Send compact list of ALL existing nodes + arguments + Scene Structure ---
         activeCallStage = 21
-        currentStatusText = "2a. Escolhendo nós de interesse (#$passNum)..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call2a", passNum).string
 
         val compactCatalog2a = buildCompactNodesAndSceneStructureIndexFor2a()
         val sys2a = """
@@ -1546,7 +1567,7 @@ class StoryEditorAIAssistantWidget(
             You receive the Shared Blackboard and the list of all existing node names and ACTION / TRIGGER subtype names (ONLY the names, without arguments or ports).
             Choose which specific nodes (and `ACTION:<SUBTYPE>` / `TRIGGER:<SUBTYPE>`) you want to receive the complete explanations, arguments, ports, and available choices for in Sub-call 2b.
             
-            Respond ONLY with a valid JSON object:
+            Respond ONLY with a valid JSON object using ${getResponseLanguageRule()} for "selectionReason":
             {
               "interestedNodes": [
                 "DIALOGUE",
@@ -1556,7 +1577,7 @@ class StoryEditorAIAssistantWidget(
                 "TRIGGER:POKEMON_CATCH",
                 "END_SCENE"
               ],
-              "selectionReason": "Resumo curto em português explicando por que esses blocos foram escolhidos"
+              "selectionReason": "Short summary explaining why these blocks were selected"
             }
         """.trimIndent()
 
@@ -1576,18 +1597,19 @@ class StoryEditorAIAssistantWidget(
         if (interestedNodes.isEmpty()) {
             interestedNodes.addAll(listOf("DIALOGUE", "QUEST", "ACTION", "END_SCENE"))
         }
-        val reason2a = obj2a?.get("selectionReason")?.asString ?: "Nós de interesse selecionados."
+        val reason2a = obj2a?.get("selectionReason")?.asString
+            ?: Component.translatable("cobblebrain.story_editor.ai.trace.call2a_default").string
 
         appendEntry(
             ChatRole.CALL_TRACE,
-            "🧱 [Chamada 2a #$passNum] Nós de Interesse",
-            "Escolhidos: ${interestedNodes.joinToString(", ")}\n$reason2a",
+            Component.translatable("cobblebrain.story_editor.ai.trace.call2a_badge", passNum).string,
+            Component.translatable("cobblebrain.story_editor.ai.trace.call2a_body", interestedNodes.joinToString(", "), reason2a).string,
             0xFFF59E0B.toInt()
         )
 
         // --- SUB-CALL 2B: Deliver complete explanations & all available choices from story_editor_blocks_guide.txt ---
         activeCallStage = 22
-        currentStatusText = "2b. Lendo guia completo dos blocos (#$passNum)..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call2b", passNum).string
 
         val fullExplanationsForSelectedNodes = extractFullNodeExplanationsFromGuide(interestedNodes)
 
@@ -1604,11 +1626,11 @@ class StoryEditorAIAssistantWidget(
             - "CALL_5" if you need to inspect the JSON funnel first.
             - "CALL_4" if the user only asked a question about blocks and we are ready for Final Review ($END_TOKEN).
             
-            Respond ONLY with valid JSON in Portuguese:
+            Respond ONLY with valid JSON using ${getResponseLanguageRule()} for text values:
             {
-              "blockConfigurationPlan": "Plano detalhado anotado na prancheta com cada nó, opções escolhidas, posição sugerida e em qual bloco cada um se conecta",
+              "blockConfigurationPlan": "Detailed plan written on the clipboard with each node, chosen options, suggested position, and which block each connects to",
               "nextCall": "CALL_$defaultNextCall",
-              "nextCallInstruction": "Instrução para o próximo robô"
+              "nextCallInstruction": "Instruction for the next robot"
             }
         """.trimIndent()
 
@@ -1630,7 +1652,7 @@ class StoryEditorAIAssistantWidget(
 
         appendEntry(
             ChatRole.CALL_TRACE,
-            "📖 [Chamada 2b #$passNum] Guia Completo & Opções → Próx: Chamada $nextCall",
+            Component.translatable("cobblebrain.story_editor.ai.trace.call2b_badge", passNum, nextCall).string,
             finalBlockPlan2b.take(450) + if (finalBlockPlan2b.length > 450) "..." else "",
             0xFFFBBF24.toInt()
         )
@@ -1765,7 +1787,7 @@ class StoryEditorAIAssistantWidget(
         passNum: Int
     ): CallStepResult {
         activeCallStage = 3
-        currentStatusText = "3. Trabalhando nos blocos do projeto (#$passNum)..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call3", passNum).string
 
         val proj = editor.project
         val activeScene = proj.getActiveScene()
@@ -1783,19 +1805,21 @@ class StoryEditorAIAssistantWidget(
                - Or using `{ "op": "CONNECT", "from": "n1", "to": "n2", "fromPort": "Out" }`!
                The mod automatically finds the ports and connects all wires!
             
+            Write all story titles, dialogues, descriptions, and quest texts in ${getResponseLanguageRule()}.
+
             SUPPORTED OPERATIONS FORMAT:
             {
               "operations": [
                 { "op": "ADD_VARIABLE", "varId": "coins", "varType": "NUMBER", "defaultValue": "0", "scope": "GLOBAL" },
-                { "op": "EDIT_SCENE", "title": "Novo Nome da Cena", "description": "Descrição opcional da cena" },
-                { "op": "ADD_SCENE", "tempId": "sc_new", "title": "Floresta", "description": "Cena 2", "setActive": true },
+                { "op": "EDIT_SCENE", "title": "New Scene Name", "description": "Optional scene description" },
+                { "op": "ADD_SCENE", "tempId": "sc_new", "title": "Forest", "description": "Scene 2", "setActive": true },
                 {
                   "op": "ADD_NODE",
                   "tempId": "n1",
                   "nodeType": "DIALOGUE",
                   "subtype": "",
-                  "title": "Fala do Pikachu",
-                  "content": "Pika! Vamos explorar a floresta, {player}!",
+                  "title": "Pikachu Dialogue",
+                  "content": "Pika! Let's explore the forest, {player}!",
                   "x": 260,
                   "y": 100,
                   "connectFrom": "BEGIN_SCENE",
@@ -1812,7 +1836,7 @@ class StoryEditorAIAssistantWidget(
                   "op": "ADD_NODE",
                   "tempId": "n2",
                   "nodeType": "QUEST",
-                  "title": "Missão: Capturar Caterpie",
+                  "title": "Quest: Catch Caterpie",
                   "x": 480,
                   "y": 100,
                   "connectFrom": "n1",
@@ -1825,12 +1849,12 @@ class StoryEditorAIAssistantWidget(
                   }
                 },
                 { "op": "CONNECT", "from": "n2", "fromPort": "Success", "to": "n3" },
-                { "op": "EDIT_NODE", "nodeId": "existing_id_or_tempId", "title": "Novo Título", "content": "...", "params": { "key": "val" } },
+                { "op": "EDIT_NODE", "nodeId": "existing_id_or_tempId", "title": "New Title", "content": "...", "params": { "key": "val" } },
                 { "op": "REMOVE_NODE", "nodeId": "node_id_to_delete" },
                 { "op": "DISCONNECT", "from": "id1", "to": "id2" }
               ],
               "nextCall": "CALL_4",
-              "nextCallInstruction": "Revisar o projeto após estas operações"
+              "nextCallInstruction": "Review the project after these operations"
             }
         """.trimIndent()
 
@@ -1848,8 +1872,8 @@ class StoryEditorAIAssistantWidget(
         val nextInst = jsonObj?.get("nextCallInstruction")?.asString ?: "Revisar alterações aplicadas."
 
         if (opsArray == null || opsArray.size() == 0) {
-            val msg = "Nenhuma operação estruturada retornada na Chamada 3 (#$passNum)."
-            appendEntry(ChatRole.CALL_TRACE, "🛠️ [Chamada 3 #$passNum] Execução", msg, 0xFF10B981.toInt())
+            val msg = Component.translatable("cobblebrain.story_editor.ai.trace.call3_no_ops", passNum).string
+            appendEntry(ChatRole.CALL_TRACE, Component.translatable("cobblebrain.story_editor.ai.trace.call3_exec_badge", passNum).string, msg, 0xFF10B981.toInt())
             return CallStepResult(msg, nextCall, nextInst)
         }
 
@@ -1870,17 +1894,21 @@ class StoryEditorAIAssistantWidget(
                 editor.rebuildNodeWidgets()
             } catch (e: Exception) {
                 AIHandler.logStoryEditor("[EXCEPTION IN CALL 3 APPLY]: ${e.stackTraceToString()}")
-                appliedLogs.add("Erro ao aplicar operação: ${e.message}")
+                appliedLogs.add(Component.translatable("cobblebrain.story_editor.ai.trace.call3_apply_error", e.message ?: "").string)
             } finally {
                 latch.countDown()
             }
         }
         latch.await(10, java.util.concurrent.TimeUnit.SECONDS)
 
-        val logText = if (appliedLogs.isEmpty()) "Nenhuma alteração aplicada." else appliedLogs.joinToString("\n")
+        val logText = if (appliedLogs.isEmpty()) {
+            Component.translatable("cobblebrain.story_editor.ai.trace.call3_no_changes").string
+        } else {
+            appliedLogs.joinToString("\n")
+        }
         appendEntry(
             ChatRole.CALL_TRACE,
-            "🛠️ [Chamada 3 #$passNum] Alterações (${appliedLogs.size}) → Próx: Chamada $nextCall",
+            Component.translatable("cobblebrain.story_editor.ai.trace.call3_changes_badge", passNum, appliedLogs.size, nextCall).string,
             logText.take(500) + if (logText.length > 500) "..." else "",
             0xFF10B981.toInt()
         )
@@ -2314,7 +2342,7 @@ class StoryEditorAIAssistantWidget(
         forceFinalize: Boolean
     ): JsonObject {
         activeCallStage = 4
-        currentStatusText = "4. Revisando prancheta (#$reviewRound)..."
+        currentStatusText = Component.translatable("cobblebrain.story_editor.ai.status_call4", reviewRound).string
 
         val proj = editor.project
         val activeScene = proj.getActiveScene()
@@ -2348,7 +2376,7 @@ class StoryEditorAIAssistantWidget(
                - Set "status": "APPROVED"
                - Set "nextCallNeeded": "NONE"
                - Set "terminationCode": "$END_TOKEN"
-               - Write a clear, friendly "finalUserMessage" in Portuguese summarizing everything that was done for the player, and append "$END_TOKEN" at the end.
+               - Write a clear, friendly "finalUserMessage" in ${getResponseLanguageRule()} summarizing everything that was done for the player, and append "$END_TOKEN" at the end.
             
             Respond ONLY with valid JSON:
             {
@@ -2356,7 +2384,7 @@ class StoryEditorAIAssistantWidget(
               "nextCallNeeded": "NONE",
               "followUpDescription": "",
               "terminationCode": "$END_TOKEN",
-              "finalUserMessage": "Resumo amigável para o jogador explicando tudo que foi feito e revisado. $END_TOKEN"
+              "finalUserMessage": "Friendly summary for the player explaining everything that was done and reviewed. $END_TOKEN"
             }
         """.trimIndent()
 

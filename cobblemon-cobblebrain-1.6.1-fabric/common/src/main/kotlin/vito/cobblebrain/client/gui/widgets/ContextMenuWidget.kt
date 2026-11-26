@@ -2,6 +2,7 @@ package vito.cobblebrain.client.gui.widgets
 
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.network.chat.Component
 import vito.cobblebrain.model.NodeData
 import vito.cobblebrain.model.SceneData
 
@@ -49,9 +50,19 @@ class ContextMenuWidget(
         menuItems.clear()
         if (targetNode != null) {
             val isPinned = StoryEditorAIAssistantWidget.pinnedFocusNodeIds.contains(targetNode.id)
-            menuItems.add(MenuItem(if (isPinned) "🎯 Remover do Foco IA" else "🎯 Adicionar ao Foco IA", ContextMenuAction.TOGGLE_AI_FOCUS))
+            menuItems.add(
+                MenuItem(
+                    Component.translatable(if (isPinned) "cobblebrain.story_editor.ai.menu.remove_focus" else "cobblebrain.story_editor.ai.menu.add_focus").string,
+                    ContextMenuAction.TOGGLE_AI_FOCUS
+                )
+            )
             if (StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size > 1 || (StoryEditorAIAssistantWidget.pinnedFocusNodeIds.isNotEmpty() && !isPinned)) {
-                menuItems.add(MenuItem("🎯 Limpar Focos IA (${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size})", ContextMenuAction.CLEAR_ALL_AI_FOCUS))
+                menuItems.add(
+                    MenuItem(
+                        Component.translatable("cobblebrain.story_editor.ai.menu.clear_focus", StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size).string,
+                        ContextMenuAction.CLEAR_ALL_AI_FOCUS
+                    )
+                )
             }
             menuItems.add(MenuItem("🗑️ Delete Block", ContextMenuAction.DELETE))
             menuItems.add(MenuItem("📋 Duplicate Block", ContextMenuAction.DUPLICATE))
@@ -64,13 +75,23 @@ class ContextMenuWidget(
             menuItems.add(MenuItem("🔌 Disconnect Ports", ContextMenuAction.DISCONNECT_PORTS))
         } else if (targetScene != null) {
             val isPinnedScene = StoryEditorAIAssistantWidget.pinnedFocusSceneIds.contains(targetScene.id)
-            menuItems.add(MenuItem(if (isPinnedScene) "🎯 Remover Foco IA" else "🎯 Marcar Cena p/ IA", ContextMenuAction.TOGGLE_AI_FOCUS))
+            menuItems.add(
+                MenuItem(
+                    Component.translatable(if (isPinnedScene) "cobblebrain.story_editor.ai.menu.unmark_scene" else "cobblebrain.story_editor.ai.menu.mark_scene").string,
+                    ContextMenuAction.TOGGLE_AI_FOCUS
+                )
+            )
             menuItems.add(MenuItem("🗑️ Delete Scene", ContextMenuAction.DELETE))
             menuItems.add(MenuItem("📋 Duplicate Scene", ContextMenuAction.DUPLICATE))
             menuItems.add(MenuItem("🔄 Reset Scene", ContextMenuAction.RESET_PROPERTIES))
         } else if (isCanvasMenu) {
             if (StoryEditorAIAssistantWidget.pinnedFocusNodeIds.isNotEmpty()) {
-                menuItems.add(MenuItem("🎯 Limpar Focos IA (${StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size})", ContextMenuAction.CLEAR_ALL_AI_FOCUS))
+                menuItems.add(
+                    MenuItem(
+                        Component.translatable("cobblebrain.story_editor.ai.menu.clear_focus", StoryEditorAIAssistantWidget.pinnedFocusNodeIds.size).string,
+                        ContextMenuAction.CLEAR_ALL_AI_FOCUS
+                    )
+                )
             }
             val canPasteNodes = BlockDataClipboard.hasCopiedNodes()
             menuItems.add(MenuItem("📋 Paste Nodes", ContextMenuAction.PASTE_NODES, enabled = canPasteNodes))
