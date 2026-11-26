@@ -405,6 +405,7 @@
   "cobblebrain.config.action.shift.duration": "Shift Duration (Seconds)",
   "cobblebrain.config.action.shift.duration.tooltip": "Duration in seconds for the Shift ability.",
   "cobblebrain.feedback.action_disabled": "Action %s is disabled on this server.",
+  "cobblebrain.feedback.rest_blocked_in_battle": "Cannot use Rest during a battle.",
   "cobblebrain.config.action.fish.luck_bonus": "Luck Bonus",
   "cobblebrain.config.action.fish.luck_bonus.tooltip": "Adds extra luck rolls to obtain better fishing items.",
   "cobblebrain.config.action.fish.allow_treasure": "Allow Rare Treasure",

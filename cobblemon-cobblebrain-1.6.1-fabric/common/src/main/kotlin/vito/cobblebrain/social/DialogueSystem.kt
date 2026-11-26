@@ -610,6 +610,9 @@ object DialogueSystem {
                 val opponents = battle.actors.filter { it != myActor }
                 val enemyPokemon = opponents.flatMap { it.pokemonList }.map { it.originalPokemon }
                 markBattleQuestStarted(battlePlayer, enemyPokemon)
+                PokemonQuery.findActivePokemon(battlePlayer).forEach { poke ->
+                    vito.cobblebrain.sensors.cancelRestForBattle(poke, poke.entity as? Mob, server)
+                }
             }
 
             if (!config.dialogueOnBattle) return@execute
@@ -5145,6 +5148,11 @@ object DialogueSystem {
                                 }
                             }
                         } else {
+                            if ((cmd.action == "rest" || cmd.action == "sit") &&
+                                vito.cobblebrain.sensors.isBattleBlockingRest(player.uuid, pokemon)
+                            ) {
+                                return@forEach
+                            }
                             if (cmd.action == "idle") {
                                 CommandState.clearPokemonIrritation(pokemon.uuid)
                             }

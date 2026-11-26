@@ -380,6 +380,7 @@
   "cobblebrain.config.action.shift.duration": "Duração do Shift (Segundos)",
   "cobblebrain.config.action.shift.duration.tooltip": "Tempo em segundos da duração da habilidade Shift.",
   "cobblebrain.feedback.action_disabled": "A ação %s está desativada neste servidor.",
+  "cobblebrain.feedback.rest_blocked_in_battle": "Não é possível usar Descansar durante uma batalha.",
   "cobblebrain.action.cook": "COZINHAR",
   "cobblebrain.action.grow": "CULTIVAR",
   "cobblebrain.action.repair": "REPARAR",

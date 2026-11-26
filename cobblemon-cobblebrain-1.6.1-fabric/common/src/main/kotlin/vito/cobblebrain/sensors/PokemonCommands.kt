@@ -526,6 +526,86 @@ fun stopRestAndSleep(
     }
 }
 
+fun isBattleBlockingRest(ownerUuid: UUID?, entity: Mob?): Boolean {
+    if (ownerUuid != null && BattleRegistry.getBattleByParticipatingPlayerId(ownerUuid) != null) {
+        return true
+    }
+    return (entity as? PokemonEntity)?.isBattling == true
+}
+
+fun cancelRestForBattle(
+    pokemon: com.cobblemon.mod.common.pokemon.Pokemon,
+    entity: Mob? = (pokemon.entity as? Mob) ?: vito.cobblebrain.currentServer?.allLevels?.firstNotNullOfOrNull { it.getEntity(pokemon.uuid) as? Mob },
+    server: MinecraftServer? = entity?.server ?: vito.cobblebrain.currentServer
+): Boolean {
+    val pokeUuid = pokemon.uuid
+    val entityUuid = entity?.uuid
+    val hadRestCmd = CommandState.activeCommands[pokeUuid] in listOf("rest", "sit") ||
+        (entityUuid != null && CommandState.activeCommands[entityUuid] in listOf("rest", "sit"))
+    val hadRestState = sleepingState.containsKey(pokeUuid) ||
+        restTicks.containsKey(pokeUuid) ||
+        restHealTimer.containsKey(pokeUuid) ||
+        activeCarpets.containsKey(pokeUuid) ||
+        (entityUuid != null && (
+            sleepingState.containsKey(entityUuid) ||
+            restTicks.containsKey(entityUuid) ||
+            restHealTimer.containsKey(entityUuid) ||
+            activeCarpets.containsKey(entityUuid)
+        ))
+
+    if (!hadRestCmd && !hadRestState) return false
+
+    val wasRestSleeping = (sleepingState.remove(pokeUuid) == true) ||
+        (entityUuid != null && sleepingState.remove(entityUuid) == true)
+
+    if (CommandState.activeCommands[pokeUuid] in listOf("rest", "sit")) {
+        CommandState.activeCommands.remove(pokeUuid)
+    }
+    if (entityUuid != null && CommandState.activeCommands[entityUuid] in listOf("rest", "sit")) {
+        CommandState.activeCommands.remove(entityUuid)
+    }
+
+    restTicks.remove(pokeUuid)
+    restHealTimer.remove(pokeUuid)
+    if (announcedStates[pokeUuid] == "rest") announcedStates.remove(pokeUuid)
+
+    if (entityUuid != null) {
+        restTicks.remove(entityUuid)
+        restHealTimer.remove(entityUuid)
+        if (announcedStates[entityUuid] == "rest") announcedStates.remove(entityUuid)
+    }
+
+    val srv = server ?: (entity?.level() as? ServerLevel)?.server ?: vito.cobblebrain.currentServer
+    if (srv != null) {
+        removeWoolCarpet(pokeUuid, srv)
+        if (entityUuid != null) removeWoolCarpet(entityUuid, srv)
+    } else {
+        activeCarpets.remove(pokeUuid)
+        if (entityUuid != null) activeCarpets.remove(entityUuid)
+    }
+
+    if (entity != null) {
+        if (wasRestSleeping) {
+            try {
+                if (pokemon.status?.status?.name?.path?.lowercase() == "sleep") {
+                    pokemon.status = null
+                }
+            } catch (_: Throwable) {}
+            entity.pose = Pose.STANDING
+            try {
+                entity.stopSleeping()
+            } catch (_: Throwable) {}
+            if (entity is PokemonEntity) {
+                CobblemonSleepBridge.clearNativeSleep(entity)
+            }
+        }
+        (entity as? TamableAnimal)?.isOrderedToSit = false
+        (entity as? TamableAnimal)?.isInSittingPose = false
+        restoreFollowGoal(entity)
+    }
+    return true
+}
+
 fun wakeUpPokemon(pokemon: Mob, owner: ServerPlayer?, reason: String) {
     val pokemonId = pokemon.uuid
     val pokeEntity = pokemon as? PokemonEntity
@@ -884,6 +964,11 @@ object CommandTickHandler {
             }
 
             val owner = server.playerList.getPlayer(ownerUUID) ?: return@forEach
+
+            if ((action == "rest" || action == "sit") && isBattleBlockingRest(ownerUUID, pokemon)) {
+                cancelRestForBattle(cobblemonPokemon, pokemon, server)
+                return@forEach
+            }
 
             val atk = cobblemonPokemon.attack
             val spd = cobblemonPokemon.speed

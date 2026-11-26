@@ -5,6 +5,7 @@ import net.minecraft.network.chat.Component
 import vito.cobblebrain.sensors.CommandState
 import vito.cobblebrain.sensors.PokemonCommand
 import vito.cobblebrain.sensors.parseCommand
+import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.pokemon.Pokemon
 import net.minecraft.server.MinecraftServer
 import vito.cobblebrain.config.ConfigHandler
@@ -29,6 +30,17 @@ object CobblebrainServerHandler {
             }
 
             val ativos: List<Pokemon> = PokemonQuery.findActivePokemon(player)
+
+            if ((actionKey == "rest" || actionKey == "sit") &&
+                (BattleRegistry.getBattleByParticipatingPlayerId(player.uuid) != null ||
+                    ativos.any { it.entity?.isBattling == true })
+            ) {
+                player.sendSystemMessage(
+                    Component.translatable("cobblebrain.feedback.rest_blocked_in_battle")
+                        .withStyle(net.minecraft.ChatFormatting.RED)
+                )
+                return
+            }
             
             if (command.pokemonName.equals("ALL", ignoreCase = true)) {
                 if (command.action.equals("song", ignoreCase = true)) {
